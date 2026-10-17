@@ -1,0 +1,1922 @@
+{
+  "schema": "v13-history-vectors-v1",
+  "method": "HISTORY_YOY_V1",
+  "cases": [
+    {
+      "id": "tier_a_two_rates_mean",
+      "inputs": {
+        "actuals": [
+          {
+            "start": "2025-06-29",
+            "end": "2025-09-27",
+            "revenue": 100.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2025-09-28",
+            "end": "2025-12-27",
+            "revenue": 110.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2025-12-28",
+            "end": "2026-03-28",
+            "revenue": 120.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2026-03-29",
+            "end": "2026-06-27",
+            "revenue": 130.0,
+            "currency": "USD"
+          }
+        ],
+        "intervals": [
+          {
+            "start": "2026-06-28",
+            "end": "2026-09-26"
+          },
+          {
+            "start": "2026-09-27",
+            "end": "2026-12-26"
+          },
+          {
+            "start": "2026-12-27",
+            "end": "2027-03-27"
+          },
+          {
+            "start": "2027-03-28",
+            "end": "2027-06-26"
+          }
+        ],
+        "currency": "USD"
+      },
+      "fund": {
+        "quarter_end": "2026-06-27",
+        "revenue_yoy": 0.3,
+        "revenue_yoy_prev": 0.2
+      },
+      "report_day": "2026-07-20",
+      "expected": {
+        "ok": true,
+        "tier": "A",
+        "g": 0.25,
+        "g_raw": 0.25,
+        "capped": null,
+        "B": 460.0,
+        "m6": 262.5,
+        "m12": 575.0,
+        "ttm6": 512.5,
+        "ttm12": 575.0,
+        "change6": 0.11413043478260865,
+        "change12": 0.25
+      }
+    },
+    {
+      "id": "tier_a_latest_rate_only",
+      "inputs": {
+        "actuals": [
+          {
+            "start": "2025-06-29",
+            "end": "2025-09-27",
+            "revenue": 100.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2025-09-28",
+            "end": "2025-12-27",
+            "revenue": 110.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2025-12-28",
+            "end": "2026-03-28",
+            "revenue": 120.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2026-03-29",
+            "end": "2026-06-27",
+            "revenue": 130.0,
+            "currency": "USD"
+          }
+        ],
+        "intervals": [
+          {
+            "start": "2026-06-28",
+            "end": "2026-09-26"
+          },
+          {
+            "start": "2026-09-27",
+            "end": "2026-12-26"
+          },
+          {
+            "start": "2026-12-27",
+            "end": "2027-03-27"
+          },
+          {
+            "start": "2027-03-28",
+            "end": "2027-06-26"
+          }
+        ],
+        "currency": "USD"
+      },
+      "fund": {
+        "quarter_end": "2026-06-27",
+        "revenue_yoy": 0.3,
+        "revenue_yoy_prev": null
+      },
+      "report_day": "2026-07-20",
+      "expected": {
+        "ok": true,
+        "tier": "A",
+        "g": 0.3,
+        "g_raw": 0.3,
+        "capped": null,
+        "B": 460.0,
+        "m6": 273.0,
+        "m12": 598.0,
+        "ttm6": 523.0,
+        "ttm12": 598.0,
+        "change6": 0.13695652173913042,
+        "change12": 0.30000000000000004
+      }
+    },
+    {
+      "id": "tier_a_prev_rate_only",
+      "inputs": {
+        "actuals": [
+          {
+            "start": "2025-06-29",
+            "end": "2025-09-27",
+            "revenue": 100.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2025-09-28",
+            "end": "2025-12-27",
+            "revenue": 110.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2025-12-28",
+            "end": "2026-03-28",
+            "revenue": 120.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2026-03-29",
+            "end": "2026-06-27",
+            "revenue": 130.0,
+            "currency": "USD"
+          }
+        ],
+        "intervals": [
+          {
+            "start": "2026-06-28",
+            "end": "2026-09-26"
+          },
+          {
+            "start": "2026-09-27",
+            "end": "2026-12-26"
+          },
+          {
+            "start": "2026-12-27",
+            "end": "2027-03-27"
+          },
+          {
+            "start": "2027-03-28",
+            "end": "2027-06-26"
+          }
+        ],
+        "currency": "USD"
+      },
+      "fund": {
+        "quarter_end": "2026-06-27",
+        "revenue_yoy": null,
+        "revenue_yoy_prev": 0.2
+      },
+      "report_day": "2026-07-20",
+      "expected": {
+        "ok": true,
+        "tier": "A",
+        "g": 0.2,
+        "g_raw": 0.2,
+        "capped": null,
+        "B": 460.0,
+        "m6": 252.0,
+        "m12": 552.0,
+        "ttm6": 502.0,
+        "ttm12": 552.0,
+        "change6": 0.09130434782608687,
+        "change12": 0.19999999999999996
+      }
+    },
+    {
+      "id": "tier_a_negative_growth",
+      "inputs": {
+        "actuals": [
+          {
+            "start": "2025-06-29",
+            "end": "2025-09-27",
+            "revenue": 100.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2025-09-28",
+            "end": "2025-12-27",
+            "revenue": 110.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2025-12-28",
+            "end": "2026-03-28",
+            "revenue": 120.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2026-03-29",
+            "end": "2026-06-27",
+            "revenue": 130.0,
+            "currency": "USD"
+          }
+        ],
+        "intervals": [
+          {
+            "start": "2026-06-28",
+            "end": "2026-09-26"
+          },
+          {
+            "start": "2026-09-27",
+            "end": "2026-12-26"
+          },
+          {
+            "start": "2026-12-27",
+            "end": "2027-03-27"
+          },
+          {
+            "start": "2027-03-28",
+            "end": "2027-06-26"
+          }
+        ],
+        "currency": "USD"
+      },
+      "fund": {
+        "quarter_end": "2026-06-27",
+        "revenue_yoy": -0.1,
+        "revenue_yoy_prev": -0.2
+      },
+      "report_day": "2026-07-20",
+      "expected": {
+        "ok": true,
+        "tier": "A",
+        "g": -0.15000000000000002,
+        "g_raw": -0.15000000000000002,
+        "capped": null,
+        "B": 460.0,
+        "m6": 178.5,
+        "m12": 391.0,
+        "ttm6": 428.5,
+        "ttm12": 391.0,
+        "change6": -0.06847826086956521,
+        "change12": -0.15000000000000002
+      }
+    },
+    {
+      "id": "tier_a_zero_growth",
+      "inputs": {
+        "actuals": [
+          {
+            "start": "2025-06-29",
+            "end": "2025-09-27",
+            "revenue": 100.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2025-09-28",
+            "end": "2025-12-27",
+            "revenue": 110.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2025-12-28",
+            "end": "2026-03-28",
+            "revenue": 120.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2026-03-29",
+            "end": "2026-06-27",
+            "revenue": 130.0,
+            "currency": "USD"
+          }
+        ],
+        "intervals": [
+          {
+            "start": "2026-06-28",
+            "end": "2026-09-26"
+          },
+          {
+            "start": "2026-09-27",
+            "end": "2026-12-26"
+          },
+          {
+            "start": "2026-12-27",
+            "end": "2027-03-27"
+          },
+          {
+            "start": "2027-03-28",
+            "end": "2027-06-26"
+          }
+        ],
+        "currency": "USD"
+      },
+      "fund": {
+        "quarter_end": "2026-06-27",
+        "revenue_yoy": 0.0,
+        "revenue_yoy_prev": 0.0
+      },
+      "report_day": "2026-07-20",
+      "expected": {
+        "ok": true,
+        "tier": "A",
+        "g": 0.0,
+        "g_raw": 0.0,
+        "capped": null,
+        "B": 460.0,
+        "m6": 210.0,
+        "m12": 460.0,
+        "ttm6": 460.0,
+        "ttm12": 460.0,
+        "change6": 0.0,
+        "change12": 0.0
+      }
+    },
+    {
+      "id": "cap_upper_100pct",
+      "inputs": {
+        "actuals": [
+          {
+            "start": "2025-06-29",
+            "end": "2025-09-27",
+            "revenue": 100.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2025-09-28",
+            "end": "2025-12-27",
+            "revenue": 110.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2025-12-28",
+            "end": "2026-03-28",
+            "revenue": 120.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2026-03-29",
+            "end": "2026-06-27",
+            "revenue": 130.0,
+            "currency": "USD"
+          }
+        ],
+        "intervals": [
+          {
+            "start": "2026-06-28",
+            "end": "2026-09-26"
+          },
+          {
+            "start": "2026-09-27",
+            "end": "2026-12-26"
+          },
+          {
+            "start": "2026-12-27",
+            "end": "2027-03-27"
+          },
+          {
+            "start": "2027-03-28",
+            "end": "2027-06-26"
+          }
+        ],
+        "currency": "USD"
+      },
+      "fund": {
+        "quarter_end": "2026-06-27",
+        "revenue_yoy": 1.8,
+        "revenue_yoy_prev": 1.4
+      },
+      "report_day": "2026-07-20",
+      "expected": {
+        "ok": true,
+        "tier": "A",
+        "g": 1.0,
+        "g_raw": 1.6,
+        "capped": "UPPER",
+        "B": 460.0,
+        "m6": 420.0,
+        "m12": 920.0,
+        "ttm6": 670.0,
+        "ttm12": 920.0,
+        "change6": 0.4565217391304348,
+        "change12": 1.0
+      }
+    },
+    {
+      "id": "cap_lower_minus_50pct",
+      "inputs": {
+        "actuals": [
+          {
+            "start": "2025-06-29",
+            "end": "2025-09-27",
+            "revenue": 100.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2025-09-28",
+            "end": "2025-12-27",
+            "revenue": 110.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2025-12-28",
+            "end": "2026-03-28",
+            "revenue": 120.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2026-03-29",
+            "end": "2026-06-27",
+            "revenue": 130.0,
+            "currency": "USD"
+          }
+        ],
+        "intervals": [
+          {
+            "start": "2026-06-28",
+            "end": "2026-09-26"
+          },
+          {
+            "start": "2026-09-27",
+            "end": "2026-12-26"
+          },
+          {
+            "start": "2026-12-27",
+            "end": "2027-03-27"
+          },
+          {
+            "start": "2027-03-28",
+            "end": "2027-06-26"
+          }
+        ],
+        "currency": "USD"
+      },
+      "fund": {
+        "quarter_end": "2026-06-27",
+        "revenue_yoy": -0.8,
+        "revenue_yoy_prev": -0.7
+      },
+      "report_day": "2026-07-20",
+      "expected": {
+        "ok": true,
+        "tier": "A",
+        "g": -0.5,
+        "g_raw": -0.75,
+        "capped": "LOWER",
+        "B": 460.0,
+        "m6": 105.0,
+        "m12": 230.0,
+        "ttm6": 355.0,
+        "ttm12": 230.0,
+        "change6": -0.2282608695652174,
+        "change12": -0.5
+      }
+    },
+    {
+      "id": "cap_boundary_exactly_100pct",
+      "inputs": {
+        "actuals": [
+          {
+            "start": "2025-06-29",
+            "end": "2025-09-27",
+            "revenue": 100.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2025-09-28",
+            "end": "2025-12-27",
+            "revenue": 110.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2025-12-28",
+            "end": "2026-03-28",
+            "revenue": 120.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2026-03-29",
+            "end": "2026-06-27",
+            "revenue": 130.0,
+            "currency": "USD"
+          }
+        ],
+        "intervals": [
+          {
+            "start": "2026-06-28",
+            "end": "2026-09-26"
+          },
+          {
+            "start": "2026-09-27",
+            "end": "2026-12-26"
+          },
+          {
+            "start": "2026-12-27",
+            "end": "2027-03-27"
+          },
+          {
+            "start": "2027-03-28",
+            "end": "2027-06-26"
+          }
+        ],
+        "currency": "USD"
+      },
+      "fund": {
+        "quarter_end": "2026-06-27",
+        "revenue_yoy": 1.0,
+        "revenue_yoy_prev": 1.0
+      },
+      "report_day": "2026-07-20",
+      "expected": {
+        "ok": true,
+        "tier": "A",
+        "g": 1.0,
+        "g_raw": 1.0,
+        "capped": null,
+        "B": 460.0,
+        "m6": 420.0,
+        "m12": 920.0,
+        "ttm6": 670.0,
+        "ttm12": 920.0,
+        "change6": 0.4565217391304348,
+        "change12": 1.0
+      }
+    },
+    {
+      "id": "extreme_over_300pct_is_tier_b",
+      "inputs": {
+        "actuals": [
+          {
+            "start": "2025-06-29",
+            "end": "2025-09-27",
+            "revenue": 100.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2025-09-28",
+            "end": "2025-12-27",
+            "revenue": 110.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2025-12-28",
+            "end": "2026-03-28",
+            "revenue": 120.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2026-03-29",
+            "end": "2026-06-27",
+            "revenue": 130.0,
+            "currency": "USD"
+          }
+        ],
+        "intervals": [
+          {
+            "start": "2026-06-28",
+            "end": "2026-09-26"
+          },
+          {
+            "start": "2026-09-27",
+            "end": "2026-12-26"
+          },
+          {
+            "start": "2026-12-27",
+            "end": "2027-03-27"
+          },
+          {
+            "start": "2027-03-28",
+            "end": "2027-06-26"
+          }
+        ],
+        "currency": "USD"
+      },
+      "fund": {
+        "quarter_end": "2026-06-27",
+        "revenue_yoy": 4.2,
+        "revenue_yoy_prev": 3.8
+      },
+      "report_day": "2026-07-20",
+      "expected": {
+        "ok": true,
+        "tier": "B",
+        "g": null,
+        "g_raw": 4.0,
+        "capped": null,
+        "B": 460.0,
+        "m6": 260.0,
+        "m12": 520.0,
+        "ttm6": 510.0,
+        "ttm12": 520.0,
+        "change6": 0.10869565217391308,
+        "change12": 0.13043478260869557
+      }
+    },
+    {
+      "id": "exactly_300pct_still_tier_a_capped",
+      "inputs": {
+        "actuals": [
+          {
+            "start": "2025-06-29",
+            "end": "2025-09-27",
+            "revenue": 100.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2025-09-28",
+            "end": "2025-12-27",
+            "revenue": 110.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2025-12-28",
+            "end": "2026-03-28",
+            "revenue": 120.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2026-03-29",
+            "end": "2026-06-27",
+            "revenue": 130.0,
+            "currency": "USD"
+          }
+        ],
+        "intervals": [
+          {
+            "start": "2026-06-28",
+            "end": "2026-09-26"
+          },
+          {
+            "start": "2026-09-27",
+            "end": "2026-12-26"
+          },
+          {
+            "start": "2026-12-27",
+            "end": "2027-03-27"
+          },
+          {
+            "start": "2027-03-28",
+            "end": "2027-06-26"
+          }
+        ],
+        "currency": "USD"
+      },
+      "fund": {
+        "quarter_end": "2026-06-27",
+        "revenue_yoy": 3.0,
+        "revenue_yoy_prev": 3.0
+      },
+      "report_day": "2026-07-20",
+      "expected": {
+        "ok": true,
+        "tier": "A",
+        "g": 1.0,
+        "g_raw": 3.0,
+        "capped": "UPPER",
+        "B": 460.0,
+        "m6": 420.0,
+        "m12": 920.0,
+        "ttm6": 670.0,
+        "ttm12": 920.0,
+        "change6": 0.4565217391304348,
+        "change12": 1.0
+      }
+    },
+    {
+      "id": "tier_b_no_fundamentals",
+      "inputs": {
+        "actuals": [
+          {
+            "start": "2025-06-29",
+            "end": "2025-09-27",
+            "revenue": 100.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2025-09-28",
+            "end": "2025-12-27",
+            "revenue": 110.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2025-12-28",
+            "end": "2026-03-28",
+            "revenue": 120.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2026-03-29",
+            "end": "2026-06-27",
+            "revenue": 130.0,
+            "currency": "USD"
+          }
+        ],
+        "intervals": [
+          {
+            "start": "2026-06-28",
+            "end": "2026-09-26"
+          },
+          {
+            "start": "2026-09-27",
+            "end": "2026-12-26"
+          },
+          {
+            "start": "2026-12-27",
+            "end": "2027-03-27"
+          },
+          {
+            "start": "2027-03-28",
+            "end": "2027-06-26"
+          }
+        ],
+        "currency": "USD"
+      },
+      "fund": null,
+      "report_day": "2026-07-20",
+      "expected": {
+        "ok": true,
+        "tier": "B",
+        "g": null,
+        "g_raw": null,
+        "capped": null,
+        "B": 460.0,
+        "m6": 260.0,
+        "m12": 520.0,
+        "ttm6": 510.0,
+        "ttm12": 520.0,
+        "change6": 0.10869565217391308,
+        "change12": 0.13043478260869557
+      }
+    },
+    {
+      "id": "tier_b_null_rates",
+      "inputs": {
+        "actuals": [
+          {
+            "start": "2025-06-29",
+            "end": "2025-09-27",
+            "revenue": 100.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2025-09-28",
+            "end": "2025-12-27",
+            "revenue": 110.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2025-12-28",
+            "end": "2026-03-28",
+            "revenue": 120.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2026-03-29",
+            "end": "2026-06-27",
+            "revenue": 130.0,
+            "currency": "USD"
+          }
+        ],
+        "intervals": [
+          {
+            "start": "2026-06-28",
+            "end": "2026-09-26"
+          },
+          {
+            "start": "2026-09-27",
+            "end": "2026-12-26"
+          },
+          {
+            "start": "2026-12-27",
+            "end": "2027-03-27"
+          },
+          {
+            "start": "2027-03-28",
+            "end": "2027-06-26"
+          }
+        ],
+        "currency": "USD"
+      },
+      "fund": {
+        "quarter_end": "2026-06-27",
+        "revenue_yoy": null,
+        "revenue_yoy_prev": null
+      },
+      "report_day": "2026-07-20",
+      "expected": {
+        "ok": true,
+        "tier": "B",
+        "g": null,
+        "g_raw": null,
+        "capped": null,
+        "B": 460.0,
+        "m6": 260.0,
+        "m12": 520.0,
+        "ttm6": 510.0,
+        "ttm12": 520.0,
+        "change6": 0.10869565217391308,
+        "change12": 0.13043478260869557
+      }
+    },
+    {
+      "id": "tier_b_fund_quarter_misaligned",
+      "inputs": {
+        "actuals": [
+          {
+            "start": "2025-06-29",
+            "end": "2025-09-27",
+            "revenue": 100.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2025-09-28",
+            "end": "2025-12-27",
+            "revenue": 110.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2025-12-28",
+            "end": "2026-03-28",
+            "revenue": 120.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2026-03-29",
+            "end": "2026-06-27",
+            "revenue": 130.0,
+            "currency": "USD"
+          }
+        ],
+        "intervals": [
+          {
+            "start": "2026-06-28",
+            "end": "2026-09-26"
+          },
+          {
+            "start": "2026-09-27",
+            "end": "2026-12-26"
+          },
+          {
+            "start": "2026-12-27",
+            "end": "2027-03-27"
+          },
+          {
+            "start": "2027-03-28",
+            "end": "2027-06-26"
+          }
+        ],
+        "currency": "USD"
+      },
+      "fund": {
+        "quarter_end": "2026-03-28",
+        "revenue_yoy": 0.3,
+        "revenue_yoy_prev": 0.2
+      },
+      "report_day": "2026-07-20",
+      "expected": {
+        "ok": true,
+        "tier": "B",
+        "g": null,
+        "g_raw": null,
+        "capped": null,
+        "B": 460.0,
+        "m6": 260.0,
+        "m12": 520.0,
+        "ttm6": 510.0,
+        "ttm12": 520.0,
+        "change6": 0.10869565217391308,
+        "change12": 0.13043478260869557
+      }
+    },
+    {
+      "id": "fund_quarter_within_10_days_is_aligned",
+      "inputs": {
+        "actuals": [
+          {
+            "start": "2025-06-29",
+            "end": "2025-09-27",
+            "revenue": 100.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2025-09-28",
+            "end": "2025-12-27",
+            "revenue": 110.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2025-12-28",
+            "end": "2026-03-28",
+            "revenue": 120.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2026-03-29",
+            "end": "2026-06-27",
+            "revenue": 130.0,
+            "currency": "USD"
+          }
+        ],
+        "intervals": [
+          {
+            "start": "2026-06-28",
+            "end": "2026-09-26"
+          },
+          {
+            "start": "2026-09-27",
+            "end": "2026-12-26"
+          },
+          {
+            "start": "2026-12-27",
+            "end": "2027-03-27"
+          },
+          {
+            "start": "2027-03-28",
+            "end": "2027-06-26"
+          }
+        ],
+        "currency": "USD"
+      },
+      "fund": {
+        "quarter_end": "2026-07-05",
+        "revenue_yoy": 0.3,
+        "revenue_yoy_prev": 0.2
+      },
+      "report_day": "2026-07-20",
+      "expected": {
+        "ok": true,
+        "tier": "A",
+        "g": 0.25,
+        "g_raw": 0.25,
+        "capped": null,
+        "B": 460.0,
+        "m6": 262.5,
+        "m12": 575.0,
+        "ttm6": 512.5,
+        "ttm12": 575.0,
+        "change6": 0.11413043478260865,
+        "change12": 0.25
+      }
+    },
+    {
+      "id": "fund_quarter_11_days_off_is_tier_b",
+      "inputs": {
+        "actuals": [
+          {
+            "start": "2025-06-29",
+            "end": "2025-09-27",
+            "revenue": 100.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2025-09-28",
+            "end": "2025-12-27",
+            "revenue": 110.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2025-12-28",
+            "end": "2026-03-28",
+            "revenue": 120.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2026-03-29",
+            "end": "2026-06-27",
+            "revenue": 130.0,
+            "currency": "USD"
+          }
+        ],
+        "intervals": [
+          {
+            "start": "2026-06-28",
+            "end": "2026-09-26"
+          },
+          {
+            "start": "2026-09-27",
+            "end": "2026-12-26"
+          },
+          {
+            "start": "2026-12-27",
+            "end": "2027-03-27"
+          },
+          {
+            "start": "2027-03-28",
+            "end": "2027-06-26"
+          }
+        ],
+        "currency": "USD"
+      },
+      "fund": {
+        "quarter_end": "2026-07-08",
+        "revenue_yoy": 0.3,
+        "revenue_yoy_prev": 0.2
+      },
+      "report_day": "2026-07-20",
+      "expected": {
+        "ok": true,
+        "tier": "B",
+        "g": null,
+        "g_raw": null,
+        "capped": null,
+        "B": 460.0,
+        "m6": 260.0,
+        "m12": 520.0,
+        "ttm6": 510.0,
+        "ttm12": 520.0,
+        "change6": 0.10869565217391308,
+        "change12": 0.13043478260869557
+      }
+    },
+    {
+      "id": "fund_quarter_44_days_later_is_tier_b",
+      "inputs": {
+        "actuals": [
+          {
+            "start": "2025-06-29",
+            "end": "2025-09-27",
+            "revenue": 100.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2025-09-28",
+            "end": "2025-12-27",
+            "revenue": 110.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2025-12-28",
+            "end": "2026-03-28",
+            "revenue": 120.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2026-03-29",
+            "end": "2026-06-27",
+            "revenue": 130.0,
+            "currency": "USD"
+          }
+        ],
+        "intervals": [
+          {
+            "start": "2026-06-28",
+            "end": "2026-09-26"
+          },
+          {
+            "start": "2026-09-27",
+            "end": "2026-12-26"
+          },
+          {
+            "start": "2026-12-27",
+            "end": "2027-03-27"
+          },
+          {
+            "start": "2027-03-28",
+            "end": "2027-06-26"
+          }
+        ],
+        "currency": "USD"
+      },
+      "fund": {
+        "quarter_end": "2026-08-10",
+        "revenue_yoy": 0.3,
+        "revenue_yoy_prev": 0.2
+      },
+      "report_day": "2026-07-20",
+      "expected": {
+        "ok": true,
+        "tier": "B",
+        "g": null,
+        "g_raw": null,
+        "capped": null,
+        "B": 460.0,
+        "m6": 260.0,
+        "m12": 520.0,
+        "ttm6": 510.0,
+        "ttm12": 520.0,
+        "change6": 0.10869565217391308,
+        "change12": 0.13043478260869557
+      }
+    },
+    {
+      "id": "newer_reported_quarter_refused",
+      "inputs": {
+        "actuals": [
+          {
+            "start": "2025-06-29",
+            "end": "2025-09-27",
+            "revenue": 100.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2025-09-28",
+            "end": "2025-12-27",
+            "revenue": 110.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2025-12-28",
+            "end": "2026-03-28",
+            "revenue": 120.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2026-03-29",
+            "end": "2026-06-27",
+            "revenue": 130.0,
+            "currency": "USD"
+          }
+        ],
+        "intervals": [
+          {
+            "start": "2026-06-28",
+            "end": "2026-09-26"
+          },
+          {
+            "start": "2026-09-27",
+            "end": "2026-12-26"
+          },
+          {
+            "start": "2026-12-27",
+            "end": "2027-03-27"
+          },
+          {
+            "start": "2027-03-28",
+            "end": "2027-06-26"
+          }
+        ],
+        "currency": "USD"
+      },
+      "fund": {
+        "quarter_end": "2026-09-26",
+        "revenue_yoy": 0.3,
+        "revenue_yoy_prev": 0.2
+      },
+      "report_day": "2026-10-17",
+      "expected": {
+        "ok": false,
+        "reason": "NEWER_QUARTER_REPORTED"
+      }
+    },
+    {
+      "id": "fund_quarter_45_days_later_refused",
+      "inputs": {
+        "actuals": [
+          {
+            "start": "2025-06-29",
+            "end": "2025-09-27",
+            "revenue": 100.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2025-09-28",
+            "end": "2025-12-27",
+            "revenue": 110.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2025-12-28",
+            "end": "2026-03-28",
+            "revenue": 120.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2026-03-29",
+            "end": "2026-06-27",
+            "revenue": 130.0,
+            "currency": "USD"
+          }
+        ],
+        "intervals": [
+          {
+            "start": "2026-06-28",
+            "end": "2026-09-26"
+          },
+          {
+            "start": "2026-09-27",
+            "end": "2026-12-26"
+          },
+          {
+            "start": "2026-12-27",
+            "end": "2027-03-27"
+          },
+          {
+            "start": "2027-03-28",
+            "end": "2027-06-26"
+          }
+        ],
+        "currency": "USD"
+      },
+      "fund": {
+        "quarter_end": "2026-08-11",
+        "revenue_yoy": 0.3,
+        "revenue_yoy_prev": 0.2
+      },
+      "report_day": "2026-07-20",
+      "expected": {
+        "ok": false,
+        "reason": "NEWER_QUARTER_REPORTED"
+      }
+    },
+    {
+      "id": "anchor_exactly_200_days_ok",
+      "inputs": {
+        "actuals": [
+          {
+            "start": "2025-06-29",
+            "end": "2025-09-27",
+            "revenue": 100.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2025-09-28",
+            "end": "2025-12-27",
+            "revenue": 110.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2025-12-28",
+            "end": "2026-03-28",
+            "revenue": 120.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2026-03-29",
+            "end": "2026-06-27",
+            "revenue": 130.0,
+            "currency": "USD"
+          }
+        ],
+        "intervals": [
+          {
+            "start": "2026-06-28",
+            "end": "2026-09-26"
+          },
+          {
+            "start": "2026-09-27",
+            "end": "2026-12-26"
+          },
+          {
+            "start": "2026-12-27",
+            "end": "2027-03-27"
+          },
+          {
+            "start": "2027-03-28",
+            "end": "2027-06-26"
+          }
+        ],
+        "currency": "USD"
+      },
+      "fund": {
+        "quarter_end": "2026-06-27",
+        "revenue_yoy": 0.3,
+        "revenue_yoy_prev": 0.2
+      },
+      "report_day": "2027-01-13",
+      "expected": {
+        "ok": true,
+        "tier": "A",
+        "g": 0.25,
+        "g_raw": 0.25,
+        "capped": null,
+        "B": 460.0,
+        "m6": 262.5,
+        "m12": 575.0,
+        "ttm6": 512.5,
+        "ttm12": 575.0,
+        "change6": 0.11413043478260865,
+        "change12": 0.25
+      }
+    },
+    {
+      "id": "anchor_201_days_refused",
+      "inputs": {
+        "actuals": [
+          {
+            "start": "2025-06-29",
+            "end": "2025-09-27",
+            "revenue": 100.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2025-09-28",
+            "end": "2025-12-27",
+            "revenue": 110.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2025-12-28",
+            "end": "2026-03-28",
+            "revenue": 120.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2026-03-29",
+            "end": "2026-06-27",
+            "revenue": 130.0,
+            "currency": "USD"
+          }
+        ],
+        "intervals": [
+          {
+            "start": "2026-06-28",
+            "end": "2026-09-26"
+          },
+          {
+            "start": "2026-09-27",
+            "end": "2026-12-26"
+          },
+          {
+            "start": "2026-12-27",
+            "end": "2027-03-27"
+          },
+          {
+            "start": "2027-03-28",
+            "end": "2027-06-26"
+          }
+        ],
+        "currency": "USD"
+      },
+      "fund": {
+        "quarter_end": "2026-06-27",
+        "revenue_yoy": 0.3,
+        "revenue_yoy_prev": 0.2
+      },
+      "report_day": "2027-01-14",
+      "expected": {
+        "ok": false,
+        "reason": "ANCHOR_STALE"
+      }
+    },
+    {
+      "id": "report_day_before_anchor_refused",
+      "inputs": {
+        "actuals": [
+          {
+            "start": "2025-06-29",
+            "end": "2025-09-27",
+            "revenue": 100.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2025-09-28",
+            "end": "2025-12-27",
+            "revenue": 110.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2025-12-28",
+            "end": "2026-03-28",
+            "revenue": 120.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2026-03-29",
+            "end": "2026-06-27",
+            "revenue": 130.0,
+            "currency": "USD"
+          }
+        ],
+        "intervals": [
+          {
+            "start": "2026-06-28",
+            "end": "2026-09-26"
+          },
+          {
+            "start": "2026-09-27",
+            "end": "2026-12-26"
+          },
+          {
+            "start": "2026-12-27",
+            "end": "2027-03-27"
+          },
+          {
+            "start": "2027-03-28",
+            "end": "2027-06-26"
+          }
+        ],
+        "currency": "USD"
+      },
+      "fund": {
+        "quarter_end": "2026-06-27",
+        "revenue_yoy": 0.3,
+        "revenue_yoy_prev": 0.2
+      },
+      "report_day": "2026-06-01",
+      "expected": {
+        "ok": false,
+        "reason": "ANCHOR_STALE"
+      }
+    },
+    {
+      "id": "calendar_forward_quarter_shifted_refused",
+      "inputs": {
+        "actuals": [
+          {
+            "start": "2025-06-29",
+            "end": "2025-09-27",
+            "revenue": 100.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2025-09-28",
+            "end": "2025-12-27",
+            "revenue": 110.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2025-12-28",
+            "end": "2026-03-28",
+            "revenue": 120.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2026-03-29",
+            "end": "2026-06-27",
+            "revenue": 130.0,
+            "currency": "USD"
+          }
+        ],
+        "intervals": [
+          {
+            "start": "2026-06-28",
+            "end": "2026-09-26"
+          },
+          {
+            "start": "2026-09-27",
+            "end": "2026-12-26"
+          },
+          {
+            "start": "2026-12-27",
+            "end": "2027-04-30"
+          },
+          {
+            "start": "2027-05-01",
+            "end": "2027-07-31"
+          }
+        ],
+        "currency": "USD"
+      },
+      "fund": {
+        "quarter_end": "2026-06-27",
+        "revenue_yoy": 0.3,
+        "revenue_yoy_prev": 0.2
+      },
+      "report_day": "2026-07-20",
+      "expected": {
+        "ok": false,
+        "reason": "CALENDAR_UNALIGNED"
+      }
+    },
+    {
+      "id": "calendar_gap_after_anchor_refused",
+      "inputs": {
+        "actuals": [
+          {
+            "start": "2025-06-29",
+            "end": "2025-09-27",
+            "revenue": 100.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2025-09-28",
+            "end": "2025-12-27",
+            "revenue": 110.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2025-12-28",
+            "end": "2026-03-28",
+            "revenue": 120.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2026-03-29",
+            "end": "2026-06-27",
+            "revenue": 130.0,
+            "currency": "USD"
+          }
+        ],
+        "intervals": [
+          {
+            "start": "2026-07-05",
+            "end": "2026-09-26"
+          },
+          {
+            "start": "2026-09-27",
+            "end": "2026-12-26"
+          },
+          {
+            "start": "2026-12-27",
+            "end": "2027-03-27"
+          },
+          {
+            "start": "2027-03-28",
+            "end": "2027-06-26"
+          }
+        ],
+        "currency": "USD"
+      },
+      "fund": {
+        "quarter_end": "2026-06-27",
+        "revenue_yoy": 0.3,
+        "revenue_yoy_prev": 0.2
+      },
+      "report_day": "2026-07-20",
+      "expected": {
+        "ok": false,
+        "reason": "CALENDAR_UNALIGNED"
+      }
+    },
+    {
+      "id": "calendar_within_14_days_tolerance_ok",
+      "inputs": {
+        "actuals": [
+          {
+            "start": "2025-06-29",
+            "end": "2025-09-27",
+            "revenue": 100.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2025-09-28",
+            "end": "2025-12-27",
+            "revenue": 110.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2025-12-28",
+            "end": "2026-03-28",
+            "revenue": 120.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2026-03-29",
+            "end": "2026-06-27",
+            "revenue": 130.0,
+            "currency": "USD"
+          }
+        ],
+        "intervals": [
+          {
+            "start": "2026-06-28",
+            "end": "2026-10-05"
+          },
+          {
+            "start": "2026-10-06",
+            "end": "2027-01-04"
+          },
+          {
+            "start": "2027-01-05",
+            "end": "2027-04-05"
+          },
+          {
+            "start": "2027-04-06",
+            "end": "2027-07-05"
+          }
+        ],
+        "currency": "USD"
+      },
+      "fund": {
+        "quarter_end": "2026-06-27",
+        "revenue_yoy": 0.3,
+        "revenue_yoy_prev": 0.2
+      },
+      "report_day": "2026-07-20",
+      "expected": {
+        "ok": true,
+        "tier": "A",
+        "g": 0.25,
+        "g_raw": 0.25,
+        "capped": null,
+        "B": 460.0,
+        "m6": 262.5,
+        "m12": 575.0,
+        "ttm6": 512.5,
+        "ttm12": 575.0,
+        "change6": 0.11413043478260865,
+        "change12": 0.25
+      }
+    },
+    {
+      "id": "currency_mix_refused",
+      "inputs": {
+        "actuals": [
+          {
+            "start": "2025-06-29",
+            "end": "2025-09-27",
+            "revenue": 100.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2025-09-28",
+            "end": "2025-12-27",
+            "revenue": 110.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2025-12-28",
+            "end": "2026-03-28",
+            "revenue": 120.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2026-03-29",
+            "end": "2026-06-27",
+            "revenue": 130.0,
+            "currency": "EUR"
+          }
+        ],
+        "intervals": [
+          {
+            "start": "2026-06-28",
+            "end": "2026-09-26"
+          },
+          {
+            "start": "2026-09-27",
+            "end": "2026-12-26"
+          },
+          {
+            "start": "2026-12-27",
+            "end": "2027-03-27"
+          },
+          {
+            "start": "2027-03-28",
+            "end": "2027-06-26"
+          }
+        ],
+        "currency": "USD"
+      },
+      "fund": {
+        "quarter_end": "2026-06-27",
+        "revenue_yoy": 0.3,
+        "revenue_yoy_prev": 0.2
+      },
+      "report_day": "2026-07-20",
+      "expected": {
+        "ok": false,
+        "reason": "BAD_ACTUALS"
+      }
+    },
+    {
+      "id": "nonpositive_revenue_refused",
+      "inputs": {
+        "actuals": [
+          {
+            "start": "2025-06-29",
+            "end": "2025-09-27",
+            "revenue": 100.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2025-09-28",
+            "end": "2025-12-27",
+            "revenue": 0.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2025-12-28",
+            "end": "2026-03-28",
+            "revenue": 120.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2026-03-29",
+            "end": "2026-06-27",
+            "revenue": 130.0,
+            "currency": "USD"
+          }
+        ],
+        "intervals": [
+          {
+            "start": "2026-06-28",
+            "end": "2026-09-26"
+          },
+          {
+            "start": "2026-09-27",
+            "end": "2026-12-26"
+          },
+          {
+            "start": "2026-12-27",
+            "end": "2027-03-27"
+          },
+          {
+            "start": "2027-03-28",
+            "end": "2027-06-26"
+          }
+        ],
+        "currency": "USD"
+      },
+      "fund": {
+        "quarter_end": "2026-06-27",
+        "revenue_yoy": 0.3,
+        "revenue_yoy_prev": 0.2
+      },
+      "report_day": "2026-07-20",
+      "expected": {
+        "ok": false,
+        "reason": "BAD_ACTUALS"
+      }
+    },
+    {
+      "id": "three_actuals_refused",
+      "inputs": {
+        "actuals": [
+          {
+            "start": "2025-09-28",
+            "end": "2025-12-27",
+            "revenue": 110.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2025-12-28",
+            "end": "2026-03-28",
+            "revenue": 120.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2026-03-29",
+            "end": "2026-06-27",
+            "revenue": 130.0,
+            "currency": "USD"
+          }
+        ],
+        "intervals": [
+          {
+            "start": "2026-06-28",
+            "end": "2026-09-26"
+          },
+          {
+            "start": "2026-09-27",
+            "end": "2026-12-26"
+          },
+          {
+            "start": "2026-12-27",
+            "end": "2027-03-27"
+          },
+          {
+            "start": "2027-03-28",
+            "end": "2027-06-26"
+          }
+        ],
+        "currency": "USD"
+      },
+      "fund": {
+        "quarter_end": "2026-06-27",
+        "revenue_yoy": 0.3,
+        "revenue_yoy_prev": 0.2
+      },
+      "report_day": "2026-07-20",
+      "expected": {
+        "ok": false,
+        "reason": "NO_INPUTS"
+      }
+    },
+    {
+      "id": "three_intervals_refused",
+      "inputs": {
+        "actuals": [
+          {
+            "start": "2025-06-29",
+            "end": "2025-09-27",
+            "revenue": 100.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2025-09-28",
+            "end": "2025-12-27",
+            "revenue": 110.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2025-12-28",
+            "end": "2026-03-28",
+            "revenue": 120.0,
+            "currency": "USD"
+          },
+          {
+            "start": "2026-03-29",
+            "end": "2026-06-27",
+            "revenue": 130.0,
+            "currency": "USD"
+          }
+        ],
+        "intervals": [
+          {
+            "start": "2026-06-28",
+            "end": "2026-09-26"
+          },
+          {
+            "start": "2026-09-27",
+            "end": "2026-12-26"
+          },
+          {
+            "start": "2026-12-27",
+            "end": "2027-03-27"
+          }
+        ],
+        "currency": "USD"
+      },
+      "fund": {
+        "quarter_end": "2026-06-27",
+        "revenue_yoy": 0.3,
+        "revenue_yoy_prev": 0.2
+      },
+      "report_day": "2026-07-20",
+      "expected": {
+        "ok": false,
+        "reason": "NO_INPUTS"
+      }
+    },
+    {
+      "id": "krw_large_amounts",
+      "inputs": {
+        "actuals": [
+          {
+            "start": "2025-06-29",
+            "end": "2025-09-27",
+            "revenue": 100000000000000.0,
+            "currency": "KRW"
+          },
+          {
+            "start": "2025-09-28",
+            "end": "2025-12-27",
+            "revenue": 110000000000000.0,
+            "currency": "KRW"
+          },
+          {
+            "start": "2025-12-28",
+            "end": "2026-03-28",
+            "revenue": 120000000000000.0,
+            "currency": "KRW"
+          },
+          {
+            "start": "2026-03-29",
+            "end": "2026-06-27",
+            "revenue": 130000000000000.0,
+            "currency": "KRW"
+          }
+        ],
+        "intervals": [
+          {
+            "start": "2026-06-28",
+            "end": "2026-09-26"
+          },
+          {
+            "start": "2026-09-27",
+            "end": "2026-12-26"
+          },
+          {
+            "start": "2026-12-27",
+            "end": "2027-03-27"
+          },
+          {
+            "start": "2027-03-28",
+            "end": "2027-06-26"
+          }
+        ],
+        "currency": "KRW"
+      },
+      "fund": {
+        "quarter_end": "2026-06-27",
+        "revenue_yoy": 0.3,
+        "revenue_yoy_prev": 0.2
+      },
+      "report_day": "2026-07-20",
+      "expected": {
+        "ok": true,
+        "tier": "A",
+        "g": 0.25,
+        "g_raw": 0.25,
+        "capped": null,
+        "B": 460000000000000.0,
+        "m6": 262500000000000.0,
+        "m12": 575000000000000.0,
+        "ttm6": 512500000000000.0,
+        "ttm12": 575000000000000.0,
+        "change6": 0.11413043478260865,
+        "change12": 0.25
+      }
+    }
+  ]
+}

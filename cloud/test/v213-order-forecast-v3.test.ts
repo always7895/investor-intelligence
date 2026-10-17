@@ -1805,6 +1805,9 @@ describe("version-3 rendering of real states: suspension reason and source attri
     for (const sym of ["SNDK", "AAOI"]) {
       const s = surfaces(parseGolden(sym));
       for (const [name, text] of Object.entries(s)) expect(text, `${sym} ${name}`).toContain("官方IR查核未完成，暫停營收推估");
+      // V13: without a history view (every caller before the model) the surfaces are unchanged, and the sealed forecast carries only
+      // the derived inputs; the model block itself is pinned in v213-revenue-history-model.test.ts.
+      for (const [name, text] of Object.entries(s)) expect(text, `${sym} ${name}`).not.toContain("歷史模型");
     }
   });
 

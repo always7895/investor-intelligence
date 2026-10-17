@@ -1,7 +1,7 @@
 // Bottleneck-explosion Top20 v3 and the industry ranking: strict parsing, report-age bound, LINE rendering.
 import { describe, expect, it } from "vitest";
 import {
-  buildBottleneckDetail, buildBottleneckTop20Messages, buildIndustryExplosionMessages, outlookForecast, outlookTiles, parseBottleneckV3,
+  buildBottleneckDetail, buildBottleneckTop20Messages, buildIndustryExplosionMessages, outlookForecast, outlookTiles, parseBottleneckV3, PROXY_FOOTNOTE,
 } from "../src/v213/bottleneck-v3";
 import { doc, forecastCase, HOUR, OUTLOOKS } from "./bottleneck-v3-fixture";
 import lineageContract from "../../tests/fixtures/v213-lineage-sealed-markets.json";
@@ -587,5 +587,87 @@ describe("bottleneck-explosion Top20 v3", () => {
     expect(withOfficial(fund => { delete fund.revenue_yoy_prev_basis; delete fund.revenue_yoy_prev_source; fund.revenue_yoy_prev = null; })).not.toBeNull();
     const yahoo = withOfficial(fund => { fund.revenue_yoy_prev_basis = "YAHOO"; fund.revenue_yoy_prev_source = null; })!;
     expect(JSON.stringify(buildBottleneckDetail(yahoo, "5351.TWO", "flex"))).not.toContain("官方合併季報");
+  });
+});
+
+// V13 Phase A: the revenue-momentum proxy tile beside a 未揭露 current-orders tile.
+describe("revenue-momentum proxy tile (V13 phase A)", () => {
+  const REPORT = Date.UTC(2026, 8, 27, 1, 0, 0);
+  const PROXY = "營收動能（代理）";
+  const parsedWith = (mutate: (top: any[]) => void) => {
+    const raw = doc(REPORT);
+    mutate(raw.top as any[]);
+    return parseBottleneckV3(raw, REPORT + HOUR)!;
+  };
+  const sym = (parsed: ReturnType<typeof parsedWith>, symbol: string) => parsed.top.find(item => item.symbol === symbol)!;
+  const base = () => parsedWith(() => undefined);
+
+  it("proxy_tile_shown_only_when_orders_absent", () => {
+    const parsed = base();
+    // S3 has no outlook, S5 carries orders kind NOT_DISCLOSED, SIVE.ST has orders null: all three show the proxy next to 未揭露.
+    for (const symbol of ["S3", "S5", "SIVE.ST"]) {
+      const tiles = outlookTiles(parsed, sym(parsed, symbol));
+      expect(tiles, symbol).toHaveLength(2);
+      expect(tiles[0]![0]).toBe("現有訂單");
+      expect(tiles[0]![1]).toBe("未揭露");
+      expect(tiles[1]).toEqual([PROXY, "年增 +109%", "非訂單｜加速 +19pp｜季末 2026-06-30"]);
+    }
+  });
+
+  it("proxy_never_in_現有訂單_value", () => {
+    const parsed = base();
+    for (const entry of parsed.top) {
+      const [orders, proxy] = outlookTiles(parsed, entry);
+      expect(orders![0]).toBe("現有訂單");
+      expect(orders![1]).not.toContain("年增 +");
+      expect(orders![1] + orders![2]).not.toContain("動能");
+      if (proxy) expect(proxy[0]).toBe(PROXY);
+    }
+  });
+
+  it("proxy_hidden_when_orders_available", () => {
+    const parsed = base();
+    for (const symbol of ["S1", "S4"]) expect(outlookTiles(parsed, sym(parsed, symbol)), symbol).toHaveLength(1);
+    const serialized = JSON.stringify(buildBottleneckTop20Messages(parsed, "flex"));
+    expect(serialized.match(/營收動能（代理）/g)?.length).toBeGreaterThan(0);
+    // The two entries with real orders never show it in their card text.
+    for (const symbol of ["S1", "S4"]) {
+      expect(outlookForecast(parsed, sym(parsed, symbol)).map(([text]) => text).join(" ")).not.toContain("動能");
+    }
+  });
+
+  it("proxy_label_contains_非訂單", () => {
+    const parsed = parsedWith(top => { top[3].fundamentals.revenue_yoy = null; });
+    for (const symbol of ["S2", "S3", "S5"]) {
+      const tiles = outlookTiles(parsed, sym(parsed, symbol));
+      const proxy = tiles[1]!;
+      expect(proxy[0]).toBe(PROXY);
+      expect(proxy[2]).toContain("非訂單");
+    }
+    expect(PROXY_FOOTNOTE).toBe("營收動能是已報營收的年增與加速度，只是需求的間接參考；不是訂單、不是在手訂單、不是預測。");
+  });
+
+  it("proxy_null_yoy_shows_未揭露", () => {
+    const parsed = parsedWith(top => {
+      top[3].fundamentals.revenue_yoy = null;                         // S3: no YoY
+      top[5].fundamentals.quarter_end = "2026-01-31";                 // S5: the quarter is more than 200 days old at the report day
+      top[2].fundamentals = { ...top[2].fundamentals, revenue_yoy: 3.4, revenue_yoy_prev: 1.0 };  // S2: |yoy| > 3 is a data fault
+      top[6].fundamentals = null;                                     // S6: no fundamentals at all
+      top[7].fundamentals.revenue_yoy_prev = null;                    // S7: YoY without a previous quarter: still shown, no acceleration
+    });
+    for (const symbol of ["S3", "S5", "S2", "S6"]) {
+      expect(outlookTiles(parsed, sym(parsed, symbol))[1], symbol).toEqual([PROXY, "未揭露", "非訂單"]);
+    }
+    expect(outlookTiles(parsed, sym(parsed, "S7"))[1]).toEqual([PROXY, "年增 +109%", "非訂單｜季末 2026-06-30"]);
+  });
+
+  it("proxy_footnote_rides_the_detail_and_the_lean_card_but_changes_no_existing_text", () => {
+    const parsed = base();
+    const detail = JSON.stringify(buildBottleneckDetail(parsed, "S3", "text"));
+    expect(detail).toContain(PROXY_FOOTNOTE);
+    expect(detail).toContain("營收動能（代理）：年增 +109%（非訂單｜加速 +19pp｜季末 2026-06-30）");
+    expect(JSON.stringify(buildBottleneckDetail(parsed, "S1", "text"))).not.toContain(PROXY_FOOTNOTE);
+    // The compact flex card carries the tile only (twenty full cards sit at the carousel size limit).
+    expect(JSON.stringify(buildBottleneckTop20Messages(parsed, "flex"))).not.toContain("不是在手訂單");
   });
 });

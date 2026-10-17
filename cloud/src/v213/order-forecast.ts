@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { validateMachineEnvelope, machineContextIsValid, machineEffectiveReceipt,
   type MachineBindings, type MachineAdmissionContext } from "./revenue-guidance-machine";
+import { HISTORY_ELIGIBLE_REASONS, historyBlockLines, type HistoryInputs, type HistoryView } from "./revenue-history-model";
 
 /** The Top20 card's 6-month and 1-year ORDER figures and the price change if those orders are realized (operator
  * 2026-09-27; Astra contract "order horizons and order-linked price scenarios"). The sealer computes them with
@@ -59,6 +60,10 @@ export interface OrderForecast {
    * expired capture, a period mismatch, an unreadable cache), derived only from validated sealed evidence beside the
    * sealed reason; null for every other state. It is not a sealed diagnostic and adds no producer code. */
   consensusNote?: string | null;
+  /** V13 HISTORY_YOY_V1: the validated reported quarters and forward intervals, attached (derived, unsealed) only to an
+   * unavailable revenue state that passes the fail-closed eligibility list (revenue-history-model.ts). It changes no
+   * status, tile or rank; revenue-history-model.ts turns it into the model block rendered beside the failed rows. */
+  historyInputs?: HistoryInputs | null;
   anchorDate?: string | null; baselineB?: number | null; reportedQuarters?: any[];
   forwardQuarters?: any[]; contractedRecognition?: any | null; assumptions?: string | null;
   latestReleaseCheck?: any; warning?: any | null;
@@ -1607,6 +1612,28 @@ function checkV3Evidence(value: any, ev: any, issuer: string, reportDay: string,
   };
 }
 
+/** V13 eligibility (fail closed): the validated reported quarters and intervals for the history model, or null. Only the
+ * listed unavailable reasons qualify; a withdrawn / conflicting / invalid / unreviewed / evidence-limit / machine-barrier
+ * state, a channel fault, or an actual that is not one positive single-currency company-scope figure never does. */
+export function historyInputsOf(reason: string | null | undefined, ev: any, evc: V3EvidenceCheck, machine?: MachineAdmissionContext): HistoryInputs | null {
+  if (!reason || !HISTORY_ELIGIBLE_REASONS.has(reason)) return null;
+  if (machine?.kind === "BARRIER" || evc.limit || evc.scopedLimit || evc.conflict || evc.hasWithdrawn) return null;
+  if (!evc.hasRecordEvidence || !(evc.approvalSealed || evc.machineAdmitted)) return null;
+  if ((ev.consensus_fault ?? null) !== null || (ev.release_check_fault ?? null) !== null) return null;
+  if (evc.actuals.length < 4 || evc.intervals.length !== 4) return null;
+  const latest = evc.actuals.slice(-4);
+  const currency = latest[0]?.currency;
+  if (typeof currency !== "string" || (evc.currency !== null && evc.currency !== currency)) return null;
+  for (const q of latest) {
+    if (q.currency !== currency || !(q.scope === "COMPANY" || q.scope === "CONSOLIDATED") || !finite(q.revenue) || !(q.revenue > 0)) return null;
+  }
+  return {
+    actuals: latest.map((q: any) => ({ start: q.start, end: q.end, revenue: q.revenue, currency: q.currency })),
+    intervals: evc.intervals.map((q: any) => ({ start: q.start, end: q.end })),
+    currency,
+  };
+}
+
 /** The empty shape every scoped limit result spreads (kept separate so the limit object stays tiny). */
 function v3EvidenceLimitShape(): Omit<V3EvidenceCheck, "limit"> {
   return { docMap: new Map(), claims: [], eligibleActive: [], activeQuarter: [], activeFy: [], hasWithdrawn: false,
@@ -1897,6 +1924,7 @@ function parseV3(value: any, reportDay: string, issuer: string, generatedAt: str
         currentStock: validatedOrder.currentStock,
         schedule: validatedOrder.schedule,
         revenueSources: unavailSources,
+        historyInputs: historyInputsOf(expectedReason, ev, evc, machine),
       };
     }
 
@@ -2005,6 +2033,7 @@ function parseV3(value: any, reportDay: string, issuer: string, generatedAt: str
         consensusNote: consensusUnavailableNote(ev, evc, revReason, revDiag),
         contractedRecognition: rec ?? null,
         assumptions: value.assumptions ?? null,
+        historyInputs: historyInputsOf(revReason, ev, evc, machine),
       };
     }
 
@@ -2958,7 +2987,7 @@ function getModelAssumptionText(forecast: OrderForecast): string | null {
   return null;
 }
 
-function forecastCardV3(forecast: OrderForecast, money: Money): [string, boolean][] {
+function forecastCardV3(forecast: OrderForecast, money: Money, history: HistoryView | null = null): [string, boolean][] {
   const lines: [string, boolean][] = [
     ["訂單認列／營收推估", true],
     [orderRowV3(forecast, "m6", money), false],
@@ -2967,6 +2996,7 @@ function forecastCardV3(forecast: OrderForecast, money: Money): [string, boolean
 
   const irLine = revenueSuspensionLineV3(forecast);
   if (irLine) lines.push([irLine, false]);
+  for (const [i, text] of historyBlockLines(history, money).entries()) lines.push([text, i === 0 && history?.status === "ESTIMATE"]);
   const modelAssumption = getModelAssumptionText(forecast);
   if (modelAssumption) {
     lines.push([modelAssumption, false]);
@@ -3007,7 +3037,7 @@ function forecastCardV3(forecast: OrderForecast, money: Money): [string, boolean
 /** The warning's heading: the guidance bridge says 財測, the consensus bridge says 共識 (never calls consensus a company forecast). */
 const warningLabelV3 = (forecast: OrderForecast) => forecast.revenueBasis === "CONSENSUS" ? "共識時效警示" : "財測時效警示";
 
-function forecastTextV3(forecast: OrderForecast, money: Money): string {
+function forecastTextV3(forecast: OrderForecast, money: Money, history: HistoryView | null = null): string {
   const parts = [
     `訂單認列／營收推估：${orderRowV3(forecast, "m6", money)}／${orderRowV3(forecast, "m12", money)}`,
   ];
@@ -3015,6 +3045,7 @@ function forecastTextV3(forecast: OrderForecast, money: Money): string {
   if (modelAssumption) parts.push(modelAssumption);
   const irText = revenueSuspensionLineV3(forecast);
   if (irText) parts.push(irText);
+  parts.push(...historyBlockLines(history, money));
   parts.push(...revenueSourceLinesV3(forecast));
   parts.push(`營收實現後股價情境：${priceRowV3(forecast, "m6")}／${priceRowV3(forecast, "m12")}（${CONDITION_TEXT_V3}）`);
   const warning = forecast.m6.warning ?? forecast.m12.warning;
@@ -3035,12 +3066,13 @@ function forecastTextV3(forecast: OrderForecast, money: Money): string {
   return parts.join("｜");
 }
 
-function forecastLinesV3(forecast: OrderForecast, money: Money): string[] {
+function forecastLinesV3(forecast: OrderForecast, money: Money, history: HistoryView | null = null): string[] {
   const lines: string[] = ["訂單認列／營收推估"];
   lines.push(orderRowV3(forecast, "m6", money));
   lines.push(orderRowV3(forecast, "m12", money));
   const irDetail = revenueSuspensionLineV3(forecast);
   if (irDetail) lines.push(irDetail);
+  lines.push(...historyBlockLines(history, money, true));
 
   const modelAssumption = getModelAssumptionText(forecast);
   if (modelAssumption) {
@@ -3134,8 +3166,8 @@ function forecastLinesV3(forecast: OrderForecast, money: Money): string[] {
 
 /** The card's order block, one entry per line: [text, heading]. Both horizons, their windows, the conditional price rows
  * and the dates of the data always appear together. */
-export function forecastCard(forecast: OrderForecast, money: Money): [string, boolean][] {
-  if (forecast.version === 3) return forecastCardV3(forecast, money);
+export function forecastCard(forecast: OrderForecast, money: Money, history: HistoryView | null = null): [string, boolean][] {
+  if (forecast.version === 3) return forecastCardV3(forecast, money, history);
   const lines: [string, boolean][] = [["未來訂單預估", true], [orderRow(forecast, "m6", money), false], [orderRow(forecast, "m12", money), false],
     ["訂單實現後股價情境", true], [priceRow(forecast, "m6"), false], [priceRow(forecast, "m12"), false]];
   if (priced(forecast)) lines.push([CONDITION_TEXT, false]);
@@ -3148,8 +3180,8 @@ export function forecastCard(forecast: OrderForecast, money: Money): [string, bo
 }
 
 /** The same block in one line for the text form of the Top20. */
-export function forecastText(forecast: OrderForecast, money: Money): string {
-  if (forecast.version === 3) return forecastTextV3(forecast, money);
+export function forecastText(forecast: OrderForecast, money: Money, history: HistoryView | null = null): string {
+  if (forecast.version === 3) return forecastTextV3(forecast, money, history);
   const parts = [`未來訂單預估：${orderRow(forecast, "m6", money)}／${orderRow(forecast, "m12", money)}`,
     `訂單實現後股價情境：${priceRow(forecast, "m6")}／${priceRow(forecast, "m12")}${priced(forecast) ? `（${CONDITION_TEXT}）` : ""}`];
   if (basisOf(forecast)) parts.push(RPO_TEXT);
@@ -3162,8 +3194,8 @@ export function forecastText(forecast: OrderForecast, money: Money): string {
 
 /** The detail lines: each horizon with its window, inputs, assumptions and source, then later disclosures with their
  * revision reasons, the model sensitivity and the fixed-period references. */
-export function forecastLines(forecast: OrderForecast, money: Money): string[] {
-  if (forecast.version === 3) return forecastLinesV3(forecast, money);
+export function forecastLines(forecast: OrderForecast, money: Money, history: HistoryView | null = null): string[] {
+  if (forecast.version === 3) return forecastLinesV3(forecast, money, history);
   const lines: string[] = ["未來訂單預估"];
   const sources = new Set<string>();
   for (const key of ["m6", "m12"] as const) {
