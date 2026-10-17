@@ -4340,6 +4340,159 @@
     ],
     "note": "The Q2 2026 interim report states under Outlook: \"The Board does not publish forward-looking financial forecasts.\""
    }
+  },
+  {
+   "symbol": "TSM",
+   "company_name": "Taiwan Semiconductor Manufacturing Company Limited",
+   "status": "GUIDANCE",
+   "reason": null,
+   "url_prefixes": [
+    "https://investor.tsmc.com/english/"
+   ],
+   "documents": [
+    {
+     "id": "TSM-3Q26-ER",
+     "issuer": "TSM",
+     "publisher": "Taiwan Semiconductor Manufacturing Company Limited",
+     "title": "TSMC Reports Third Quarter EPS of NT$29.43 (3Q26 earnings release)",
+     "source_kind": "ISSUER_EARNINGS_RELEASE",
+     "url": "https://investor.tsmc.com/english/encrypt/files/encrypt_file/reports/2026-10/526b65af7305df2dde6b9ece6812b1fdf1e49f9b/3Q26%20EarningsRelease.pdf",
+     "published_date": "2026-10-15",
+     "retrieved_at": "2026-10-17T10:49:11Z",
+     "sha256": "c56119b240c1f7ba728c58228b14cb51d3a756d808af41e7d4b53b46ba29734a",
+     "byte_size": 171803,
+     "lineage_id": "TSM-3Q26-ER"
+    },
+    {
+     "id": "TSM-3Q26-MR",
+     "issuer": "TSM",
+     "publisher": "Taiwan Semiconductor Manufacturing Company Limited",
+     "title": "TSMC 3Q26 Quarterly Management Report",
+     "source_kind": "ISSUER_EARNINGS_RELEASE",
+     "url": "https://investor.tsmc.com/english/encrypt/files/encrypt_file/reports/2026-10/f83780000ddc0c3b48e57a87eab6814c4ab35058/3Q26%20ManagementReport.pdf",
+     "published_date": "2026-10-15",
+     "retrieved_at": "2026-10-17T10:49:13Z",
+     "sha256": "27b5b92d05207bf662756edfbe72494c5f34a007a79306ae040d957886b411d2",
+     "byte_size": 468113,
+     "lineage_id": "TSM-3Q26-MR"
+    },
+    {
+     "id": "TSM-1Q26-MR",
+     "issuer": "TSM",
+     "publisher": "Taiwan Semiconductor Manufacturing Company Limited",
+     "title": "TSMC 1Q26 Quarterly Management Report",
+     "source_kind": "ISSUER_EARNINGS_RELEASE",
+     "url": "https://investor.tsmc.com/english/encrypt/files/encrypt_file/reports/2026-04/5508a9df8981f587c73dbfaf9f577f142e22bbb1/1Q26ManagementReport.pdf",
+     "published_date": "2026-04-16",
+     "retrieved_at": "2026-10-17T11:31:04Z",
+     "sha256": "4878487acab931ea06635a8bb97cbb9dcf14e2140d4c480667298ca1c43e8bdc",
+     "byte_size": 4653875,
+     "lineage_id": "TSM-1Q26-MR"
+    }
+   ],
+   "claims": [
+    {
+     "id": "TSM-Q-GUIDANCE",
+     "document_id": "TSM-3Q26-ER",
+     "locator": "Business outlook for fourth quarter 2026 (first bullet)",
+     "passage": "Revenue is expected to be between US$52.3 billion and US$54.3 billion",
+     "metric": "REVENUE",
+     "assertion_kind": "COMPANY_GUIDANCE",
+     "currency": "USD",
+     "unit_multiplier": 1,
+     "amount": null,
+     "low": 52300000000.0,
+     "high": 54300000000.0,
+     "stated_point": null,
+     "original_representation": "between US$52.3 billion and US$54.3 billion",
+     "scope": "COMPANY",
+     "scope_label": "全公司",
+     "accounting_basis": "IFRS",
+     "fiscal_label": "4Q26",
+     "period_kind": "QUARTER",
+     "period_start": "2026-10-01",
+     "period_end": "2026-12-31"
+    }
+   ],
+   "reported_quarters": [
+    {
+     "fiscal_label": "4Q25",
+     "start": "2025-10-01",
+     "end": "2025-12-31",
+     "revenue": 33730000000.0,
+     "currency": "USD",
+     "scope": "COMPANY",
+     "accounting_basis": "IFRS",
+     "document_id": "TSM-1Q26-MR",
+     "locator": "Summary table, Net Revenue (US$ billions), 4Q25 column: 33.73 (TIFRS, consolidated)"
+    },
+    {
+     "fiscal_label": "1Q26",
+     "start": "2026-01-01",
+     "end": "2026-03-31",
+     "revenue": 35900000000.0,
+     "currency": "USD",
+     "scope": "COMPANY",
+     "accounting_basis": "IFRS",
+     "document_id": "TSM-1Q26-MR",
+     "locator": "Summary table, Net Revenue (US$ billions), 1Q26 column: 35.90 (TIFRS, consolidated)"
+    },
+    {
+     "fiscal_label": "2Q26",
+     "start": "2026-04-01",
+     "end": "2026-06-30",
+     "revenue": 40200000000.0,
+     "currency": "USD",
+     "scope": "COMPANY",
+     "accounting_basis": "IFRS",
+     "document_id": "TSM-3Q26-MR",
+     "locator": "Summary table, Net Revenue (US$ billions), 2Q26 column: 40.20 (TIFRS, consolidated)"
+    },
+    {
+     "fiscal_label": "3Q26",
+     "start": "2026-07-01",
+     "end": "2026-09-30",
+     "revenue": 46720000000.0,
+     "currency": "USD",
+     "scope": "COMPANY",
+     "accounting_basis": "IFRS",
+     "document_id": "TSM-3Q26-MR",
+     "locator": "Summary table, Net Revenue (US$ billions), 3Q26 column: 46.72 (TIFRS, consolidated)"
+    }
+   ],
+   "forward_intervals": [
+    {
+     "fiscal_label": "4Q26",
+     "start": "2026-10-01",
+     "end": "2026-12-31",
+     "calendar_document_id": "TSM-3Q26-ER",
+     "calendar_locator": "TSMC today announced consolidated revenue ... for the third quarter ended September 30, 2026 (calendar quarters)"
+    },
+    {
+     "fiscal_label": "1Q27",
+     "start": "2027-01-01",
+     "end": "2027-03-31",
+     "calendar_document_id": "TSM-3Q26-ER",
+     "calendar_locator": "TSMC today announced consolidated revenue ... for the third quarter ended September 30, 2026 (calendar quarters)"
+    },
+    {
+     "fiscal_label": "2Q27",
+     "start": "2027-04-01",
+     "end": "2027-06-30",
+     "calendar_document_id": "TSM-3Q26-ER",
+     "calendar_locator": "TSMC today announced consolidated revenue ... for the third quarter ended September 30, 2026 (calendar quarters)"
+    },
+    {
+     "fiscal_label": "3Q27",
+     "start": "2027-07-01",
+     "end": "2027-09-30",
+     "calendar_document_id": "TSM-3Q26-ER",
+     "calendar_locator": "TSMC today announced consolidated revenue ... for the third quarter ended September 30, 2026 (calendar quarters)"
+    }
+   ],
+   "fy_reconciliation": null,
+   "release_channels": {},
+   "reviewed_later_documents": []
   }
  ]
 }

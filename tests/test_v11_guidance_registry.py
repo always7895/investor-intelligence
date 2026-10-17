@@ -28,6 +28,8 @@ FEEDS = fx.load()
 CLAIMS = {"status": "EMPTY", "sha256": "0" * 64, "issuers": {}}
 GUIDANCE = ("SNDK", "NVDA", "MU", "LITE", "MRVL", "AMD", "AVGO", "MTSI", "CRDO", "AAOI", "ALAB", "BE", "NBIS", "CRWV")
 NOT_DISCLOSED = ("000660.KS", "005930.KS", "AXTI", "CORZ", "3006.TW", "SIVE.ST")
+# Lane V14: guidance recorded without an official IR channel (tests/test_v14_tsm_guidance.py).
+NO_IR_CHANNEL = ("TSM",)
 # f1 (the first projected quarter, whole currency units) of the issuers this lane added or renewed.
 FIRST_QUARTER = {"MU": 61.5e9, "SNDK": 10.55e9, "AVGO": 34.8e9, "MTSI": 0.42e9, "AAOI": 0.2725e9, "ALAB": 0.55e9, "LITE": 1.25e9}
 
@@ -92,8 +94,9 @@ class V11Base(unittest.TestCase):
 
 class RegistryShapeTests(V11Base):
     def test_every_top20_issuer_has_its_record_and_expected_status(self):
-        for symbol in GUIDANCE:
+        for symbol in GUIDANCE + NO_IR_CHANNEL:
             self.assertEqual(self.by_symbol[symbol]["status"], "GUIDANCE", symbol)
+        self.assertEqual(set(self.by_symbol), set(GUIDANCE + NO_IR_CHANNEL + NOT_DISCLOSED))
         for symbol in NOT_DISCLOSED:
             self.assertEqual(self.by_symbol[symbol]["status"], "NOT_DISCLOSED", symbol)
             self.assertEqual(self.by_symbol[symbol]["reason"], "NO_NUMERIC_REVENUE_GUIDANCE", symbol)

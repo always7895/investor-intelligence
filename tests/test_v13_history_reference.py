@@ -220,9 +220,9 @@ class HistoryReferenceTest(unittest.TestCase):
         self.assertEqual(out["fund_quarter_45_days_later_refused"]["reason"], "NEWER_QUARTER_REPORTED")
         self.assertEqual(out["fund_quarter_44_days_later_is_tier_b"]["tier"], "B")
 
-    def test_registry_calendar_is_accepted_for_all_twenty_issuers(self):
+    def test_registry_calendar_is_accepted_for_every_issuer(self):
         registry = json.loads(REGISTRY.read_text(encoding="utf-8"))
-        self.assertEqual(len(registry["issuers"]), 20)
+        self.assertEqual(len(registry["issuers"]), 21)  # lane V14 added TSM
         fund_template = {"revenue_yoy": 0.25, "revenue_yoy_prev": 0.15}
         for record in registry["issuers"]:
             actuals = record["reported_quarters"]

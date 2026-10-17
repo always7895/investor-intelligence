@@ -1,8 +1,8 @@
 {
  "schema": "revenue-guidance-approval-v1",
- "registry_sha256": "819a2c8a1551aa9e29449740cd0a802039fe4ac610606af6bc5f9a4b00b482c2",
- "approved_at": "2026-10-13T16:10:09Z",
- "reviewer": "Claude Code (sole tracked writer), re-verified against _archive/lane-v11-guidance/sources 2026-10-13T16:10:09Z",
+ "registry_sha256": "10ec9ebe7a315ac5895151b57d2e2a755a92845446d9e9e1f7cda9e47c9ea04d",
+ "approved_at": "2026-10-17T13:34:53Z",
+ "reviewer": "Claude Code (sole tracked writer), V14: TSM verified against _archive/lane-v14-guidance/sources 2026-10-17T13:34:53Z",
  "records": {
   "SNDK": {
    "record_sha256": "4913ef463884bf4ff7bb624c02b7154a85560adc8e3917ec291759ea4f32d73c",
@@ -935,6 +935,53 @@
      "ref": "routing",
      "decision": "NONDISCLOSURE_CONFIRMED",
      "reviewed_at": "2026-10-13T14:53:43Z"
+    }
+   ]
+  },
+  "TSM": {
+   "record_sha256": "ffd78c5db5f9418e98d782dfcc62758b62872ed6e03d1d8868b7507def83a8dd",
+   "decisions": [
+    {
+     "kind": "CLAIM",
+     "ref": "TSM-Q-GUIDANCE",
+     "decision": "VERBATIM_IN_SOURCE",
+     "reviewed_at": "2026-10-17T13:34:53Z"
+    },
+    {
+     "kind": "ACTUAL",
+     "ref": "2025-12-31",
+     "decision": "VALUE_IN_SOURCE",
+     "reviewed_at": "2026-10-17T13:34:53Z"
+    },
+    {
+     "kind": "ACTUAL",
+     "ref": "2026-03-31",
+     "decision": "VALUE_IN_SOURCE",
+     "reviewed_at": "2026-10-17T13:34:53Z"
+    },
+    {
+     "kind": "ACTUAL",
+     "ref": "2026-06-30",
+     "decision": "VALUE_IN_SOURCE",
+     "reviewed_at": "2026-10-17T13:34:53Z"
+    },
+    {
+     "kind": "ACTUAL",
+     "ref": "2026-09-30",
+     "decision": "VALUE_IN_SOURCE",
+     "reviewed_at": "2026-10-17T13:34:53Z"
+    },
+    {
+     "kind": "CALENDAR",
+     "ref": "calendar",
+     "decision": "RULE_QUOTED",
+     "reviewed_at": "2026-10-17T13:34:53Z"
+    },
+    {
+     "kind": "ROUTING",
+     "ref": "routing",
+     "decision": "VERBATIM_IN_SOURCE",
+     "reviewed_at": "2026-10-17T13:34:53Z"
     }
    ]
   }
