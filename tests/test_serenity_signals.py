@@ -140,6 +140,25 @@ class FixtureStanceTests(unittest.TestCase):
         self.assertEqual((rows["XXXX"]["stance"], rows["YYYY"]["stance"]), ("MENTIONED", "MENTIONED"))
         self.assertEqual(rows["FLIP"]["stance"], "BEARISH")
 
+    def test_third_party_feed_list_carries_no_stance(self):
+        rows, _ = build([make_post(1, "Tech people in real life: I have shares in $XXXX.\n\nPeople on my X feed/comments:\n\n"
+                                      "- Long $YYYY short $FLIP because inverse indicators\n\n- calls on $TRIM\n\nI'm long $THES here", 2),
+                         make_post(2, "Everyone on X is bearish on $NEGA: I sold my $SOLD", 3),
+                         make_post(3, "People are underestimating $ADDD: I added more", 3)])
+        self.assertEqual([rows[s]["stance"] for s in ("XXXX", "YYYY", "FLIP", "TRIM")], ["MENTIONED"] * 4)
+        self.assertEqual((rows["YYYY"]["mentions"], rows["FLIP"]["bearish"]), (1, 0))
+        self.assertEqual(rows["THES"]["stance"], "BULLISH")  # his own line after the list
+        self.assertEqual((rows["SOLD"]["stance"], rows["ADDD"]["stance"]), ("BEARISH", "BULLISH"))  # a cashtag or no "on/in"
+
+    def test_anaphoric_trim_targets_previous_clause(self):
+        rows, _ = build([make_post(1, "With $XXXX, $YYYY and $FLIP / $THES\nI trimmed down those positions aside from $THES longs", 2),
+                         make_post(2, "$NEGA and $NEGB\nI trimmed today", 2)])
+        self.assertEqual((rows["XXXX"]["last_stance"], rows["YYYY"]["last_stance"]), ("TRIM", "TRIM"))
+        self.assertEqual((rows["XXXX"]["stance"], rows["XXXX"]["bearish"]), ("MENTIONED", 1))  # a trim alone is never BEARISH
+        self.assertIsNone(rows["THES"]["last_stance"])  # excepted
+        self.assertIsNone(rows["FLIP"]["last_stance"])  # joined to the excepted name by "/"
+        self.assertIsNone(rows["NEGA"]["last_stance"])  # no anaphoric object
+
 
 class RecencyTests(unittest.TestCase):
     def test_flip_to_bearish(self):

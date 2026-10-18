@@ -14,7 +14,9 @@ recent post. Retweets are excluded. Schema 2 (V16):
 * Relay: posts that only report a fund's filing ("Situational Awareness 13F holdings ...") give relay_mentions and no
   stance, intensity or mention. Replies keep full weight and are also counted in reply_mentions.
 * Stance is read per clause (exit, trim, topic and bullish phrases attached to the nearest ticker); the decayed
-  bullish/bearish weights and the newest stance phrase decide BULLISH, BEARISH or MENTIONED.
+  bullish/bearish weights and the newest stance phrase decide BULLISH, BEARISH or MENTIONED. A third-party header
+  ("People on my X feed:") and the list under it carry no stance; a first-person trim or exit of "those positions" applies to
+  the previous clause's listings, minus the excepted ones.
 * source.mirror_lag_hours / mirror_status say how stale the public mirror is; the ranking recomputes them.
 * Under --refresh the strongest symbols' posts are checked through X's public oEmbed endpoint (no login, no cookies);
   a post that is gone (404) is dropped for every ticker it names.
@@ -85,6 +87,16 @@ HYPOTHETICAL_BEFORE = re.compile(r"\b(?:how to|guide (?:on|to)|if you(?:'re| are
 # A post he marks as satire or a joke carries no stance for any ticker it names (its mentions still count).
 SATIRE = re.compile(r"\b(?:satire|satirical|parody|just kidding|(?:don't|do not) (?:actually )?take this (?:post )?seriously)\b"
                     r"|(?<![\w/])/s(?![\w/])", re.I)
+# "People on my X feed/comments:" or "Tech people in real life: ..." reports what others hold or trade: that line and the
+# blank or bullet lines under it carry no stance (their mentions still count). A cashtag before the colon is not a header.
+THIRD_PARTY_HEADER = re.compile(
+    r"^\W*(?:[\w'-]+\s+){0,2}(?:people|everyone|folks|accounts)\s+(?:on|in)\s+(?:my\s+)?(?:x|twitter|fintwit|reddit|real life|"
+    r"irl|the replies|the comments|feed|timeline|tl|comments|replies|mentions|dms?)\b[^:\n$]{0,30}:", re.I)
+LIST_LINE = re.compile(r"^\s*(?:$|[-*>•–—]|\d+[.)]\s)")
+# "I trimmed down those positions": an anaphoric object right after a trim or exit names the previous clause's listings.
+ANAPHORIC_OBJECT = re.compile(r"^\s*(?:(?:down|back)\s+)?(?:(?:all|both|most|some|many)\s+(?:of\s+)?)?(?:those|these|them)\b"
+                              r"(?:\s+(?:positions?|names|stocks|holdings))?", re.I)
+SLASH_GAP = re.compile(r"^\s*/\s*$")
 SOLD_OUT_OF = re.compile(r"^sold out of$", re.I)
 OBJECT_LEAD = re.compile(r"\s*(?:(?:my|the|all|any)\s+)?", re.I)
 LIST_GAP = re.compile(r"^[\s,&/+]*(?:(?:and|or)[\s,&/+]+)?$", re.I)
@@ -264,6 +276,41 @@ def phrase_targets(start: int, end: int, clause: str, spans: list[tuple[int, int
     return [item[2] for item in chosen]
 
 
+def post_lines(text: str) -> list[tuple[str, bool]]:
+    """The post's lines, each flagged True inside a third-party header block (the header line and the list under it)."""
+    lines: list[tuple[str, bool]] = []
+    inside = False
+    for line in text.split("\n"):
+        if THIRD_PARTY_HEADER.match(line):
+            inside = True
+        elif inside and not LIST_LINE.match(line):
+            inside = False
+        lines.append((line, inside))
+    return lines
+
+
+def anaphoric_targets(end: int, clause: str, spans: list[tuple[int, int, str, dict[str, Any]]],
+                      previous: tuple[str, list[tuple[int, int, str, dict[str, Any]]]] | None) -> list[str]:
+    """"I trimmed down those positions aside from X": the previous clause's listings, minus the excepted ones and listings
+    joined to an excepted one by "/" ("$EWY / SK Hynix")."""
+    if previous is None or not is_first_person(clause) or not ANAPHORIC_OBJECT.match(clause[end:]):
+        return []
+    prev_clause, prev_spans = previous
+    exception = EXCEPT_MARKER.search(clause, end)
+    excepted = {item[2] for item in spans if exception and item[0] >= exception.end()}
+    chosen: list[str] = []
+    for index, item in enumerate(prev_spans):
+        if item[2] in excepted:
+            continue
+        neighbours = [prev_spans[j] for j in (index - 1, index + 1) if 0 <= j < len(prev_spans)]
+        if any(other[2] in excepted and SLASH_GAP.match(prev_clause[min(other[1], item[1]):max(other[0], item[0])])
+               for other in neighbours):
+            continue
+        if item[2] not in chosen:
+            chosen.append(item[2])
+    return chosen
+
+
 def analyze_post(text: str, mapping: dict[str, Any], us: set[str]) -> dict[str, Any]:
     """Per-post reading: listings, per-ticker last stance (BULLISH, TRIM, BEARISH), thesis keys and relay classification."""
     found = listings_in(text, mapping, us)
@@ -274,24 +321,32 @@ def analyze_post(text: str, mapping: dict[str, Any], us: set[str]) -> dict[str, 
     any_relay = False
     any_first_person = False
     satire = bool(SATIRE.search(text))
-    for clause in split_clauses(text):
-        spans = listing_spans(clause, mapping, us)
-        keys = {item[2] for item in spans}
-        if is_first_person(clause):
-            any_first_person = True
-        if is_relay_clause(clause):
-            any_relay = True
-            relay_keys |= keys
-            continue
-        nonrelay_keys |= keys
-        for start, end, kind in phrase_matches(clause, spans):
-            if satire and kind != "TOPIC":
+    previous: tuple[str, list[tuple[int, int, str, dict[str, Any]]]] | None = None
+    # Clauses never span a newline (SENTENCE_BREAK), so the post is read line by line.
+    for line, third_party in post_lines(text):
+        for clause in split_clauses(line):
+            spans = listing_spans(clause, mapping, us)
+            keys = {item[2] for item in spans}
+            if is_first_person(clause):
+                any_first_person = True
+            if is_relay_clause(clause):
+                any_relay = True
+                relay_keys |= keys
                 continue
-            for key in phrase_targets(start, end, clause, spans):
-                if kind == "TOPIC":
-                    thesis.add(key)
-                else:
-                    stance[key] = {"EXIT": "BEARISH", "TRIM": "TRIM", "BULL": "BULLISH"}[kind]
+            nonrelay_keys |= keys
+            for start, end, kind in phrase_matches(clause, spans):
+                if (satire or third_party) and kind != "TOPIC":
+                    continue
+                targets = phrase_targets(start, end, clause, spans)
+                if not targets and kind in {"EXIT", "TRIM"}:
+                    targets = anaphoric_targets(end, clause, spans, previous)
+                for key in targets:
+                    if kind == "TOPIC":
+                        thesis.add(key)
+                    else:
+                        stance[key] = {"EXIT": "BEARISH", "TRIM": "TRIM", "BULL": "BULLISH"}[kind]
+            if spans and not third_party:
+                previous = (clause, spans)
     relay_post = bool(any_relay and not any_first_person)
     if relay_post:
         relay_keys = set(found)
