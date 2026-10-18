@@ -1,6 +1,6 @@
 # Current state / 目前狀態
 
-2026-10-18: INCREMENTAL_VERIFICATION. R = `_workspace/audit-runtime/claude-bridge-repair-20261004`. Done = writer + independent reviewer accept SAME snapshot (Claude Code + Sonnet 5.5); unaccepted = IMPLEMENTED_UNVERIFIED. Previous state: `git show bd5848b:state/STATUS.md` (FIXGATE, next1, rollout v10 plan); older: `46b2e8f`, `f7d6353`, baseline `38860e7`.
+2026-10-18: INCREMENTAL_VERIFICATION. R = `_workspace/audit-runtime/claude-bridge-repair-20261004`. Done = writer + independent reviewer accept SAME snapshot (Claude Code + Sonnet 5.5); unaccepted = IMPLEMENTED_UNVERIFIED. Previous state: `git show bd5848b:state/STATUS.md` (FIXGATE, next1, rollout v10 plan); older: `46b2e8f`, `f7d6353`; baseline: `git show 38860e7:state/STATUS.md`.
 
 ## Identity / roles / operator decisions
 
@@ -39,7 +39,7 @@ Policy/history: `git show 42770026:state/STATUS.md`. Owned kill-on-close jobs, l
 
 ## Open work
 
-- Lane V12 (IMPLEMENTED_UNVERIFIED): b7b3b17 condenses README.md, AGENTS.md, docs/README.md, docs/OPERATOR_RUNBOOK.md and the serenity skill (47283 -> 43570 bytes; no Markdown deleted; Gemini packet review ACCEPT 7/7, `R/v12-evidence-a43bef58/`); 4 gates and 13 document-reading modules pass; complete H5 `R/final-a43bef58-v12-g1` and Sonnet acceptance pending; installed-skill sync after acceptance.
+- Lane V12 (IMPLEMENTED_UNVERIFIED): b7b3b17 condenses README.md, AGENTS.md, docs/README.md, docs/OPERATOR_RUNBOOK.md and the serenity skill (47283 -> 43570 bytes; no Markdown deleted; Gemini packet review ACCEPT 7/7, `R/v12-evidence-a43bef58/`); 4 gates and 13 document-reading modules pass; H5 `R/final-a43bef58-v12-g1` stopped at module 4 (the STATUS baseline marker test_agent_skill_structure requires was dropped; restored); complete H5 `R/final-a43bef58-v12-g2` and Sonnet acceptance pending; installed-skill sync after acceptance.
 - V15 notes (low): N1 `config/revenue-guidance-v1.json` TSM calendar_locator parenthetical not literal PDF text; N2 TSM `release_channels {}` has no in-record reason (tests/test_v14_tsm_guidance.py:4, docs/BOTTLENECK_TOP20_V3.md:109); N3 `scripts/sync_sealed_snapshot_kv.py:42-43` "17 KV GETs 401" not reproducible; N4 `scripts/v21_serenity_top20.py` build_report catalog_count 101 vs CATALOG_COUNT 103; N5 168 h bound also widens the Yahoo bridge (intended).
 - V11 notes: bridge 70 days (operator allowed 75); Yahoo review_valid_through 2027-10-13; old Worker lacks the non-official consensus wording until V11 code ships.
 - GO delta findings: V13 F1 P0 diffs mode-v1 not v2 (wording); derived V13 p0.ps1 header names V11 pins; V15 F3 (Top20 backoff deferring H1) closed by P3d; GO r2 F2-F6 low (P3d extra log writes, sub-deadline clamps, wording).
