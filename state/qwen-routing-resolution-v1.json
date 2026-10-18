@@ -1,0 +1,31 @@
+{
+  "id": "qwen-session-tool-registration-resolution-v1",
+  "resolves_blocker": "qwen-session-tool-registration-blocker-v1.json",
+  "blocker_sha256": "6e7bfe9ac8a2aba7a898b4eb66057a9855a52998dcf3f270672970887739e095",
+  "blocker_path": "_workspace/audit-runtime/gemini-executor-20260914/qwen-session-tool-registration-blocker-v1.json",
+  "resolution": "Dedicated persistent Herdr worker architecture replaces the per-session tool dispatch that could not honor the project binding.",
+  "architecture": {
+    "worker_name": "qwen-worker",
+    "herdr_pane": "w4:p2",
+    "workspace": "D:/Investor-Intelligence-LINE-Pi only",
+    "provider": "tabby-local",
+    "model": "Qwen3.8-27B-EXL3-SC5-H6-V6",
+    "model_context": 262144,
+    "visibility": "vision"
+  },
+  "context_isolation": {
+    "no_shared_context_with_skyrim": true,
+    "no_skyrim_workspace_artifact_touch": true,
+    "dedicated_handoff_file": "D:/AI-Handoffs/investor-intelligence/"
+  },
+  "gpu_concurrency": {
+    "global_qwen_active_cap": 1,
+    "protocol": "task-boundary round-robin lock between qwen-worker and any other Qwen session; no concurrent large-model serving"
+  },
+  "verification": {
+    "method": "Historical evidence - tasks #1-#9 of this journey (baseline audit, test-fixes, cloud vitest 29-fix, concurrency commits, reintegration, arbitration, typecheck, pipeline verification) executed on this worker without a QWEN_EXECUTOR_UNAVAILABLE refusal.",
+    "no_guard_bypass": true,
+    "no_cached_model_fallback": true
+  },
+  "generated_at": "2026-09-15"
+}

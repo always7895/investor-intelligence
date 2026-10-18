@@ -216,7 +216,6 @@ def evidence_items(
                 field_values=fields,
                 registry_version=registry_version,
                 as_of=str(as_of),
-                revision_or_vintage=batch.retrieved_at,
             )
         )
     return result

@@ -4,6 +4,7 @@ import {
   tenantDataEncryptionKey,
   type SecurityEnv,
 } from "./security";
+import { pinPublicSnapshot } from "./v213/public-snapshot";
 
 /**
  * Storage is deliberately split across independent Cloudflare KV namespaces.
@@ -35,11 +36,6 @@ export interface JobRecord {
   errorCode?: string;
 }
 
-interface SnapshotPointer {
-  run_id?: string;
-  runId?: string;
-}
-
 const INITIAL_TENANT_EPOCH = "0";
 const TENANT_EPOCH_RE = /^(?:0|[0-9a-f]{32})$/;
 
@@ -69,40 +65,14 @@ function deletionEpochTtl(env: StorageEnv): number {
   return Math.max(86400, Math.min(172800, Number.isFinite(configured) ? configured : 86400));
 }
 
-async function currentSnapshotRunId(env: StorageEnv): Promise<string | null> {
-  const text = await env.PUBLIC_CACHE.get("snapshot:current", "text");
-  if (!text) return null;
-  try {
-    const value = JSON.parse(text) as SnapshotPointer;
-    return value.run_id ?? value.runId ?? null;
-  } catch {
-    return text.trim() || null;
-  }
-}
-
-async function candidateKeys(env: StorageEnv, logicalKeys: string[]): Promise<string[]> {
-  const runId = await currentSnapshotRunId(env);
-  if (runId) return logicalKeys.map((key) => `snapshot:${runId}:${key}`);
-  // Direct public keys are used only before a snapshot pointer exists. Once a
-  // pointer is promoted, missing run objects fail closed instead of silently
-  // falling back to stale direct keys.
-  return [...logicalKeys];
-}
-
+// Preserve the certified QA imports, but use the same committed-object reader
+// as current Top20 delivery. Private storage/encryption/epochs are independent.
 export async function publicJson<T>(env: StorageEnv, logicalKeys: string[]): Promise<T | null> {
-  for (const key of await candidateKeys(env, logicalKeys)) {
-    const value = await env.PUBLIC_CACHE.get<T>(key, "json");
-    if (value !== null) return value;
-  }
-  return null;
+  return (await pinPublicSnapshot(env)).json<T>(logicalKeys);
 }
 
 export async function publicText(env: StorageEnv, logicalKeys: string[]): Promise<string | null> {
-  for (const key of await candidateKeys(env, logicalKeys)) {
-    const value = await env.PUBLIC_CACHE.get(key, "text");
-    if (value !== null) return value;
-  }
-  return null;
+  return (await pinPublicSnapshot(env)).text(logicalKeys);
 }
 
 function tenantEpochKey(tenantId: string): string {
@@ -281,7 +251,7 @@ export async function deleteTenantData(env: StorageEnv, tenantId: string): Promi
 }
 
 export async function snapshotStatus(env: StorageEnv): Promise<Record<string, unknown>> {
-  const runId = await currentSnapshotRunId(env);
+  const { runId } = await pinPublicSnapshot(env);
   return {
     promoted_snapshot: runId,
     has_snapshot: Boolean(runId),

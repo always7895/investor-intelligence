@@ -45,7 +45,9 @@ foreach($name in $taskNames){
 # DPAPI credentials require the owner's logged-in session; do not request/store
 # a Windows password. A locked desktop is supported; a logged-out owner is not.
 $principal=New-ScheduledTaskPrincipal -UserId ([Security.Principal.WindowsIdentity]::GetCurrent().Name) -LogonType Interactive -RunLevel Limited
-$description='Investor Intelligence R75 public-data refresh; no model bridge, Worker deployment or direct LINE send. Sealed publication enabled='+[bool]$EnableSealedPublication
+# Receipts name the installed package origin (LOCAL-SOURCE-REFS.json marks a local, non-release-qualified install).
+$runtimeLabel=if(Test-Path -LiteralPath (Join-Path $RuntimeRoot 'LOCAL-SOURCE-REFS.json') -PathType Leaf){'LOCAL_SOURCE_CHECKOUT'}else{'R75'}
+$description='Investor Intelligence '+$runtimeLabel+' public-data refresh; no model bridge, Worker deployment or direct LINE send. Sealed publication enabled='+[bool]$EnableSealedPublication
 try{
     foreach($definition in $definitions){
         $action=New-ScheduledTaskAction -Execute $ps -Argument (Get-ActionArguments $definition.Slot) -WorkingDirectory $RuntimeRoot
@@ -74,7 +76,7 @@ try{
 [ordered]@{
     schema_version=2
     product_version='2.1.3'
-    runtime_profile='R75'
+    runtime_profile=$runtimeLabel
     runtime_root=$RuntimeRoot
     local_refresh_times=@($MorningRefreshTime,$EveningRefreshTime)
     line_push_times=@('08:00 Asia/Taipei','21:00 Asia/Taipei')

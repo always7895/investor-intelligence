@@ -1,0 +1,1864 @@
+{
+ "origin": "ORDERS-V3-01 writer rebuild 2026-09-28: bottleneck v3 genuinely rebuilt at 2026-09-28T18:26:49Z in a runtime copy with the candidate code (live SEC/wire/official-IR receipts, reviewed registry with its approval, consensus path disabled) and sealed by scripts/publish_sealed_snapshot.py; outlooks of two issuers whose filings state only a 12-month RPO share and whose official IR channel is reviewed (NVDA, AMD)",
+ "generated_at": "2026-09-28T18:26:49Z",
+ "entries": {
+  "NVDA": {
+   "orders": {
+    "kind": "RPO",
+    "amount": 3200000000.0,
+    "currency": "USD",
+    "as_of": "2026-07-26",
+    "yoy": 0.6842105263157894,
+    "scope": null,
+    "source": "SEC EDGAR XBRL companyfacts",
+    "source_url": "https://data.sec.gov/api/xbrl/companyfacts/CIK0001045810.json"
+   },
+   "consensus": {
+    "revenue_fy0": 411558455310.0,
+    "revenue_fy1": 682733185190.0,
+    "revenue_growth": 0.658897238973603,
+    "revenue_analysts": 58.0,
+    "eps_fy0": 9.30713,
+    "eps_fy1": 15.68263,
+    "eps_growth": 0.6850124581906558,
+    "eps_analysts": 53.0,
+    "target_mean": 327.7,
+    "target_analysts": 59.0,
+    "price": 229.89999389648438,
+    "target_upside": 0.4254023866897161,
+    "source": "Yahoo Finance analyst estimates (unofficial)",
+    "source_url": "https://finance.yahoo.com/quote/NVDA/analysis",
+    "asof": "2026-09-28"
+   },
+   "scenarios": [
+    {
+     "kind": "REVENUE_CONSTANT_PS",
+     "change": 0.658897238973603
+    },
+    {
+     "kind": "EPS_CONSTANT_PE",
+     "change": 0.6850124581906558
+    },
+    {
+     "kind": "ANALYST_TARGET",
+     "change": 0.4254023866897161
+    }
+   ],
+   "consensus_second": {
+    "target_mean": 324.32,
+    "target_upside": 0.41070034193228167,
+    "target_analysts": 31.0,
+    "eps_fy0": 9.25,
+    "eps_fy1": 15.33,
+    "eps_growth": 0.6572972972972972,
+    "eps_analysts": 16.0,
+    "source": "Nasdaq.com analyst estimates",
+    "source_url": "https://www.nasdaq.com/market-activity/stocks/nvda/analyst-research",
+    "asof": "2026-09-28",
+    "eps_fiscal_end": "Jan 2028"
+   },
+   "order_forecast": {
+    "version": 2,
+    "issuer": "NVDA",
+    "status": "AVAILABLE",
+    "reason": null,
+    "m6": {
+     "status": "UNAVAILABLE",
+     "reason": "NOT_DISCLOSED_HORIZON",
+     "scenario": {
+      "status": "NO_BASIS",
+      "reason": "NO_ORDER_BASIS"
+     }
+    },
+    "m12": {
+     "status": "AVAILABLE",
+     "basis": "RECOGNITION",
+     "amount": 1248000000.0,
+     "currency": "USD",
+     "scope": "COMPANY",
+     "start": "2026-07-26",
+     "end": "2027-07-26",
+     "as_of": "2026-07-26",
+     "rpo": 3200000000.0,
+     "share_pct": 39.0,
+     "quarter_revenue": 96221000000.0,
+     "quarter_start": "2026-04-27",
+     "quarter_end": "2026-07-26",
+     "quarter_basis": "FRAME",
+     "source_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000075/nvda-20260726.htm",
+     "form": "10-Q",
+     "filed": "2026-08-26",
+     "accession": "0001045810-26-000075",
+     "passage": "Approximately 39 % of revenue from contracts greater than one year in length will be recognized over the next twelve months",
+     "report_period": "2026-07-26",
+     "explicit": true,
+     "scenario": {
+      "status": "INSUFFICIENT_COVERAGE",
+      "coverage": 0.0032425354132673743
+     },
+     "source": "PERIODIC"
+    },
+    "stock_sensitivity": {
+     "m6": {
+      "status": "AVAILABLE",
+      "basis": "STOCK_EXTRAPOLATION",
+      "amount": 4540614900.302804,
+      "currency": "USD",
+      "scope": "COMPANY",
+      "scope_label": null,
+      "start": "2026-09-28",
+      "end": "2027-03-28",
+      "as_of": "2026-07-26",
+      "stock": 3200000000.0,
+      "yoy": 0.6842105263157894,
+      "baseline": 3506282283.932692,
+      "source_url": "https://data.sec.gov/api/xbrl/companyfacts/CIK0001045810.json",
+      "kind": "RPO",
+      "lineage": "SERIES",
+      "yoy_prior_amount": 1900000000.0,
+      "yoy_prior_as_of": "2025-07-27"
+     },
+     "m12": {
+      "status": "AVAILABLE",
+      "basis": "STOCK_EXTRAPOLATION",
+      "amount": 5905317530.834007,
+      "currency": "USD",
+      "scope": "COMPANY",
+      "scope_label": null,
+      "start": "2026-09-28",
+      "end": "2027-09-28",
+      "as_of": "2026-07-26",
+      "stock": 3200000000.0,
+      "yoy": 0.6842105263157894,
+      "baseline": 3506282283.932692,
+      "source_url": "https://data.sec.gov/api/xbrl/companyfacts/CIK0001045810.json",
+      "kind": "RPO",
+      "lineage": "SERIES",
+      "yoy_prior_amount": 1900000000.0,
+      "yoy_prior_as_of": "2025-07-27"
+     }
+    },
+    "references": [],
+    "evidence": {
+     "registry_status": "OK",
+     "registry_sha256": "2dba85d345fd3de9dea93dea1332e56dc552ad5adaa7268ed95b708df610cd2d",
+     "cutoff": "2026-09-28T18:26:49Z",
+     "url_prefixes": [],
+     "documents": [],
+     "claims": [],
+     "selection": {
+      "status": "OK",
+      "active": [],
+      "current_stock": null,
+      "schedule": null,
+      "filing": "ACTIVE",
+      "excluded": []
+     },
+     "periodic": {
+      "status": "DISCLOSED",
+      "form": "10-Q",
+      "filed": "2026-08-26",
+      "url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000075/nvda-20260726.htm",
+      "rpo": 3200000000,
+      "rpo_as_of": "2026-07-26",
+      "quarter_revenue": 96221000000,
+      "quarter_start": "2026-04-27",
+      "quarter_end": "2026-07-26",
+      "quarter_basis": "FRAME",
+      "accession": "0001045810-26-000075",
+      "passage": "Approximately 39 % of revenue from contracts greater than one year in length will be recognized over the next twelve months",
+      "report_date": "2026-07-26",
+      "horizons": {
+       "m6": null,
+       "m12": {
+        "share_pct": 39.0,
+        "contracted": 1248000000,
+        "run_rate": 384884000000,
+        "coverage_pct": 0.3,
+        "floor_growth_pct": null,
+        "derived": false
+       },
+       "m24": null
+      }
+     },
+     "stock_orders": {
+      "kind": "RPO",
+      "amount": 3200000000,
+      "currency": "USD",
+      "as_of": "2026-07-26",
+      "yoy": 0.6842105263157894,
+      "yoy_prior_amount": 1900000000,
+      "yoy_prior_as_of": "2025-07-27",
+      "scope_kind": "COMPANY",
+      "source_url": "https://data.sec.gov/api/xbrl/companyfacts/CIK0001045810.json"
+     }
+    }
+   },
+   "order_forecast_v3": {
+    "version": 3,
+    "issuer": "NVDA",
+    "formula": "ORDERS-V3-01",
+    "status": "AVAILABLE",
+    "reason": null,
+    "revenue_status": "AVAILABLE",
+    "revenue_basis": "COMPANY_GUIDANCE",
+    "revenue_reason": null,
+    "revenue_diagnostic": null,
+    "horizon_convention": "FISCAL_2Q_4Q",
+    "anchor_date": "2026-07-26",
+    "cutoff": "2026-09-28T18:26:49Z",
+    "m6": {
+     "status": "AVAILABLE",
+     "basis": "COMPANY_GUIDANCE",
+     "basis_label": "公司營收財測＋模型（非訂單）",
+     "amount": 216000000000.0,
+     "currency": "USD",
+     "start": "2026-07-27",
+     "end": "2027-01-31",
+     "horizon_label": "約6個月（2財季）",
+     "qualifier": "自2026-07-27起，非今日起",
+     "ttm_revenue": 393836000000.0,
+     "scenario": {
+      "status": "AVAILABLE",
+      "change": 0.2999217741749156
+     },
+     "warning": null,
+     "contracted_recognition": null
+    },
+    "m12": {
+     "status": "AVAILABLE",
+     "basis": "COMPANY_GUIDANCE",
+     "basis_label": "公司營收財測＋模型（非訂單）",
+     "amount": 432000000000.0,
+     "currency": "USD",
+     "start": "2026-07-27",
+     "end": "2027-08-01",
+     "horizon_label": "約1年（4財季）",
+     "qualifier": "自2026-07-27起，非今日起",
+     "ttm_revenue": 432000000000.0,
+     "scenario": {
+      "status": "AVAILABLE",
+      "change": 0.42588845723489865
+     },
+     "warning": null,
+     "contracted_recognition": {
+      "amount": 1248000000.0,
+      "currency": "USD",
+      "start": "2026-07-26",
+      "end": "2027-07-26",
+      "as_of": "2026-07-26",
+      "share_pct": 39.0,
+      "rpo": 3200000000.0
+     }
+    },
+    "reported_quarters": [
+     {
+      "fiscal_label": "Q3 FY26",
+      "start": "2025-07-28",
+      "end": "2025-10-26",
+      "revenue": 57006000000.0,
+      "currency": "USD",
+      "scope": "COMPANY",
+      "accounting_basis": "GAAP",
+      "document_id": "NVDA-0001045810-25-000230",
+      "locator": "XBRL us-gaap:Revenues 2025-07-28..2025-10-26"
+     },
+     {
+      "fiscal_label": "Q4 FY26",
+      "start": "2025-10-27",
+      "end": "2026-01-25",
+      "revenue": 68127000000.0,
+      "currency": "USD",
+      "scope": "COMPANY",
+      "accounting_basis": "GAAP",
+      "document_id": "NVDA-0001045810-26-000021",
+      "locator": "XBRL us-gaap:Revenues 2025-01-27..2026-01-25 minus ..2025-10-26",
+      "derivation": {
+       "kind": "YTD_DIFFERENCE",
+       "longer_document_id": "NVDA-0001045810-26-000021",
+       "longer_value": 215938000000.0,
+       "longer_start": "2025-01-27",
+       "shorter_document_id": "NVDA-0001045810-25-000230",
+       "shorter_value": 147811000000.0,
+       "shorter_end": "2025-10-26"
+      }
+     },
+     {
+      "fiscal_label": "Q1 FY27",
+      "start": "2026-01-26",
+      "end": "2026-04-26",
+      "revenue": 81615000000.0,
+      "currency": "USD",
+      "scope": "COMPANY",
+      "accounting_basis": "GAAP",
+      "document_id": "NVDA-0001045810-26-000052",
+      "locator": "XBRL us-gaap:Revenues 2026-01-26..2026-04-26"
+     },
+     {
+      "fiscal_label": "Q2 FY27",
+      "start": "2026-04-27",
+      "end": "2026-07-26",
+      "revenue": 96221000000.0,
+      "currency": "USD",
+      "scope": "COMPANY",
+      "accounting_basis": "GAAP",
+      "document_id": "NVDA-0001045810-26-000075",
+      "locator": "XBRL us-gaap:Revenues 2026-04-27..2026-07-26"
+     }
+    ],
+    "baseline_b": 302969000000.0,
+    "forward_quarters": [
+     {
+      "quarter_index": 1,
+      "fiscal_label": "Q3 FY27",
+      "start": "2026-07-27",
+      "end": "2026-10-25",
+      "amount": 108000000000.0,
+      "derivation": "公司財測"
+     },
+     {
+      "quarter_index": 2,
+      "fiscal_label": null,
+      "start": "2026-10-26",
+      "end": "2027-01-31",
+      "amount": 108000000000.0,
+      "derivation": "模型：之後各季持平於公司財測"
+     },
+     {
+      "quarter_index": 3,
+      "fiscal_label": null,
+      "start": "2027-02-01",
+      "end": "2027-05-02",
+      "amount": 108000000000.0,
+      "derivation": "模型：之後各季持平於公司財測"
+     },
+     {
+      "quarter_index": 4,
+      "fiscal_label": null,
+      "start": "2027-05-03",
+      "end": "2027-08-01",
+      "amount": 108000000000.0,
+      "derivation": "模型：之後各季持平於公司財測"
+     }
+    ],
+    "warning": null,
+    "contracted_recognition": {
+     "m6": null,
+     "m12": {
+      "amount": 1248000000.0,
+      "currency": "USD",
+      "start": "2026-07-26",
+      "end": "2027-07-26",
+      "as_of": "2026-07-26",
+      "share_pct": 39.0,
+      "rpo": 3200000000.0
+     }
+    },
+    "stock_sensitivity": {
+     "m6": {
+      "status": "AVAILABLE",
+      "basis": "STOCK_EXTRAPOLATION",
+      "amount": 4540614900.302804,
+      "currency": "USD",
+      "scope": "COMPANY",
+      "scope_label": null,
+      "start": "2026-09-28",
+      "end": "2027-03-28",
+      "as_of": "2026-07-26",
+      "stock": 3200000000.0,
+      "yoy": 0.6842105263157894,
+      "baseline": 3506282283.932692,
+      "source_url": "https://data.sec.gov/api/xbrl/companyfacts/CIK0001045810.json",
+      "kind": "RPO",
+      "lineage": "SERIES",
+      "yoy_prior_amount": 1900000000.0,
+      "yoy_prior_as_of": "2025-07-27"
+     },
+     "m12": {
+      "status": "AVAILABLE",
+      "basis": "STOCK_EXTRAPOLATION",
+      "amount": 5905317530.834007,
+      "currency": "USD",
+      "scope": "COMPANY",
+      "scope_label": null,
+      "start": "2026-09-28",
+      "end": "2027-09-28",
+      "as_of": "2026-07-26",
+      "stock": 3200000000.0,
+      "yoy": 0.6842105263157894,
+      "baseline": 3506282283.932692,
+      "source_url": "https://data.sec.gov/api/xbrl/companyfacts/CIK0001045810.json",
+      "kind": "RPO",
+      "lineage": "SERIES",
+      "yoy_prior_amount": 1900000000.0,
+      "yoy_prior_as_of": "2025-07-27"
+     }
+    },
+    "order_view": {
+     "status": "AVAILABLE",
+     "reason": null,
+     "m6": {
+      "status": "UNAVAILABLE",
+      "reason": "NOT_DISCLOSED_HORIZON",
+      "scenario": {
+       "status": "NO_BASIS",
+       "reason": "NO_ORDER_BASIS"
+      }
+     },
+     "m12": {
+      "status": "AVAILABLE",
+      "basis": "RECOGNITION",
+      "amount": 1248000000.0,
+      "currency": "USD",
+      "scope": "COMPANY",
+      "start": "2026-07-26",
+      "end": "2027-07-26",
+      "as_of": "2026-07-26",
+      "rpo": 3200000000.0,
+      "share_pct": 39.0,
+      "quarter_revenue": 96221000000.0,
+      "quarter_start": "2026-04-27",
+      "quarter_end": "2026-07-26",
+      "quarter_basis": "FRAME",
+      "source_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000075/nvda-20260726.htm",
+      "form": "10-Q",
+      "filed": "2026-08-26",
+      "accession": "0001045810-26-000075",
+      "passage": "Approximately 39 % of revenue from contracts greater than one year in length will be recognized over the next twelve months",
+      "report_period": "2026-07-26",
+      "explicit": true,
+      "scenario": {
+       "status": "INSUFFICIENT_COVERAGE",
+       "coverage": 0.0032425354132673743
+      },
+      "source": "PERIODIC"
+     }
+    },
+    "references": [],
+    "assumptions": "條件情境：營收依上述推估實現，P/S與股數不變；以最新已報四季為基準，非目標價、非今日起報酬",
+    "evidence": {
+     "revenue_registry_status": "OK",
+     "revenue_registry_sha256": "98ffb2779a770de37a2b99508c161d0d05f29232344e5bb8d6dbd4137021ba00",
+     "cutoff": "2026-09-28T18:26:49Z",
+     "formula": "ORDERS-V3-01",
+     "horizon_convention": "FISCAL_2Q_4Q",
+     "consensus_enabled": false,
+     "url_prefixes": [
+      "https://www.sec.gov/Archives/edgar/data/"
+     ],
+     "documents": [
+      {
+       "id": "NVDA-GUIDANCE",
+       "issuer": "NVDA",
+       "publisher": "NVIDIA Corporation",
+       "title": "NVIDIA Corporation earnings release with outlook",
+       "source_kind": "SEC_8K_EXHIBIT",
+       "url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000073/q2fy27pr.htm",
+       "published_date": "2026-08-26",
+       "retrieved_at": "2026-09-28T14:23:14Z",
+       "sha256": "fb05a634c9bfaac87eeffbacefd28ee0745bf2b3d4b4007fcc29724ef4970255",
+       "byte_size": 341587,
+       "lineage_id": "NVDA-GUIDANCE"
+      },
+      {
+       "id": "NVDA-10K",
+       "issuer": "NVDA",
+       "publisher": "NVIDIA Corporation",
+       "title": "NVIDIA Corporation Form 10-K",
+       "source_kind": "OFFICIAL_FISCAL_CALENDAR",
+       "url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000021/nvda-20260125.htm",
+       "published_date": "2026-02-25",
+       "retrieved_at": "2026-09-28T14:23:15Z",
+       "sha256": "9b1ff60b94afa49a6cd95b72253aa835d0a9454a7e71d1227b4535404651f838",
+       "byte_size": 1968290,
+       "lineage_id": "NVDA-10K"
+      },
+      {
+       "id": "NVDA-0001045810-25-000230",
+       "issuer": "NVDA",
+       "publisher": "NVIDIA Corporation",
+       "title": "NVIDIA Corporation Form 10-Q (0001045810-25-000230)",
+       "source_kind": "SEC_PERIODIC",
+       "url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581025000230/nvda-20251026.htm",
+       "published_date": "2025-11-19",
+       "retrieved_at": "2026-09-28T14:23:16Z",
+       "sha256": "1a159f6cdb535c06dc9b87f1760dcde75960aa86d7354316bf91a30e6f3d1a23",
+       "byte_size": 1381804,
+       "lineage_id": "NVDA-0001045810-25-000230"
+      },
+      {
+       "id": "NVDA-0001045810-26-000021",
+       "issuer": "NVDA",
+       "publisher": "NVIDIA Corporation",
+       "title": "NVIDIA Corporation Form 10-K (0001045810-26-000021)",
+       "source_kind": "SEC_PERIODIC",
+       "url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000021/nvda-20260125.htm",
+       "published_date": "2026-02-25",
+       "retrieved_at": "2026-09-28T14:23:18Z",
+       "sha256": "9b1ff60b94afa49a6cd95b72253aa835d0a9454a7e71d1227b4535404651f838",
+       "byte_size": 1968290,
+       "lineage_id": "NVDA-0001045810-26-000021"
+      },
+      {
+       "id": "NVDA-0001045810-26-000052",
+       "issuer": "NVDA",
+       "publisher": "NVIDIA Corporation",
+       "title": "NVIDIA Corporation Form 10-Q (0001045810-26-000052)",
+       "source_kind": "SEC_PERIODIC",
+       "url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000052/nvda-20260426.htm",
+       "published_date": "2026-05-20",
+       "retrieved_at": "2026-09-28T14:23:19Z",
+       "sha256": "e65f74075b880bb97459af0f894015b9fb742998038d3c920735fcad350dd68b",
+       "byte_size": 1167527,
+       "lineage_id": "NVDA-0001045810-26-000052"
+      },
+      {
+       "id": "NVDA-0001045810-26-000075",
+       "issuer": "NVDA",
+       "publisher": "NVIDIA Corporation",
+       "title": "NVIDIA Corporation Form 10-Q (0001045810-26-000075)",
+       "source_kind": "SEC_PERIODIC",
+       "url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000075/nvda-20260726.htm",
+       "published_date": "2026-08-26",
+       "retrieved_at": "2026-09-28T14:23:20Z",
+       "sha256": "8b12547c47b4924069b1f6a515589a976913dd0f0a1889e0a20964b07d1d7013",
+       "byte_size": 1517521,
+       "lineage_id": "NVDA-0001045810-26-000075"
+      }
+     ],
+     "claims": [
+      {
+       "id": "NVDA-Q-GUIDANCE",
+       "document_id": "NVDA-GUIDANCE",
+       "locator": "Outlook",
+       "passage": "NVIDIA’s outlook for the third quarter of fiscal 2027 is as follows: • Revenue is expected to be $108.0 billion, plus or minus 2%.",
+       "metric": "REVENUE",
+       "assertion_kind": "COMPANY_GUIDANCE",
+       "currency": "USD",
+       "unit_multiplier": 1,
+       "amount": null,
+       "low": 105840000000.0,
+       "high": 110160000000.0,
+       "stated_point": 108000000000.0,
+       "original_representation": "$108.0 billion, plus or minus 2%",
+       "scope": "COMPANY",
+       "scope_label": "全公司",
+       "fiscal_label": "Q3 FY27",
+       "period_kind": "QUARTER",
+       "period_start": "2026-07-27",
+       "period_end": "2026-10-25",
+       "accounting_basis": "GAAP"
+      }
+     ],
+     "reported_quarters": [
+      {
+       "fiscal_label": "Q3 FY26",
+       "start": "2025-07-28",
+       "end": "2025-10-26",
+       "revenue": 57006000000.0,
+       "currency": "USD",
+       "scope": "COMPANY",
+       "accounting_basis": "GAAP",
+       "document_id": "NVDA-0001045810-25-000230",
+       "locator": "XBRL us-gaap:Revenues 2025-07-28..2025-10-26"
+      },
+      {
+       "fiscal_label": "Q4 FY26",
+       "start": "2025-10-27",
+       "end": "2026-01-25",
+       "revenue": 68127000000.0,
+       "currency": "USD",
+       "scope": "COMPANY",
+       "accounting_basis": "GAAP",
+       "document_id": "NVDA-0001045810-26-000021",
+       "locator": "XBRL us-gaap:Revenues 2025-01-27..2026-01-25 minus ..2025-10-26",
+       "derivation": {
+        "kind": "YTD_DIFFERENCE",
+        "longer_document_id": "NVDA-0001045810-26-000021",
+        "longer_value": 215938000000.0,
+        "longer_start": "2025-01-27",
+        "shorter_document_id": "NVDA-0001045810-25-000230",
+        "shorter_value": 147811000000.0,
+        "shorter_end": "2025-10-26"
+       }
+      },
+      {
+       "fiscal_label": "Q1 FY27",
+       "start": "2026-01-26",
+       "end": "2026-04-26",
+       "revenue": 81615000000.0,
+       "currency": "USD",
+       "scope": "COMPANY",
+       "accounting_basis": "GAAP",
+       "document_id": "NVDA-0001045810-26-000052",
+       "locator": "XBRL us-gaap:Revenues 2026-01-26..2026-04-26"
+      },
+      {
+       "fiscal_label": "Q2 FY27",
+       "start": "2026-04-27",
+       "end": "2026-07-26",
+       "revenue": 96221000000.0,
+       "currency": "USD",
+       "scope": "COMPANY",
+       "accounting_basis": "GAAP",
+       "document_id": "NVDA-0001045810-26-000075",
+       "locator": "XBRL us-gaap:Revenues 2026-04-27..2026-07-26"
+      }
+     ],
+     "forward_intervals": [
+      {
+       "fiscal_label": "Q3 FY27",
+       "start": "2026-07-27",
+       "end": "2026-10-25",
+       "calendar_document_id": "NVDA-10K",
+       "calendar_locator": "Fiscal year 2027 will be a 53-week year with the fourth quarter consisting of 14 weeks."
+      },
+      {
+       "fiscal_label": null,
+       "start": "2026-10-26",
+       "end": "2027-01-31",
+       "calendar_document_id": "NVDA-10K",
+       "calendar_locator": "Fiscal year 2027 will be a 53-week year with the fourth quarter consisting of 14 weeks."
+      },
+      {
+       "fiscal_label": null,
+       "start": "2027-02-01",
+       "end": "2027-05-02",
+       "calendar_document_id": "NVDA-10K",
+       "calendar_locator": "Fiscal year 2027 will be a 53-week year with the fourth quarter consisting of 14 weeks."
+      },
+      {
+       "fiscal_label": null,
+       "start": "2027-05-03",
+       "end": "2027-08-01",
+       "calendar_document_id": "NVDA-10K",
+       "calendar_locator": "Fiscal year 2027 will be a 53-week year with the fourth quarter consisting of 14 weeks."
+      }
+     ],
+     "fy_reconciliation": null,
+     "latest_release_check": {
+      "issuer": "NVDA",
+      "checked_at": "2026-09-28T18:26:24Z",
+      "status": "OK",
+      "guidance_document_id": "NVDA-GUIDANCE",
+      "guidance_published_date": "2026-08-26",
+      "anchor_end": "2026-07-26",
+      "coverage": "SEC_WIRE_IR",
+      "channels": [
+       {
+        "kind": "SEC_SUBMISSIONS",
+        "url": "https://data.sec.gov/submissions/CIK0001045810.json",
+        "status": "OK",
+        "checked_through": "2026-09-28",
+        "complete": true
+       },
+       {
+        "kind": "WIRE_PRESS_RELEASES",
+        "url": "https://api.nasdaq.com/api/news/topic/press_release?q=symbol:nvda|assetclass:stocks",
+        "status": "OK",
+        "checked_through": "2026-09-28",
+        "complete": true
+       },
+       {
+        "kind": "ISSUER_IR",
+        "url": "https://investor.nvidia.com/feed/PressRelease.svc/GetPressReleaseList",
+        "status": "OK",
+        "checked_through": "2026-09-28",
+        "complete": true
+       }
+      ],
+      "later_documents": [
+       {
+        "channel": "ISSUER_IR",
+        "date": "2026-08-26",
+        "id": "https://investor.nvidia.com/news/press-release-details/2026/AWS-and-NVIDIA-to-Deliver-2-Million-Additional-GPUs-and-Next-Generation-Infrastructure-for-Agentic-and-Physical-AI/default.aspx",
+        "label": "AWS and NVIDIA to Deliver 2 Million Additional GPUs and Next-Generation Infrastructure for Agentic and Physical AI",
+        "disposition": "REVIEWED_IRRELEVANT"
+       },
+       {
+        "channel": "SEC_SUBMISSIONS",
+        "date": "2026-08-26",
+        "id": "0001045810-26-000073",
+        "label": "8-K items 2.02,9.01",
+        "disposition": "REVIEWED_IRRELEVANT"
+       },
+       {
+        "channel": "SEC_SUBMISSIONS",
+        "date": "2026-08-26",
+        "id": "0001045810-26-000075",
+        "label": "10-Q",
+        "disposition": "REVIEWED_IRRELEVANT"
+       },
+       {
+        "channel": "WIRE_PRESS_RELEASES",
+        "date": "2026-08-26",
+        "id": "https://www.nasdaq.com/press-release/aws-and-nvidia-deliver-2-million-additional-gpus-and-next-generation-infrastructure",
+        "label": "AWS and NVIDIA to Deliver 2 Million Additional GPUs and Next-Generation Infrastructure for Agentic and Physical AI",
+        "disposition": "IRRELEVANT"
+       },
+       {
+        "channel": "WIRE_PRESS_RELEASES",
+        "date": "2026-08-26",
+        "id": "https://www.nasdaq.com/press-release/nvidia-announces-financial-results-second-quarter-fiscal-2027-2026-08-26",
+        "label": "NVIDIA Announces Financial Results for Second Quarter Fiscal 2027",
+        "disposition": "REVIEWED_IRRELEVANT"
+       },
+       {
+        "channel": "ISSUER_IR",
+        "date": "2026-08-27",
+        "id": "https://investor.nvidia.com/news/press-release-details/2026/NVIDIA-Announces-Upcoming-Event-for-Financial-Community/default.aspx",
+        "label": "NVIDIA Announces Upcoming Event for Financial Community",
+        "disposition": "IRRELEVANT"
+       },
+       {
+        "channel": "WIRE_PRESS_RELEASES",
+        "date": "2026-08-27",
+        "id": "https://www.nasdaq.com/press-release/nvidia-announces-upcoming-event-financial-community-2026-08-27",
+        "label": "NVIDIA Announces Upcoming Event for Financial Community",
+        "disposition": "IRRELEVANT"
+       },
+       {
+        "channel": "ISSUER_IR",
+        "date": "2026-08-31",
+        "id": "https://investor.nvidia.com/news/press-release-details/2026/NVIDIA-and-MediaTek-Deepen-Long-Standing-Partnership-to-Build-AI-Edge-to-Cloud-Computing-Platforms/default.aspx",
+        "label": "NVIDIA and MediaTek Deepen Long-Standing Partnership to Build AI Edge to Cloud Computing Platforms",
+        "disposition": "IRRELEVANT"
+       },
+       {
+        "channel": "WIRE_PRESS_RELEASES",
+        "date": "2026-08-31",
+        "id": "https://www.nasdaq.com/press-release/nvidia-and-mediatek-deepen-long-standing-partnership-build-ai-edge-cloud-computing",
+        "label": "NVIDIA and MediaTek Deepen Long-Standing Partnership to Build AI Edge to Cloud Computing Platforms",
+        "disposition": "IRRELEVANT"
+       },
+       {
+        "channel": "SEC_SUBMISSIONS",
+        "date": "2026-09-03",
+        "id": "0001045810-26-000078",
+        "label": "8-K items 8.01",
+        "disposition": "REVIEWED_IRRELEVANT"
+       },
+       {
+        "channel": "ISSUER_IR",
+        "date": "2026-09-09",
+        "id": "https://investor.nvidia.com/news/press-release-details/2026/NVIDIA-Expands-AI-Infrastructure-Capacity-in-Partnership-With-Australias-Data-Center-Ecosystem/default.aspx",
+        "label": "NVIDIA Expands AI Infrastructure Capacity in Partnership With Australia’s Data Center Ecosystem",
+        "disposition": "IRRELEVANT"
+       },
+       {
+        "channel": "WIRE_PRESS_RELEASES",
+        "date": "2026-09-09",
+        "id": "https://www.nasdaq.com/press-release/nvidia-expands-ai-infrastructure-capacity-partnership-australias-data-center",
+        "label": "NVIDIA Expands AI Infrastructure Capacity in Partnership With Australia’s Data Center Ecosystem",
+        "disposition": "IRRELEVANT"
+       },
+       {
+        "channel": "WIRE_PRESS_RELEASES",
+        "date": "2026-09-10",
+        "id": "https://www.nasdaq.com/press-release/nvidia-and-palantir-bring-sovereign-intelligence-critical-supply-chains-2026-09-10",
+        "label": "NVIDIA and Palantir Bring Sovereign Intelligence to Critical Supply Chains",
+        "disposition": "IRRELEVANT"
+       },
+       {
+        "channel": "ISSUER_IR",
+        "date": "2026-09-14",
+        "id": "https://investor.nvidia.com/news/press-release-details/2026/NVIDIA-Expands-Open-Source-CUDA-Q-Platform-for-Fault-Tolerant-Quantum-Computing/default.aspx",
+        "label": "NVIDIA Expands Open Source CUDA-Q Platform for Fault-Tolerant Quantum Computing",
+        "disposition": "IRRELEVANT"
+       },
+       {
+        "channel": "WIRE_PRESS_RELEASES",
+        "date": "2026-09-14",
+        "id": "https://www.nasdaq.com/press-release/nvidia-expands-open-source-cuda-q-platform-fault-tolerant-quantum-computing-2026-09",
+        "label": "NVIDIA Expands Open Source CUDA-Q Platform for Fault-Tolerant Quantum Computing",
+        "disposition": "IRRELEVANT"
+       },
+       {
+        "channel": "ISSUER_IR",
+        "date": "2026-09-28",
+        "id": "https://investor.nvidia.com/news/press-release-details/2026/NVIDIA-Announces-a-150-Billion-Share-Repurchase-Authorization-Increase/default.aspx",
+        "label": "NVIDIA Announces a $150 Billion Share Repurchase Authorization Increase",
+        "disposition": "IRRELEVANT"
+       },
+       {
+        "channel": "ISSUER_IR",
+        "date": "2026-09-28",
+        "id": "https://investor.nvidia.com/news/press-release-details/2026/NVIDIA-Launches-Open-Agent-Safety-Platform-to-Secure-Agents-From-Testing-to-Deployment/default.aspx",
+        "label": "NVIDIA Launches Open Agent Safety Platform to Secure Agents From Testing to Deployment",
+        "disposition": "IRRELEVANT"
+       },
+       {
+        "channel": "WIRE_PRESS_RELEASES",
+        "date": "2026-09-28",
+        "id": "https://www.nasdaq.com/press-release/nvidia-announces-150-billion-share-repurchase-authorization-increase-2026-09-28",
+        "label": "NVIDIA Announces a $150 Billion Share Repurchase Authorization Increase",
+        "disposition": "IRRELEVANT"
+       },
+       {
+        "channel": "WIRE_PRESS_RELEASES",
+        "date": "2026-09-28",
+        "id": "https://www.nasdaq.com/press-release/nvidia-launches-open-agent-safety-platform-secure-agents-testing-deployment-2026-09",
+        "label": "NVIDIA Launches Open Agent Safety Platform to Secure Agents From Testing to Deployment",
+        "disposition": "IRRELEVANT"
+       }
+      ],
+      "digest": "8d498b2f26f71dd0c4f1fc1ca084e69c44d0e02ad234408114108c27366fbaf8"
+     },
+     "reviewed_later_documents": [
+      {
+       "id": "0001045810-26-000078",
+       "disposition": "REVIEWED_IRRELEVANT",
+       "reviewed_at": "2026-09-28T14:26:45Z",
+       "note": "8-K Item 8.01: agreement to acquire Hugging Face; no revenue, outlook or guidance statement"
+      },
+      {
+       "id": "https://investor.nvidia.com/news/press-release-details/2026/AWS-and-NVIDIA-to-Deliver-2-Million-Additional-GPUs-and-Next-Generation-Infrastructure-for-Agentic-and-Physical-AI/default.aspx",
+       "disposition": "REVIEWED_IRRELEVANT",
+       "reviewed_at": "2026-09-28T15:32:15Z",
+       "note": "guidance-day product/partnership release; no revenue, results or guidance statement"
+      },
+      {
+       "id": "0001045810-26-000073",
+       "disposition": "REVIEWED_IRRELEVANT",
+       "reviewed_at": "2026-09-28T15:32:15Z",
+       "note": "8-K items 2.02,9.01: the filing that furnishes the reviewed guidance document itself (NVDA-GUIDANCE)"
+      },
+      {
+       "id": "0001045810-26-000075",
+       "disposition": "REVIEWED_IRRELEVANT",
+       "reviewed_at": "2026-09-28T15:32:15Z",
+       "note": "10-Q on the guidance day: the periodic report / interim statements for the latest reported quarter (the reviewed actuals), not a newer period"
+      },
+      {
+       "id": "https://www.nasdaq.com/press-release/nvidia-announces-financial-results-second-quarter-fiscal-2027-2026-08-26",
+       "disposition": "REVIEWED_IRRELEVANT",
+       "reviewed_at": "2026-09-28T15:32:15Z",
+       "note": "wire distribution of the guidance-day results release itself (same event as the reviewed guidance document)"
+      }
+     ],
+     "consensus": null,
+     "order_evidence": {
+      "registry_status": "OK",
+      "registry_sha256": "2dba85d345fd3de9dea93dea1332e56dc552ad5adaa7268ed95b708df610cd2d",
+      "cutoff": "2026-09-28T18:26:49Z",
+      "url_prefixes": [],
+      "documents": [],
+      "claims": [],
+      "selection": {
+       "status": "OK",
+       "active": [],
+       "current_stock": null,
+       "schedule": null,
+       "filing": "ACTIVE",
+       "excluded": []
+      },
+      "periodic": {
+       "status": "DISCLOSED",
+       "form": "10-Q",
+       "filed": "2026-08-26",
+       "url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000075/nvda-20260726.htm",
+       "rpo": 3200000000,
+       "rpo_as_of": "2026-07-26",
+       "quarter_revenue": 96221000000,
+       "quarter_start": "2026-04-27",
+       "quarter_end": "2026-07-26",
+       "quarter_basis": "FRAME",
+       "accession": "0001045810-26-000075",
+       "passage": "Approximately 39 % of revenue from contracts greater than one year in length will be recognized over the next twelve months",
+       "report_date": "2026-07-26",
+       "horizons": {
+        "m6": null,
+        "m12": {
+         "share_pct": 39.0,
+         "contracted": 1248000000,
+         "run_rate": 384884000000,
+         "coverage_pct": 0.3,
+         "floor_growth_pct": null,
+         "derived": false
+        },
+        "m24": null
+       }
+      },
+      "stock_orders": {
+       "kind": "RPO",
+       "amount": 3200000000,
+       "currency": "USD",
+       "as_of": "2026-07-26",
+       "yoy": 0.6842105263157894,
+       "yoy_prior_amount": 1900000000,
+       "yoy_prior_as_of": "2025-07-27",
+       "scope_kind": "COMPANY",
+       "source_url": "https://data.sec.gov/api/xbrl/companyfacts/CIK0001045810.json"
+      }
+     },
+     "release_channels": {
+      "sec_cik": 1045810,
+      "wire_symbol": "NVDA",
+      "wire_names": [
+       "NVIDIA"
+      ],
+      "ir": {
+       "kind": "Q4_PRESS_RELEASES",
+       "url": "https://investor.nvidia.com/feed/PressRelease.svc/GetPressReleaseList"
+      },
+      "ir_guidance_release_title": "NVIDIA Announces Financial Results for Second Quarter Fiscal 2027"
+     },
+     "consensus_fault": null,
+     "release_check_fault": null,
+     "approval_sha256": "34137f294a5b9075cfd3f2da38d370cd4ba3440f24a4bf5564dcac4a22231d06",
+     "approval_approved_at": "2026-09-28T16:32:10Z",
+     "approval_decisions": [
+      {
+       "kind": "CLAIM",
+       "ref": "NVDA-Q-GUIDANCE",
+       "decision": "VERBATIM_IN_SOURCE",
+       "reviewed_at": "2026-09-28T16:32:10Z"
+      },
+      {
+       "kind": "ACTUAL",
+       "ref": "2025-10-26",
+       "decision": "VALUE_IN_SOURCE",
+       "reviewed_at": "2026-09-28T16:32:10Z"
+      },
+      {
+       "kind": "ACTUAL",
+       "ref": "2026-01-25",
+       "decision": "DERIVATION_OPERANDS_IN_SOURCE",
+       "reviewed_at": "2026-09-28T16:32:10Z"
+      },
+      {
+       "kind": "ACTUAL",
+       "ref": "2026-04-26",
+       "decision": "VALUE_IN_SOURCE",
+       "reviewed_at": "2026-09-28T16:32:10Z"
+      },
+      {
+       "kind": "ACTUAL",
+       "ref": "2026-07-26",
+       "decision": "VALUE_IN_SOURCE",
+       "reviewed_at": "2026-09-28T16:32:10Z"
+      },
+      {
+       "kind": "CALENDAR",
+       "ref": "calendar",
+       "decision": "RULE_QUOTED",
+       "reviewed_at": "2026-09-28T16:32:10Z"
+      },
+      {
+       "kind": "ROUTING",
+       "ref": "routing",
+       "decision": "VERBATIM_IN_SOURCE",
+       "reviewed_at": "2026-09-28T16:32:10Z"
+      }
+     ]
+    }
+   }
+  },
+  "AMD": {
+   "orders": {
+    "kind": "RPO",
+    "amount": 222000000.0,
+    "currency": "USD",
+    "as_of": "2026-06-27",
+    "yoy": 0.0183486238532109,
+    "scope": null,
+    "source": "SEC EDGAR XBRL companyfacts",
+    "source_url": "https://data.sec.gov/api/xbrl/companyfacts/CIK0000002488.json"
+   },
+   "consensus": {
+    "revenue_fy0": 50875836660.0,
+    "revenue_fy1": 88102427210.0,
+    "revenue_growth": 0.7317145622347785,
+    "revenue_analysts": 52.0,
+    "eps_fy0": 7.57578,
+    "eps_fy1": 15.57829,
+    "eps_growth": 1.056328193268548,
+    "eps_analysts": 50.0,
+    "target_mean": 618.508,
+    "target_analysts": 50.0,
+    "price": 605.6799926757812,
+    "target_upside": 0.021179513075125778,
+    "source": "Yahoo Finance analyst estimates (unofficial)",
+    "source_url": "https://finance.yahoo.com/quote/AMD/analysis",
+    "asof": "2026-09-28"
+   },
+   "scenarios": [
+    {
+     "kind": "REVENUE_CONSTANT_PS",
+     "change": 0.7317145622347785
+    },
+    {
+     "kind": "EPS_CONSTANT_PE",
+     "change": 1.056328193268548
+    },
+    {
+     "kind": "ANALYST_TARGET",
+     "change": 0.021179513075125778
+    }
+   ],
+   "consensus_second": {
+    "target_mean": 648.07,
+    "target_upside": 0.0699874650588137,
+    "target_analysts": 34.0,
+    "eps_fy0": 6.43,
+    "eps_fy1": 13.57,
+    "eps_growth": 1.1104199066874028,
+    "eps_analysts": 20.0,
+    "source": "Nasdaq.com analyst estimates",
+    "source_url": "https://www.nasdaq.com/market-activity/stocks/amd/analyst-research",
+    "asof": "2026-09-28",
+    "eps_fiscal_end": "Dec 2027"
+   },
+   "order_forecast": {
+    "version": 2,
+    "issuer": "AMD",
+    "status": "AVAILABLE",
+    "reason": null,
+    "m6": {
+     "status": "UNAVAILABLE",
+     "reason": "NOT_DISCLOSED_HORIZON",
+     "scenario": {
+      "status": "NO_BASIS",
+      "reason": "NO_ORDER_BASIS"
+     }
+    },
+    "m12": {
+     "status": "AVAILABLE",
+     "basis": "RECOGNITION",
+     "amount": 143989200.0,
+     "currency": "USD",
+     "scope": "COMPANY",
+     "start": "2026-06-27",
+     "end": "2027-06-27",
+     "as_of": "2026-06-27",
+     "rpo": 222000000.0,
+     "share_pct": 64.86,
+     "quarter_revenue": 11536000000.0,
+     "quarter_start": "2026-03-29",
+     "quarter_end": "2026-06-27",
+     "quarter_basis": "FRAME",
+     "source_url": "https://www.sec.gov/Archives/edgar/data/2488/000000248826000123/amd-20260627.htm",
+     "form": "10-Q",
+     "filed": "2026-08-05",
+     "accession": "0000002488-26-000123",
+     "passage": "$ 222 million, of which $ 144 million is expected to be recognized in the next 12 months",
+     "report_period": "2026-06-27",
+     "explicit": true,
+     "scenario": {
+      "status": "INSUFFICIENT_COVERAGE",
+      "coverage": 0.0031204316920943136
+     },
+     "source": "PERIODIC"
+    },
+    "stock_sensitivity": {
+     "m6": {
+      "status": "AVAILABLE",
+      "basis": "STOCK_EXTRAPOLATION",
+      "amount": 225050894.59554356,
+      "currency": "USD",
+      "scope": "COMPANY",
+      "scope_label": null,
+      "start": "2026-09-28",
+      "end": "2027-03-28",
+      "as_of": "2026-06-27",
+      "stock": 222000000.0,
+      "yoy": 0.0183486238532109,
+      "baseline": 223030857.68261984,
+      "source_url": "https://data.sec.gov/api/xbrl/companyfacts/CIK0000002488.json",
+      "kind": "RPO",
+      "lineage": "SERIES",
+      "yoy_prior_amount": 218000000.0,
+      "yoy_prior_as_of": "2025-06-28"
+     },
+     "m12": {
+      "status": "AVAILABLE",
+      "basis": "STOCK_EXTRAPOLATION",
+      "amount": 227123166.99789724,
+      "currency": "USD",
+      "scope": "COMPANY",
+      "scope_label": null,
+      "start": "2026-09-28",
+      "end": "2027-09-28",
+      "as_of": "2026-06-27",
+      "stock": 222000000.0,
+      "yoy": 0.0183486238532109,
+      "baseline": 223030857.68261984,
+      "source_url": "https://data.sec.gov/api/xbrl/companyfacts/CIK0000002488.json",
+      "kind": "RPO",
+      "lineage": "SERIES",
+      "yoy_prior_amount": 218000000.0,
+      "yoy_prior_as_of": "2025-06-28"
+     }
+    },
+    "references": [],
+    "evidence": {
+     "registry_status": "OK",
+     "registry_sha256": "2dba85d345fd3de9dea93dea1332e56dc552ad5adaa7268ed95b708df610cd2d",
+     "cutoff": "2026-09-28T18:26:49Z",
+     "url_prefixes": [],
+     "documents": [],
+     "claims": [],
+     "selection": {
+      "status": "OK",
+      "active": [],
+      "current_stock": null,
+      "schedule": null,
+      "filing": "ACTIVE",
+      "excluded": []
+     },
+     "periodic": {
+      "status": "DISCLOSED",
+      "form": "10-Q",
+      "filed": "2026-08-05",
+      "url": "https://www.sec.gov/Archives/edgar/data/2488/000000248826000123/amd-20260627.htm",
+      "rpo": 222000000,
+      "rpo_as_of": "2026-06-27",
+      "quarter_revenue": 11536000000,
+      "quarter_start": "2026-03-29",
+      "quarter_end": "2026-06-27",
+      "quarter_basis": "FRAME",
+      "accession": "0000002488-26-000123",
+      "passage": "$ 222 million, of which $ 144 million is expected to be recognized in the next 12 months",
+      "report_date": "2026-06-27",
+      "horizons": {
+       "m6": null,
+       "m12": {
+        "share_pct": 64.86,
+        "contracted": 143989200,
+        "run_rate": 46144000000,
+        "coverage_pct": 0.3,
+        "floor_growth_pct": null,
+        "derived": false
+       },
+       "m24": null
+      }
+     },
+     "stock_orders": {
+      "kind": "RPO",
+      "amount": 222000000,
+      "currency": "USD",
+      "as_of": "2026-06-27",
+      "yoy": 0.0183486238532109,
+      "yoy_prior_amount": 218000000,
+      "yoy_prior_as_of": "2025-06-28",
+      "scope_kind": "COMPANY",
+      "source_url": "https://data.sec.gov/api/xbrl/companyfacts/CIK0000002488.json"
+     }
+    }
+   },
+   "order_forecast_v3": {
+    "version": 3,
+    "issuer": "AMD",
+    "formula": "ORDERS-V3-01",
+    "status": "AVAILABLE",
+    "reason": null,
+    "revenue_status": "AVAILABLE",
+    "revenue_basis": "COMPANY_GUIDANCE",
+    "revenue_reason": null,
+    "revenue_diagnostic": null,
+    "horizon_convention": "FISCAL_2Q_4Q",
+    "anchor_date": "2026-06-27",
+    "cutoff": "2026-09-28T18:26:49Z",
+    "m6": {
+     "status": "AVAILABLE",
+     "basis": "COMPANY_GUIDANCE",
+     "basis_label": "公司營收財測＋模型（非訂單）",
+     "amount": 26000000000.0,
+     "currency": "USD",
+     "start": "2026-06-28",
+     "end": "2026-12-26",
+     "horizon_label": "約6個月（2財季）",
+     "qualifier": "自2026-06-28起，非今日起",
+     "ttm_revenue": 47789000000.0,
+     "scenario": {
+      "status": "AVAILABLE",
+      "change": 0.15697857402251536
+     },
+     "warning": {
+      "quarter_index": 0,
+      "quarter_end": "2026-09-26",
+      "checked_at": "2026-09-28T18:26:24Z",
+      "text": "財測季度已於2026-09-26結束，實際營收尚未公布；截至2026-09-28T18:26:24Z查核；仍為財測／模型，非實績",
+      "is_fy": false,
+      "affected_ends": [
+       "2026-09-26"
+      ]
+     },
+     "contracted_recognition": null
+    },
+    "m12": {
+     "status": "AVAILABLE",
+     "basis": "COMPANY_GUIDANCE",
+     "basis_label": "公司營收財測＋模型（非訂單）",
+     "amount": 52000000000.0,
+     "currency": "USD",
+     "start": "2026-06-28",
+     "end": "2027-06-26",
+     "horizon_label": "約1年（4財季）",
+     "qualifier": "自2026-06-28起，非今日起",
+     "ttm_revenue": 52000000000.0,
+     "scenario": {
+      "status": "AVAILABLE",
+      "change": 0.25892749061856923
+     },
+     "warning": {
+      "quarter_index": 0,
+      "quarter_end": "2026-09-26",
+      "checked_at": "2026-09-28T18:26:24Z",
+      "text": "財測季度已於2026-09-26結束，實際營收尚未公布；截至2026-09-28T18:26:24Z查核；仍為財測／模型，非實績",
+      "is_fy": false,
+      "affected_ends": [
+       "2026-09-26"
+      ]
+     },
+     "contracted_recognition": {
+      "amount": 143989200.0,
+      "currency": "USD",
+      "start": "2026-06-27",
+      "end": "2027-06-27",
+      "as_of": "2026-06-27",
+      "share_pct": 64.86,
+      "rpo": 222000000.0
+     }
+    },
+    "reported_quarters": [
+     {
+      "fiscal_label": "Q3 2025",
+      "start": "2025-06-29",
+      "end": "2025-09-27",
+      "revenue": 9246000000.0,
+      "currency": "USD",
+      "scope": "COMPANY",
+      "accounting_basis": "GAAP",
+      "document_id": "AMD-0000002488-25-000166",
+      "locator": "XBRL us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax 2025-06-29..2025-09-27"
+     },
+     {
+      "fiscal_label": "Q4 2025",
+      "start": "2025-09-28",
+      "end": "2025-12-27",
+      "revenue": 10270000000.0,
+      "currency": "USD",
+      "scope": "COMPANY",
+      "accounting_basis": "GAAP",
+      "document_id": "AMD-0000002488-26-000018",
+      "locator": "XBRL us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax 2024-12-29..2025-12-27 minus ..2025-09-27",
+      "derivation": {
+       "kind": "YTD_DIFFERENCE",
+       "longer_document_id": "AMD-0000002488-26-000018",
+       "longer_value": 34639000000.0,
+       "longer_start": "2024-12-29",
+       "shorter_document_id": "AMD-0000002488-25-000166",
+       "shorter_value": 24369000000.0,
+       "shorter_end": "2025-09-27"
+      }
+     },
+     {
+      "fiscal_label": "Q1 2026",
+      "start": "2025-12-28",
+      "end": "2026-03-28",
+      "revenue": 10253000000.0,
+      "currency": "USD",
+      "scope": "COMPANY",
+      "accounting_basis": "GAAP",
+      "document_id": "AMD-0000002488-26-000076",
+      "locator": "XBRL us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax 2025-12-28..2026-03-28"
+     },
+     {
+      "fiscal_label": "Q2 2026",
+      "start": "2026-03-29",
+      "end": "2026-06-27",
+      "revenue": 11536000000.0,
+      "currency": "USD",
+      "scope": "COMPANY",
+      "accounting_basis": "GAAP",
+      "document_id": "AMD-0000002488-26-000123",
+      "locator": "XBRL us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax 2026-03-29..2026-06-27"
+     }
+    ],
+    "baseline_b": 41305000000.0,
+    "forward_quarters": [
+     {
+      "quarter_index": 1,
+      "fiscal_label": "Q3 2026",
+      "start": "2026-06-28",
+      "end": "2026-09-26",
+      "amount": 13000000000.0,
+      "derivation": "公司財測"
+     },
+     {
+      "quarter_index": 2,
+      "fiscal_label": null,
+      "start": "2026-09-27",
+      "end": "2026-12-26",
+      "amount": 13000000000.0,
+      "derivation": "模型：之後各季持平於公司財測"
+     },
+     {
+      "quarter_index": 3,
+      "fiscal_label": null,
+      "start": "2026-12-27",
+      "end": "2027-03-27",
+      "amount": 13000000000.0,
+      "derivation": "模型：之後各季持平於公司財測"
+     },
+     {
+      "quarter_index": 4,
+      "fiscal_label": null,
+      "start": "2027-03-28",
+      "end": "2027-06-26",
+      "amount": 13000000000.0,
+      "derivation": "模型：之後各季持平於公司財測"
+     }
+    ],
+    "warning": {
+     "quarter_index": 0,
+     "quarter_end": "2026-09-26",
+     "checked_at": "2026-09-28T18:26:24Z",
+     "text": "財測季度已於2026-09-26結束，實際營收尚未公布；截至2026-09-28T18:26:24Z查核；仍為財測／模型，非實績",
+     "is_fy": false,
+     "affected_ends": [
+      "2026-09-26"
+     ]
+    },
+    "contracted_recognition": {
+     "m6": null,
+     "m12": {
+      "amount": 143989200.0,
+      "currency": "USD",
+      "start": "2026-06-27",
+      "end": "2027-06-27",
+      "as_of": "2026-06-27",
+      "share_pct": 64.86,
+      "rpo": 222000000.0
+     }
+    },
+    "stock_sensitivity": {
+     "m6": {
+      "status": "AVAILABLE",
+      "basis": "STOCK_EXTRAPOLATION",
+      "amount": 225050894.59554356,
+      "currency": "USD",
+      "scope": "COMPANY",
+      "scope_label": null,
+      "start": "2026-09-28",
+      "end": "2027-03-28",
+      "as_of": "2026-06-27",
+      "stock": 222000000.0,
+      "yoy": 0.0183486238532109,
+      "baseline": 223030857.68261984,
+      "source_url": "https://data.sec.gov/api/xbrl/companyfacts/CIK0000002488.json",
+      "kind": "RPO",
+      "lineage": "SERIES",
+      "yoy_prior_amount": 218000000.0,
+      "yoy_prior_as_of": "2025-06-28"
+     },
+     "m12": {
+      "status": "AVAILABLE",
+      "basis": "STOCK_EXTRAPOLATION",
+      "amount": 227123166.99789724,
+      "currency": "USD",
+      "scope": "COMPANY",
+      "scope_label": null,
+      "start": "2026-09-28",
+      "end": "2027-09-28",
+      "as_of": "2026-06-27",
+      "stock": 222000000.0,
+      "yoy": 0.0183486238532109,
+      "baseline": 223030857.68261984,
+      "source_url": "https://data.sec.gov/api/xbrl/companyfacts/CIK0000002488.json",
+      "kind": "RPO",
+      "lineage": "SERIES",
+      "yoy_prior_amount": 218000000.0,
+      "yoy_prior_as_of": "2025-06-28"
+     }
+    },
+    "order_view": {
+     "status": "AVAILABLE",
+     "reason": null,
+     "m6": {
+      "status": "UNAVAILABLE",
+      "reason": "NOT_DISCLOSED_HORIZON",
+      "scenario": {
+       "status": "NO_BASIS",
+       "reason": "NO_ORDER_BASIS"
+      }
+     },
+     "m12": {
+      "status": "AVAILABLE",
+      "basis": "RECOGNITION",
+      "amount": 143989200.0,
+      "currency": "USD",
+      "scope": "COMPANY",
+      "start": "2026-06-27",
+      "end": "2027-06-27",
+      "as_of": "2026-06-27",
+      "rpo": 222000000.0,
+      "share_pct": 64.86,
+      "quarter_revenue": 11536000000.0,
+      "quarter_start": "2026-03-29",
+      "quarter_end": "2026-06-27",
+      "quarter_basis": "FRAME",
+      "source_url": "https://www.sec.gov/Archives/edgar/data/2488/000000248826000123/amd-20260627.htm",
+      "form": "10-Q",
+      "filed": "2026-08-05",
+      "accession": "0000002488-26-000123",
+      "passage": "$ 222 million, of which $ 144 million is expected to be recognized in the next 12 months",
+      "report_period": "2026-06-27",
+      "explicit": true,
+      "scenario": {
+       "status": "INSUFFICIENT_COVERAGE",
+       "coverage": 0.0031204316920943136
+      },
+      "source": "PERIODIC"
+     }
+    },
+    "references": [],
+    "assumptions": "條件情境：營收依上述推估實現，P/S與股數不變；以最新已報四季為基準，非目標價、非今日起報酬",
+    "evidence": {
+     "revenue_registry_status": "OK",
+     "revenue_registry_sha256": "98ffb2779a770de37a2b99508c161d0d05f29232344e5bb8d6dbd4137021ba00",
+     "cutoff": "2026-09-28T18:26:49Z",
+     "formula": "ORDERS-V3-01",
+     "horizon_convention": "FISCAL_2Q_4Q",
+     "consensus_enabled": false,
+     "url_prefixes": [
+      "https://www.sec.gov/Archives/edgar/data/"
+     ],
+     "documents": [
+      {
+       "id": "AMD-GUIDANCE",
+       "issuer": "AMD",
+       "publisher": "Advanced Micro Devices, Inc.",
+       "title": "Advanced Micro Devices, Inc. earnings release with outlook",
+       "source_kind": "SEC_8K_EXHIBIT",
+       "url": "https://www.sec.gov/Archives/edgar/data/2488/000000248826000121/q22026991.htm",
+       "published_date": "2026-08-04",
+       "retrieved_at": "2026-09-28T14:23:48Z",
+       "sha256": "ae33dd528e8f23d67720e0741f429869415705af8e22ffecacfd9b044086482a",
+       "byte_size": 449365,
+       "lineage_id": "AMD-GUIDANCE"
+      },
+      {
+       "id": "AMD-10K",
+       "issuer": "AMD",
+       "publisher": "Advanced Micro Devices, Inc.",
+       "title": "Advanced Micro Devices, Inc. Form 10-K",
+       "source_kind": "OFFICIAL_FISCAL_CALENDAR",
+       "url": "https://www.sec.gov/Archives/edgar/data/2488/000000248826000018/amd-20251227.htm",
+       "published_date": "2026-02-04",
+       "retrieved_at": "2026-09-28T14:23:49Z",
+       "sha256": "d4a1f1c9ef6021c0353c9ed299b5a82b6f293b2cec90b2e40f9b85ce4d3095a0",
+       "byte_size": 2175066,
+       "lineage_id": "AMD-10K"
+      },
+      {
+       "id": "AMD-0000002488-25-000166",
+       "issuer": "AMD",
+       "publisher": "Advanced Micro Devices, Inc.",
+       "title": "Advanced Micro Devices, Inc. Form 10-Q (0000002488-25-000166)",
+       "source_kind": "SEC_PERIODIC",
+       "url": "https://www.sec.gov/Archives/edgar/data/2488/000000248825000166/amd-20250927.htm",
+       "published_date": "2025-11-05",
+       "retrieved_at": "2026-09-28T14:23:50Z",
+       "sha256": "6a0de4809bf3e2ed40a9686aafe010ab2ab5aeabcef1ed837b988e7b769d309e",
+       "byte_size": 1378545,
+       "lineage_id": "AMD-0000002488-25-000166"
+      },
+      {
+       "id": "AMD-0000002488-26-000018",
+       "issuer": "AMD",
+       "publisher": "Advanced Micro Devices, Inc.",
+       "title": "Advanced Micro Devices, Inc. Form 10-K (0000002488-26-000018)",
+       "source_kind": "SEC_PERIODIC",
+       "url": "https://www.sec.gov/Archives/edgar/data/2488/000000248826000018/amd-20251227.htm",
+       "published_date": "2026-02-04",
+       "retrieved_at": "2026-09-28T14:23:52Z",
+       "sha256": "d4a1f1c9ef6021c0353c9ed299b5a82b6f293b2cec90b2e40f9b85ce4d3095a0",
+       "byte_size": 2175066,
+       "lineage_id": "AMD-0000002488-26-000018"
+      },
+      {
+       "id": "AMD-0000002488-26-000076",
+       "issuer": "AMD",
+       "publisher": "Advanced Micro Devices, Inc.",
+       "title": "Advanced Micro Devices, Inc. Form 10-Q (0000002488-26-000076)",
+       "source_kind": "SEC_PERIODIC",
+       "url": "https://www.sec.gov/Archives/edgar/data/2488/000000248826000076/amd-20260328.htm",
+       "published_date": "2026-05-06",
+       "retrieved_at": "2026-09-28T14:23:53Z",
+       "sha256": "78e9cec701be59ef4f0e0631de04d1aca9f3865852f1d718c000e69e96105026",
+       "byte_size": 1142770,
+       "lineage_id": "AMD-0000002488-26-000076"
+      },
+      {
+       "id": "AMD-0000002488-26-000123",
+       "issuer": "AMD",
+       "publisher": "Advanced Micro Devices, Inc.",
+       "title": "Advanced Micro Devices, Inc. Form 10-Q (0000002488-26-000123)",
+       "source_kind": "SEC_PERIODIC",
+       "url": "https://www.sec.gov/Archives/edgar/data/2488/000000248826000123/amd-20260627.htm",
+       "published_date": "2026-08-05",
+       "retrieved_at": "2026-09-28T14:23:54Z",
+       "sha256": "e453419b2b032c5b37d38d353303adeee8bcfca91baeaf43a03a00fe53441b48",
+       "byte_size": 1349076,
+       "lineage_id": "AMD-0000002488-26-000123"
+      }
+     ],
+     "claims": [
+      {
+       "id": "AMD-Q-GUIDANCE",
+       "document_id": "AMD-GUIDANCE",
+       "locator": "Outlook",
+       "passage": "For the third quarter of 2026, AMD expects revenue to be approximately $13 billion, plus or minus $300 million.",
+       "metric": "REVENUE",
+       "assertion_kind": "COMPANY_GUIDANCE",
+       "currency": "USD",
+       "unit_multiplier": 1,
+       "amount": null,
+       "low": 12700000000.0,
+       "high": 13300000000.0,
+       "stated_point": 13000000000.0,
+       "original_representation": "approximately $13 billion, plus or minus $300 million",
+       "scope": "COMPANY",
+       "scope_label": "全公司",
+       "fiscal_label": "Q3 2026",
+       "period_kind": "QUARTER",
+       "period_start": "2026-06-28",
+       "period_end": "2026-09-26",
+       "accounting_basis": "GAAP"
+      }
+     ],
+     "reported_quarters": [
+      {
+       "fiscal_label": "Q3 2025",
+       "start": "2025-06-29",
+       "end": "2025-09-27",
+       "revenue": 9246000000.0,
+       "currency": "USD",
+       "scope": "COMPANY",
+       "accounting_basis": "GAAP",
+       "document_id": "AMD-0000002488-25-000166",
+       "locator": "XBRL us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax 2025-06-29..2025-09-27"
+      },
+      {
+       "fiscal_label": "Q4 2025",
+       "start": "2025-09-28",
+       "end": "2025-12-27",
+       "revenue": 10270000000.0,
+       "currency": "USD",
+       "scope": "COMPANY",
+       "accounting_basis": "GAAP",
+       "document_id": "AMD-0000002488-26-000018",
+       "locator": "XBRL us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax 2024-12-29..2025-12-27 minus ..2025-09-27",
+       "derivation": {
+        "kind": "YTD_DIFFERENCE",
+        "longer_document_id": "AMD-0000002488-26-000018",
+        "longer_value": 34639000000.0,
+        "longer_start": "2024-12-29",
+        "shorter_document_id": "AMD-0000002488-25-000166",
+        "shorter_value": 24369000000.0,
+        "shorter_end": "2025-09-27"
+       }
+      },
+      {
+       "fiscal_label": "Q1 2026",
+       "start": "2025-12-28",
+       "end": "2026-03-28",
+       "revenue": 10253000000.0,
+       "currency": "USD",
+       "scope": "COMPANY",
+       "accounting_basis": "GAAP",
+       "document_id": "AMD-0000002488-26-000076",
+       "locator": "XBRL us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax 2025-12-28..2026-03-28"
+      },
+      {
+       "fiscal_label": "Q2 2026",
+       "start": "2026-03-29",
+       "end": "2026-06-27",
+       "revenue": 11536000000.0,
+       "currency": "USD",
+       "scope": "COMPANY",
+       "accounting_basis": "GAAP",
+       "document_id": "AMD-0000002488-26-000123",
+       "locator": "XBRL us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax 2026-03-29..2026-06-27"
+      }
+     ],
+     "forward_intervals": [
+      {
+       "fiscal_label": "Q3 2026",
+       "start": "2026-06-28",
+       "end": "2026-09-26",
+       "calendar_document_id": "AMD-10K",
+       "calendar_locator": "We use a 52- or 53-week fiscal year ending on the last Saturday in December."
+      },
+      {
+       "fiscal_label": null,
+       "start": "2026-09-27",
+       "end": "2026-12-26",
+       "calendar_document_id": "AMD-10K",
+       "calendar_locator": "We use a 52- or 53-week fiscal year ending on the last Saturday in December."
+      },
+      {
+       "fiscal_label": null,
+       "start": "2026-12-27",
+       "end": "2027-03-27",
+       "calendar_document_id": "AMD-10K",
+       "calendar_locator": "We use a 52- or 53-week fiscal year ending on the last Saturday in December."
+      },
+      {
+       "fiscal_label": null,
+       "start": "2027-03-28",
+       "end": "2027-06-26",
+       "calendar_document_id": "AMD-10K",
+       "calendar_locator": "We use a 52- or 53-week fiscal year ending on the last Saturday in December."
+      }
+     ],
+     "fy_reconciliation": null,
+     "latest_release_check": {
+      "issuer": "AMD",
+      "checked_at": "2026-09-28T18:26:24Z",
+      "status": "OK",
+      "guidance_document_id": "AMD-GUIDANCE",
+      "guidance_published_date": "2026-08-04",
+      "anchor_end": "2026-06-27",
+      "coverage": "SEC_WIRE_IR",
+      "channels": [
+       {
+        "kind": "SEC_SUBMISSIONS",
+        "url": "https://data.sec.gov/submissions/CIK0000002488.json",
+        "status": "OK",
+        "checked_through": "2026-09-28",
+        "complete": true
+       },
+       {
+        "kind": "WIRE_PRESS_RELEASES",
+        "url": "https://api.nasdaq.com/api/news/topic/press_release?q=symbol:amd|assetclass:stocks",
+        "status": "OK",
+        "checked_through": "2026-09-28",
+        "complete": true
+       },
+       {
+        "kind": "ISSUER_IR",
+        "url": "https://ir.amd.com/news-events/press-releases/rss",
+        "status": "OK",
+        "checked_through": "2026-09-28",
+        "complete": true
+       }
+      ],
+      "later_documents": [
+       {
+        "channel": "SEC_SUBMISSIONS",
+        "date": "2026-08-04",
+        "id": "0000002488-26-000121",
+        "label": "8-K items 2.02,7.01,9.01",
+        "disposition": "REVIEWED_IRRELEVANT"
+       },
+       {
+        "channel": "WIRE_PRESS_RELEASES",
+        "date": "2026-08-04",
+        "id": "https://www.nasdaq.com/press-release/amd-reports-second-quarter-2026-financial-results-2026-08-04",
+        "label": "AMD Reports Second Quarter 2026 Financial Results",
+        "disposition": "REVIEWED_IRRELEVANT"
+       },
+       {
+        "channel": "SEC_SUBMISSIONS",
+        "date": "2026-08-05",
+        "id": "0000002488-26-000123",
+        "label": "10-Q",
+        "disposition": "IRRELEVANT"
+       },
+       {
+        "channel": "ISSUER_IR",
+        "date": "2026-08-06",
+        "id": "https://ir.amd.com/news-events/press-releases/detail/1296/amd-acquires-taalas-to-advance-compute-solutions-for-rapidly-growing-ai-inference-market",
+        "label": "AMD Acquires Taalas to Advance Compute Solutions for Rapidly Growing AI Inference Market",
+        "disposition": "IRRELEVANT"
+       },
+       {
+        "channel": "WIRE_PRESS_RELEASES",
+        "date": "2026-08-06",
+        "id": "https://www.nasdaq.com/press-release/amd-acquires-taalas-advance-compute-solutions-rapidly-growing-ai-inference-market",
+        "label": "AMD Acquires Taalas to Advance Compute Solutions for Rapidly Growing AI Inference Market",
+        "disposition": "IRRELEVANT"
+       },
+       {
+        "channel": "SEC_SUBMISSIONS",
+        "date": "2026-08-17",
+        "id": "0001193125-26-354029",
+        "label": "8-K items 1.01,2.03,9.01",
+        "disposition": "IRRELEVANT"
+       },
+       {
+        "channel": "ISSUER_IR",
+        "date": "2026-08-19",
+        "id": "https://ir.amd.com/news-events/press-releases/detail/1297/amd-appoints-tim-ryan-to-board-of-directors",
+        "label": "AMD Appoints Tim Ryan to Board of Directors",
+        "disposition": "IRRELEVANT"
+       },
+       {
+        "channel": "SEC_SUBMISSIONS",
+        "date": "2026-08-19",
+        "id": "0000002488-26-000163",
+        "label": "8-K items 5.02,9.01",
+        "disposition": "IRRELEVANT"
+       },
+       {
+        "channel": "WIRE_PRESS_RELEASES",
+        "date": "2026-08-19",
+        "id": "https://www.nasdaq.com/press-release/amd-appoints-tim-ryan-board-directors-2026-08-19",
+        "label": "AMD Appoints Tim Ryan to Board of Directors",
+        "disposition": "IRRELEVANT"
+       },
+       {
+        "channel": "ISSUER_IR",
+        "date": "2026-08-31",
+        "id": "https://ir.amd.com/news-events/press-releases/detail/1298/amd-cisco-and-humain-expand-saudi-arabias-ai-infrastructure-as-amd-instinct-systems-go-live",
+        "label": "AMD, Cisco and HUMAIN Expand Saudi Arabia’s AI Infrastructure as AMD Instinct Systems Go Live",
+        "disposition": "IRRELEVANT"
+       },
+       {
+        "channel": "WIRE_PRESS_RELEASES",
+        "date": "2026-08-31",
+        "id": "https://www.nasdaq.com/press-release/amd-cisco-and-humain-expand-saudi-arabias-ai-infrastructure-amd-instinct-systems-go",
+        "label": "AMD, Cisco and HUMAIN Expand Saudi Arabia’s AI Infrastructure as AMD Instinct Systems Go Live",
+        "disposition": "IRRELEVANT"
+       }
+      ],
+      "digest": "ca66756e1596f8807682df5c6fb69b9a5f72d26d220832334e242201d3b8e60c"
+     },
+     "reviewed_later_documents": [
+      {
+       "id": "0000002488-26-000121",
+       "disposition": "REVIEWED_IRRELEVANT",
+       "reviewed_at": "2026-09-28T15:32:15Z",
+       "note": "8-K items 2.02,7.01,9.01: the filing that furnishes the reviewed guidance document itself (AMD-GUIDANCE)"
+      },
+      {
+       "id": "https://www.nasdaq.com/press-release/amd-reports-second-quarter-2026-financial-results-2026-08-04",
+       "disposition": "REVIEWED_IRRELEVANT",
+       "reviewed_at": "2026-09-28T15:32:15Z",
+       "note": "wire distribution of the guidance-day results release itself (same event as the reviewed guidance document)"
+      }
+     ],
+     "consensus": null,
+     "order_evidence": {
+      "registry_status": "OK",
+      "registry_sha256": "2dba85d345fd3de9dea93dea1332e56dc552ad5adaa7268ed95b708df610cd2d",
+      "cutoff": "2026-09-28T18:26:49Z",
+      "url_prefixes": [],
+      "documents": [],
+      "claims": [],
+      "selection": {
+       "status": "OK",
+       "active": [],
+       "current_stock": null,
+       "schedule": null,
+       "filing": "ACTIVE",
+       "excluded": []
+      },
+      "periodic": {
+       "status": "DISCLOSED",
+       "form": "10-Q",
+       "filed": "2026-08-05",
+       "url": "https://www.sec.gov/Archives/edgar/data/2488/000000248826000123/amd-20260627.htm",
+       "rpo": 222000000,
+       "rpo_as_of": "2026-06-27",
+       "quarter_revenue": 11536000000,
+       "quarter_start": "2026-03-29",
+       "quarter_end": "2026-06-27",
+       "quarter_basis": "FRAME",
+       "accession": "0000002488-26-000123",
+       "passage": "$ 222 million, of which $ 144 million is expected to be recognized in the next 12 months",
+       "report_date": "2026-06-27",
+       "horizons": {
+        "m6": null,
+        "m12": {
+         "share_pct": 64.86,
+         "contracted": 143989200,
+         "run_rate": 46144000000,
+         "coverage_pct": 0.3,
+         "floor_growth_pct": null,
+         "derived": false
+        },
+        "m24": null
+       }
+      },
+      "stock_orders": {
+       "kind": "RPO",
+       "amount": 222000000,
+       "currency": "USD",
+       "as_of": "2026-06-27",
+       "yoy": 0.0183486238532109,
+       "yoy_prior_amount": 218000000,
+       "yoy_prior_as_of": "2025-06-28",
+       "scope_kind": "COMPANY",
+       "source_url": "https://data.sec.gov/api/xbrl/companyfacts/CIK0000002488.json"
+      }
+     },
+     "release_channels": {
+      "sec_cik": 2488,
+      "wire_symbol": "AMD",
+      "wire_names": [
+       "AMD",
+       "Advanced Micro Devices"
+      ],
+      "ir": {
+       "kind": "RSS",
+       "url": "https://ir.amd.com/news-events/press-releases/rss"
+      },
+      "ir_guidance_release_title": "AMD Reports Second Quarter 2026 Financial Results"
+     },
+     "consensus_fault": null,
+     "release_check_fault": null,
+     "approval_sha256": "34137f294a5b9075cfd3f2da38d370cd4ba3440f24a4bf5564dcac4a22231d06",
+     "approval_approved_at": "2026-09-28T16:32:10Z",
+     "approval_decisions": [
+      {
+       "kind": "CLAIM",
+       "ref": "AMD-Q-GUIDANCE",
+       "decision": "VERBATIM_IN_SOURCE",
+       "reviewed_at": "2026-09-28T16:32:10Z"
+      },
+      {
+       "kind": "ACTUAL",
+       "ref": "2025-09-27",
+       "decision": "VALUE_IN_SOURCE",
+       "reviewed_at": "2026-09-28T16:32:10Z"
+      },
+      {
+       "kind": "ACTUAL",
+       "ref": "2025-12-27",
+       "decision": "DERIVATION_OPERANDS_IN_SOURCE",
+       "reviewed_at": "2026-09-28T16:32:10Z"
+      },
+      {
+       "kind": "ACTUAL",
+       "ref": "2026-03-28",
+       "decision": "VALUE_IN_SOURCE",
+       "reviewed_at": "2026-09-28T16:32:10Z"
+      },
+      {
+       "kind": "ACTUAL",
+       "ref": "2026-06-27",
+       "decision": "VALUE_IN_SOURCE",
+       "reviewed_at": "2026-09-28T16:32:10Z"
+      },
+      {
+       "kind": "CALENDAR",
+       "ref": "calendar",
+       "decision": "RULE_QUOTED",
+       "reviewed_at": "2026-09-28T16:32:10Z"
+      },
+      {
+       "kind": "ROUTING",
+       "ref": "routing",
+       "decision": "VERBATIM_IN_SOURCE",
+       "reviewed_at": "2026-09-28T16:32:10Z"
+      }
+     ]
+    }
+   }
+  }
+ }
+}

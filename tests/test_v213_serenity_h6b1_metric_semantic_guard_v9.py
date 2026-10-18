@@ -63,6 +63,11 @@ class H6B1R14Tests(unittest.TestCase):
             row,
         )
 
+    def test_quantitative_detector_rejects_unit_suffixes(self) -> None:
+        for amount in ("$144 millions", "$144 mil", "$144 millionUSD", "$2.6MB"):
+            with self.subTest(amount=amount):
+                self.assertFalse(mod._future_is_quantitative(f"約{amount}於未來12個月認列；非新增訂單預測"))
+
     def test_quantitative_detector(self) -> None:
         self.assertTrue(mod._future_is_quantitative("約43%於未來12個月認列；非新增訂單預測"))
         self.assertTrue(mod._future_is_quantitative("約$144 million於未來12個月認列；非新增訂單預測"))

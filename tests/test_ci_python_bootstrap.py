@@ -24,6 +24,19 @@ class CiPythonBootstrapPolicyTests(unittest.TestCase):
         self.assertIn('C:\\Users\\*\\AppData\\Local\\Programs\\Python', text)
         self.assertIn('-m venv --copies', text)
 
+    def test_local_branch_never_deletes_and_reuses_the_reviewed_lock_command(self):
+        text = RESOLVER.read_text(encoding="utf-8")
+        self.assertNotRegex(text, r"Remove-Item[^\n]*-Recurse")
+        self.assertIn('[switch]$InstallLockedDependencies', text)
+        # The CI branch and the local locked mode run the same reviewed install command.
+        install = re.findall(
+            r"-m pip install --isolated --disable-pip-version-check `\s+"
+            r"--only-binary=:all: --index-url https://pypi\.org/simple `\s+"
+            r"--require-hashes -r \$requirements",
+            text,
+        )
+        self.assertEqual(len(install), 2)
+
     def test_bootstrap_pins_runtime_and_verifies_every_download(self):
         text = BOOTSTRAP.read_text(encoding="utf-8")
         self.assertIn("$PythonVersion = '3.12.10'", text)

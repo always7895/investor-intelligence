@@ -125,8 +125,8 @@ $python=Resolve-R75Python $ProjectRoot
 $preflight=Join-Path $ProjectRoot 'scripts\v213_r75_activation_preflight.py'
 $bundle=Join-Path $ProjectRoot 'data\cache\v213_activation_bundle_upload.json'
 $core=Join-Path $ProjectRoot 'activate-v213-seven-field-schedule-core.ps1'
-$contract=Join-Path $ProjectRoot 'config\v213-r75-publication-mode-v1.json'
-foreach($path in @($preflight,$core,$contract)){
+$contract=Join-Path $ProjectRoot 'config\v213-r75-publication-mode-v2.json'
+foreach($path in @($preflight,$core,$contract,(Join-Path $ProjectRoot 'scripts\claim_lineage_qualification.py'),(Join-Path $ProjectRoot 'scripts\source_observation.py'),(Join-Path $ProjectRoot 'scripts\source_registry.py'),(Join-Path $ProjectRoot 'scripts\adapters\__init__.py'))){
     if(-not(Test-Path -LiteralPath $path -PathType Leaf)){throw "Activation prerequisite is missing: $path"}
 }
 
@@ -169,7 +169,7 @@ try{
         $modelResult=Get-HealthyModelState (Join-Path $configRoot 'v213-local-model.json') $ExpectedModel
         $mode=[string]$modelResult.tunnel_mode
         if($mode-eq'quick_free_relay'){
-            if([string]$modelResult.model-cne'qwen38-q6'){throw "FREE_RELAY requires exact model qwen38-q6; observed=$($modelResult.model)."}
+            if([string]$modelResult.model-notmatch'^[A-Za-z0-9][A-Za-z0-9._:/+\-]{0,199}$'){throw "FREE_RELAY requires a verified served model id; observed=$($modelResult.model)."}
             Write-Host 'V213_FREE_RELAY_ACTIVATION_PREFLIGHT = PASS; stable_entrypoint=workers_dev; custom_domain_required=false; test_tunnel_exception=false' -ForegroundColor Green
         }elseif($mode-ne'named'){
             if(-not$AllowTestTunnelException){throw "Production local-model activation requires tunnel_mode=quick_free_relay or named; observed=$mode. AllowTestTunnelException is test-only."}

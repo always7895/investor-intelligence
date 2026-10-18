@@ -11,10 +11,10 @@ function runtime() {
   const kv = new MemoryKv();
   kv.values.set("last_successful_pipeline_timestamp", new Date().toISOString());
   kv.values.set("v21:top20:latest", JSON.stringify([
-    { ticker: "NVDA", evidence: [{ source_id: "sec_edgar", claim_type: "filing_publication_provenance", as_of: "2026-08-01", url: "https://www.sec.gov/Archives/edgar/data/1000000/", provenance_only: true }], private_field: "MUST_NOT_ENTER_PROMPT" },
+    { ticker: "NVDA", evidence: [{ source_id: "sec_edgar", claim_type: "filing_publication_provenance", as_of: "2026-08-01", url: "https://www.sec.gov/Archives/edgar/data/1000000/", provenance_only: true }], private_field: "MUST_NOT_ENTER_PROMPT", generated_at: new Date().toISOString() },
     { ticker: "OTHER", evidence: [{ title: "UNRELATED_UNIVERSE_MUST_NOT_ENTER" }] },
   ]));
-  kv.values.set("v213:source-independence:latest", JSON.stringify({ portfolio: { limited_research_candidate_count: 20, evidence_qualified_candidate_count: 0 }, records: [{
+  kv.values.set("v213:source-independence:latest", JSON.stringify({ generated_at: new Date().toISOString(), portfolio: { limited_research_candidate_count: 20, evidence_qualified_candidate_count: 0 }, records: [{
     ticker: "NVDA", publication_evidence_mode: "LIMITED_RESEARCH_CANDIDATE", eligible_for_high_confidence_model_inference: false,
     public_logic_state: { validated_company_thesis: false }, market_corroboration: { status: "UNAVAILABLE" }, missing_or_review: ["INDEPENDENT_CLAIM_CORROBORATION"],
   }] }));
@@ -76,6 +76,62 @@ describe("v213 bounded query-aware public context", () => {
     expect(await compactGeneralAnswer(env, parseQuery("NVDA目前有哪些風險？"), { tenantId: "synthetic", chatType: "group" })).toMatch(/STALE/);
     expect(native).not.toHaveBeenCalled();
   });
+  describe("source-independence audit age", () => {
+    const AUDIT_STALE = "Source audit is older than the report bound; do not infer current company facts.";
+    function setAudit(kv: MemoryKv, patch: (audit: Record<string, unknown>) => void) {
+      const audit = JSON.parse(kv.values.get("v213:source-independence:latest")!);
+      patch(audit);
+      kv.values.set("v213:source-independence:latest", JSON.stringify(audit));
+    }
+    const hoursAgo = (hours: number) => new Date(Date.now() - hours * 3600_000).toISOString();
+    it("refuses an audit older than the 14 h report bound, a future one, a missing and an invalid time", async () => {
+      for (const generated of [hoursAgo(15), new Date(Date.now() + 400_000).toISOString(), undefined, "not-a-time", 12345, null]) {
+        for (const text of ["NVDA有哪些需要驗證的風險？", "自由現金流與淨利有何差異？"]) {
+          const { env, kv } = runtime();
+          setAudit(kv, (audit) => { if (generated === undefined) delete audit.generated_at; else audit.generated_at = generated; });
+          const result = await compactPublicContext(env, parseQuery(text));
+          expect(result.freshness).toBe("STALE");
+          expect(result.facts).toBe(AUDIT_STALE);
+          expect(result.mode).toBeUndefined();
+          expect(result.sources).toBeUndefined();
+          expect(result.limited).toBeUndefined();
+        }
+      }
+    });
+    it("accepts an audit inside the bound and uses the explicit clock", async () => {
+      const { env, kv } = runtime();
+      setAudit(kv, (audit) => { audit.generated_at = hoursAgo(13); });
+      expect((await compactPublicContext(env, parseQuery("NVDA有哪些需要驗證的風險？"))).mode).toBe("LIMITED_RESEARCH_CANDIDATE");
+      expect((await compactPublicContext(env, parseQuery("自由現金流與淨利有何差異？"))).limited).toBe(20);
+      const later = Date.now() + 90 * 60_000;  // 13 h old now, 14.5 h old at the explicit clock
+      expect((await compactPublicContext(env, parseQuery("NVDA有哪些需要驗證的風險？"), later)).facts).toBe(AUDIT_STALE);
+    });
+    it("judges the seal age at the explicit clock", async () => {
+      const { env } = runtime();
+      const later = Date.now() + 3 * 3600_000;  // seal 3 h old at the explicit clock (bound 7200 s); audit and row stay inside 14 h
+      const result = await compactPublicContext(env, parseQuery("NVDA有哪些需要驗證的風險？"), later);
+      expect(result.freshness).toBe("STALE");
+      expect(result.facts).toBe("No current facts available. Explain concepts only; do not assert current company conditions.");
+      expect((await compactPublicContext(env, parseQuery("NVDA有哪些需要驗證的風險？"))).mode).toBe("LIMITED_RESEARCH_CANDIDATE");
+    });
+    it("a stale seal keeps its own reason first", async () => {
+      const { env, kv } = runtime();
+      setAudit(kv, (audit) => { audit.generated_at = hoursAgo(15); });
+      kv.values.set("last_successful_pipeline_timestamp", "2000-01-01T00:00:00Z");
+      const result = await compactPublicContext(env, parseQuery("NVDA風險？"));
+      expect(result.freshness).toBe("STALE");
+      expect(result.facts).toBe("No current facts available. Explain concepts only; do not assert current company conditions.");
+    });
+    it("the sealed placeholder audit answers exactly as before, without a time", async () => {
+      const { env, kv } = runtime();
+      kv.values.set("v213:source-independence:latest", JSON.stringify({ status: "INSUFFICIENT_EVIDENCE", families: 0 }));
+      const generic = await compactPublicContext(env, parseQuery("自由現金流與淨利有何差異？"));
+      expect(generic).toEqual({ v: 1, kind: "general", freshness: "FRESH", as_of: generic.as_of,
+        summary: "Public research only; no broker/portfolio access. Evidence is claim-specific, not an endorsement.", limited: null, evidence_qualified: null });
+      const ticker = await compactPublicContext(env, parseQuery("NVDA風險？"));
+      expect(ticker.facts).toBe("Ticker or claim audit unavailable; do not infer company facts.");
+    });
+  });
   it("runs the unchanged certified sensitive-input guard without making model calls", async () => {
     const { env } = runtime(); const { native } = transport();
     for (const input of ["我持有 NVDA 20 股，成本 100", "my portfolio contains NVDA", "我的券商帳戶是測試帳戶"]) {
@@ -93,6 +149,46 @@ describe("v213 bounded query-aware public context", () => {
     expect(answer).toContain("LIMITED_RESEARCH_CANDIDATE");
     expect(answer).toContain("sec_edgar");
     expect(compactCompletionBody({ messages: [{ role: "user", content: "PUBLIC_REPORT\nII_V213_COMPACT_CONTEXT_V1:{}" }] })).toBeNull();
+  });
+  it("uses the free-relay route's model end to end when the Worker follows the route (operator 2026-09-26)", async () => {
+    const { env } = runtime();
+    const bodies: any[] = [];
+    const native = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      bodies.push(JSON.parse(String(init?.body)));
+      return new Response(JSON.stringify({ choices: [{ finish_reason: "stop", message: { content: bodies.length === 1 ? "公開證據僅支持特定主張。" : SMOKE_MARKER } }],
+        ii_exact_model_pin: { selected_model: "Qwen3.8-27B", request_model_substitution_allowed: false } }));
+    });
+    vi.stubGlobal("fetch", (input: RequestInfo | URL, init?: RequestInit) => v213RuntimeCompatibleFetch(native as typeof fetch, input, init));
+    const following = { ...env, LOCAL_LLM_MODEL: "Qwen3.8-27B", LOCAL_LLM_MODEL_FROM_ROUTE: "true" };
+    await compactGeneralAnswer(following, parseQuery("NVDA有哪些需要驗證的風險？"), { tenantId: "synthetic", chatType: "group" });
+    expect(bodies[0].model).toBe("Qwen3.8-27B");
+    expect(bodies[0].ii_context_mode).toBe("compact_public_v1");
+    expect(JSON.stringify(bodies[0])).not.toContain("route_model");  // consumed by the compact rewrite, never sent
+    expect(await minimalModelSmoke(following)).toBe(true);
+    expect(bodies[1].model).toBe("Qwen3.8-27B");
+    // Without the switch the policy model stays pinned and a different LOCAL_LLM_MODEL is refused.
+    await expect(minimalModelSmoke({ ...env, LOCAL_LLM_MODEL: "Qwen3.8-27B" })).rejects.toThrow("MODEL_CONFIG_INVALID");
+  });
+  it("in route mode a configured profile keeps its settings and takes the route's model on both sides", async () => {
+    const { env } = runtime();
+    const settings = { schema_version: 1, model: "Qwen3.8-27B-EXL3-SC5-H6-V6", enable_thinking: false, reasoning_effort: "none",
+      max_output_tokens: 1024, smoke_output_tokens: 128, timeout_ms: 18000 };
+    const local = { ...settings, model: "Qwen3.8-27B" };  // what the local bridge builds from the same settings
+    const { modelProfileSha256 } = await import("../src/v213/model-profile");
+    const localSha = await modelProfileSha256(local as any);
+    const bodies: any[] = [];
+    const native = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      bodies.push(JSON.parse(String(init?.body)));
+      return new Response(JSON.stringify({ choices: [{ finish_reason: "stop", message: { content: bodies.length === 1 ? "公開證據僅支持特定主張。" : SMOKE_MARKER } }],
+        ii_exact_model_pin: { selected_model: "Qwen3.8-27B", request_model_substitution_allowed: false, model_profile_sha256: localSha } }));
+    });
+    vi.stubGlobal("fetch", (input: RequestInfo | URL, init?: RequestInit) => v213RuntimeCompatibleFetch(native as typeof fetch, input, init));
+    const following = { ...env, V213_MODEL_PROFILE_JSON: JSON.stringify(settings), LOCAL_LLM_MODEL: "Qwen3.8-27B", LOCAL_LLM_MODEL_FROM_ROUTE: "true" };
+    await compactGeneralAnswer(following, parseQuery("NVDA有哪些需要驗證的風險？"), { tenantId: "synthetic", chatType: "group" });
+    expect(bodies[0].model).toBe("Qwen3.8-27B");
+    expect(bodies[0].ii_model_profile).toEqual(local);
+    expect(await minimalModelSmoke(following)).toBe(true);  // the local profile hash matches the Worker's effective profile
+    expect(bodies[1].ii_model_profile).toEqual(local);
   });
   it("smoke uses fixed minimal input and NEVER reads public or private storage", async () => {
     const { env } = runtime(); const { bodies } = transport(SMOKE_MARKER);

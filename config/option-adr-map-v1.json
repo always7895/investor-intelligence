@@ -1,0 +1,18 @@
+{
+ "schema_version": 1,
+ "rule": "Listings on markets without an admitted listed-option source in this service (operator 2026-09-27: TSMC had no options answer) are answered with the options of their US ADR, labelled as the ADR with its share ratio; the ADR is always in the options universe (scripts/build_market_quotes_options.py). Each ratio was read from the issuer's latest Form 20-F on SEC EDGAR (quoted evidence below).",
+ "verified_at": "2026-09-27",
+ "listings": {
+  "2330.TW": {"adr": "TSM", "ratio": 5, "name_zh": "台積電", "aliases": ["2330", "TSMC", "台積電", "台积电"],
+              "source": {"form": "20-F", "filed": "2026-04-16", "url": "https://www.sec.gov/Archives/edgar/data/1046179/000162828026025362/tsm-20251231.htm",
+                         "evidence": "each ADS represents five (5) common shares"}},
+  "2303.TW": {"adr": "UMC", "ratio": 5, "name_zh": "聯電", "aliases": ["2303", "聯電", "联电"],
+              "source": {"form": "20-F", "filed": "2026-04-30", "url": "https://www.sec.gov/Archives/edgar/data/1033767/000119312526193757/d91630d20f.htm",
+                         "evidence": "American Depositary Shares, each representing five common shares"}},
+  "3711.TW": {"adr": "ASX", "ratio": 2, "name_zh": "日月光投控", "aliases": ["3711", "日月光", "日月光投控"],
+              "source": {"form": "20-F", "filed": "2026-04-01", "url": "https://www.sec.gov/Archives/edgar/data/1122411/000119312526135585/d50802d20f.htm",
+                         "evidence": "American Depositary Shares (the ADSs), each representing two Common Shares"}}
+ },
+ "covered_markets": {"US": "美股", "SWEDEN": "Nasdaq Stockholm"},
+ "market_names": {"TAIWAN": "台灣", "JAPAN": "日本", "KOREA": "韓國", "UK": "英國（倫敦）", "EUROPE": "歐洲", "HK": "香港"}
+}

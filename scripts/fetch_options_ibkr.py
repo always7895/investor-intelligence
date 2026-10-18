@@ -16,6 +16,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
+import option_recommendation_rules as rules
 from fetch_options import (
     DATA_DIR,
     DEFAULT_POLICY_PATH,
@@ -142,7 +143,8 @@ def _month_token(day: date) -> str:
 
 
 def _period_months(period: dict[str, Any], today: date) -> list[str]:
-    minimum = max(0, int(period.get("minimum_dte", 0)))
+    # The calendar-week weekly can expire today (DTE 0): never start the month list after today (config minimum_dte is ignored for it).
+    minimum = 0 if period.get("selection") == "calendar_week" else max(0, int(period.get("minimum_dte", 0)))
     maximum = max(minimum, int(period.get("maximum_dte", 60)))
     start = today + timedelta(days=minimum)
     end = today + timedelta(days=maximum)
@@ -160,8 +162,19 @@ def _period_months(period: dict[str, Any], today: date) -> list[str]:
 
 
 def _strict_expiration(
-    expirations: Iterable[str], period: dict[str, Any], *, today: date
+    expirations: Iterable[str], period: dict[str, Any], *, today: date, expiry_day_open_now: bool = True
 ) -> tuple[str | None, int | None, str]:
+    if period.get("selection") == "calendar_week":  # the current calendar week's expiry (see option_recommendation_rules)
+        listed: dict[date, str] = {}
+        for expiration in expirations:
+            try:
+                listed.setdefault(datetime.fromisoformat(expiration[:10]).date(), expiration)
+            except (TypeError, ValueError):
+                continue
+        choice = rules.select_weekly_expiry(listed, today, expiry_day_open_now=expiry_day_open_now)
+        if choice is None:
+            return None, None, "NO_EXPIRATION_IN_WINDOW"
+        return listed[choice.expiry], (choice.expiry - today).days, "OK"
     minimum = int(period.get("minimum_dte", 1))
     maximum = int(period.get("maximum_dte", 60))
     target = int(period.get("target_dte", 7))
@@ -381,6 +394,7 @@ def get_ibkr_option_suggestion(
     policy: dict[str, Any],
     config: dict[str, Any],
     today: date,
+    expiry_day_open_now: bool = True,
 ) -> dict[str, Any]:
     retrieved_at = datetime.now(timezone.utc).isoformat()
     capacity = max(0, int(quantity // 100))
@@ -456,7 +470,7 @@ def get_ibkr_option_suggestion(
         expirations = sorted(
             {value for record in contracts if (value := _contract_expiration(record))}
         )
-        expiration, dte, status = _strict_expiration(expirations, period_policy, today=today)
+        expiration, dte, status = _strict_expiration(expirations, period_policy, today=today, expiry_day_open_now=expiry_day_open_now)
         if not expiration or dte is None:
             base["periods"][period_name] = {
                 "status": status,
@@ -562,7 +576,10 @@ def fetch_all_options_ibkr(
     if not targets:
         raise IbkrReadOnlyError("No configured or long-stock option targets are available")
 
-    current_day = today or datetime.now(timezone.utc).date()
+    now_utc = datetime.now(timezone.utc)
+    current_day = today or rules.exchange_date(now_utc, "US")  # exchange-local date, not the UTC date
+    # Without an explicit date the expiry day counts only while the US session is open (same cut-off as the producer).
+    day_open = rules.expiry_day_open(now_utc, "US") if today is None else True
     results: list[dict[str, Any]] = []
     for ticker, target in targets.items():
         quantity = quantities.get(ticker, 0.0)
@@ -575,6 +592,7 @@ def fetch_all_options_ibkr(
                     policy=policy,
                     config=config,
                     today=current_day,
+                    expiry_day_open_now=day_open,
                 )
             )
         except IbkrReadOnlyError as exc:

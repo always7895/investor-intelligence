@@ -1,0 +1,94 @@
+{
+  "audit": "READ-ONLY ROOT CAUSE TRACE: LINE command 宏觀產業分析 -> MACRO_TOP5_SHORTFALL",
+  "wall": "2026-09-17 local session",
+  "production_tuple_reconfirmed": {
+    "packet_tuple": {
+      "head": "84ea677",
+      "worker_version": "e2fe374b-3bc0-4903-8a55-30f22576fe2e",
+      "pointer_run": "20260917T055736Z-3bf287ab34fd"
+    },
+    "top20": "GEV #1 + 6501 #2, admitted 2, zero padding; SIVE/AAOI/6508/ENR fail-closed"
+  },
+  "q1_handler": {
+    "entry": "cloud/src/v213/rich-menu.ts — macro-home branch (regex 宏觀產業分析|宏观产业分析, around line 141); uses macro-industry-product.ts renderers",
+    "flow": "view = pinPublicSnapshot(env); overview = await view.json([MACRO_PRODUCT_KEY]); flex/text rendered ONLY when overview.status == 'ADMITTED_TOP5' and overview.qualified_count >= 5; otherwise falls through to loadV213FreshTop20Report for the industry-distribution context panel and to the MACRO_TOP5_SHORTFALL panel (短缺通報: 5/5). The literal '5/5' is the TOP5 slot-gap descriptor, not a candidate count."
+  },
+  "q2_expected_key": {
+    "reader_key": "v213:macro-industry:latest",
+    "declared_in": "cloud/src/v213/macro-industry-product.ts (MACRO_PRODUCT_KEY)",
+    "resolved_in_sealed_view": "snapshot:20260917T055736Z-3bf287ab34fd:v213:macro-industry:latest",
+    "consumer_requirement": "status == ADMITTED_TOP5 and qualified_count >= 5"
+  },
+  "q3_object_in_current_run": {
+    "present": false,
+    "run_object_count": 14,
+    "verdict": "ABSENT — the 14 canonical sealed objects of run 20260917T055736Z-3bf287ab34fd contain no macro key at all (checked objects.json key list directly)."
+  },
+  "q4_producer_and_why_missing": {
+    "producer": "scripts/build_v213_macro_industry_research.py (policy config/v213-macro-industry-policy-v1.json; modes --input / --synthetic-fixture / default WIDER_CANDIDATE_UNIVERSE)",
+    "integration_gap": "NONE EXISTS — the refresh pipeline scripts/run_production_sealed_refresh.ps1 runs only (1) publish_sealed_snapshot.py --live-clock then (2) sync_sealed_snapshot_kv.py; publish_sealed_snapshot.py builds the fixed 14-object canonical seal list and contains ZERO references to macro; nothing ever invokes the macro builder and its output key is not in the seal manifest.",
+    "conclusion": "The macro artifact is, by current pipeline design, never generated, staged, sealed, or published; the reader therefore always receives null on sealed views."
+  },
+  "q5_reader_rejection": "N/A — the object is absent (q3); view.json returns null and the handler falls through to the fresh-top20 context panel. No seal-rejection/tamper signal is involved; the Top20 report itself loads fresh (the observed reply shows no stale text).",
+  "q6_all_macro_candidates": {
+    "pool": "scripts/build_v213_macro_industry_research.py :: WIDER_CANDIDATE_UNIVERSE — exactly 2 industries (independent pool, NOT the Top20 ticker pool)",
+    "candidates": [
+      {
+        "industry": "Advanced Packaging And HBM (先進封裝與高頻寬記憶體)",
+        "industry_id": "advanced_packaging_hbm",
+        "beneficiaries": [
+          "TSMC",
+          "SK Hynix",
+          "Micron",
+          "ASE Technology",
+          "Advantest"
+        ],
+        "opportunity_score": 95,
+        "admission_result": "ADMITTED (rank 1)",
+        "growth_evidence": "WSTS 2026 memory-segment forecast ~+250% YoY (source_id wsts-outlook, 2026-06, OFFICIAL_PROSE_VERIFIED)"
+      },
+      {
+        "industry": "Robotics And Industrial Automation (工業與智慧型機器人)",
+        "industry_id": "robotics_automation",
+        "beneficiaries": [
+          "FANUC",
+          "Keyence",
+          "Harmonic Drive",
+          "Yaskawa"
+        ],
+        "opportunity_score": 62,
+        "admission_result": "REJECTED (see q7)"
+      }
+    ]
+  },
+  "q7_rejected_candidates": [
+    {
+      "industry": "Robotics / Industrial Automation (robotics_automation)",
+      "candidate": "FANUC / Keyence / Harmonic Drive / Yaskawa (beneficiary list; no admitted equity set)",
+      "bottleneck_evidence_status": "NARRATIVE-ONLY — supply_constraint_chokepoint exists as prose (reducer precision, harmonic-reducer life, control-sensor lead times); no independently sourced quantitative/industry benchmark",
+      "bottleneck_primary_source": "none (no URL or source_id supplied)",
+      "equity_capture_evidence_status": "ABSENT — value_chain_position prose only; no equity-capture corroboration field",
+      "equity_primary_source": "none",
+      "rejection_code": "GROWTH_RATE_MISSING_UNAVAILABLE (candidate.growth is null; validate_candidate refuses; recorded as NOT_PUBLICATION_QUALIFIED, rank null, growth nulled)"
+    }
+  ],
+  "q8_why_shortfall_is_5_over_5": [
+    "LAYER-A (primary, production cause): the macro artifact is ABSENT from the sealed 14-object snapshot because the producer was never wired into the sealed publish/sync pipeline (q4); the reader gets null and renders the shortfall panel.",
+    "LAYER-B (latent, evidence capacity): even if built and published right now, the default candidate pool yields only 1/5 qualified industries — read-only live evaluate this session over WIDER_CANDIDATE_UNIVERSE returned status SHORTFALL_NOT_QUALIFIED, qualified_count 1, candidate_pool_size 2 — so the ADMITTED_TOP5 reader gate (qualified_count >= 5) would still refuse.",
+    "The UI literal '5/5' means 'TOP5 slots unfilled / no admitted TOP5 overview'; it is NOT '5 rejected of 5' and is NOT derived from the GEV/6501 Top20 admitted set."
+  ],
+  "q9_top20_dependency": {
+    "admission_dependency": false,
+    "explanation": "Macro admission is independent of the GEV/6501 Top20 admitted set (separate candidate universe, its own growth-rate / market-source and score rules). The rich-menu macro home consumes the fresh Top20 report ONLY as context rendering for the company industry distribution (and in the failure panel). Macro-card beneficiary lists are descriptive, not admitted positions."
+  },
+  "q10_sealed_object_set": {
+    "macro_specific_artifacts": 0,
+    "note": "The canonical sealed set is the fixed 14-object manifest: 13 data keys (v21:top20:latest, scores:latest, source_views:latest, source_plan:latest, reports:latest, reports:morning:latest, reports:evening:latest, last_successful_pipeline_timestamp, v212:top20-report:latest, v213:top20-report:latest, v213:source-federation:latest, v213:source-independence:latest, v213:activation-claim) plus the v213:snapshot-seal:v1 manifest. No v213:macro-industry:latest exists in run 20260917T055736Z-3bf287ab34fd or in any prior run's manifest."
+  },
+  "fix_scope": [
+    "A. PIPELINE: wire scripts/build_v213_macro_industry_research.py into the sealed publish flow (build macro overview JSON -> stage as v213:macro-industry:latest -> extend the seal manifest to 15 keys -> sync with readback verification, pointer still LAST) without weakening the pointer-last / fail-closed contract.",
+    "B. EVIDENCE: grow the candidate universe and supply per-industry verifiable market-growth data from independent market publishers plus equity-capture sources, so >=5 industries can pass admission; until then the honest output remains SHORTFALL_NOT_QUALIFIED (1/5).",
+    "C. UI: no change needed — the panels, the ADMITTED_TOP5 gate, and the fail-closed behavior are contract-correct."
+  ],
+  "invariants_preserved": "Read-only trace: zero KV writes, zero deploy, zero seal/snapshot mutations, no gate or code changes; the accepted production tuple was untouched."
+}

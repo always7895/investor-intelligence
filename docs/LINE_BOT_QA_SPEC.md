@@ -64,6 +64,7 @@ Only direct user events are eligible. Group and room events are rejected before 
 - Missing secrets or invalid configuration: silent fail closed.
 - Non-allowlisted user: silent fail closed before reply, dedupe completion or rate mutation.
 - Shared-bot owner/operator role: none.
+- The Production owner-line Worker (`V213_LINE_ACCESS_MODE`, default `owner_only`) is a separate entrypoint; its all-friends mode is specified in [LINE_ALL_FRIENDS_ACCESS](LINE_ALL_FRIENDS_ACCESS.md) and does not change these shared-bot rules.
 - Group/room enable switch: none.
 
 ## Public intent router

@@ -1,0 +1,25 @@
+{
+  "policy_id": "v213-sourced-wording-v1",
+  "effective": "2026-09-25",
+  "authority": "Operator rule: every Top20 figure and estimate needs an explicit source; vague wording is forbidden.",
+  "fields": {
+    "current_orders": {
+      "source_urls_field": "current_order_source_urls",
+      "fallback": "未揭露（無可靠公開訂單數字）"
+    },
+    "future_orders_estimate": {
+      "source_urls_field": "future_order_source_urls",
+      "fallback": "無可靠公開預估"
+    }
+  },
+  "banned_phrases_zh": [
+    "很多", "非常多", "大量", "市場很大", "市場巨大", "市場龐大", "龐大", "強勁",
+    "能見度偏高", "能見度高", "幾乎全部", "大部分", "大幅", "顯著", "爆發", "可觀",
+    "供不應求", "需求旺盛", "前景看好"
+  ],
+  "banned_phrases_en": [
+    "many", "huge", "massive", "strong visibility", "significant", "substantial",
+    "substantially all", "nearly all", "multi-year backlog", "robust demand"
+  ],
+  "digits_require_source": true
+}

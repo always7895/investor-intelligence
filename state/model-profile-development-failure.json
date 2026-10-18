@@ -1,0 +1,28 @@
+{
+  "scope": "DEVELOPMENT_PROFILE_REVALIDATION",
+  "started_at": "2026-09-09T03:23:52.242539+00:00",
+  "profile_sha256": "99f220495cada7a86ab8836cc218c47893f6d0a078cc6a05fc53326c297b5de4",
+  "release_qualified": false,
+  "preset_changed": false,
+  "production_mutation": false,
+  "xhigh_semantics_verified": false,
+  "http_status": 502,
+  "error_code": "COMPACT_RESPONSE_INCOMPLETE_OR_MODEL_MISMATCH",
+  "failure_kind": "INCOMPLETE",
+  "finish_reason": null,
+  "model_matches": false,
+  "profile_pin_matches": false,
+  "answer_characters": 0,
+  "reasoning_present": false,
+  "elapsed_ms": 17797,
+  "completed_at": "2026-09-09T03:24:10.464923+00:00",
+  "source_file_sha256": {
+    "scripts/v213_model_profile.py": "5fda4128aa16e3db5d232cf377bf2449d4b32842787b072d23c4a23081f1dd50",
+    "scripts/v213_compact_qa_gateway.py": "c2c9fdd1edc701f10b053d7f183aff9023585add86678eb4bcb0fd88ab012dad",
+    "scripts/v213_local_llm_gateway.py": "e8341cf2c101dd5fda55de1b830a4691e0d5e5d986a07767417c26dbb181dc3c",
+    "cloud/src/v213/model-profile.ts": "890808594d99db99dc6bf6f74c96f28961730a163ad33613f8486dd8ab2d19ec",
+    "cloud/src/v213/compact-qa.ts": "79cd2be4233913b9aec4df274fb9feca302864265a0a459ffdda2902bc45c986",
+    "cloud/src/v213/production-worker.ts": "76aaa2d3bc42f0dccd1353a70448ff8e82d5cfed3fef8bf3bf1d578a249a1f0a",
+    "config/v213-model-profile-v1.json": "5f3c5212b5e46a1ffde82e6801949085cc7aab628f941366fd2725d5602873b5"
+  }
+}

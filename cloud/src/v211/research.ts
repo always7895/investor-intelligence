@@ -1,5 +1,6 @@
 import type { ParsedQuery } from "../core";
 import { publicJson, type StorageEnv } from "../storage";
+import { v213ReportAgeFresh } from "../v213/report-age";
 import type { V21Top20Record } from "../v21/top20";
 
 const RECORD_KEYS = new Set([
@@ -50,7 +51,7 @@ export function parseV211ResearchUniverse(raw: unknown): V21Top20Record[] | null
       typeof item.name !== "string" ||
       typeof item.category !== "string" ||
       typeof item.rating !== "string" ||
-      item.scoring_version !== "serenity-first-v2.1.0" ||
+      (item.scoring_version !== "serenity-first-v2.1.0" && item.scoring_version !== "system-operationalization-v2.1.3-diversified") ||
       item.line_public_eligible !== true ||
       item.provider_scope !== "public_only" ||
       item.owner_watchlist_inherited !== false ||
@@ -152,18 +153,29 @@ function asksResearch(text: string): boolean {
 
 export async function v211ResearchAnswer(env: StorageEnv, query: ParsedQuery): Promise<string | null> {
   if (isGreeting(query.normalized)) return v211HelpText();
-  if (query.intent === "options") return null;
-  const raw = await publicJson<unknown>(env, ["v211:universe:latest"]);
-  const universe = parseV211ResearchUniverse(raw);
-  if (!universe) {
-    if (query.ticker || asksResearch(query.normalized)) {
-      return "目前沒有通過驗證的公開系統量化 universe；請等待下一次本機刷新與簽名同步。";
-    }
-    return null;
-  }
-
+  if (!["general_qa", "ranking", "source_views"].includes(query.intent)) return null;
   const tickers = explicitTickers(query.normalized);
   if (query.ticker && !tickers.includes(query.ticker)) tickers.unshift(query.ticker);
+  const universeRequest = /^(?:研究範圍|研究范围|universe|research universe)$/i.test(query.normalized);
+  // A missing stock universe must not intercept macro, sector or methodology
+  // questions. Their downstream model/evidence/freshness gates still apply.
+  if (!query.ticker && !(asksComparison(query.normalized) && tickers.length >= 2) && !universeRequest) return null;
+  // The sealed R75 snapshot stores the scored research rows as
+  // v21:top20:latest; v211:universe:latest is the pre-R75 key retained for
+  // legacy sealed snapshots only.
+  const current = await publicJson<unknown>(env, ["v21:top20:latest"]);
+  const raw = current ?? await publicJson<unknown>(env, ["v211:universe:latest"]);
+  const universe = parseV211ResearchUniverse(raw);
+  if (!universe) {
+    return "目前沒有通過驗證的公開系統量化 universe；請等待下一次本機刷新與簽名同步。";
+  }
+  // The current key is re-sealed hourly unchanged: each row's own generation time, not the seal, bounds its use.
+  if (current !== null && current !== undefined) {
+    const rowTimes = (Array.isArray(current) ? current : []).map(row => (row as { generated_at?: unknown })?.generated_at);
+    if (!v213ReportAgeFresh(rowTimes.map(value => (typeof value === "string" ? value : null)))) {
+      return "目前的公開系統量化 universe 已超過報告有效時間，等待下一次本機刷新。";
+    }
+  }
   if (asksComparison(query.normalized) && tickers.length >= 2) {
     const left = universe.find((item) => item.ticker === tickers[0]);
     const right = universe.find((item) => item.ticker === tickers[1]);
@@ -176,7 +188,7 @@ export async function v211ResearchAnswer(env: StorageEnv, query: ParsedQuery): P
     return item ? formatResearchDetail(item, universe.length) : null;
   }
 
-  if (/^(?:研究範圍|研究范围|universe|research universe)$/i.test(query.normalized)) {
+  if (universeRequest) {
     const cutoff = universe[19];
     return `本輪公開系統量化 universe 共 ${universe.length} 檔；Top 20 cutoff 為 ${cutoff?.ticker ?? "N/A"} 系統量化分 ${cutoff?.serenity_score ?? "N/A"}/100。候選發現包含 broad screeners + AI-infrastructure thematic + SEC official-name coverage；theme 本身不加分。此量化公式是專案 operationalization，不等於 Serenity 本人公式。`;
   }

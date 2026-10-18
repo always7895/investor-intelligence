@@ -1,0 +1,88 @@
+// Covered-call suggestions: strict validation mirror and LINE rendering. Synthetic values only.
+import { describe, expect, it, beforeEach, vi } from "vitest";
+import { buildCoveredCallMessages, validateCoveredCallCycle } from "../src/v213/covered-call";
+
+import { admitSyntheticTickers, resetAdmissionToReal } from "./synthetic-option-admission";
+import { OptionRightsNotAdmittedError } from "../src/v213/public-options-admission";
+
+// TESTFIX1 / OPTIONS_TEST_POLICY1: per-test sealed-ticker admission only; rights NONE remains the default.
+// Real no-mock caller coverage: v213-public-options-admission-regression.test.ts.
+vi.mock("../src/v213/public-options-admission", async importOriginal => {
+  const real = await importOriginal<typeof import("../src/v213/public-options-admission")>();
+  return { ...real, admitPublicOption: vi.fn(real.admitPublicOption) };
+});
+beforeEach(() => { resetAdmissionToReal(); });
+
+
+function suggestion(role: "HIGH_STRIKE" | "BALANCED", strike: number, bid: number, ask: number, limit: number, spot = 225, dte = 27) {
+  return { role, strike, bid, ask, mid: (bid + ask) / 2, limit_price: limit, premium_per_contract: limit * 100,
+    period_yield: limit / spot, annualized_yield: limit / spot * 365 / dte, upside_to_strike: strike / spot - 1,
+    delta: role === "HIGH_STRIKE" ? 0.17 : 0.33, iv: 0.45, oi: 1200, volume: 300, spread_pct: (ask - bid) / ((bid + ask) / 2) };
+}
+
+function cycle(overrides: Record<string, unknown> = {}) {
+  return { ticker: "NVDA", strategy: "COVERED_CALL", expiry: "2026-10-23", dte: 27, spot: 225, currency: "USD", multiplier: 100,
+    quote_basis: "delayed", timestamp: "2026-09-26T00:00:00Z", source: "Yahoo Finance option chain (unofficial, delayed)",
+    provenance: "https://finance.yahoo.com/quote/NVDA/options", rights_status: "unadmitted_third_party",
+    suggestions: [suggestion("HIGH_STRIKE", 245, 1.5, 1.55, 1.52), suggestion("BALANCED", 235, 3.65, 3.8, 3.72)], ...overrides };
+}
+
+describe("covered-call suggestions", () => {
+  it("TESTFIX1 rights NONE: denies the covered-call renderer without opt-in", () => {
+    const valid = validateCoveredCallCycle(cycle())!;
+    for (const presentation of ["text", "flex"] as const) {
+      let rendered: unknown;
+      expect(() => { rendered = buildCoveredCallMessages(valid, "每月期權", presentation); }).toThrow(OptionRightsNotAdmittedError);
+      expect(JSON.stringify(rendered) ?? "").not.toContain("$245.00");
+    }
+  });
+
+  it("accepts a consistent cycle and refuses inconsistent ones", () => {
+    expect(validateCoveredCallCycle(cycle())).not.toBeNull();
+    const aboveMid = cycle(); (aboveMid.suggestions[0] as any).limit_price = 1.6; expect(validateCoveredCallCycle(aboveMid)).toBeNull();
+    const inTheMoney = cycle({ suggestions: [suggestion("HIGH_STRIKE", 220, 6, 6.2, 6.1)] }); expect(validateCoveredCallCycle(inTheMoney)).toBeNull();
+    const reversed = cycle({ suggestions: [suggestion("HIGH_STRIKE", 235, 3.65, 3.8, 3.72), suggestion("BALANCED", 245, 1.5, 1.55, 1.52)] });
+    expect(validateCoveredCallCycle(reversed)).toBeNull();
+    const badYield = cycle(); (badYield.suggestions[1] as any).annualized_yield = 0.9; expect(validateCoveredCallCycle(badYield)).toBeNull();
+    expect(validateCoveredCallCycle(cycle({ currency: "EUR" }))).toBeNull();
+    for (const delta of [null, undefined, 0.2000000005, 0.2001, 0.9, -0.01, Number.POSITIVE_INFINITY, Number.NaN]) {  // the high strike always needs delta <= 0.20
+      const uncapped = cycle(); (uncapped.suggestions[0] as any).delta = delta;
+      expect(validateCoveredCallCycle(uncapped)).toBeNull();
+    }
+    const atLimit = cycle(); (atLimit.suggestions[0] as any).delta = 0.2;
+    expect(validateCoveredCallCycle(atLimit)).not.toBeNull();
+  });
+
+  it("renders two sell suggestions with limit, premium, yield and assignment reference, no payoff placeholders", () => {
+    admitSyntheticTickers("NVDA"); // Explicit quote subjects for this test only.
+    const valid = validateCoveredCallCycle(cycle())!;
+    const flex = JSON.stringify(buildCoveredCallMessages(valid, "每月期權", "flex"));
+    expect(flex).toContain("建議一：高履約價（不易被賣掉）");
+    expect(flex).toContain("建議二：平衡型（收較多權利金）");
+    expect(flex).toContain("$245.00");
+    expect(flex).toContain("$152.00");
+    expect(flex).toContain("Delta 0.17");
+    expect(flex).not.toContain("UNAVAILABLE");
+    const text = (buildCoveredCallMessages(valid, "每月期權", "text") as { text: string }[])[0]!.text;
+    expect(text).toContain("建議賣出限價 $1.52");
+    expect(text).toContain("本服務不下單");
+  });
+
+  it("labels a delta implied by the quote itself and refuses unknown bases or volatilities", () => {
+    admitSyntheticTickers("NVDA"); // Explicit quote subjects for this test only.
+    const implied = cycle({ currency: "SEK", spot: 32.78, suggestions: [{ ...suggestion("HIGH_STRIKE", 62, 0.2, 0.35, 0.27, 32.78, 20),
+      delta: 0.061, delta_basis: "QUOTE_IMPLIED", iv: 1.5658 }], dte: 20 });
+    const valid = validateCoveredCallCycle(implied)!;
+    expect(valid).not.toBeNull();
+    const flex = JSON.stringify(buildCoveredCallMessages(valid, "每月期權", "flex"));
+    expect(flex).toContain("Delta 0.06（約 6%，模型值，波動率由買賣報價反推 157%）");
+    const text = (buildCoveredCallMessages(valid, "每月期權", "text") as { text: string }[])[0]!.text;
+    expect(text).toContain("Delta 0.06（模型值，波動率由買賣報價反推 157%）");
+    const unknown = structuredClone(implied); (unknown.suggestions as any)[0].delta_basis = "GUESSED";
+    expect(validateCoveredCallCycle(unknown)).toBeNull();
+    const badVol = structuredClone(implied); (badVol.suggestions as any)[0].iv = -1;
+    expect(validateCoveredCallCycle(badVol)).toBeNull();
+    const noDelta = cycle(); (noDelta.suggestions[1] as any).delta = undefined;
+    expect(JSON.stringify(buildCoveredCallMessages(validateCoveredCallCycle(noDelta)!, "每月期權", "flex"))).toContain("報價不足以推算 Delta");
+  });
+});

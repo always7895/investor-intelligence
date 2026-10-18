@@ -1,0 +1,125 @@
+{
+  "schema_version": 1,
+  "status": "PARTIAL",
+  "scope": "RESEARCH_METHOD_REVIEW_NOT_SCREEN_OR_RELEASE_QUALIFICATION",
+  "recorded_at": "2026-09-09T07:06:24.207327+00:00",
+  "source_baseline": "1113a1cc4f596318e416760ed0c2dc0a42a5084f",
+  "pi_research_agent": {
+    "provider": "openai-codex",
+    "model": "gpt-6-astra"
+  },
+  "reference_sha256_before": {
+    "skills/serenity-public-research/SKILL.md": "41b6d1df97986273beea200f9bb36031c47cb88a62b52517c168c0755875a328",
+    "skills/serenity-public-research/references/RESEARCH_METHOD.md": "ad128461919d643a71a88bab5be080aba301c1e9b83a45c7d5790f381ce21bb7",
+    "skills/serenity-public-research/references/CROSS_VALIDATION.md": "43e54b28d47f283fff7927d67c8c90a3e7efc1e77a253f9fbaad4c526d5d2f80"
+  },
+  "reference_sha256_after": {
+    "skills/serenity-public-research/SKILL.md": "0fea4749dfdcf6ab88fe4eff71aacef34e5088b77e14c4064a7470cdd69ebd70",
+    "skills/serenity-public-research/references/RESEARCH_METHOD.md": "32e66a880665143641f35d75e30abd99a8fdd5244775bf921eaebd2745d5cb2c",
+    "skills/serenity-public-research/references/CROSS_VALIDATION.md": "ffb3994f5b8863024c1a77342b7e3f0f81c3a756bfc20da65a6e72472b3e18d1"
+  },
+  "installed_skill_hashes_match": true,
+  "source_tools": {
+    "search_response_id": "mttqt97x0xp2ps",
+    "fetch_response_id": "mttqtiedml4sc9",
+    "original_x": "HTTP403_UNVERIFIED",
+    "leopold_original": "RETRIEVED_HISTORICAL_SCENARIO_NOT_CURRENT_FACT",
+    "axios_search_lead": "HTTP403_UNVERIFIED",
+    "additional_search_response_id": "mttrawlqj5yo82",
+    "official_oembed": {
+      "url": "https://publish.twitter.com/oembed?url=https%3A%2F%2Fx.com%2Faleabitoreddit%2Fstatus%2F2083274448845906083&omit_script=true",
+      "status": "AUTHOR_MATCHED_PARTIAL_EXCERPT",
+      "published_date": "2026-07-31",
+      "exact_passage": "It's more of a 2028 name though, though they have separate ramps in 2027.",
+      "full_text_verified": false,
+      "latest_view_verified": false,
+      "company_facts_independently_verified": false
+    },
+    "second_oembed_lead": "2013947011490615486_HTTP404_UNVERIFIED"
+  },
+  "official_collection": {
+    "status": "OK",
+    "endpoint_count": 7,
+    "observation_count": 14417,
+    "sha256": "ade056871692a7a07ae6442d5c28a515efdb3621c97f52c1f68316dff40c1143",
+    "publication_eligible": false,
+    "sources": [
+      {
+        "record_count": 20,
+        "source_id": "federal_reserve_news",
+        "status": "OK",
+        "warnings": []
+      },
+      {
+        "record_count": 15,
+        "source_id": "ecb_news",
+        "status": "OK",
+        "warnings": []
+      },
+      {
+        "record_count": 25,
+        "source_id": "sec_news",
+        "status": "OK",
+        "warnings": []
+      },
+      {
+        "record_count": 1382,
+        "records_with_close": 1367,
+        "source_id": "twse_equity_eod",
+        "status": "OK",
+        "warnings": []
+      },
+      {
+        "record_count": 10991,
+        "records_with_close": 5375,
+        "source_id": "tpex_equity_eod",
+        "status": "OK",
+        "warnings": []
+      },
+      {
+        "record_count": 1094,
+        "source_id": "twse_issuer_directory",
+        "status": "OK",
+        "warnings": []
+      },
+      {
+        "record_count": 890,
+        "source_id": "tpex_issuer_directory",
+        "status": "OK",
+        "warnings": []
+      }
+    ],
+    "news_freshness": {
+      "federal_reserve_news": {
+        "latest_published_at": "2026-09-04T15:00:00+00:00",
+        "recent_announcements": 1,
+        "stale_announcements": 19,
+        "company_claims_verified": false
+      },
+      "ecb_news": {
+        "latest_published_at": "2026-09-08T15:00:00+00:00",
+        "recent_announcements": 2,
+        "stale_announcements": 13,
+        "company_claims_verified": false
+      },
+      "sec_news": {
+        "latest_published_at": "2026-09-03T20:30:00+00:00",
+        "recent_announcements": 2,
+        "stale_announcements": 23,
+        "company_claims_verified": false
+      }
+    }
+  },
+  "open_findings": [
+    "LEGACY_FIXED_THEMATIC_RESERVES_REQUIRE_CALLER_AND_SELECTOR_REPAIR",
+    "CURRENT_SERENITY_VIEW_UNVERIFIED",
+    "GLOBAL_COMPANY_CLAIM_CROSS_VALIDATION_NOT_QUALIFIED",
+    "SEALED_SUPPLEMENTS_AND_SCHEDULE_RESTORATION_INCOMPLETE"
+  ],
+  "installed_document_backup": "_archive/instruction-sync-20260909T070339Z",
+  "production_worker_or_storage_mutation": false,
+  "real_line_delivery": false,
+  "new_paid_service": false,
+  "reasoning_retained": false,
+  "release_qualified": false
+}

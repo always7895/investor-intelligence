@@ -1,0 +1,331 @@
+from __future__ import annotations
+
+import json
+import sys
+import unittest
+from datetime import date
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+
+import company_deep_report as cdr  # noqa: E402
+
+TODAY = date(2026, 9, 25)
+
+# Explicitly synthetic BIZ1 business input (scripts/company_deep_report.py business_section_text): a fresh English excerpt with
+# its SEC form and filing date. phrase_zh is an unverified Chinese candidate that must never become public text.
+SYNTHETIC_SENTENCE = "Synthetic Devices designs synthetic test chips used only as a unit-test fixture."
+SYNTHETIC_FRESH_BUSINESS = {"source_facts": "FRESH_FETCH_THIS_RUN", "sentence_en": SYNTHETIC_SENTENCE, "form": "10-K",
+                            "filed": "2026-02-01", "url": "https://www.sec.gov/Archives/edgar/data/1/x.htm",
+                            "phrase_zh": "設計合成晶片"}
+
+
+def fact(val, end, frame, start=None, fp="Q2", form="10-Q"):
+    row = {"val": val, "end": end, "frame": frame, "fp": fp, "form": form, "accn": "0000000001-26-000001"}
+    if start:
+        row["start"] = start
+    return row
+
+
+FACTS = {"entityName": "Synthetic Devices Inc.", "facts": {"us-gaap": {
+    "RevenueFromContractWithCustomerExcludingAssessedTax": {"units": {"USD": [
+        fact(1000, "2026-06-30", "CY2026Q2", "2026-04-01"), fact(800, "2025-06-30", "CY2025Q2", "2025-04-01"),
+        fact(1800, "2026-06-30", None, "2026-01-01"),  # year-to-date row without a quarter frame is ignored
+        fact(3200, "2025-12-31", "CY2025", "2025-01-01", fp="FY", form="10-K")]}},
+    "GrossProfit": {"units": {"USD": [fact(600, "2026-06-30", "CY2026Q2", "2026-04-01"), fact(440, "2025-06-30", "CY2025Q2", "2025-04-01")]}},
+    "OperatingIncomeLoss": {"units": {"USD": [fact(300, "2026-06-30", "CY2026Q2", "2026-04-01"), fact(200, "2025-06-30", "CY2025Q2", "2025-04-01")]}},
+    "RevenueRemainingPerformanceObligation": {"units": {"USD": [fact(5000, "2026-06-30", "CY2026Q2I"), fact(2500, "2025-06-30", "CY2025Q2I")]}},
+    "InventoryNet": {"units": {"USD": [fact(110, "2026-06-30", "CY2026Q2I"), fact(100, "2025-06-30", "CY2025Q2I")]}},
+    "CashAndCashEquivalentsAtCarryingValue": {"units": {"USD": [fact(900, "2026-06-30", "CY2026Q2I")]}},
+    "WeightedAverageNumberOfDilutedSharesOutstanding": {"units": {"shares": [
+        fact(106, "2026-06-30", "CY2026Q2", "2026-04-01"), fact(100, "2025-06-30", "CY2025Q2", "2025-04-01")]}},
+    "PaymentsToAcquirePropertyPlantAndEquipment": {"units": {"USD": [fact(320, "2025-12-31", "CY2025", "2025-01-01", fp="FY", form="10-K")]}},
+}}}
+INDUSTRY = {"industry_id": "semis", "name_zh": "合成半導體", "phase": {"phase": "EARLY_VALIDATION"}, "quarter": "2026 Q2",
+            "price": {"yoy_pct": 6.0, "series": [{"series": "PCU000", "month": "2026-08"}]}, "backlog": {"yoy_pct": 30.0},
+            "signals": [{"signal_id": "semis:PRICE", "kind": "PRICE", "as_of": "2026-08-31", "direction": "UP", "value": 6.0,
+                         "evidence_family": "bls_ppi", "source_url": "https://data.bls.gov/timeseries/PCU000"}]}
+ROTATION = {"industries": [INDUSTRY]}
+CONFIG = {"industries": [{"industry_id": "semis", "sic": ["3674"]}]}
+
+
+TIMING = {"status": "DISCLOSED", "form": "10-Q", "filed": "2026-07-29", "report_date": "2026-06-30",
+          "url": "https://www.sec.gov/Archives/edgar/data/1/000000000126000002/q.htm",
+          "schedule": {"m6": 12.98, "m12": 25.96, "m24": 45.18, "premises": ["多段 RPO 依各段金額加權"]}}
+LARGE = {"rpo": 176.28e9, "rpo_as_of": "2026-06-30", "revenue": 11.104e9, "quarter_end": "2026-06-30"}
+
+
+class OrderScenarioTests(unittest.TestCase):
+    def test_coverage_and_floor_only_where_signed_orders_exceed_the_run_rate(self):
+        orders = cdr.order_scenario(LARGE, TIMING)
+        rows = orders["horizons"]
+        self.assertEqual((rows["m6"]["coverage_pct"], rows["m12"]["coverage_pct"], rows["m24"]["coverage_pct"]), (103.0, 103.0, 89.7))
+        self.assertEqual((rows["m6"]["floor_growth_pct"], rows["m24"]["floor_growth_pct"]), (3.0, None))
+        self.assertEqual(rows["m6"]["run_rate"], round(11.104e9 * 2))
+        text = cdr.order_text(orders)
+        self.assertIn("6M 營收與股價成長下限 +3.0%", text)
+        self.assertIn("2Y 已簽約僅支撐 90%，其餘需新訂單", text)
+        self.assertIn("未計新接訂單，屬下限", text)
+        self.assertIn("多段 RPO 依各段金額加權", text)
+        self.assertEqual(cdr.compact_orders(orders)["floor_growth_pct"], {"m6": 3.0, "m12": 3.0, "m24": None})
+
+    def test_undisclosed_mismatched_or_missing_inputs_are_stated_not_estimated(self):
+        self.assertIn("未揭露 RPO 認列時程", cdr.order_text(cdr.order_scenario(LARGE, {"status": "NOT_DISCLOSED", "form": "10-Q", "filed": "2026-08-01"})))
+        shifted = dict(LARGE, rpo_as_of="2026-03-31")
+        self.assertEqual(cdr.order_scenario(shifted, TIMING)["status"], "PERIOD_MISMATCH")
+        self.assertEqual(cdr.order_scenario(dict(LARGE, rpo=None), TIMING)["status"], "INPUTS_MISSING")
+        self.assertEqual(cdr.order_scenario(LARGE, dict(TIMING, report_date="2025-12-31"))["status"], "PERIOD_MISMATCH")
+        self.assertIsNone(cdr.compact_orders(cdr.order_scenario(shifted, TIMING)))
+        only_year = cdr.order_scenario(LARGE, dict(TIMING, schedule={"m6": 30.0, "m12": 60.0, "m24": None, "premises": []}))
+        self.assertIsNone(only_year["horizons"]["m24"])
+        self.assertIn("2Y 未揭露", cdr.order_text(only_year))
+
+    def test_report_section_tile_and_source(self):
+        report = cdr.build_report("SYN", "0000000001", facts=FACTS, submissions={"sic": "3674"}, business=None,
+                                  rotation=ROTATION, rotation_config=CONFIG, today=TODAY, timing=dict(TIMING, schedule={
+                                      "m6": 38.5, "m12": 77.0, "m24": 91.0, "premises": []}))
+        section = next(s["text"] for s in report["sections"] if s["title"] == "訂單實現情境")
+        self.assertIn("1Y 已簽約僅支撐 96%", section)  # 5000 × 77% = 3850 versus 1000 × 4
+        self.assertIn(TIMING["url"], [ref["url"] for ref in report["source_references"]])
+        tile = [row for row in cdr.kpis(report["metrics"], report["orders"]) if row["label"] == "1Y 已簽約覆蓋"]
+        self.assertEqual(tile[0]["value"], 96.2)
+
+
+class FiscalFourthQuarterTests(unittest.TestCase):
+    # Sandisk-like: fiscal Q4 ends 2026-04-03 (frame quarter, 5,950M); the 10-K files the full year, so the fourth
+    # quarter 2026-04-04..2026-07-03 (8,965M) has no frame and the RPO is as of 2026-07-03.
+    SNDK_REVENUE = [
+        fact(5_950_000_000, "2026-04-03", "CY2026Q2", "2026-01-03"),
+        fact(11_283_000_000, "2026-04-03", None, "2025-06-28", fp="Q3", form="10-Q"),
+        fact(20_248_000_000, "2026-07-03", None, "2025-06-28", fp="FY", form="10-K"),
+    ]
+    SNDK_RPO = {"RevenueRemainingPerformanceObligation": {"units": {"USD": [
+        fact(40_000_000_000, "2026-07-03", "CY2026Q3I"), fact(30_000_000_000, "2025-07-04", "CY2025Q3I")]}}}
+    SNDK_TIMING = {"status": "DISCLOSED", "form": "10-K", "filed": "2026-08-10", "report_date": "2026-07-03",
+                   "url": "https://www.sec.gov/Archives/edgar/data/2023554/00002600000001/10k.htm",
+                   "schedule": {"m6": None, "m12": 100.0, "m24": None, "premises": []}}
+
+    def sndk_facts(self, revenue_rows):
+        return {"entityName": "Sandisk Corp.", "facts": {"us-gaap": {
+            "RevenueFromContractWithCustomerExcludingAssessedTax": {"units": {"USD": list(revenue_rows)}},
+            **self.SNDK_RPO}}}
+
+    def test_derived_fourth_quarter_unblocks_the_order_scenario(self):
+        m = cdr.extract_metrics(self.sndk_facts(self.SNDK_REVENUE))
+        self.assertEqual(m["order_revenue"], 8_965_000_000)  # 20,248M FY minus 11,283M nine-month YTD
+        self.assertEqual(m["order_quarter_end"], "2026-07-03")
+        self.assertEqual((m["quarter_end"], m["revenue"]), ("2026-04-03", 5_950_000_000))  # unchanged
+        orders = cdr.order_scenario(m, self.SNDK_TIMING)
+        self.assertEqual(orders["status"], "DISCLOSED")
+        self.assertEqual(orders["horizons"]["m12"]["run_rate"], round(8_965_000_000 * 4))
+        self.assertEqual(orders["horizons"]["m12"]["contracted"], 40_000_000_000)
+        self.assertIsNone(orders["horizons"]["m6"])
+        self.assertIsNone(orders["horizons"]["m24"])
+
+    def test_no_derived_quarter_without_a_matching_year_to_date_row(self):
+        frame, ytd, fy = self.SNDK_REVENUE
+        cases = ([frame, fy],                                   # no YTD row
+                 [frame, dict(ytd, start="2025-07-01"), fy],    # YTD start does not match the annual start
+                 [frame, dict(ytd, val=25_000_000_000), fy])    # annual <= YTD
+        for rows in cases:
+            m = cdr.extract_metrics(self.sndk_facts(rows))
+            self.assertEqual((m["order_revenue"], m["order_quarter_end"]), (5_950_000_000, "2026-04-03"))
+            self.assertEqual(cdr.order_scenario(m, self.SNDK_TIMING)["status"], "PERIOD_MISMATCH")
+
+    def test_frame_quarter_matching_the_rpo_date_is_unchanged(self):
+        m = cdr.extract_metrics(FACTS)  # frame quarter ends 2026-06-30, the same date as the RPO
+        self.assertEqual((m["order_revenue"], m["order_quarter_end"]), (1000, "2026-06-30"))
+        orders = cdr.order_scenario(m, TIMING)
+        self.assertEqual(orders["status"], "DISCLOSED")
+        self.assertEqual(orders["horizons"]["m6"]["run_rate"], round(1000 * 2))
+
+
+class RankingOrdersTests(unittest.TestCase):
+    def test_sealed_ranking_records_carry_order_coverage_only_when_disclosed(self):
+        import build_v213_macro_industry_research as macro
+        compact = cdr.compact_orders(cdr.order_scenario(LARGE, TIMING))
+        original = cdr.load_reports
+        cdr.load_reports = lambda tickers, **kw: {"GEV": {"orders": compact}, "APH": {"orders": None}}
+        try:
+            ranking = macro.potential_ranking({"as_of": "2026-09-25", "quarter": "2026 Q2", "company_ranking": [
+                {"rank": 1, "ticker": "GEV"}, {"rank": 2, "ticker": "APH"}]})
+        finally:
+            cdr.load_reports = original
+        self.assertEqual(ranking["records"][0]["orders"]["coverage_pct"], {"m6": 103.0, "m12": 103.0, "m24": 89.7})
+        self.assertNotIn("orders", ranking["records"][1])
+
+
+class DeepReportTests(unittest.TestCase):
+    def test_metrics_compare_the_same_calendar_quarter(self):
+        m = cdr.extract_metrics(FACTS)
+        self.assertEqual((m["quarter_frame"], m["revenue_yoy_pct"]), ("CY2026Q2", 25.0))
+        self.assertEqual((m["gross_margin_pct"], m["gross_margin_change_pp"]), (60.0, 5.0))
+        self.assertEqual(m["rpo_yoy_pct"], 100.0)
+        self.assertEqual(m["dilution_yoy_pct"], 6.0)
+        self.assertEqual(m["capex_share_of_revenue_pct"], 10.0)
+        self.assertEqual(m["inventory_minus_revenue_pp"], -15.0)
+        self.assertIsNone(m["long_term_debt"])
+
+    def test_report_sections_phase_and_sources(self):
+        # The former phrase_zh-only business fixture predates BIZ1; the positive case now uses the fresh English contract.
+        report = cdr.build_report("SYN", "0000000001", facts=FACTS, submissions={"sic": "3674"},
+                                  business=SYNTHETIC_FRESH_BUSINESS, rotation=ROTATION, rotation_config=CONFIG, today=TODAY)
+        text = {s["title"]: s["text"] for s in report["sections"]}
+        self.assertIn(SYNTHETIC_SENTENCE, text["公司業務"])
+        self.assertIn("SEC EDGAR 10-K 2026-02-01", text["公司業務"])
+        self.assertNotIn("設計合成晶片", text["公司業務"])
+        self.assertIn(SYNTHETIC_FRESH_BUSINESS["url"], [ref["url"] for ref in report["source_references"]])
+        self.assertIn("年增 +25.0%", text["營運動能"])
+        self.assertIn("年增 +100.0%", text["訂單能見度"])
+        self.assertIn("合成半導體", text["所屬產業訊號"])
+        # RPO up (issuer) + industry PPI up (BLS) + margin up (capture) -> commercial validation
+        self.assertEqual(report["phase"]["phase"], "COMMERCIAL_VALIDATION")
+        self.assertTrue(report["phase"]["dilution_overhang"])  # +6% diluted shares
+        self.assertTrue(all(ref["url"].startswith("https://") for ref in report["source_references"]))
+
+    def test_phrase_zh_only_business_is_a_gap_at_the_report_caller(self):
+        unverified = {"phrase_zh": "設計合成晶片", "form": "10-K", "filed": "2026-02-01",
+                      "url": "https://www.sec.gov/Archives/edgar/data/1/x.htm"}
+        report = cdr.build_report("SYN", "0000000001", facts=FACTS, submissions={"sic": "3674"}, business=unverified,
+                                  rotation=ROTATION, rotation_config=CONFIG, today=TODAY)
+        text = {s["title"]: s["text"] for s in report["sections"]}
+        self.assertEqual(text["公司業務"], cdr.BUSINESS_GAP_TEXT)
+        self.assertNotIn("設計合成晶片", text["公司業務"])
+        self.assertNotIn(unverified["url"], [ref["url"] for ref in report["source_references"]])
+
+    def test_missing_facts_are_stated_and_stale_evidence_downgrades(self):
+        empty = {"entityName": "Empty Co", "facts": {"us-gaap": {}}}
+        report = cdr.build_report("EMP", "0000000002", facts=empty, submissions={}, business=None, rotation=None,
+                                  rotation_config=None, today=TODAY)
+        text = {s["title"]: s["text"] for s in report["sections"]}
+        self.assertIn("未申報剩餘履約義務", text["訂單能見度"])
+        self.assertEqual(report["phase"]["phase"], "INSUFFICIENT_EVIDENCE")
+        late = cdr.build_report("SYN", "0000000001", facts=FACTS, submissions={"sic": "3674"}, business=None,
+                                rotation=ROTATION, rotation_config=CONFIG, today=date(2027, 6, 1))
+        self.assertIn(late["phase"]["phase"], ("INSUFFICIENT_EVIDENCE", "DISCOVERY"))
+
+    def test_build_reports_records_failures_without_guessing(self):
+        def fetch(url):
+            if "CIK0000000009" in url:
+                raise OSError("down")
+            return json.dumps(FACTS if "companyfacts" in url else {"sic": "3674"}).encode()
+        document = cdr.build_reports({"SYN": "0000000001", "BAD": "0000000009"}, fetch, today=TODAY,
+                                     rotation=ROTATION, rotation_config=CONFIG)
+        self.assertEqual(list(document["reports"]), ["SYN"])
+        self.assertEqual(document["failures"], {"BAD": "OSError"})
+        self.assertFalse(document["publication_eligible"])
+
+
+class BusinessSectionTextTests(unittest.TestCase):
+    """Focused boundaries of business_section_text as currently documented (BIZ1): fresh source marker, typed metadata, 10-K/20-F
+    form, YYYY-MM-DD filed SHAPE only (no calendar-validity claim), >= 30 characters, no CR/LF, and the WHOLE section within 700
+    UTF-16 code units; anything else is the fixed gap text, never a truncation."""
+
+    def business(self, **overrides):
+        base = {"source_facts": "FRESH_FETCH_THIS_RUN", "sentence_en": SYNTHETIC_SENTENCE, "form": "10-K", "filed": "2026-02-01"}
+        base.update(overrides)
+        return base
+
+    @staticmethod
+    def units(text):
+        return len(text.encode("utf-16-le")) // 2
+
+    def overhead(self):
+        # Prefix units measured from the function's own output, not a hard-coded copy of its format string.
+        return self.units(cdr.business_section_text(self.business())) - self.units(SYNTHETIC_SENTENCE)
+
+    def test_fresh_10k_and_20f_render_form_date_and_english(self):
+        for form in ("10-K", "20-F"):
+            text = cdr.business_section_text(self.business(form=form))
+            self.assertTrue(text.startswith(f"SEC EDGAR {form} 2026-02-01 "), text)
+            self.assertTrue(text.endswith(SYNTHETIC_SENTENCE))
+            self.assertNotEqual(text, cdr.BUSINESS_GAP_TEXT)
+
+    def test_missing_or_wrong_freshness_is_a_gap(self):
+        missing = self.business()
+        del missing["source_facts"]
+        for business in (None, {}, missing, self.business(source_facts=None), self.business(source_facts="CACHED"),
+                         self.business(source_facts="fresh_fetch_this_run")):
+            with self.subTest(business=business):
+                self.assertEqual(cdr.business_section_text(business), cdr.BUSINESS_GAP_TEXT)
+
+    def test_invalid_types_form_and_filed_shape_are_gaps(self):
+        cases = [dict(sentence_en=None), dict(sentence_en=123), dict(sentence_en=[SYNTHETIC_SENTENCE]),
+                 dict(form=None), dict(form=10), dict(filed=None), dict(filed=20260201),
+                 dict(form="10-Q"), dict(form="10-K/A"), dict(form="20-f"), dict(form=""),
+                 dict(filed="2026-2-01"), dict(filed="20260201"), dict(filed="2026-02-01T00:00:00Z"),
+                 dict(filed=" 2026-02-01"), dict(filed="2026-02-01\n"), dict(filed="")]
+        for overrides in cases:
+            with self.subTest(overrides=overrides):
+                self.assertEqual(cdr.business_section_text(self.business(**overrides)), cdr.BUSINESS_GAP_TEXT)
+
+    def test_short_or_multiline_sentences_are_gaps(self):
+        self.assertEqual(cdr.business_section_text(self.business(sentence_en="x" * 29)), cdr.BUSINESS_GAP_TEXT)
+        self.assertNotEqual(cdr.business_section_text(self.business(sentence_en="x" * 30)), cdr.BUSINESS_GAP_TEXT)
+        for broken in (SYNTHETIC_SENTENCE + "\nmore", SYNTHETIC_SENTENCE + "\rmore", "\r\n" + SYNTHETIC_SENTENCE):
+            with self.subTest(broken=broken):
+                self.assertEqual(cdr.business_section_text(self.business(sentence_en=broken)), cdr.BUSINESS_GAP_TEXT)
+
+    def test_whole_section_limit_is_700_utf16_units_including_astral(self):
+        room = 700 - self.overhead()
+        exact = "a" * room
+        text = cdr.business_section_text(self.business(sentence_en=exact))
+        self.assertEqual(self.units(text), 700)
+        self.assertTrue(text.endswith(exact))
+        self.assertEqual(cdr.business_section_text(self.business(sentence_en=exact + "a")), cdr.BUSINESS_GAP_TEXT)
+        astral = "\U0001F600"  # one code point, two UTF-16 units
+        fits = astral + "a" * (room - 2)
+        self.assertEqual(self.units(cdr.business_section_text(self.business(sentence_en=fits))), 700)
+        over = astral + "a" * (room - 1)  # Python length is only `room`, but the whole section is 701 UTF-16 units
+        self.assertEqual(len(over), room)
+        self.assertEqual(cdr.business_section_text(self.business(sentence_en=over)), cdr.BUSINESS_GAP_TEXT)
+
+    def test_lone_surrogate_is_refused_not_rendered(self):
+        broken = SYNTHETIC_SENTENCE + "\ud800"
+        self.assertEqual(cdr.business_section_text(self.business(sentence_en=broken)), cdr.BUSINESS_GAP_TEXT)
+
+
+class SealingTests(unittest.TestCase):
+    def test_load_reports_compacts_for_the_worker_and_rejects_stale(self):
+        import tempfile
+        report = cdr.build_report("SYN", "0000000001", facts=FACTS, submissions={"sic": "3674"}, business=None,
+                                  rotation=ROTATION, rotation_config=CONFIG, today=TODAY)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "reports.json"
+            path.write_text(json.dumps({"as_of": TODAY.isoformat(), "reports": {"SYN": report}}), encoding="utf-8")
+            compact = cdr.load_reports(path, tickers=["SYN", "ABSENT"], today=TODAY)
+            self.assertEqual(list(compact), ["SYN"])
+            self.assertEqual(set(compact["SYN"]), {"ticker", "name", "as_of", "boundary", "phase", "sections", "source_references", "kpis", "orders"})
+            self.assertNotIn("metrics", compact["SYN"])
+            tiles = {row["label"]: row for row in compact["SYN"]["kpis"]}
+            self.assertEqual(tiles["營收年增"]["value"], report["metrics"]["revenue_yoy_pct"])
+            self.assertTrue(tiles["營收年增"]["signed"])
+            self.assertFalse(tiles["毛利率"]["signed"])
+            self.assertTrue(all(len(row["label"]) <= 12 and row["unit"] == "%" for row in compact["SYN"]["kpis"]))
+            self.assertTrue(all(row["value"] is None or isinstance(row["value"], float) for row in compact["SYN"]["kpis"]))
+            self.assertTrue(all(len(s["text"]) <= 700 and "\n" not in s["text"] for s in compact["SYN"]["sections"]))
+            self.assertEqual(cdr.load_reports(path, tickers=["SYN"], today=date(2026, 10, 9)), {})  # older than 7 days
+            self.assertEqual(cdr.load_reports(Path(tmp) / "absent.json", tickers=["SYN"], today=TODAY), {})
+
+    def test_sealed_tickers_and_ticker_map_cache(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            run = Path(tmp) / "20260925T115615Z-a34e5d5b5326"
+            run.mkdir()
+            (run / "summary.json").write_text(json.dumps({"ranked": [[1, "GEV", 96.0], [2, "6501", 93.0]]}), encoding="utf-8")
+            self.assertEqual(cdr.sealed_tickers(Path(tmp)), ["GEV", "6501"])
+            calls = []
+            payload = json.dumps({"fields": ["cik", "name", "ticker", "exchange"], "data": [[1, "Syn", "syn", "NYSE"]]}).encode()
+
+            def fetch(url):
+                calls.append(url)
+                return payload
+            cache = Path(tmp) / "tickers.json"
+            self.assertEqual(cdr.ticker_ciks(fetch, today=TODAY, cache=cache), {"SYN": "0000000001"})
+            cdr.ticker_ciks(fetch, today=date.today(), cache=cache)
+            self.assertEqual(len(calls), 1)  # second call served from the weekly cache
+
+
+if __name__ == "__main__":
+    unittest.main()

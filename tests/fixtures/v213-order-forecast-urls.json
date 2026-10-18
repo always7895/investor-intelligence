@@ -1,0 +1,93 @@
+{
+ "note": "URL acceptance shared by scripts/order_forecast.py _https and cloud/src/v213/order-forecast.ts https (Astra batch 34).",
+ "cases": [
+  {
+   "url": "https://www.sec.gov/x",
+   "accepted": true
+  },
+  {
+   "url": "https://www.sec.gov:443/x",
+   "accepted": true
+  },
+  {
+   "url": "https://Example.COM/x",
+   "accepted": true
+  },
+  {
+   "url": "https://123/x",
+   "accepted": false
+  },
+  {
+   "url": "https://0x7f.1/x",
+   "accepted": false
+  },
+  {
+   "url": "https://1.2.3.4/x",
+   "accepted": false
+  },
+  {
+   "url": "https://ex_ample.com/x",
+   "accepted": false
+  },
+  {
+   "url": "https://www.sec.gov:bad/x",
+   "accepted": false
+  },
+  {
+   "url": "https://:p@www.sec.gov/x",
+   "accepted": false
+  },
+  {
+   "url": "https://u@www.sec.gov/x",
+   "accepted": false
+  },
+  {
+   "url": "https://[bad/x",
+   "accepted": false
+  },
+  {
+   "url": "http://www.sec.gov/x",
+   "accepted": false
+  },
+  {
+   "url": "https://www.sec.gov:0/x",
+   "accepted": false
+  },
+  {
+   "url": "https://sec.İo/x",
+   "accepted": false
+  },
+  {
+   "url": "https://K.com/x",
+   "accepted": false
+  },
+  {
+   "url": "https://www.sec.gov:443\\x",
+   "accepted": false
+  },
+  {
+   "url": "https://www.sec.gov:\\x",
+   "accepted": false
+  },
+  {
+   "url": "https://www.sec.gov:/x",
+   "accepted": false
+  },
+  {
+   "url": "https://www.sec.gov:65536/x",
+   "accepted": false
+  },
+  {
+   "url": "https://www.sec.gov:8443/x?q=1#f",
+   "accepted": true
+  },
+  {
+   "url": "HTTPS://www.sec.gov/x",
+   "accepted": true
+  },
+  {
+   "url": "https://www.sec.gov\\x",
+   "accepted": false
+  }
+ ]
+}

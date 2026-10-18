@@ -1,0 +1,135 @@
+{
+ "000660.KS": {
+  "symbol": "000660.KS",
+  "retrieved_at": "2026-09-28T10:37:02Z",
+  "currency": "KRW",
+  "quarters": [
+   {
+    "period": "0q",
+    "end": "2026-09-30",
+    "avg": 100287043740000,
+    "analysts": 37
+   },
+   {
+    "period": "+1q",
+    "end": "2026-12-31",
+    "avg": 113906353020000,
+    "analysts": 37
+   }
+  ]
+ },
+ "005930.KS": {
+  "symbol": "005930.KS",
+  "retrieved_at": "2026-09-28T10:37:03Z",
+  "currency": "KRW",
+  "quarters": [
+   {
+    "period": "0q",
+    "end": "2026-09-30",
+    "avg": 204646748150000,
+    "analysts": 25
+   },
+   {
+    "period": "+1q",
+    "end": "2026-12-31",
+    "avg": 217123379910000,
+    "analysts": 23
+   }
+  ]
+ },
+ "SIVE.ST": {
+  "symbol": "SIVE.ST",
+  "retrieved_at": "2026-09-28T10:37:03Z",
+  "currency": "SEK",
+  "quarters": [
+   {
+    "period": "0q",
+    "end": "2026-09-30",
+    "avg": 58000000,
+    "analysts": 1
+   },
+   {
+    "period": "+1q",
+    "end": "2026-12-31",
+    "avg": 99000000,
+    "analysts": 1
+   }
+  ]
+ },
+ "POET": {
+  "symbol": "POET",
+  "retrieved_at": "2026-09-28T10:37:03Z",
+  "currency": "USD",
+  "quarters": [
+   {
+    "period": "0q",
+    "end": "2026-09-30",
+    "avg": 968910,
+    "analysts": 1
+   },
+   {
+    "period": "+1q",
+    "end": "2026-12-31",
+    "avg": 2214640,
+    "analysts": 1
+   }
+  ]
+ },
+ "5351.TWO": {
+  "symbol": "5351.TWO",
+  "retrieved_at": "2026-09-28T10:37:04Z",
+  "currency": "TWD",
+  "quarters": [
+   {
+    "period": "0q",
+    "end": "2015-06-30",
+    "avg": 0,
+    "analysts": 0
+   },
+   {
+    "period": "+1q",
+    "end": null,
+    "avg": 0,
+    "analysts": 0
+   }
+  ]
+ },
+ "AXTI": {
+  "symbol": "AXTI",
+  "retrieved_at": "2026-09-28T10:37:04Z",
+  "currency": "USD",
+  "quarters": [
+   {
+    "period": "0q",
+    "end": "2026-09-30",
+    "avg": 66004800,
+    "analysts": 5
+   },
+   {
+    "period": "+1q",
+    "end": "2026-12-31",
+    "avg": 77450800,
+    "analysts": 5
+   }
+  ]
+ },
+ "CRWV": {
+  "symbol": "CRWV",
+  "retrieved_at": "2026-09-28T10:37:04Z",
+  "currency": "USD",
+  "quarters": [
+   {
+    "period": "0q",
+    "end": "2026-09-30",
+    "avg": 3538153620,
+    "analysts": 34
+   },
+   {
+    "period": "+1q",
+    "end": "2026-12-31",
+    "avg": 4695486040,
+    "analysts": 34
+   }
+  ]
+ }
+}

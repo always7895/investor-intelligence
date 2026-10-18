@@ -62,6 +62,36 @@ class ActionsStoragePolicyGateTests(unittest.TestCase):
             findings = gate.audit_workflows(root)
             self.assertTrue(any("retention exceeds 1 day" in item for item in findings))
 
+    def test_rejects_zero_retention_repository_default(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "config").mkdir()
+            (root / ".github" / "workflows").mkdir(parents=True)
+            policy = json.loads(
+                (ROOT / "config" / "actions-storage-policy.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            (root / "config" / "actions-storage-policy.json").write_text(
+                json.dumps(policy), encoding="utf-8"
+            )
+            (root / ".github" / "workflows" / "bad.yml").write_text(
+                "name: release\non: workflow_dispatch\njobs:\n  final-release:\n"
+                "    steps:\n"
+                "      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02\n"
+                "        with:\n"
+                "          name: final-release-evidence\n"
+                "          retention-days: 0\n",
+                encoding="utf-8",
+            )
+            findings = gate.audit_workflows(root)
+            self.assertTrue(
+                any(
+                    "repository default retention" in item.casefold()
+                    for item in findings
+                )
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

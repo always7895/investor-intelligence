@@ -1,0 +1,216 @@
+{
+ "schema": "receipt-id-persisted-form-vectors-v1",
+ "comment": "Frozen vectors of the persisted receipt document id, shared by tests/test_revenue_guidance_receipt_id_safety.py (Python scripts/revenue_guidance.py persisted_document_id) and cloud/test/v213-order-forecast-v3-receipt-ids.test.ts (Worker persistedDocumentId). Raw ids only; the persisted values are computed once with UTF-8 surrogatepass and never regenerated from either implementation. A lone surrogate is written as a JSON escape.",
+ "vectors": [
+  {
+   "name": "clean-url",
+   "raw": "https://investor.nvidia.com/news/press-release-details/2026/showcase/default.aspx",
+   "persisted": "https://investor.nvidia.com/news/press-release-details/2026/showcase/default.aspx",
+   "raw_unsafe": false,
+   "persisted_clean_text": true
+  },
+  {
+   "name": "clean-accession",
+   "raw": "0001045810-26-000073",
+   "persisted": "0001045810-26-000073",
+   "raw_unsafe": false,
+   "persisted_clean_text": true
+  },
+  {
+   "name": "query",
+   "raw": "https://investor.nvidia.com/news/press-release-details/2026/showcase/default.aspx?utm_source=feed",
+   "persisted": "https://investor.nvidia.com/news/press-release-details/2026/showcase/default.aspx#sha256:36437d203d9878b49b62d8524fd39b5e659fdde81b6dfd3f2cc4081d2dc5ede0",
+   "raw_unsafe": true,
+   "persisted_clean_text": true
+  },
+  {
+   "name": "empty-query",
+   "raw": "https://investor.nvidia.com/news/press-release-details/2026/showcase/default.aspx?",
+   "persisted": "https://investor.nvidia.com/news/press-release-details/2026/showcase/default.aspx#sha256:4eba4a80178d130b6d038268c2d6a1e0070f43b12dc7bb7a0595cebe5484b01b",
+   "raw_unsafe": true,
+   "persisted_clean_text": true
+  },
+  {
+   "name": "fragment",
+   "raw": "https://investor.nvidia.com/news/press-release-details/2026/showcase/default.aspx#feed",
+   "persisted": "https://investor.nvidia.com/news/press-release-details/2026/showcase/default.aspx#sha256:f89783d202b6607c21a4989eef1e2dabc1b246b6b4bffbd304aa90e9f342dd56",
+   "raw_unsafe": true,
+   "persisted_clean_text": true
+  },
+  {
+   "name": "userinfo",
+   "raw": "https://reader:x@investor.nvidia.com/news/press-release-details/2026/showcase/default.aspx",
+   "persisted": "investor.nvidia.com/news/press-release-details/2026/showcase/default.aspx#sha256:e280ca0793d9dd026404bfffa80940b2d0824dd5e9827c79feba377b141f715e",
+   "raw_unsafe": true,
+   "persisted_clean_text": true
+  },
+  {
+   "name": "several-at",
+   "raw": "https://a@b@investor.nvidia.com/news/x@y",
+   "persisted": "y#sha256:4c4098c99f44fca4fff571f8e7aee0caf322543881da408929c3ad3f0a079395",
+   "raw_unsafe": true,
+   "persisted_clean_text": true
+  },
+  {
+   "name": "at-after-query",
+   "raw": "https://investor.nvidia.com/news/press-release-details/2026/showcase/default.aspx?next=reader@example.test",
+   "persisted": "https://investor.nvidia.com/news/press-release-details/2026/showcase/default.aspx#sha256:dde01dfb7c1fc11fe8eab92bf0c4e3b4a19af2eb37dec1612221dbaf9e90fc2c",
+   "raw_unsafe": true,
+   "persisted_clean_text": true
+  },
+  {
+   "name": "query-before-fragment",
+   "raw": "https://investor.nvidia.com/news/press-release-details/2026/showcase/default.aspx?a=1#b",
+   "persisted": "https://investor.nvidia.com/news/press-release-details/2026/showcase/default.aspx#sha256:ddc72b8b8d7fb7919f71a116c264f72cea8bab31d4dbe62d1567a138719e8ae5",
+   "raw_unsafe": true,
+   "persisted_clean_text": true
+  },
+  {
+   "name": "fragment-before-query",
+   "raw": "https://investor.nvidia.com/news/press-release-details/2026/showcase/default.aspx#b?a=1",
+   "persisted": "https://investor.nvidia.com/news/press-release-details/2026/showcase/default.aspx#sha256:3ba8086fd99770ac04d4f8f0b8f9c2549f51469cbd02f343a936ad850d46f7ec",
+   "raw_unsafe": true,
+   "persisted_clean_text": true
+  },
+  {
+   "name": "userinfo-query-fragment",
+   "raw": "https://reader:x@investor.nvidia.com/p?t=1#f",
+   "persisted": "investor.nvidia.com/p#sha256:5f682b1d2cf2a640dc414b64e034c481bfd0d69adf221973b46ce5e533dfcc0e",
+   "raw_unsafe": true,
+   "persisted_clean_text": true
+  },
+  {
+   "name": "astral-over-200",
+   "raw": "https://investor.nvidia.com/news/\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00?q=1",
+   "persisted": "https://investor.nvidia.com/news/\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00#sha256:5e6fcf8037f3065fb93d84a30468d9d9ea910f118a7671b75a80e8a81ef69b74",
+   "raw_unsafe": true,
+   "persisted_clean_text": true
+  },
+  {
+   "name": "ascii-over-200",
+   "raw": "https://investor.nvidia.com/news/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa?q=1",
+   "persisted": "https://investor.nvidia.com/news/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#sha256:6f39a0ad5d52e7da4aa5e466444e61f4de12b64efa58c5e4b7ec61391750ab7f",
+   "raw_unsafe": true,
+   "persisted_clean_text": true
+  },
+  {
+   "name": "exactly-200-then-query",
+   "raw": "https://investor.nvidia.com/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb?q=1",
+   "persisted": "https://investor.nvidia.com/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb#sha256:87594fee86eb8236bab33ac01338c9027fa507f46334943ce02d1badb6d811fc",
+   "raw_unsafe": true,
+   "persisted_clean_text": true
+  },
+  {
+   "name": "201-then-query",
+   "raw": "https://investor.nvidia.com/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb?q=1",
+   "persisted": "https://investor.nvidia.com/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb#sha256:5c6a93e348a9f890d675a1c6f859ed3ed253bd36cd14d9c23de691ff2f4af8a6",
+   "raw_unsafe": true,
+   "persisted_clean_text": true
+  },
+  {
+   "name": "non-ascii-text",
+   "raw": "https://investor.nvidia.com/news/press-release-details/2026/showcase/default.aspx/caf\u00e9-\u65b0\u805e?q=\u00e9",
+   "persisted": "https://investor.nvidia.com/news/press-release-details/2026/showcase/default.aspx/caf\u00e9-\u65b0\u805e#sha256:b68e11deb21c9c88c5d32f08fbe2f72bc50364bfdaf389aa665d55a4bff7c416",
+   "raw_unsafe": true,
+   "persisted_clean_text": true
+  },
+  {
+   "name": "already-persisted",
+   "raw": "https://investor.nvidia.com/news/press-release-details/2026/showcase/default.aspx#sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "persisted": "https://investor.nvidia.com/news/press-release-details/2026/showcase/default.aspx#sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "raw_unsafe": false,
+   "persisted_clean_text": true
+  },
+  {
+   "name": "already-persisted-of-query",
+   "raw": "https://investor.nvidia.com/news/press-release-details/2026/showcase/default.aspx#sha256:36437d203d9878b49b62d8524fd39b5e659fdde81b6dfd3f2cc4081d2dc5ede0",
+   "persisted": "https://investor.nvidia.com/news/press-release-details/2026/showcase/default.aspx#sha256:36437d203d9878b49b62d8524fd39b5e659fdde81b6dfd3f2cc4081d2dc5ede0",
+   "raw_unsafe": false,
+   "persisted_clean_text": true
+  },
+  {
+   "name": "near-miss-query-then-persisted-tail",
+   "raw": "https://investor.nvidia.com/news/press-release-details/2026/showcase/default.aspx?x#sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "persisted": "https://investor.nvidia.com/news/press-release-details/2026/showcase/default.aspx#sha256:40fe900b285fcb5f971fc3e60e7cc75148d0de8de7c8fdfeef7ce2de391fae22",
+   "raw_unsafe": true,
+   "persisted_clean_text": true
+  },
+  {
+   "name": "near-miss-userinfo-persisted-tail",
+   "raw": "reader@https://investor.nvidia.com/news/press-release-details/2026/showcase/default.aspx#sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "persisted": "https://investor.nvidia.com/news/press-release-details/2026/showcase/default.aspx#sha256:3036b3ededdbd632848e67357423786a1070b25a70ecb2866df2f4182d72b59f",
+   "raw_unsafe": true,
+   "persisted_clean_text": true
+  },
+  {
+   "name": "near-miss-uppercase-hex",
+   "raw": "https://investor.nvidia.com/news/press-release-details/2026/showcase/default.aspx#sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+   "persisted": "https://investor.nvidia.com/news/press-release-details/2026/showcase/default.aspx#sha256:cb8b7de3ba793f20a081c88cf44651cb83945c31c19be88d301402b9b51b473b",
+   "raw_unsafe": true,
+   "persisted_clean_text": true
+  },
+  {
+   "name": "near-miss-63-hex",
+   "raw": "https://investor.nvidia.com/news/press-release-details/2026/showcase/default.aspx#sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "persisted": "https://investor.nvidia.com/news/press-release-details/2026/showcase/default.aspx#sha256:d3f792b8f6847ee81f5a8746cbbfa30e7900c1c9a96efcf1ee76012b7f3050d4",
+   "raw_unsafe": true,
+   "persisted_clean_text": true
+  },
+  {
+   "name": "near-miss-65-hex",
+   "raw": "https://investor.nvidia.com/news/press-release-details/2026/showcase/default.aspx#sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "persisted": "https://investor.nvidia.com/news/press-release-details/2026/showcase/default.aspx#sha256:01706ab215647a626102c04e4b00a3a3994745b406793a8378982b076112f99b",
+   "raw_unsafe": true,
+   "persisted_clean_text": true
+  },
+  {
+   "name": "near-miss-trailing-fragment",
+   "raw": "https://investor.nvidia.com/news/press-release-details/2026/showcase/default.aspx#sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#x",
+   "persisted": "https://investor.nvidia.com/news/press-release-details/2026/showcase/default.aspx#sha256:94d9bcf21a8a72c3df6755e0ed9387ab90be7e809aca6072b307f16974aad3e5",
+   "raw_unsafe": true,
+   "persisted_clean_text": true
+  },
+  {
+   "name": "near-miss-fragment-before-digest",
+   "raw": "https://investor.nvidia.com/news/press-release-details/2026/showcase/default.aspx#x#sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "persisted": "https://investor.nvidia.com/news/press-release-details/2026/showcase/default.aspx#sha256:c3c711a773ba9ffda20abb871bc445b79389787e93e0ebd931777fd23f2ea1ef",
+   "raw_unsafe": true,
+   "persisted_clean_text": true
+  },
+  {
+   "name": "lone-high-after-query",
+   "raw": "https://investor.nvidia.com/news/press-release-details/2026/showcase/default.aspx?x=\ud800",
+   "persisted": "https://investor.nvidia.com/news/press-release-details/2026/showcase/default.aspx#sha256:b348245d7885e90c93531848b86e39be698433705a1a1ea853f20144939b4b11",
+   "raw_unsafe": true,
+   "persisted_clean_text": true
+  },
+  {
+   "name": "lone-low-after-fragment",
+   "raw": "https://investor.nvidia.com/news/press-release-details/2026/showcase/default.aspx#\udc00",
+   "persisted": "https://investor.nvidia.com/news/press-release-details/2026/showcase/default.aspx#sha256:3c85775cb2adc19b2b66c0051cc68d06ccd6d51b8004ac0ba76671c259be3833",
+   "raw_unsafe": true,
+   "persisted_clean_text": true
+  },
+  {
+   "name": "lone-low-then-high",
+   "raw": "https://investor.nvidia.com/news/press-release-details/2026/showcase/default.aspx?x=\ude00\ud83d",
+   "persisted": "https://investor.nvidia.com/news/press-release-details/2026/showcase/default.aspx#sha256:a6705275a77da059724f17622fd8bd0de91c18e7cfee8b1142417893fa32946f",
+   "raw_unsafe": true,
+   "persisted_clean_text": true
+  },
+  {
+   "name": "pair-then-lone-high",
+   "raw": "https://investor.nvidia.com/news/press-release-details/2026/showcase/default.aspx?x=\ud83d\ude00\ud83d",
+   "persisted": "https://investor.nvidia.com/news/press-release-details/2026/showcase/default.aspx#sha256:f95a88c3d01176e1d6e610f69980af794db5e98aeadd96881cc57b6cf7d152d0",
+   "raw_unsafe": true,
+   "persisted_clean_text": true
+  },
+  {
+   "name": "lone-high-in-shown",
+   "raw": "https://investor.nvidia.com/\ud800/x?y=1",
+   "persisted": "https://investor.nvidia.com/\ud800/x#sha256:7dbb5e93045794a8afdd68bb4b594cec00c43363e63fbcf2b21fd22ae2acdfbb",
+   "raw_unsafe": true,
+   "persisted_clean_text": false
+  }
+ ]
+}
