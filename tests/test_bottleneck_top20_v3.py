@@ -284,6 +284,83 @@ class ScoringTests(unittest.TestCase):
         self.assertEqual(engine.size_score(None), 0.0)
 
 
+class LeadMathV16Tests(unittest.TestCase):
+    NOW = datetime(2026, 10, 18, 11, 0, tzinfo=timezone.utc)
+    FILING = {"period": "2026-06-30"}
+
+    def test_effective_weight_applies_currency_and_age(self):
+        self.assertAlmostEqual(engine.effective_13f_weight({"long_weight": 0.28, "currency_factor": 0.25}, self.FILING, self.NOW)[0], 0.07)
+        self.assertEqual(engine.effective_13f_weight({"long_weight": 0.28}, self.FILING, self.NOW), (0.28, None))
+        self.assertEqual(engine.effective_13f_weight({"long_weight": 0.28}, None, self.NOW), (0.28, None))
+        # 200 days after 2026-06-30 is 2027-01-16: still current; one day later it is stale
+        edge = datetime(2027, 1, 16, 11, tzinfo=timezone.utc)
+        self.assertEqual(engine.effective_13f_weight({"long_weight": 0.2}, self.FILING, edge)[1], None)
+        self.assertEqual(engine.effective_13f_weight({"long_weight": 0.2}, self.FILING, edge + timedelta(days=1)), (0.0, "STALE_13F"))
+
+    def test_concave_13f_part(self):
+        self.assertAlmostEqual(engine.fund_lead_part(0.30), 0.3)
+        self.assertAlmostEqual(engine.fund_lead_part(0.60), 0.3)  # saturates at the same maximum as before
+        self.assertAlmostEqual(engine.fund_lead_part(0.07), 0.3 * (0.07 / 0.30) ** 0.5)
+        self.assertGreater(engine.fund_lead_part(0.28), 0.28)  # far above the old 0.05 saturation value
+        self.assertGreater(engine.fund_lead_part(0.28), engine.fund_lead_part(0.05) * 2)
+        self.assertEqual(engine.fund_lead_part(0.0), 0.0)
+
+    def test_company_lead_uses_raw_max_intensity_and_the_mirror_factor(self):
+        sig = {"intensity": 4.0, "stance": "BULLISH"}
+        full = engine.company_lead(sig, None, 10.0, 1.0, "EXPLOSION")
+        half = engine.company_lead(sig, None, 10.0, 0.5, "EXPLOSION")
+        self.assertAlmostEqual(full, 0.7 * (4.0 / 5.0) * 30)
+        self.assertAlmostEqual(half, 0.7 * (2.0 / 5.0) * 30)
+        self.assertEqual(engine.company_lead(sig, None, 10.0, 0.0, "COMPOUNDER"), 0.0)
+        # the clip is against the raw maximum, never the scaled one
+        self.assertAlmostEqual(engine.company_lead({"intensity": 9.0}, None, 10.0, 1.0, "COMPOUNDER"), 0.7 * 1.0 * 20)
+        bear = engine.company_lead({"intensity": 4.0, "stance": "BEARISH"}, None, 10.0, 1.0, "EXPLOSION")
+        self.assertAlmostEqual(bear, full * 0.3)
+        both = engine.company_lead(sig, {"long_weight": 0.28, "currency_factor": 0.25}, 10.0, 1.0, "COMPOUNDER", self.FILING, self.NOW)
+        self.assertAlmostEqual(both, (0.7 * 0.8 + engine.fund_lead_part(0.07)) * 20)
+        self.assertEqual(engine.company_lead(None, {"long_weight": 0.3}, 1.0, 1.0, "EXPLOSION", self.FILING, self.NOW), 0.3 * 30)
+
+    def test_mirror_levels_with_a_fixed_now(self):
+        def at(hours):
+            return {"latest_post_at": (self.NOW - timedelta(hours=hours)).strftime("%Y-%m-%dT%H:%M:%SZ")}
+        self.assertEqual(engine.serenity_mirror_factor(at(1), self.NOW), 1.0)
+        self.assertEqual(engine.serenity_mirror_factor(at(72), self.NOW), 1.0)
+        self.assertEqual(engine.serenity_mirror_factor(at(72.1), self.NOW), 0.5)
+        self.assertEqual(engine.serenity_mirror_factor(at(14 * 24), self.NOW), 0.5)
+        self.assertEqual(engine.serenity_mirror_factor(at(14 * 24 + 1), self.NOW), 0.0)
+        for source in (None, {}, {"latest_post_at": None}, {"latest_post_at": "garbage"}):
+            self.assertEqual(engine.serenity_mirror_factor(source, self.NOW), 1.0)
+
+    def test_layer_weight_keeps_the_raw_sum_and_adds_the_effective_sum(self):
+        rows = [{"leopold": {"long_weight": 0.2, "currency_factor": 0.25}}, {"leopold": {"long_weight": 0.1}}, {"leopold": None}]
+        raw, eff = engine.layer_fund_weight(rows, self.FILING, self.NOW)
+        self.assertAlmostEqual(raw, 0.3)
+        self.assertAlmostEqual(eff, 0.15)
+        self.assertEqual(engine.layer_fund_weight(rows, {"period": "2026-01-01"}, self.NOW), (raw, 0.0))
+
+    def test_exclusion_rules_schema_2_and_schema_1(self):
+        self.assertTrue(engine.serenity_excluded({"stance": "BEARISH", "bearish": 2, "bullish": 6, "bearish_decayed": 2.0, "bullish_decayed": 1.0}))
+        self.assertFalse(engine.serenity_excluded({"stance": "BEARISH", "bearish": 1, "bullish": 0, "bearish_decayed": 2.0, "bullish_decayed": 0.0}))
+        self.assertFalse(engine.serenity_excluded({"stance": "BEARISH", "bearish": 3, "bullish": 0, "bearish_decayed": 1.0, "bullish_decayed": 0.6}))
+        self.assertFalse(engine.serenity_excluded({"stance": "BULLISH", "bearish": 5, "bearish_decayed": 5.0, "bullish_decayed": 0.0}))
+        # schema 1 rows (or a schema 2 row without the decayed fields) keep the old rule
+        self.assertTrue(engine.serenity_excluded({"stance": "BEARISH", "bearish": 3, "bullish": 0}))
+        self.assertFalse(engine.serenity_excluded({"stance": "BEARISH", "bearish": 2, "bullish": 0}))
+        self.assertFalse(engine.serenity_excluded({"stance": "BEARISH", "bearish": 3, "bullish": 1}))
+        self.assertFalse(engine.serenity_excluded(None))
+
+    def test_chain_weights_come_from_config_with_a_fallback(self):
+        config = json.loads((ROOT / "config" / "bottleneck-layers-v3.json").read_text(encoding="utf-8"))
+        self.assertEqual(engine.chain_weights(config), {1: 1.0, 2: 1.0, 3: 0.85, 4: 0.9, 5: 0.8, 6: 0.6})
+        self.assertTrue(config["chain_weights_rationale"] and config["chain_weights_source"]["url"])
+        self.assertEqual(engine.chain_weights({"layers": []}), engine.DEFAULT_CHAIN_WEIGHTS)
+        changed = engine.chain_weights({"chain_weights": {"4": 0.5, "x": 1, "5": "bad", "6": 9}})
+        self.assertEqual(changed[4], 0.5)
+        self.assertEqual((changed[5], changed[6]), (0.8, 0.6))
+        ranks = {layer["chain_rank"] for layer in config["layers"]}
+        self.assertTrue(ranks <= set(engine.DEFAULT_CHAIN_WEIGHTS))
+
+
 class LeadTests(unittest.TestCase):
     MAPPING = json.loads((ROOT / "config" / "serenity-ticker-map-v1.json").read_text(encoding="utf-8"))
 

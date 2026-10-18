@@ -27,6 +27,18 @@ Leads weight conviction only; every figure users see comes from filings or marke
 
 - COMPOUNDER (market cap ≥ US$10B): layer heat 25, company capture 30, lead conviction 20, market confirmation 15,
   size 10. EXPLOSION (< US$10B, often before volume revenue): 25 / 15 / 30 / 20 / 10.
+- Lead conviction (V16, 2026-10-18; pure functions `company_lead`, `effective_13f_weight`, `fund_lead_part`,
+  `serenity_mirror_factor`, `serenity_excluded` in `scripts/bottleneck_top20_v3.py`): lead = 0.7 x clip(intensity_eff, 0,
+  max_intensity / 2) (x0.3 when the stance is BEARISH) + the 13F part, times the archetype weight (30 EXPLOSION, 20
+  COMPOUNDER). `max_intensity` is the maximum raw Serenity intensity; `intensity_eff` = intensity x the mirror factor m. m
+  is 1.0 while the mirror's newest post (`source.latest_post_at`) is at most 72 hours old or the field is absent, 0.5 up to
+  14 days, else 0. The 13F part is 0.3 x sqrt(min(w_eff, 0.30) / 0.30) (concave, same maximum 0.3 as before; the old 5 percent
+  cap scored a 0.05 and a 0.28 position alike, the new shape ranks 0.28 above 0.05), with w_eff = `long_weight` x `currency_factor` (1.0 when the
+  field is absent; 0.25 after a recorded full-book sale dated after the 13F period, see the Aschenbrenner context
+  reference) x an age factor (0, reason `STALE_13F`, when the filing period is more than 200 days before the build time,
+  else 1). Relay posts (a fund's disclosure re-reported, not Serenity's own view) are removed upstream in
+  `scripts/serenity_signals.py` and never reach the intensity. Schema 1 lead files keep the old behaviour (every new factor
+  1.0, the old exclusion rule); a schema 2 row without a new field falls back the same way.
 - Capture: latest-quarter revenue YoY, acceleration, gross-margin change, remaining performance obligations,
   normalized over the evidence available (fiscal quarters; a fourth quarter is annual minus nine-month YTD).
 - Penalties: share count +5% / +15% a year (SEC shares outstanding; without it, as for dual-class filers and Yahoo-sourced listings, the quarter's diluted weighted-average shares against the same quarter a year earlier, labelled 稀釋加權平均股數; a change outside -50%..+500% is treated as a data error; a 20-F/6-K filer whose cover share counts are dated at fiscal year end rather than the revenue quarter and that has no quarterly diluted tag gets no dilution input, `shares_yoy` stays None and never a forced 0; pairing the fiscal-year-end counts of two years was reviewed and rejected because it breaks the same-quarter alignment rule above, so the remaining gap is external data: quarter-aligned counts from 6-K interim statements, subject to data rights and qualification; `scripts/bottleneck_top20_v3.py` (`DEI_COVER_MAX_LAG_DAYS`, quarter-length diluted rows); decision 2026-10-11, batch next1), repeated financing concerns in Serenity's posts.
@@ -36,13 +48,25 @@ Leads weight conviction only; every figure users see comes from filings or marke
   checked by `scripts/listing_lineage.py`) uses the annualized return from its first regular-way session, never from
   when-issued trading or a parent's/predecessor's shares, and needs at least 365 days. A short history without a verified
   record is excluded as `HISTORY_OR_LINEAGE_UNVERIFIED` (a verified segment under one year: `MARKET_HISTORY_UNDER_1Y`); a
-  missing figure is never read as a negative return. No clearly bearish Serenity stance; at most five names per layer.
+  missing figure is never read as a negative return. No clearly bearish Serenity stance (a schema 2 row: stance BEARISH,
+  decayed bearish weight at least twice the decayed bullish weight and at least two bearish posts; a schema 1 row: BEARISH,
+  three bearish posts and no bullish post); at most five names per layer.
 
 ## Industry ranking (產業爆發榜, Leopold-led)
 
 Explosiveness = position on Leopold's chain (compute → power → datacenter → chips/memory → network/optics →
-materials) 35 + the fund's 13F weight in the layer 25 + median revenue acceleration 20 + SEC filing mentions of the
-layer's terms (last 30 days versus the prior 60) 10 + Serenity heat 10.
+materials) 35 x the chain weight + 25 x min(1, the fund's effective 13F weight in the layer / 0.4) + median revenue
+acceleration 20 + SEC filing mentions of the layer's terms (last 30 days versus the prior 60) 10 + Serenity heat 5 per
+unit of (sum of intensity_eff / strongest raw intensity), at most 10 (reached at 2 units). The chain weights are read from
+`chain_weights` in `config/bottleneck-layers-v3.json` (1.0, 1.0, 0.85, 0.9, 0.8, 0.6 for ranks 1 to 6, with the essay
+rationale: power is the binding infrastructure constraint, CoWoS packaging and HBM the binding chip constraint, so
+chips/memory sit above datacenter); the same constants apply when the key is absent. The effective weight is the sum of
+the layer's w_eff (see Lead conviction); the sealed `fund_13f_weight` stays the raw sum and `fund_13f_weight_effective`
+(not sealed) carries the one used in the heat and explosiveness clips.
+
+Deferred (DEFERRED_WITH_REASON, 2026-10-18): D4, dynamic admission of lead-only names into the universe, needs the capture
+host and a host contract (and under the currency rule would admit no 13F name); D5, non-SEC fund disclosures (for example
+a Japanese filing) are recorded as a dated note only and Serenity's own portfolio-state posts carry no signal.
 
 ## LINE
 

@@ -964,13 +964,123 @@ def long_term_gate(market: dict[str, Any] | None) -> tuple[float | None, list[st
     return long_term, (["LONG_TERM_RETURN_NOT_POSITIVE"] if long_term <= 0 else [])
 
 
+# ---- V16 lead math (pure functions; every new input is optional and falls back to the pre-V16 behaviour) ----
+DEFAULT_CHAIN_WEIGHTS = {1: 1.0, 2: 1.0, 3: 0.85, 4: 0.9, 5: 0.8, 6: 0.6}
+CHAIN_WEIGHT_FALLBACK = 0.6
+FUND_WEIGHT_CAP = 0.30          # long_weight at which the 13F part of the company lead saturates
+FUND_LEAD_MAX = 0.3             # maximum 13F part of the company lead (unchanged since v3)
+STALE_13F_DAYS = 200
+MIRROR_FRESH_HOURS = 72
+MIRROR_STALE_DAYS = 14
+
+
+def chain_weights(layers_doc: Any) -> dict[int, float]:
+    """Chain-rank weights from config `chain_weights`; any missing or malformed key keeps the built-in constant."""
+    out = dict(DEFAULT_CHAIN_WEIGHTS)
+    raw = layers_doc.get("chain_weights") if isinstance(layers_doc, dict) else None
+    if isinstance(raw, dict):
+        for key, value in raw.items():
+            try:
+                rank = int(key)
+            except (TypeError, ValueError):
+                continue
+            number = _finite(value)
+            if rank in out and number is not None and 0.0 <= number <= 1.0:
+                out[rank] = number
+    return out
+
+
+def _parse_day(value: Any) -> date | None:
+    try:
+        return date.fromisoformat(str(value)[:10])
+    except (TypeError, ValueError):
+        return None
+
+
+def effective_13f_weight(pos: dict[str, Any] | None, filing: dict[str, Any] | None, now: datetime) -> tuple[float, str | None]:
+    """w_eff = long_weight * currency_factor (1.0 when absent) * age factor; the age factor is 0 (STALE_13F) when the
+    filing period is more than STALE_13F_DAYS before the build time, else 1. Returns (w_eff, reason)."""
+    if not pos:
+        return 0.0, None
+    weight = _finite(pos.get("long_weight")) or 0.0
+    factor = _finite(pos.get("currency_factor"))
+    factor = 1.0 if factor is None else clip(factor, 0.0, 1.0)
+    period = _parse_day((filing or {}).get("period"))
+    if period is not None and (now.date() - period).days > STALE_13F_DAYS:
+        return 0.0, "STALE_13F"
+    return max(0.0, weight) * factor, None
+
+
+def fund_lead_part(w_eff: float) -> float:
+    """Concave 13F part of the company lead: 0.3 * sqrt(min(w_eff, 0.30) / 0.30), at most 0.3."""
+    return FUND_LEAD_MAX * math.sqrt(clip(w_eff, 0.0, FUND_WEIGHT_CAP))  # clip() already divides by the cap
+
+
+def serenity_mirror_factor(source: dict[str, Any] | None, now: datetime) -> float:
+    """1.0 while the mirror's newest post is at most 72 h old (or the field is absent or unreadable), 0.5 up to 14 days, else 0."""
+    raw = (source or {}).get("latest_post_at")
+    if not raw:
+        return 1.0
+    try:
+        latest = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+        if latest.tzinfo is None:
+            latest = latest.replace(tzinfo=timezone.utc)
+    except ValueError:
+        return 1.0
+    age = now - latest
+    if age <= timedelta(hours=MIRROR_FRESH_HOURS):
+        return 1.0
+    return 0.5 if age <= timedelta(days=MIRROR_STALE_DAYS) else 0.0
+
+
+def serenity_intensity_eff(sig: dict[str, Any] | None, mirror_factor: float) -> float:
+    return (_finite((sig or {}).get("intensity")) or 0.0) * mirror_factor
+
+
+def serenity_excluded(sig: dict[str, Any] | None) -> bool:
+    """Hard filter. Rows carrying bullish_decayed and bearish_decayed (schema 2): BEARISH, decayed bearish at least twice the
+    decayed bullish and at least two bearish posts. Other rows: the old rule (BEARISH, three bearish posts, no bullish)."""
+    if not sig or sig.get("stance") != "BEARISH":
+        return False
+    bull, bear = _finite(sig.get("bullish_decayed")), _finite(sig.get("bearish_decayed"))
+    if bull is not None and bear is not None:
+        return bear >= 2 * bull and (sig.get("bearish") or 0) >= 2
+    return (sig.get("bearish") or 0) >= 3 and (sig.get("bullish") or 0) == 0
+
+
+def company_lead(sig: dict[str, Any] | None, pos: dict[str, Any] | None, max_intensity: float, mirror_factor: float,
+                 archetype: str, filing: dict[str, Any] | None = None, now: datetime | None = None) -> float:
+    """Lead conviction points: 0.7 * clip(intensity_eff, 0, max_intensity / 2) (clip scales to 0..1) (x0.3 when BEARISH) + the concave 13F part,
+    times the archetype weight (EXPLOSION 30, COMPOUNDER 20). max_intensity is the raw maximum over all rows."""
+    weight = 30 if archetype == "EXPLOSION" else 20
+    lead = 0.7 * clip(serenity_intensity_eff(sig, mirror_factor), 0.0, max_intensity * 0.5) if sig else 0.0
+    if sig and sig.get("stance") == "BEARISH":
+        lead *= 0.3
+    if pos:
+        lead += fund_lead_part(effective_13f_weight(pos, filing, now or utc_now())[0])
+    return lead * weight
+
+
+def layer_fund_weight(rows: Iterable[dict[str, Any]], filing: dict[str, Any] | None, now: datetime) -> tuple[float, float]:
+    """(raw, effective) sums of the 13F weights of a layer's companies; raw stays the sealed fund_13f_weight."""
+    raw = eff = 0.0
+    for row in rows:
+        pos = row.get("leopold")
+        if pos:
+            raw += _finite(pos.get("long_weight")) or 0.0
+            eff += effective_13f_weight(pos, filing, now)[0]
+    return raw, eff
+
+
 def build(fetch: Callable[[str], bytes] | None, now: datetime, with_news: bool = True, *, captured=None,
           cision_outputs=None) -> dict[str, Any]:
     if captured is not None:
         from publish_sealed_snapshot import CapturedPublicationInputs
         if type(captured) is not CapturedPublicationInputs:
             raise ValueError("RANKING_CAPTURE_OPERAND")
-    layers = load_json(captured.operand("layers") if captured else LAYERS)["layers"]
+    layers_doc = load_json(captured.operand("layers") if captured else LAYERS)
+    layers = layers_doc["layers"]
+    chain_weight_by = chain_weights(layers_doc)
     source_serenity = captured.operand("serenity") if captured else SERENITY
     source_leopold = captured.operand("leopold") if captured else LEOPOLD
     serenity = load_json(source_serenity) if source_serenity.exists() else {"signals": [], "source": None}
@@ -1021,7 +1131,9 @@ def build(fetch: Callable[[str], bytes] | None, now: datetime, with_news: bool =
                              "fundamentals": fund, "market": market, "market_cap_usd": cap * rate if cap and rate else None,
                              "serenity": serenity_by.get(symbol), "leopold": leopold_by.get(symbol)}
     # Layer heat and the Leopold-led industry ranking.
-    max_intensity = max((row["intensity"] for row in serenity["signals"]), default=1.0) or 1.0
+    max_intensity = max((row["intensity"] for row in serenity["signals"]), default=1.0) or 1.0  # raw, not mirror-scaled
+    mirror = serenity_mirror_factor(serenity.get("source"), now)
+    filing = leopold.get("filing")
     industry = []
     for layer in layers:
         rows = [company for company in companies.values() if company["layer"] == layer["id"]]
@@ -1029,12 +1141,12 @@ def build(fetch: Callable[[str], bytes] | None, now: datetime, with_news: bool =
         accels = [c["fundamentals"]["revenue_yoy"] - c["fundamentals"]["revenue_yoy_prev"] for c in rows
                   if c["fundamentals"] and c["fundamentals"].get("revenue_yoy") is not None and c["fundamentals"].get("revenue_yoy_prev") is not None]
         six = [c["market"]["ret_6m"] for c in rows if c["market"] and c["market"].get("ret_6m") is not None]
-        fund_weight = sum((c["leopold"] or {}).get("long_weight", 0) for c in rows)
-        serenity_heat = sum((c["serenity"] or {}).get("intensity", 0) for c in rows)
+        fund_weight_raw, fund_weight = layer_fund_weight(rows, filing, now)
+        serenity_heat = sum(serenity_intensity_eff(c["serenity"], mirror) for c in rows)
         news = news_momentum(layer["filing_terms"], fetch, now.date()) if with_news else None
         median_yoy = statistics.median(yoys) if yoys else None
         median_accel = statistics.median(accels) if accels else None
-        chain_weight = {1: 1.0, 2: 1.0, 3: 0.85, 4: 0.9, 5: 0.8, 6: 0.6}.get(layer["chain_rank"], 0.6)
+        chain_weight = chain_weight_by.get(layer["chain_rank"], CHAIN_WEIGHT_FALLBACK)
         heat = (10 * clip(median_yoy, 0.0, 0.8) + 5 * clip(median_accel, -0.15, 0.25)
                 + 5 * clip((news or {}).get("ratio"), 0.8, 1.6) + 5 * clip(fund_weight, 0.0, 0.3))
         leopold_score = (35 * chain_weight + 25 * clip(fund_weight, 0.0, 0.4) + 20 * clip(median_accel, -0.15, 0.25)
@@ -1043,7 +1155,8 @@ def build(fetch: Callable[[str], bytes] | None, now: datetime, with_news: bool =
                          "leopold_constraint": layer["leopold_constraint"], "leopold_constraint_zh": layer.get("leopold_constraint_zh"),
                          "heat": round(heat, 2), "explosiveness": round(leopold_score, 1),
                          "companies": len(rows), "median_revenue_yoy": median_yoy, "median_acceleration": median_accel,
-                         "median_return_6m": statistics.median(six) if six else None, "fund_13f_weight": round(fund_weight, 4),
+                         "median_return_6m": statistics.median(six) if six else None, "fund_13f_weight": round(fund_weight_raw, 4),
+                         "fund_13f_weight_effective": round(fund_weight, 4),
                          "serenity_heat": round(serenity_heat, 2), "news": news})
     heat_by = {row["id"]: row["heat"] for row in industry}
     industry.sort(key=lambda row: -row["explosiveness"])
@@ -1054,7 +1167,7 @@ def build(fetch: Callable[[str], bytes] | None, now: datetime, with_news: bool =
     for company in companies.values():
         market, fund, sig, pos = company["market"], company["fundamentals"], company["serenity"], company["leopold"]
         long_term, reasons = long_term_gate(market)
-        if sig and sig.get("stance") == "BEARISH" and sig.get("bearish", 0) >= 3 and sig.get("bullish", 0) == 0:
+        if serenity_excluded(sig):
             reasons.append("SERENITY_BEARISH")
         if reasons:
             excluded.append({"symbol": company["symbol"], "reasons": reasons})
@@ -1063,11 +1176,7 @@ def build(fetch: Callable[[str], bytes] | None, now: datetime, with_news: bool =
         archetype = "EXPLOSION" if company["market_cap_usd"] and company["market_cap_usd"] < EXPLOSION_CAP_USD else "COMPOUNDER"
         weights = {"capture": 15, "lead": 30, "confirm": 20} if archetype == "EXPLOSION" else {"capture": 30, "lead": 20, "confirm": 15}
         capture = capture * weights["capture"] / 30
-        lead = 0.7 * clip((sig or {}).get("intensity"), 0.0, max_intensity * 0.5) if sig else 0.0
-        if sig and sig.get("stance") == "BEARISH":
-            lead *= 0.3
-        lead += 0.3 * clip((pos or {}).get("long_weight"), 0.0, 0.05) if pos else 0.0
-        lead *= weights["lead"]
+        lead = company_lead(sig, pos, max_intensity, mirror, archetype, filing, now)
         confirm = weights["confirm"] * (0.55 * clip(market.get("ret_6m"), -0.2, 1.0) + 0.45 * clip(market.get("ret_1y"), 0.0, 2.0))
         size = size_score(company["market_cap_usd"])
         penalty = 0.0

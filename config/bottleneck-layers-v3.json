@@ -6,6 +6,13 @@
   "url": "https://situational-awareness.ai/racing-to-the-trillion-dollar-cluster/",
   "date": "2024-06"
  },
+ "chain_weights": {"1": 1.0, "2": 1.0, "3": 0.85, "4": 0.9, "5": 0.8, "6": 0.6},
+ "chain_weights_rationale": "Weight of a layer's chain_rank in the industry explosiveness score (35 points x weight). Rank 1 compute and rank 2 power stay at 1.0: the essay names power the binding infrastructure constraint of the trillion-dollar cluster. Rank 4 chips/memory (0.9) sits above rank 3 datacenter (0.85) because CoWoS packaging and HBM are the binding chip constraint. Rank 5 network/optics 0.8; rank 6 materials 0.6. Decision 2026-10-18 (V16, Xor keep_document 0.822): the pre-V16 constants kept, now documented here and read from config; the same constants apply when this key is absent.",
+ "chain_weights_source": {
+  "title": "Situational Awareness: The Decade Ahead — Racing to the Trillion-Dollar Cluster",
+  "url": "https://situational-awareness.ai/racing-to-the-trillion-dollar-cluster/",
+  "date": "2024-06"
+ },
  "layers": [
   {
    "id": "memory",
