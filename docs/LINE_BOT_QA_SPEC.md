@@ -25,7 +25,7 @@ FREE_ONLY_MODE=FAIL_CLOSED
 - `FREE_ONLY_MODE=true`.
 - No paid model, search, news, quote or market-data dependency.
 - No automatic plan upgrade, payment activation or paid fallback.
-- General generation uses only the authenticated private local Qwen/llama.cpp route.
+- General generation uses only the authenticated private local model route (the served model is auto-detected).
 - Current claims require timestamped reviewed public data.
 - Scheduled and delayed LINE push are disabled.
 - No order, transfer, funding, subscription or brokerage mutation exists.
@@ -39,7 +39,7 @@ LINE direct user webhook
   -> event freshness and hashed deduplication
   -> disabled/HMAC-allowlist admission
   -> public-only intent router
-  -> deterministic public tool or authenticated local Qwen
+  -> deterministic public tool or authenticated local model
   -> LINE reply or controlled unavailable response
 ```
 
@@ -77,7 +77,7 @@ Supported public intents include:
 - source views with author/date/URL;
 - public option BID/ASK observations;
 - data freshness and static safety posture;
-- general non-personal knowledge via local Qwen.
+- general non-personal knowledge via the local model.
 
 No intent may expose or use:
 

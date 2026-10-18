@@ -35,7 +35,7 @@ The runtime policy authority is `cost.mode=free_only_fail_closed`.
 
 ## Local inference only
 
-General generative Q&A uses the operator's private local Qwen/llama.cpp service through an authenticated, exact-host-allowlisted HTTPS route.
+General generative Q&A uses the operator's private local model service through an authenticated, exact-host-allowlisted HTTPS route.
 
 - Per-request software fee is zero.
 - No public model endpoint is permitted.

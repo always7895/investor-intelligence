@@ -24,7 +24,7 @@ The bot accepts ordinary Traditional Chinese or English questions and routes the
 
 1. deterministic public research/report/source tools;
 2. a deterministic public-options tool;
-3. an authenticated, exact-host-allowlisted local Qwen/llama.cpp route that receives public context only, plus the requesting tenant's own opt-in conversation memory only when a future reviewed release makes memory available;
+3. an authenticated, exact-host-allowlisted local model route (the served model is auto-detected) that receives public context only, plus the requesting tenant's own opt-in conversation memory only when a future reviewed release makes memory available;
 4. a controlled unavailable/degraded response.
 
 “Broad Q&A” never means omniscience, fabricated current data, unrestricted tool execution, access to owner data, access to another user, or paid fallback.
@@ -45,7 +45,7 @@ cloud/src/core.ts       public intent parsing and privacy-safe formatting
 cloud/src/security.ts   LINE signature checks, HMAC tenant IDs and encryption helpers
 cloud/src/storage.ts    physically separated public, tenant-private and security KV access
 cloud/src/line.ts       reply-only LINE API, hashed dedupe and pseudonymous rate limits
-cloud/src/qa.ts         deterministic public tools and authenticated local-Qwen routing
+cloud/src/qa.ts         deterministic public tools and authenticated local-model routing
 cloud/src/worker.ts     webhook and minimal health routes
 ```
 
@@ -152,7 +152,7 @@ Legacy owner/watchlist report filenames are never fallback inputs.
 
 ## IBKR separation
 
-A deliberately enabled local IBKR Client Portal workflow may exist only for separate local read-only analysis. LINE, the Worker, public KV and local-Qwen context cannot call, receive or inherit that data. Derived coverage remains broker-derived and cannot be exported into the shared bot.
+A deliberately enabled local IBKR Client Portal workflow may exist only for separate local read-only analysis. LINE, the Worker, public KV and local-model context cannot call, receive or inherit that data. Derived coverage remains broker-derived and cannot be exported into the shared bot.
 
 ## Required acceptance
 

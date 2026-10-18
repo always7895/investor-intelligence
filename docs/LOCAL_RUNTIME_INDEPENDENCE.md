@@ -58,8 +58,8 @@ required JSON evidence pass; unknown/failed JSON cannot appear healthy.
 `capability_requirements.min_decision_confidence = 0.70` is a **newly declared
 backend routing minimum** — NOT a pre-existing value and NOT a source/scoring/
 admission threshold. Strict finite numeric 0..1 (not bool/string); missing or
-invalid fails closed. A decider confidence below 0.70 denies locally (never
-Astra, never cloud). The client also strictly validates the probability vector
+invalid fails closed. A decider confidence below 0.70 denies locally (never cloud).
+The client also strictly validates the probability vector
 (empty / wrong keys / bool / non-numeric / NaN / inf / out-of-range /
 unnormalized / choice-confidence mismatch), tolerating legitimate 4dp
 rounding. In the shipped retired configuration the decider is never consulted,
@@ -70,7 +70,7 @@ configured.
 
 Malformed, offline, low-confidence, or NOT_SUFFICIENT decisions return an
 explicit **503 `REASONER_DECISION_DENIED`** (or the capability error) with
-**zero reasoner product generation** — degraded/fail-closed, no Astra, no cloud
+**zero reasoner product generation** — degraded/fail-closed, no cloud
 fallback, no healthy default. In the shipped retired configuration only the
 failed-source-qualification denial and the capability errors can fire; the
 decider denial paths above are legacy (non-retired configuration only). The
@@ -91,9 +91,9 @@ business rewrite.
 
 ## Development-only tooling
 
-Pi / Herdr / Astra / bootstrap are **DEVELOPMENT_ONLY** orchestration — they are
+Agent, pane and bootstrap tooling is **DEVELOPMENT_ONLY** orchestration; it is
 NOT runtime prerequisites. Startup (`run_v213_local_llm_bridge_core*.ps1`)
-requires no Pi/Herdr/Astra/cloud-AI fallback.
+requires no such tooling and no cloud-AI fallback.
 
 ## Evidence (linked, not repeated)
 

@@ -111,7 +111,7 @@ The public option builder uses an owner-independent symbol catalog and a public 
 
 The KV publisher fails the entire promotion when it sees portfolio, position, account, quantity, coverage, cost/P&L, IBKR or brokerage lineage. It does not silently redact and continue.
 
-Public option chains are deterministic-tool-only. They are read, ticker-filtered, freshness-checked and formatted only by the dedicated option intent. They are never inserted into an arbitrary local-Qwen prompt merely because a general question contains a ticker. This prevents stale or unnecessarily broad chain data from becoming free-form model context.
+Public option chains are deterministic-tool-only. They are read, ticker-filtered, freshness-checked and formatted only by the dedicated option intent. They are never inserted into an arbitrary local-model prompt merely because a general question contains a ticker. This prevents stale or unnecessarily broad chain data from becoming free-form model context.
 
 ## Tenant data and sensitive input
 
@@ -141,7 +141,7 @@ Local-model egress is exact-host allowlisted. A configured `LOCAL_LLM_BASE_URL` 
 - redirects are rejected;
 - request caching is disabled.
 
-This prevents a configuration typo or compromised prompt path from forwarding tenant conversation data to an arbitrary remote endpoint. The intended deployment is an authenticated private tunnel to the owner's local llama.cpp/Qwen service, never a general cloud-model URL.
+This prevents a configuration typo or compromised prompt path from forwarding tenant conversation data to an arbitrary remote endpoint. The intended deployment is an authenticated private tunnel to the owner's local model service, never a general cloud-model URL.
 
 ## Public health surface
 
@@ -182,7 +182,7 @@ A release is rejected unless all of the following pass against the exact release
 10. raw LINE ID and event-ID non-persistence tests;
 11. cross-tenant encryption and deletion tests;
 12. arbitrary-model-context test proving legacy private KV records and public option chains are ignored;
-13. sensitive-disclosure test proving first-person financial data is neither sent to Qwen nor saved to memory;
+13. sensitive-disclosure test proving first-person financial data is neither sent to the local model nor saved to memory;
 14. local-model route tests for exact host allowlisting, required authentication, IP/port rejection and redirect denial;
 15. Worker test proving `/internal/private-sync` returns `404`;
 16. minimal public-health test proving no snapshot, pipeline or model-route metadata is exposed;

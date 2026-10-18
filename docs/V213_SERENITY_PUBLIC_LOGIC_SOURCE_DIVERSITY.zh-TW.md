@@ -77,7 +77,7 @@ Stooq／Nasdaq 暫時故障時，可使用不超過 72 小時的本機公開資�
 
 - 標準：`config/v213-serenity-public-logic-policy.json`
 - 執行 gate：`scripts/v213_source_independence_gate.py`
-- 最新 sidecar：`data/cache/v213_source_independence_latest.json`
+- 最新 sidecar（執行期路徑）：`data/cache/v213_source_independence_latest.json`
 - 公開 observation cache：`data/cache/v213_source_observation_cache.json`
 - 本地模型 gateway：`scripts/v213_local_llm_gateway.py`
 

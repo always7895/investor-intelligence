@@ -14,7 +14,7 @@ Windows CI：33896931576 / PASS
 ZIP SHA-256：8b29e6b7ad6237042824e4c6af3a9b9cc16ea8a9e716b51fdfa8aca2c7da56ec
 Production Worker：27121388-1e6e-445a-b45e-104a867ca70d / 100%
 Stable entrypoint：https://investor-intelligence-v21-owner-line.<account>.workers.dev（<account> 是操作者的 workers.dev 帳號標籤，不寫入 repository）
-Exact model：qwen38-q6
+Exact model (at the 2026-09 release)：qwen38-q6
 Custom domain required：false
 P0/P1/P2：0/0/0
 ```
@@ -37,7 +37,7 @@ v2.0.0 當時採 reproducible、無 Git history 的私人直接交付，並強�
 | 項目 | v2.0.0 歷史狀態 | v2.1.3 R75 目前狀態 |
 |---|---|---|
 | Production Worker | 未部署 | `27121388-1e6e-445a-b45e-104a867ca70d` 100% active |
-| Local model route | 無正式 route | FREE_RELAY + exact `qwen38-q6` |
+| Local model route | 無正式 route | FREE_RELAY（發布當時 exact `qwen38-q6`；現為自動偵測） |
 | Stable entrypoint | 無正式 Production authority | 既有 `workers.dev` |
 | Custom domain | 不適用 | 不需要 |
 | Reconnect | 無 | at-logon task + heartbeat |

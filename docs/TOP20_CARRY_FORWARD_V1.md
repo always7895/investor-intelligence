@@ -106,5 +106,5 @@ either way. Every Top20 card carries the admission disclosure (研究候選 LIMI
   plus macro within about an hour. `rollback_sealed_snapshot.py` targets tracked runs only, not hourly runs.
 - Runtime: `scripts/v213_runtime_install_coordinator.ps1 -RuntimeRoot <rt> -RestorePrevious <transaction>` swaps
   the previous install back and re-attests it.
-- Owner pushes only: deploy `V21_SCHEDULED_PUSH_ENABLED="false"` from `cloud/wrangler.v213.production.local.toml`
+- Owner pushes only: deploy `V21_SCHEDULED_PUSH_ENABLED="false"` from the local, untracked `cloud/wrangler.v213.production.local.toml`
   (authorization required).

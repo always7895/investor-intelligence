@@ -1,6 +1,6 @@
 # task0-phase1d fixture — sealed snapshot (byte-identical copy)
 
-Source: local acceptance run `state/v213-snapshots/20260917T092410Z-d9f86bda2053/`
+Source: local acceptance run (runtime, gitignored) `state/v213-snapshots/20260917T092410Z-d9f86bda2053/`
 (accepted 2026-09-17, ChatGPT Pro signed; run bound to pointer last).
 
 - `objects.json` — 15 sealed object bodies (core 13 + `v213:macro-industry:latest` + seal manifest), copied byte-identical.

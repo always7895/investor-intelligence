@@ -68,7 +68,7 @@ The shared bot stores no raw push destination and has no push sender. Raw LINE I
 
 ## Local model egress
 
-The local Qwen/llama.cpp route must be:
+The local model route must be:
 
 - HTTPS;
 - exact-host allowlisted;

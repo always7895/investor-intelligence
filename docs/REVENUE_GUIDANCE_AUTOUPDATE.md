@@ -188,7 +188,7 @@ the in-memory `auto_update` evidence (B3 defines its sealed schema). Automatic m
   for discovery only (still `READMITTED_AUTO`, never usable before the updater re-verifies); if it no longer
   reproduces, or the issuer's history is unreadable, the structurally valid baseline record is used as a conservative
   `CURATED_RESCAN` reference. The checker therefore keeps checking waiting, blocked and suspended issuers
-  (`revenue_guidance_release_check.py --state-root`, default `data/cache/revenue_guidance_autoupdate`); the updater
+  (`revenue_guidance_release_check.py --state-root`, default runtime path `data/cache/revenue_guidance_autoupdate`); the updater
   first folds every material item listed for the entry snapshot's discovery reference into the durable detection set
   (before re-verification can switch the reference or anything is fetched).
 - **Integrity at the callers.** The checker keeps exactly the receipt history the snapshot captured: only a missing
@@ -659,7 +659,7 @@ unaccounted; a required IR copy with such an id waits instead (`NETWORK_UNAVAILA
 lists no rows. The release checker writes every later-document id in this persisted form too (BATCH10C F8-N1: SEC
 accessions, wire and IR item ids alike, through `overlay.safe_document_id`) and compares the record's
 `reviewed_later_documents` in it, so a receipt written since lists no such id verbatim, neither in `receipts.json`
-nor in `data/cache/revenue_guidance_release_checks.json` nor in the curated path's `evidence.latest_release_check`.
+nor in the runtime file `data/cache/revenue_guidance_release_checks.json` nor in the curated path's `evidence.latest_release_check`.
 The persisted form never bars (BATCH10C F8-AMEND1): it is a safe id for `receipt_admission`, the updater's guard,
 `recompute_receipt_status` and the checker's own status alike, so such a receipt states the status a clean id would
 give it (its recompute agrees); the Worker's receipt recompute applies the same rule (a non-string id, or one with

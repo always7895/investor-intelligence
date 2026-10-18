@@ -101,7 +101,7 @@ DC+Comm +59% YoY = 79% of revenue, record bookings (S2).
   context layer + independence check on the AI-infrastructure theses the main logic trades. 0 meta changes are
   asserted here.
 - NO independent 2026 primary essay established as of 2026-09-17 (multi-round search; re-verify quarterly). Primary
-  anchor remains Situation Awareness (2024-06) + Situational Awareness (2025 essay set, per `skills/ap-sven-brenner-infra.md`).
+  anchor remains Situation Awareness (2024-06) + Situational Awareness (2025 essay set, per `skills/aschenbrenner-infra.md`).
 
 ### 2.2 Verified person/entity facts (re-read 2026-09-17)
 - forourposterity.com (P1b direct read): "recently founded an investment firm focused on AGI, with anchor investments

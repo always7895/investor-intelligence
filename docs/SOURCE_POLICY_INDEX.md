@@ -6,7 +6,6 @@
 2. `config/sources/registry-policy.json`
 3. `scripts/source_registry.py`
 4. `config/sources/**/*.json`
-5. `docs/FREE_DATA_SOURCE_PLAN.md`
 
 Any earlier wording that refers to an eight-source, fixed-source or finite-source design is superseded.
 

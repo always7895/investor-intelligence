@@ -33,7 +33,7 @@ The following edges do not exist:
 local IBKR -X-> Cloudflare Worker
 local IBKR -X-> LINE webhook/reply
 local IBKR -X-> PUBLIC_CACHE
-local IBKR -X-> shared local-Qwen context
+local IBKR -X-> shared local-model context
 local IBKR -X-> another tenant
 ```
 

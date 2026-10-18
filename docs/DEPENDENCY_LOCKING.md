@@ -48,6 +48,8 @@ npm test
 
 `npm ci` is a clean frozen install: it fails on package/lock disagreement, removes existing node_modules and does not rewrite the lock. `--ignore-scripts` disables install lifecycle scripts; explicit `npm test` / `npm run` still execute their requested scripts. Do not replace it with `npm install` or omit devDependencies needed by tsc/Vitest/Wrangler.
 
+Node major: the gates were run with Node 24.x (observed on the Windows host); the CI workflows have no `setup-node` step, so the runner's preinstalled Node is used. `cloud/package.json` keeps `engines.node` at `>=20.0.0` and the lockfile is unchanged.
+
 ## CI and efficiency
 
 - The [R75 pipeline](../.github/workflows/v213-r75-release.yml) is authoritative; reviewed Windows validation-only runs do not package or qualify a release.

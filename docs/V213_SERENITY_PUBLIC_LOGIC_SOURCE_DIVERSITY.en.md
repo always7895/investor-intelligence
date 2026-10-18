@@ -16,7 +16,7 @@ Implementation:
 
 - `config/v213-serenity-public-logic-policy.json`
 - `scripts/v213_source_independence_gate.py`
-- `data/cache/v213_source_independence_latest.json`
+- `data/cache/v213_source_independence_latest.json` (runtime path)
 - `data/cache/v213_source_observation_cache.json`
 - `scripts/v213_local_llm_gateway.py`
 

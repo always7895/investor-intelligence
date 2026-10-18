@@ -31,7 +31,7 @@ Later additive changes: `scripts/thesis_phase.py` appends seven display-only fie
 ## Refresh and publication
 
 - `scripts/run_daily_data_refresh.ps1` decrypts the SEC Fair Access contact from the user's DPAPI file into the process only, runs the refresh at most every 20 hours and keeps the last good file on failure.
-- The hourly `run_production_sealed_refresh.ps1` calls it before publishing (non-fatal) and `publish_sealed_snapshot.py` builds the sealed TOP5 overview from `data/cache/industry_rotation_latest.json` (maximum age 45 days). Industry cards and deep analyses are embedded in that overview, and the Worker reads them from it.
+- The hourly `run_production_sealed_refresh.ps1` calls it before publishing (non-fatal) and `publish_sealed_snapshot.py` builds the sealed TOP5 overview from `data/cache/industry_rotation_latest.json` (runtime path, gitignored; maximum age 45 days). Industry cards and deep analyses are embedded in that overview, and the Worker reads them from it.
 - The former hand-written industry rows remain only as a synthetic contract fixture for tests (`_SYNTHETIC_CONTRACT_UNIVERSE`); they are never published.
 
 ## Company deep reports

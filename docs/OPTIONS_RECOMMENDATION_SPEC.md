@@ -62,7 +62,7 @@ Local position analysis:
 - remains disabled by default;
 - runs outside LINE and Cloudflare Worker;
 - is never uploaded to public KV;
-- is never inserted into shared local-Qwen context;
+- is never inserted into shared local-model context;
 - is never sent through a LINE delivery helper;
 - contains no brokerage write path;
 - remains excluded from Git and release artifacts.
