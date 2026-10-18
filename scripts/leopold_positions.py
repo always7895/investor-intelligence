@@ -35,6 +35,11 @@ CUSIP_MAP = ROOT / "config" / "leopold-cusip-map-v1.json"
 REGIME_EVENTS = ROOT / "config" / "leopold-regime-events-v1.json"
 OWNERSHIP_FORMS = ("SC 13D", "SC 13D/A", "SC 13G", "SC 13G/A", "SCHEDULE 13D", "SCHEDULE 13D/A", "SCHEDULE 13G", "SCHEDULE 13G/A")
 SMALL_BOOK_FACTOR = 0.25  # judgment-node multiplier (Xor 2026-10-18), no unit
+RECON_FACTOR = 0.5  # judgment-node multiplier (Xor then JEV 2026-10-18): the table does not reconcile with its own cover page
+FORM_34 = ("3", "3/A", "4", "4/A")
+FORM_34_LIMIT = 20
+OPEN_MARKET_CODES = ("P", "S")
+RECON_TOLERANCE = 0.005
 SUFFIXES = re.compile(r"\b(?:inc|incorporated|corp|corporation|co|company|ltd|limited|plc|holdings?|group|sa|nv|ag|se|"
                       r"class [a-z]|cl [a-z]|com|common stock|new|del|adr|ads|sponsored|the)\b")
 
@@ -88,10 +93,37 @@ def parse_info_table(raw: bytes) -> list[dict[str, Any]]:
         if not node.tag.endswith("infoTable"):
             continue
         get = lambda name: next((child.text or "" for child in node.iter() if child.tag.endswith(name)), "")  # noqa: E731
-        rows.append({"issuer": get("nameOfIssuer").strip(), "cusip": get("cusip").strip(),
+        rows.append({"issuer": get("nameOfIssuer").strip(), "cusip": get("cusip").strip().upper(),
                      "value_usd": float(get("value") or 0), "shares": float(get("sshPrnamt") or 0),
-                     "put_call": get("putCall").strip().upper() or None})
+                     "put_call": get("putCall").strip().upper() or None,
+                     "prn_type": get("sshPrnamtType").strip().upper() or "SH"})  # a missing type counts as shares
     return rows
+
+
+def counts_as_shares(row: dict[str, Any]) -> bool:
+    """Share count of a row: not an option row and not a principal amount (PRN keeps its value, never its amount as shares)."""
+    return not row["put_call"] and row.get("prn_type", "SH") != "PRN"
+
+
+def valid_cusip(cusip: str) -> bool:
+    """9 characters; the ninth is the modulus-10 double-add-double check digit of the first eight (A=10.., * @ # = 36 37 38)."""
+    cusip = (cusip or "").strip().upper()
+    if len(cusip) != 9 or not cusip[8].isdigit():
+        return False
+    total = 0
+    for i, char in enumerate(cusip[:8]):
+        if char.isdigit():
+            value = int(char)
+        elif "A" <= char <= "Z":
+            value = ord(char) - 55
+        elif char in "*@#":
+            value = 36 + "*@#".index(char)
+        else:
+            return False
+        if i % 2 == 1:
+            value *= 2
+        total += value // 10 + value % 10
+    return int(cusip[8]) == (10 - total % 10) % 10
 
 
 def _load_json(path: Path) -> dict[str, Any]:
@@ -99,7 +131,11 @@ def _load_json(path: Path) -> dict[str, Any]:
 
 
 def load_cusip_map(path: Path = CUSIP_MAP) -> dict[str, dict[str, Any]]:
-    return dict(_load_json(path)["entries"])
+    entries = dict(_load_json(path)["entries"])
+    for key in entries:
+        if not valid_cusip(key):
+            raise ValueError(f"LEOPOLD_CUSIP_MAP_INVALID: {key}")
+    return entries
 
 
 def load_regime_events(path: Path = REGIME_EVENTS) -> list[dict[str, Any]]:
@@ -108,6 +144,8 @@ def load_regime_events(path: Path = REGIME_EVENTS) -> list[dict[str, Any]]:
 
 def resolve_ticker(issuer: str, cusip: str, index: dict[str, str], cusip_map: dict[str, dict[str, Any]]) -> tuple[str | None, str]:
     """CUSIP map first (a null entry is final), then the normalized issuer name, else NONE."""
+    if not valid_cusip(cusip):
+        return None, "NONE"  # a failed check digit is never name-matched
     entry = cusip_map.get(cusip)
     if entry is not None:
         ticker = entry.get("ticker")
@@ -131,11 +169,20 @@ def filing_table(fetch: Fetch, accession: str) -> tuple[str, list[dict[str, Any]
     return url, parse_info_table(fetch(url))
 
 
+def _cover_root(fetch: Fetch, accession: str) -> ET.Element | None:
+    try:
+        return ET.fromstring(fetch(folder_url(accession) + "primary_doc.xml"))
+    except (ET.ParseError, OSError, KeyError, ValueError):
+        return None
+
+
 def amendment_type(fetch: Fetch, accession: str) -> str | None:
     """amendmentType of a 13F-HR/A cover page (RESTATEMENT or NEW HOLDINGS); None when absent or unreadable."""
-    try:
-        root = ET.fromstring(fetch(folder_url(accession) + "primary_doc.xml"))
-    except (ET.ParseError, OSError, KeyError, ValueError):
+    return _amendment_kind(_cover_root(fetch, accession))
+
+
+def _amendment_kind(root: ET.Element | None) -> str | None:
+    if root is None:
         return None
     for node in root.iter():
         if node.tag.endswith("amendmentType") and (node.text or "").strip():
@@ -143,30 +190,80 @@ def amendment_type(fetch: Fetch, accession: str) -> str | None:
     return None
 
 
+def cover_totals(root: ET.Element | None) -> dict[str, Any] | None:
+    """tableEntryTotal, tableValueTotal and isConfidentialOmitted of a 13F primary_doc.xml; None when unreadable."""
+    if root is None:
+        return None
+    found: dict[str, str] = {}
+    for node in root.iter():
+        name = _local(node.tag)
+        if name in ("tableEntryTotal", "tableValueTotal", "isConfidentialOmitted") and name not in found:
+            found[name] = (node.text or "").strip()
+    entries, value = _number(found.get("tableEntryTotal")), _number(found.get("tableValueTotal"))
+    return {"entries": None if entries is None else int(entries), "value": value,
+            "confidential_omitted": found.get("isConfidentialOmitted", "").lower() in ("true", "1", "yes")}
+
+
+def reconcile(rows: list[dict[str, Any]], cover: dict[str, Any] | None) -> dict[str, Any]:
+    """One filing's own parsed table against its own cover page. RECON_MISMATCH only on a real mismatch (row count or value
+    sum beyond 0.5 % of the cover total); a missing or unreadable cover is RECON_UNKNOWN, never an error."""
+    if cover is None or cover["entries"] is None or not cover["value"] or cover["value"] <= 0:
+        return {"entries_ok": None, "value_ok": None, "confidential_omitted": bool(cover and cover["confidential_omitted"]),
+                "status": "RECON_UNKNOWN"}
+    entries_ok = len(rows) == cover["entries"]
+    value_ok = abs(sum(row["value_usd"] for row in rows) - cover["value"]) <= RECON_TOLERANCE * cover["value"]
+    status = "RECON_MISMATCH" if not (entries_ok and value_ok) else "CONFIDENTIAL_OMITTED" if cover["confidential_omitted"] else "RECON_OK"
+    return {"entries_ok": entries_ok, "value_ok": value_ok, "confidential_omitted": cover["confidential_omitted"], "status": status}
+
+
+RECON_ORDER = ("RECON_MISMATCH", "RECON_UNKNOWN", "CONFIDENTIAL_OMITTED", "RECON_OK")
+
+
+def worst_reconciliation(parts: list[dict[str, Any]]) -> dict[str, Any]:
+    """Worst status over the filings that form the table of record."""
+    if not parts:
+        return {"entries_ok": None, "value_ok": None, "confidential_omitted": False, "status": "RECON_UNKNOWN"}
+
+    def all_or_none(key: str) -> bool | None:
+        values = [part[key] for part in parts]
+        return None if any(value is None for value in values) else all(values)
+    return {"entries_ok": all_or_none("entries_ok"), "value_ok": all_or_none("value_ok"),
+            "confidential_omitted": any(part["confidential_omitted"] for part in parts),
+            "status": min((part["status"] for part in parts), key=RECON_ORDER.index)}
+
+
 def _row_key(row: dict[str, Any]) -> tuple[str, str | None]:
     return (row["cusip"], row["put_call"])
 
 
-def period_table(fetch: Fetch, members: list[tuple[str, str, str, str]]) -> tuple[str, list[dict[str, Any]], list[dict[str, Any]], tuple[str, str]]:
+def period_table(fetch: Fetch, members: list[tuple[str, str, str, str]],
+                 recon: list[dict[str, Any]] | None = None) -> tuple[str, list[dict[str, Any]], list[dict[str, Any]], tuple[str, str]]:
     """Table of one report period from its 13F-HR and 13F-HR/A filings (accession, filed, period, form), oldest first.
 
     RESTATEMENT replaces the table; NEW HOLDINGS rows join it as a union keyed by (cusip, put_call), the amended row winning.
-    Returns (base url, rows, amendments, (accession, filed) of the newest filing)."""
+    Returns (base url, rows, amendments, (accession, filed) of the newest filing). When recon is a list, the reconciliation of each
+    filing's own table with its own cover page is collected there for the filings that form the table of record."""
     url = ""
     rows: list[dict[str, Any]] = []
     amendments: list[dict[str, Any]] = []
     have_base = False
     for accession, filed, _period, form in sorted(members, key=lambda item: (item[1], item[0])):
         table_url, table = filing_table(fetch, accession)
+        root = _cover_root(fetch, accession) if recon is not None or form == "13F-HR/A" else None
+        own = reconcile(table, cover_totals(root)) if recon is not None else None
         if form == "13F-HR/A":
-            kind = amendment_type(fetch, accession)
+            kind = _amendment_kind(root)
             amendments.append({"accession": accession, "filed": filed, "type": kind})
             if have_base and kind is not None and "NEW" in kind:
                 amended = {_row_key(row) for row in table}
                 rows = [row for row in rows if _row_key(row) not in amended] + table
+                if own is not None:
+                    recon.append(own)
                 continue
         rows, have_base = table, True
         url = table_url
+        if own is not None:
+            recon[:] = [own]  # the base or a restatement is the table of record; earlier covers are superseded
     newest = max(members, key=lambda item: (item[1], item[0]))
     return url, rows, amendments, (newest[0], newest[1])
 
@@ -240,6 +337,78 @@ def _parse_event_text(text: str, result: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
+def _text(node: ET.Element, name: str) -> str:
+    """Text of the first descendant called name (its own text, else its <value> child)."""
+    for child in node.iter():
+        if _local(child.tag) == name:
+            if (child.text or "").strip():
+                return child.text.strip()
+            return next(((sub.text or "").strip() for sub in child if _local(sub.tag) == "value"), "")
+    return ""
+
+
+def parse_ownership_document(raw: bytes) -> dict[str, Any]:
+    """Form 3/4 ownershipDocument: issuer symbol, reporting-owner CIKs and the non-derivative transactions (document order)."""
+    root = ET.fromstring(raw)
+    owners = [_text(node, "rpOwnerCik") for node in root.iter() if _local(node.tag) == "reportingOwner"]
+    transactions = []
+    for node in root.iter():
+        if _local(node.tag) != "nonDerivativeTransaction":
+            continue
+        transactions.append({"date": _iso_date(_text(node, "transactionDate")), "code": _text(node, "transactionCode").upper(),
+                             "shares": _number(_text(node, "transactionShares")),
+                             "owned_after": _number(_text(node, "sharesOwnedFollowingTransaction")),
+                             "nature": _text(node, "directOrIndirectOwnership").upper()})
+    return {"symbol": _text(root, "issuerTradingSymbol").upper(), "issuer": _text(root, "issuerName"),
+            "owners": [owner for owner in owners if owner], "transactions": transactions}
+
+
+def _owned_by_fund(owners: list[str]) -> bool:
+    for owner in owners:
+        try:
+            if int(owner) == int(CIK):
+                return True
+        except ValueError:
+            continue
+    return False
+
+
+def form_34_event_shares(transactions: list[dict[str, Any]]) -> tuple[float | None, str | None]:
+    """(shares owned after the newest open-market P or S row, its date); mixed ownership natures use the newest direct row."""
+    rows = [row for row in transactions if row["code"] in OPEN_MARKET_CODES and row["owned_after"] is not None and row["date"]]
+    if not rows:
+        return None, None
+    if len({row["nature"] for row in rows}) > 1:
+        rows = [row for row in rows if row["nature"] == "D"]
+        if not rows:
+            return None, None
+    newest = max(range(len(rows)), key=lambda i: (rows[i]["date"], i))  # ties: the later row in document order
+    return rows[newest]["owned_after"], rows[newest]["date"]
+
+
+def form_34_events(fetch: Fetch, recent: dict[str, list[Any]], newest_period: str, index: dict[str, str]) -> list[dict[str, Any]]:
+    """Form 3/4 filings with the fund as a reporting owner, newest FORM_34_LIMIT filed after the newest 13F period end."""
+    candidates = sorted(((str(recent["filingDate"][i]), recent["accessionNumber"][i], i) for i, form in enumerate(recent["form"])
+                         if form in FORM_34 and str(recent["filingDate"][i]) > newest_period), reverse=True)[:FORM_34_LIMIT]
+    symbols = set(index.values())
+    events = []
+    for filed, accession, i in candidates:
+        document = (recent.get("primaryDocument") or [None] * (i + 1))[i]
+        if not document:
+            continue
+        try:
+            parsed = parse_ownership_document(fetch(folder_url(accession) + str(document).rsplit("/", 1)[-1]))
+        except (ET.ParseError, OSError, KeyError, ValueError, TypeError):
+            continue
+        if not _owned_by_fund(parsed["owners"]):
+            continue
+        shares, event_date = form_34_event_shares(parsed["transactions"])
+        events.append({"form": recent["form"][i], "accession": accession, "filed": filed, "event_date": event_date,
+                       "subject": parsed["issuer"] or None, "cusip": None, "ticker": parsed["symbol"] if parsed["symbol"] in symbols else None,
+                       "shares": shares, "percent_of_class": None})
+    return events
+
+
 def ownership_events(fetch: Fetch, recent: dict[str, list[Any]], newest_period: str, index: dict[str, str],
                      cusip_map: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
     """Schedule 13D/13G filings made by the fund after the newest 13F period end, newest first."""
@@ -264,11 +433,13 @@ def ownership_events(fetch: Fetch, recent: dict[str, list[Any]], newest_period: 
         events.append({"form": form, "accession": accession, "filed": filed, "event_date": parsed["event_date"],
                        "subject": parsed["subject"], "cusip": parsed["cusip"], "ticker": ticker, "shares": parsed["shares"],
                        "percent_of_class": parsed["percent_of_class"]})
+    events += form_34_events(fetch, recent, newest_period, index)
     return sorted(events, key=lambda event: (event["filed"], event["accession"]), reverse=True)
 
 
-def currency(item: dict[str, Any], *, small_book: bool, regimes: list[dict[str, Any]], event: dict[str, Any] | None) -> tuple[float, list[str]]:
-    """Currency factor of one position and its reasons (SMALL_BOOK, REGIME_<id>, EVENT_<form>_<filed>), in that order."""
+def currency(item: dict[str, Any], *, small_book: bool, regimes: list[dict[str, Any]], event: dict[str, Any] | None,
+             recon_mismatch: bool = False) -> tuple[float, list[str]]:
+    """Currency factor of one position and its reasons (SMALL_BOOK, REGIME_<id>, EVENT_<form>_<filed>, RECON_MISMATCH), in that order."""
     factor, reasons = 1.0, []
     if small_book:
         factor *= SMALL_BOOK_FACTOR
@@ -287,6 +458,9 @@ def currency(item: dict[str, Any], *, small_book: bool, regimes: list[dict[str, 
             reasons.append(f"EVENT_{event['form']}_{event['filed']}")
         elif event_shares is None:
             reasons.append("EVENT_SHARES_UNKNOWN")
+    if recon_mismatch:
+        factor *= RECON_FACTOR
+        reasons.append("RECON_MISMATCH")
     return factor, reasons
 
 
@@ -305,14 +479,20 @@ def build(fetch: Fetch, index: dict[str, str], now: datetime, cusip_map: dict[st
         raise ValueError("LEOPOLD_NO_13F")
     ordered = sorted(periods, reverse=True)
     latest_period = ordered[0]
-    latest_url, latest_rows, amendments, (latest_accession, latest_filed) = period_table(fetch, periods[latest_period])
+    recon: list[dict[str, Any]] = []
+    latest_url, latest_rows, amendments, (latest_accession, latest_filed) = period_table(fetch, periods[latest_period], recon)
+    reconciliation = worst_reconciliation(recon)
     prior_rows: list[dict[str, Any]] = []
     prior_meta = None
     if len(ordered) > 1:
         _, prior_rows, prior_amendments, newest_prior = period_table(fetch, periods[ordered[1]])
         prior_meta = (newest_prior[0], newest_prior[1], ordered[1])
         amendments = amendments + prior_amendments
-    prior_shares = {row["cusip"]: row["shares"] for row in prior_rows if not row["put_call"]}
+    prior_shares: dict[str, float] = {}  # sum over every non-option row of a CUSIP; PRN amounts are not shares
+    for row in prior_rows:
+        if not row["put_call"]:
+            prior_shares[row["cusip"]] = prior_shares.get(row["cusip"], 0.0) + (row["shares"] if counts_as_shares(row) else 0.0)
+    invalid_cusips = sum(1 for row in latest_rows if not valid_cusip(row["cusip"]))
     long_total = sum(row["value_usd"] for row in latest_rows if not row["put_call"]) or 1.0
     prior_total = sum(row["value_usd"] for row in prior_rows if not row["put_call"])
     positions: dict[str, dict[str, Any]] = {}
@@ -322,8 +502,10 @@ def build(fetch: Fetch, index: dict[str, str], now: datetime, cusip_map: dict[st
         ticker, match = resolve_ticker(row["issuer"], row["cusip"], index, cusip_map)
         key = ticker or f"CUSIP:{row['cusip']}"
         item = positions.setdefault(key, {"ticker": ticker, "issuer": row["issuer"], "cusip": row["cusip"], "match": match,
-                                          "long_value_usd": 0.0, "long_shares": 0.0, "options": [],
+                                          "cusips": [], "long_value_usd": 0.0, "long_shares": 0.0, "principal_usd": 0.0, "options": [],
                                           "put_notional_usd": 0.0, "call_notional_usd": 0.0})
+        if row["cusip"] not in item["cusips"]:
+            item["cusips"].append(row["cusip"])
         if row["put_call"]:
             item["options"].append({"type": row["put_call"], "value_usd": row["value_usd"], "shares": row["shares"]})
             side = "put_notional_usd" if row["put_call"] == "PUT" else "call_notional_usd"
@@ -331,7 +513,10 @@ def build(fetch: Fetch, index: dict[str, str], now: datetime, cusip_map: dict[st
             options_book[side] += row["value_usd"]
         else:
             item["long_value_usd"] += row["value_usd"]
-            item["long_shares"] += row["shares"]
+            if counts_as_shares(row):
+                item["long_shares"] += row["shares"]
+            else:
+                item["principal_usd"] += row["value_usd"]  # PRN rows keep their value, never their amount as shares
     events = ownership_events(fetch, recent, latest_period, index, cusip_map)
     applying = [event for event in regime_events if latest_period < event["superseded_by_13f_period_on_or_after"]
                 and latest_period < event["date"]]
@@ -340,13 +525,16 @@ def build(fetch: Fetch, index: dict[str, str], now: datetime, cusip_map: dict[st
     small_book = bool(prior_total) and long_total < 0.10 * prior_total
     for item in positions.values():
         item["long_weight"] = round(item["long_value_usd"] / long_total, 4)
-        before = prior_shares.get(item["cusip"])
+        seen = [prior_shares[cusip] for cusip in item["cusips"] if cusip in prior_shares]
+        before = sum(seen) if seen else None
+        item["prior_shares"] = before
         item["shares_change"] = None if before is None else item["long_shares"] - before
         item["status"] = "NEW" if before is None and item["long_shares"] > 0 else "HELD"
         newest = next((event for event in events if event["cusip"] == item["cusip"]
                        or (item["ticker"] and event["ticker"] == item["ticker"])), None)
         item["post_period_event"] = newest
-        item["currency_factor"], item["currency_reason"] = currency(item, small_book=small_book, regimes=applying, event=newest)
+        item["currency_factor"], item["currency_reason"] = currency(item, small_book=small_book, regimes=applying, event=newest,
+                                                                 recon_mismatch=reconciliation["status"] == "RECON_MISMATCH")
     ranked = sorted(positions.values(), key=lambda item: -item["long_value_usd"])
     regime = None
     if regime_events:
@@ -360,7 +548,8 @@ def build(fetch: Fetch, index: dict[str, str], now: datetime, cusip_map: dict[st
                    f"no primary confirmation) is later than the 13F period: positions are discounted by currency_factor.")
     return {"schema_version": 2, "generated_at": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
             "fund": "Situational Awareness LP", "cik": CIK, "authority": "LEAD_ONLY_NOT_COMPANY_FACT",
-            "filing": {"accession": latest_accession, "filed": latest_filed, "period": latest_period, "url": latest_url},
+            "filing": {"accession": latest_accession, "filed": latest_filed, "period": latest_period, "url": latest_url,
+                       "reconciliation": reconciliation, "invalid_cusips": invalid_cusips},
             "prior_filing": None if prior_meta is None else {"accession": prior_meta[0], "filed": prior_meta[1], "period": prior_meta[2]},
             "amendments": amendments, "long_book_usd": long_total, "options_book": options_book, "positions": ranked,
             "events": events, "regime": regime, "regime_review_overdue": overdue, "caveat": caveat}
