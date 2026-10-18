@@ -192,6 +192,17 @@ class FirstPersonVerbTests(unittest.TestCase):
         ("I sold covered calls on $XXXX", None),  # option writing is not an exit
         ("I sold puts on $XXXX", None),  # a short put is not a bearish exit
         ("I bought puts on $XXXX", "BEARISH"),
+        ("I sold $XXXX puts", None),  # V18b N1: option object after the ticker
+        ("I sold the $XXXX calls", None),
+        ("sold all my $XXXX calls", None),
+        ("I sold my $XXXX 150 calls today", None),
+        ("sold all my $XXXX", "BEARISH"),
+        ("I sold $XXXX for cash", "BEARISH"),  # cash, premium: option words only right after "sold"
+        ("I sold $XXXX at a premium", "BEARISH"),
+        ("I sold $XXXX shares and then my calls", "BEARISH"),  # option word beyond three tokens
+        ("That would have been bad, so I sold $XXXX", "BEARISH"),  # V18b N2: the frame stops at the clause break
+        ("I could have waited but I sold $XXXX", "BEARISH"),
+        ("I should have just sold $XXXX", None),
     ]
 
     def test_phrase_table(self):

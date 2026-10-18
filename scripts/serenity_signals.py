@@ -65,11 +65,14 @@ OEMBED_PASSES = 2
 CASHTAG = re.compile(r"\$([A-Za-z][A-Za-z0-9.]{0,7})\b")
 # First person for the verbs below: the pronoun I or we, at most two tokens before the verb ("I've just", "we also").
 FP = r"(?P<fp>\b(?:i|we)(?:'ve|'m|\s+have|\s+am)?\s+(?:(?:just|finally|also)\s+){0,2})"
+# "sold $X puts", "sold the calls", "sold all my $X calls": option writing or closing an option is not an exit (up to three
+# object tokens before the option word; "sold covered/cash/premium" only right after the verb).
+NOT_OPTION = r"(?!(?:\s+[\w$.%/-]+){0,3}?\s+(?:puts?|calls?|options?|leaps)\b)"
 # Stance phrases, matched per clause in this priority: exit, trim, topic, bullish (overlaps go to the earlier class).
 EXIT_PHRASES = re.compile(
-    r"(?:" + FP + r"(?:sold(?!\s+(?:out|puts?|calls?|covered|cash|premium|options?)\b)(?: off)?|dumped|closed (?:my|out)|"
+    r"(?:" + FP + r"(?:sold(?!\s+(?:out|covered|cash|premium)\b)" + NOT_OPTION + r"(?: off)?|dumped|closed (?:my|out)|"
     r"(?:scaled|rotated) out of)\b|\bi(?:'m| am) out of\b)"
-    r"|\b(?:sold (?:my|all|the rest|out of)|exited|exit(?:ing)? my|no longer (?:own|hold|long)|shorting|shorted|"
+    r"|\b(?:sold (?:my|all|the rest|out of)" + NOT_OPTION + r"|exited|exit(?:ing)? my|no longer (?:own|hold|long)|shorting|shorted|"
     r"short(?=\s+\$)|(?:i'm|i am|am|went) short|(?<!\bsold )(?<!\bselling )puts?\s+on|bearish on|avoid|not a fan|overvalued|"
     r"wouldn't touch)\b", re.I)
 TRIM_PHRASES = re.compile(
@@ -90,8 +93,10 @@ EXCEPT_MARKER = re.compile(r"\b(?:except|other than|apart from|aside from|beside
 # "I thought $X was overvalued" states a past view, not a current exit.
 PAST_VIEW_BEFORE = re.compile(r"\b(?:thought|used to think|used to)\b(?:\W+\w+){0,6}\W*$", re.I)
 # "a guide on how to do DD when shorting $X" or "if you're long $X" frames a case, not his own stance (any phrase class).
+# The frame reaches at most four words and stops at a clause break ("That would have been bad, so I sold $X" is a sale).
 HYPOTHETICAL_BEFORE = re.compile(r"\b(?:how to|guide (?:on|to)|if you(?:'re| are)?|in case you|(?:should|could|would)(?: not)?(?: have|'ve)|"
-                                 r"shoulda|coulda|woulda|wish i|if only i)\b(?:\W+\w+){0,4}\W*$", re.I)
+                                 r"shoulda|coulda|woulda|wish i|if only i)\b"
+                                 r"(?:(?!\W*[,;:]|\W+(?:so|but|then|because|since)\b)\W+\w+){0,4}(?:(?![,;:])\W)*$", re.I)
 # A post he marks as satire or a joke carries no stance for any ticker it names (its mentions still count).
 SATIRE = re.compile(r"\b(?:satire|satirical|parody|just kidding|(?:don't|do not) (?:actually )?take this (?:post )?seriously)\b"
                     r"|(?<![\w/])/s(?![\w/])", re.I)
