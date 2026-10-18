@@ -14,6 +14,7 @@ Public-logic reconstruction of how Serenity (@aleabitoreddit) reasons, built fro
 - 7. Risk, reflexivity and survivorship
 - 8. Falsifier checklist per candidate
 - 9. Verification status and sources
+- 10. Verified items (2026-10-18) and the signal-reading rules
 
 ## 1. The unit of analysis: a constraint in time
 
@@ -132,3 +133,24 @@ Sources (secondary unless noted, retrieved 2026-09-25):
 - Reconstruction: https://johnsonlee.io/en/2026/06/06/serenity-methodology-cannot-be-skill/ (interpretation)
 - Profiles: https://www.kucoin.com/blog/Who-Is-Serenity_ ; https://www.odaily.news/en/post/5210924 (promotional context only)
 - Primary channel attempted: https://publish.x.com/oembed (HTTP 402)
+
+## 10. Verified items (2026-10-18) and the signal-reading rules
+
+Channel: X's public oEmbed (publish.twitter.com 301-redirects to publish.x.com; no login, no cookies; HTTP 200 means the post exists, 404 means it is gone). It confirms existence and the quoted passage only, never a current stance. Re-checked 2026-10-18 for the first item below (HTTP 200); the 2026-07-17 item keeps its 2026-10-18 research check.
+
+| Date | Item | Verification class |
+| --- | --- | --- |
+| 2026-09-05 | "The memory bottleneck hasn't changed" (also CW lasers, substrates) after the MU/SNDK recovery | oEmbed OK, original, status 2096149203278037407 |
+| 2026-07-17 | Drawdown of about 49 percent in the month; portfolio in AI chokepoints on margin; leverage reduced | oEmbed OK, original, status 2078150537074373117 |
+| 2026-08 | Rotation "bottleneck to bottleneck" (AXTI to LITE, photonics); memory "done", optics "now", SiPh/CPO "emerging" | search snippet and tracker wording only, not retrieved |
+| undated | IREN flipped from long to bearish after a $6B ATM | tracker only; the 120-day archive window (to 2026-10-17) holds no IREN exit post but "1 single share", "made amends" and "a much more favorable view after they finish their $6B ATM" (2026-09-24), so IREN reads MENTIONED |
+
+These do not change any figure. Portfolio-state posts (drawdown, leverage) are context, not signals; they carry no ticker stance.
+
+Reading rules in `scripts/serenity_signals.py` (schema 2):
+
+- Relay: a clause naming a fund or its filing (Situational Awareness, Leopold, Aschenbrenner, 13F) with a reporting word (holdings, bought, sold, stake, filed ...) and no first-person word reports someone else's book. A post whose relay clauses exist and which has no first-person clause is a relay post; none of its tickers count (relay_mentions only). Otherwise only tickers that appear solely in relay clauses are relay. His own "my top holdings" is not relay. A symbol with relay mentions only gets no row. Replies keep full weight and are also counted in reply_mentions.
+- Clauses: split on newline, ";", "!", "?", ". " before an uppercase letter, and at a comma when both sides hold a stance phrase. Matching order per clause: exit (bearish, weight 1), trim (bearish, weight 0.5), topic words (thesis_mentions, no stance), bullish (weight 1). A negation within three words cancels a bullish phrase; "holding" with a third-person subject is not first person; "long-term" is not "long"; "sold out of $X" is an exit but "sold out of capacity" and "sold out through 2027" are topics; "everything except X" does not apply to X; a phrase framed as a case ("a guide on how to do DD when shorting $X", "if you're long $X") states no stance, and a post he marks as satire or a joke ("this is satire", "don't take this seriously", "/s") gives no stance to any ticker it names (its mentions still count; live 2026-08-08, the NBIS "short" was a satire of another investor's trade). A phrase attaches to the nearest following ticker (and a plain list continuing it), else the nearest preceding one.
+- Recency: bullish_decayed and bearish_decayed carry the 30-day decay. stance is BEARISH when the newest stance phrase is an exit and bearish_decayed >= 0.5 x bullish_decayed (an IREN-like flip, old bullish posts and recent exits); a lone recent trim after many bullish posts stays BULLISH. Otherwise BULLISH when bullish_decayed > 0, else MENTIONED.
+- Mirror: source.mirror_lag_hours and mirror_status (FRESH up to 72 h, STALE up to 14 days, DEAD beyond) say how stale the public mirror is; the ranking recomputes it.
+- oEmbed: under --refresh the strongest 25 symbols' latest and top posts are checked within 120 s (10 s per request); a post answering 404 is dropped for every ticker it names and the signals are rebuilt (two passes at most). Results are cached in data/cache/serenity_oembed_cache.json (OK 30 days, NOT_FOUND permanent, UNAVAILABLE retried).
