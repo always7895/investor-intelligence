@@ -1,8 +1,8 @@
 # 文件索引 / Documentation index
 
-One current acceptance register: [STATUS](../state/STATUS.md). Release identity: [README](../README.md) and each archive's own immutable refs/receipts. Historical dates, counts, model choices and approvals are not current authority.
+Current acceptance register: [STATUS](../state/STATUS.md). Release identity: [README](../README.md) and each archive's own immutable refs/receipts. Historical dates, counts, model choices and approvals are not current authority.
 
-按讀者需求分入口、操作、契約與歷史；不為了分類搬移檔案或破壞舊路徑。本索引涵蓋所有Git可見Markdown（含新文件），由離線structure gate檢查；連結通過不代表全部事實或外部來源已重驗。
+本索引涵蓋所有Git可見Markdown（含新文件），由離線structure gate檢查；連結通過不代表事實或外部來源已重驗。檔案不為分類而搬移。
 
 ## Start here / 入口
 
@@ -18,8 +18,8 @@ One current acceptance register: [STATUS](../state/STATUS.md). Release identity:
 - [PERSONA_LOGIC_FULL](PERSONA_LOGIC_FULL.md)
 - [BOTTLENECK_RANKING_V1 — 未驗收設計草案](BOTTLENECK_RANKING_V1.md)
 - [BOTTLENECK_CASE_STUDY_HITACHI_ENERGY_V1](BOTTLENECK_CASE_STUDY_HITACHI_ENERGY_V1.md)
-- [COMPANY_EVIDENCE_CANDIDATES_INVENTORY_V1](COMPANY_EVIDENCE_CANDIDATES_INVENTORY_V1.md) - admission-pipeline candidate inventory (GEV / Hitachi 6501 / Meiden 6508 / Siemens Energy ENR): 4-pillar distance to typed admission, lineage corroboration status, explicit blockers; runtime admitted 0 - Power Transformer chokepoint canonical archetype (Hitachi Energy / TSE: 6501): 4-pillar factor-to-claim reference, business-mix vs shareholder dilution separation, runtime admitted stays 0
-- [TOP20_BOTTLENECK_TAKEOVER_V1](TOP20_BOTTLENECK_TAKEOVER_V1.md) — 系統瓶頸接管 v1 規格、四核心門檻與實體呼叫路徑
+- [COMPANY_EVIDENCE_CANDIDATES_INVENTORY_V1](COMPANY_EVIDENCE_CANDIDATES_INVENTORY_V1.md) - admission candidates (GEV, Hitachi 6501, Meiden 6508, Siemens Energy ENR): distance to typed admission, blockers; runtime admitted 0
+- [TOP20_BOTTLENECK_TAKEOVER_V1](TOP20_BOTTLENECK_TAKEOVER_V1.md) — 系統瓶頸接管 v1 規格與呼叫路徑
 
 ## How-to and maintenance / 操作與維護
 
@@ -35,18 +35,18 @@ One current acceptance register: [STATUS](../state/STATUS.md). Release identity:
 
 - [DETAILED_REPORT_CONTRACT](DETAILED_REPORT_CONTRACT.md)
 - [MODEL_RUNTIME_MIGRATION](MODEL_RUNTIME_MIGRATION.md)
-- [LOCAL_RUNTIME_INDEPENDENCE](LOCAL_RUNTIME_INDEPENDENCE.md) — 100% local AI at the LOCAL v213 gateway: single runtime config, strict local-only flags, observed context/JSON/pre-decision guards, declared `min_decision_confidence` 0.70, fail-closed (no Astra/cloud); release gates PENDING
-- [DECLARED_CLAIM_CANDIDATES](DECLARED_CLAIM_CANDIDATES.md) - explicit MACRO candidate-only profile; no qualification or publication.
+- [LOCAL_RUNTIME_INDEPENDENCE](LOCAL_RUNTIME_INDEPENDENCE.md) — 100% local AI at the LOCAL v213 gateway: one runtime config, local-only flags, fail-closed guards; release gates PENDING
+- [DECLARED_CLAIM_CANDIDATES](DECLARED_CLAIM_CANDIDATES.md) — MACRO candidate-only profile; no qualification or publication
 - [PUBLIC_SOURCE_COVERAGE](PUBLIC_SOURCE_COVERAGE.md)
-- [PUBLIC_UNIVERSE_DISCOVERY](PUBLIC_UNIVERSE_DISCOVERY.md) — 公開市場掛牌識別線索發現與覆蓋邊界規範（零錄取、時鐘分離、未驗證名稱相似群組）
-- [COMPANY_EVIDENCE_CANDIDATES](COMPANY_EVIDENCE_CANDIDATES.md) — 候選文本與引文位置驗證；不代表來源權威、獨立佐證或排名准入
-- [COMPANY_CLAIM_ADMISSION_BRIDGE](COMPANY_CLAIM_ADMISSION_BRIDGE.md) — 類型化公司主張准入橋接規範；嚴格區分候選文本比對、來源權威與四核心要素經濟許可
-- [PHRASE_ZH_QUALIFIED_PRESENTATION_CONTRACT](PHRASE_ZH_QUALIFIED_PRESENTATION_CONTRACT.md) — design only: pinned wording/generation/review and publication refusal; no model activation
-- [CARB_TYPED_SECTION_PARSER](CARB_TYPED_SECTION_PARSER.md) — CARB 氣體絕緣開關設備 SF6 逐步淘汰法規段落類型化解析規範與邊界（非准入、零權利）
-- [PROVIDER_RUNTIME_HOOK](PROVIDER_RUNTIME_HOOK.md) — 提供者執行時期掛鉤與信任邊界規範（工廠單次呼叫、分動作細粒度權利、未知嚴格暫緩、零公司准入）
+- [PUBLIC_UNIVERSE_DISCOVERY](PUBLIC_UNIVERSE_DISCOVERY.md) — 公開市場掛牌識別線索發現與覆蓋邊界（零錄取）
+- [COMPANY_EVIDENCE_CANDIDATES](COMPANY_EVIDENCE_CANDIDATES.md) — 候選文本與引文位置驗證；非來源權威或排名准入
+- [COMPANY_CLAIM_ADMISSION_BRIDGE](COMPANY_CLAIM_ADMISSION_BRIDGE.md) — 類型化公司主張准入橋接規範
+- [PHRASE_ZH_QUALIFIED_PRESENTATION_CONTRACT](PHRASE_ZH_QUALIFIED_PRESENTATION_CONTRACT.md) — design only; no model activation
+- [CARB_TYPED_SECTION_PARSER](CARB_TYPED_SECTION_PARSER.md) — CARB SF6 法規段落類型化解析（非准入、零權利）
+- [PROVIDER_RUNTIME_HOOK](PROVIDER_RUNTIME_HOOK.md) — 提供者執行時期掛鉤與信任邊界（零公司准入）
 - [ECB_REFERENCE_SOURCE_ADMISSION](ECB_REFERENCE_SOURCE_ADMISSION.md)
 - [OPTIONS_SOURCE_REVIEW](OPTIONS_SOURCE_REVIEW.md)
-- [PUBLIC_EOD_OPTIONS_SCOPE_DECISION](PUBLIC_EOD_OPTIONS_SCOPE_DECISION.md) — O11/O12 design only: keep EOD local-only (A) or a public date-only reference surface (B); grants no rights or admission
+- [PUBLIC_EOD_OPTIONS_SCOPE_DECISION](PUBLIC_EOD_OPTIONS_SCOPE_DECISION.md) — O11/O12 design only; grants no rights or admission
 - [PUBLIC_OPTIONS_PROVIDER_RIGHTS_REVIEW](PUBLIC_OPTIONS_PROVIDER_RIGHTS_REVIEW.md)
 - [SOURCE_POLICY_INDEX](SOURCE_POLICY_INDEX.md)
 - [SECURITY](SECURITY.md)
@@ -57,23 +57,23 @@ One current acceptance register: [STATUS](../state/STATUS.md). Release identity:
 - [OPTIONS_RECOMMENDATION_SPEC](OPTIONS_RECOMMENDATION_SPEC.md)
 - [MANUAL_OPTION_CALCULATOR](MANUAL_OPTION_CALCULATOR.md)
 - [MACRO_OPTIONS_PRODUCTS_V1](MACRO_OPTIONS_PRODUCTS_V1.md)
-- [GLOBAL_IDENTITY_RESOLVER_V1](GLOBAL_IDENTITY_RESOLVER_V1.md) — 權威全球證券身分解析器 v1 規格與驗證
-- [GLOBAL_EQUITY_LOOKUP](GLOBAL_EQUITY_LOOKUP.md) — 全球個股快查規範與多市場代號／歧義處理
+- [GLOBAL_IDENTITY_RESOLVER_V1](GLOBAL_IDENTITY_RESOLVER_V1.md) — 全球證券身分解析器 v1
+- [GLOBAL_EQUITY_LOOKUP](GLOBAL_EQUITY_LOOKUP.md) — 全球個股快查與代號歧義處理
 - [LINE_BOT_QA_SPEC](LINE_BOT_QA_SPEC.md)
 - [LINE_BOT_QA_IMPLEMENTATION](LINE_BOT_QA_IMPLEMENTATION.md)
-- [QA_CAPACITY_CONTRACT](QA_CAPACITY_CONTRACT.md) — development-only cooperative capacity; not R75 release acceptance
-- [FORWARD_COMPARISON_PREMISES_V1](FORWARD_COMPARISON_PREMISES_V1.md) — design-only premise map for guidance-versus-reported-baseline comparisons
-- [TOP20_UPSIDE_BRIDGE_V1](TOP20_UPSIDE_BRIDGE_V1.md) — upside ranking, sourced wording guard and 6M/1Y/2Y order-realization bridge plan
-- [SOURCE_ACTIVATION_PLAN_V1](SOURCE_ACTIVATION_PLAN_V1.md) — measured source activation (1 of 158 enabled) and the wave plan for diversified sources
-- [INDUSTRY_ROTATION_V1](INDUSTRY_ROTATION_V1.md) — data-driven macro industry rotation from BLS PPI and SEC XBRL, refreshed daily
-- [BOTTLENECK_TOP20_V3](BOTTLENECK_TOP20_V3.md) — bottleneck-explosion Top20 (Serenity/Leopold leads, filings and market data) and the Leopold-led industry ranking
-- [REVENUE_GUIDANCE_AUTOUPDATE](REVENUE_GUIDANCE_AUTOUPDATE.md) — machine renewal of revenue guidance from official filings after each results release (Part A slice 1, shadow only)
-- [F05B_PDF_EXTRACTION_CONTRACT](F05B_PDF_EXTRACTION_CONTRACT.md) — design only: parser artifact gaps, isolation/resources and raw-bound spans; no dependency adoption
-- [TOP20_CARRY_FORWARD_V1](TOP20_CARRY_FORWARD_V1.md) — single-writer Top20: hourly seal of the validated LKG bundle, report-age contract, refresh after the pointer, rollback
-- [SOURCE_DIVERSITY_AUDIT](SOURCE_DIVERSITY_AUDIT.md) — no single-source dependency: product-by-source matrix, rejected sources and the remediation order
+- [QA_CAPACITY_CONTRACT](QA_CAPACITY_CONTRACT.md) — development-only; not R75 release acceptance
+- [FORWARD_COMPARISON_PREMISES_V1](FORWARD_COMPARISON_PREMISES_V1.md) — design only
+- [TOP20_UPSIDE_BRIDGE_V1](TOP20_UPSIDE_BRIDGE_V1.md) — upside ranking and order-realization bridge plan
+- [SOURCE_ACTIVATION_PLAN_V1](SOURCE_ACTIVATION_PLAN_V1.md) — source activation wave plan
+- [INDUSTRY_ROTATION_V1](INDUSTRY_ROTATION_V1.md) — macro industry rotation from BLS PPI and SEC XBRL
+- [BOTTLENECK_TOP20_V3](BOTTLENECK_TOP20_V3.md) — bottleneck Top20 and the Leopold-led industry ranking
+- [REVENUE_GUIDANCE_AUTOUPDATE](REVENUE_GUIDANCE_AUTOUPDATE.md) — revenue guidance renewal from official filings (shadow only)
+- [F05B_PDF_EXTRACTION_CONTRACT](F05B_PDF_EXTRACTION_CONTRACT.md) — design only; no dependency adoption
+- [TOP20_CARRY_FORWARD_V1](TOP20_CARRY_FORWARD_V1.md) — hourly seal of the validated LKG Top20, report-age contract, rollback
+- [SOURCE_DIVERSITY_AUDIT](SOURCE_DIVERSITY_AUDIT.md) — product-by-source matrix, rejected sources, remediation order
 - [AUTHORITATIVE_SOURCE_CATALOG](AUTHORITATIVE_SOURCE_CATALOG.md)
 - [GLOBAL_SOURCE_FEDERATION](GLOBAL_SOURCE_FEDERATION.md)
-- [PUBLICATION_MODE_CONTRACT_V2](PUBLICATION_MODE_CONTRACT_V2.md) — C1 parity: Worker and install preflight recount EVIDENCE_QUALIFIED rows structurally; shared vectors; contract hash and deploy order
+- [PUBLICATION_MODE_CONTRACT_V2](PUBLICATION_MODE_CONTRACT_V2.md) — Worker/install preflight parity, contract hash, deploy order
 - [SOURCE_COVERAGE_MATRIX](SOURCE_COVERAGE_MATRIX.md)
 - [KV_DEPLOYMENT_PREFLIGHT](KV_DEPLOYMENT_PREFLIGHT.md)
 - [KV_NAMESPACE_ISOLATION](KV_NAMESPACE_ISOLATION.md)
@@ -88,25 +88,25 @@ One current acceptance register: [STATUS](../state/STATUS.md). Release identity:
 - [SKILL](../skills/serenity-public-research/SKILL.md)
 - [CROSS_VALIDATION](../skills/serenity-public-research/references/CROSS_VALIDATION.md)
 - [RESEARCH_METHOD](../skills/serenity-public-research/references/RESEARCH_METHOD.md)
-- [SERENITY_LOGIC](../skills/serenity-public-research/references/SERENITY_LOGIC.md) — deep reconstruction of the Serenity reasoning model with verification status
-- [ASCHENBRENNER_CONTEXT](../skills/serenity-public-research/references/ASCHENBRENNER_CONTEXT.md) — CONTEXT_ONLY essay model, testable variables and dated SEC filing snapshot
+- [SERENITY_LOGIC](../skills/serenity-public-research/references/SERENITY_LOGIC.md) — Serenity reasoning model reconstruction
+- [ASCHENBRENNER_CONTEXT](../skills/serenity-public-research/references/ASCHENBRENNER_CONTEXT.md) — CONTEXT_ONLY essay model and dated SEC filing snapshot
 - [user-long-term-overlay](../skills/user-long-term-overlay.md)
 
 ## Dated evidence and historical technical references / 歷史與有日期的技術證據
 
 Retired 2026-09-25 (history only, not deleted from Git): the SERENITY_H2–H6 incremental notes, SERENITY_PUBLIC_LOGIC audits, TASK0-3E–3J reports and five superseded one-off reviews/plans. Retrieve with `git show 34417b9:<path>`.
 
-Preserve these original observations and technical rationale. Their older deployment/PASS/coverage claims are scoped to the recorded revision, not today; use current contracts and STATUS when they differ. 未改寫歷史證據為今日成功。
+Older deployment/PASS/coverage claims here are scoped to their recorded revision, not today; current contracts and STATUS win. 未改寫歷史證據為今日成功。
 
 - [FORMAL_PRIVATE_RELEASE](FORMAL_PRIVATE_RELEASE.md)
 - [PHASE5_VALIDATION](PHASE5_VALIDATION.md)
 - [PUBLIC_SOURCE_RIGHTS_REVIEW_20260909](PUBLIC_SOURCE_RIGHTS_REVIEW_20260909.md)
 - [R75_SEVEN_FIELD_MIGRATION](R75_SEVEN_FIELD_MIGRATION.md)
-- [STATUTORY_AUTHORITY_RESOLUTION_V1](STATUTORY_AUTHORITY_RESOLUTION_V1.md) — Objective A/B statutory authority & external citation typing resolution (GOV/CCR provenance, 17 U.S.C. 102(b) edicts doctrine, CCR 17 95350-95359.1 timeline, 7 typed citations, preserved 404/301 states)
-- [LINE_GAP_LEDGER](LINE_GAP_LEDGER.md) — 31-item gap ledger across 8 scopes (Messaging, Rich Menu/UX, Investor Intelligence, Production, Security, Reliability, Tests, Latest Specs), format ID/AREA/ISSUE/SEVERITY/CURRENT_STATE/EVIDENCE/ACTION/TEST/RESULT per item; P0s closed at worker `928539bd…` / run `131939Z-897a86efa733`
-- [LINE_ALL_FRIENDS_ACCESS](LINE_ALL_FRIENDS_ACCESS.md) — `V213_LINE_ACCESS_MODE` switch (default `owner_only`), access policy table, friend-lane limits and Durable Object gate, reviewed zh-TW texts, privacy invariants and the separate rollout steps for opening public features and Q&A to all LINE friends
-- [OPERATOR_RUNBOOK](OPERATOR_RUNBOOK.md) — fail-closed operator procedures: health/readiness checks, sealed-snapshot rollback (`scripts/rollback_sealed_snapshot.py`), worker rollback, refresh-task recreation, emergency incident response, secret rotation
-- [PROJECT_GAP_LEDGER](PROJECT_GAP_LEDGER.md) — historical record (2026-09-16; current state in STATUS): project-wide gap audit, 13 required areas (PG-01…PG-13), P0s closed; companion to LINE_GAP_LEDGER
+- [STATUTORY_AUTHORITY_RESOLUTION_V1](STATUTORY_AUTHORITY_RESOLUTION_V1.md) — statutory authority and external citation typing (GOV/CCR provenance)
+- [LINE_GAP_LEDGER](LINE_GAP_LEDGER.md) — 31-item gap ledger across 8 scopes; P0s closed at its recorded revision
+- [LINE_ALL_FRIENDS_ACCESS](LINE_ALL_FRIENDS_ACCESS.md) — `V213_LINE_ACCESS_MODE` switch (default `owner_only`), friend-lane limits, privacy invariants, rollout steps
+- [OPERATOR_RUNBOOK](OPERATOR_RUNBOOK.md) — fail-closed operator procedures: health, rollbacks, task recreation, incidents, secret rotation, rollouts
+- [PROJECT_GAP_LEDGER](PROJECT_GAP_LEDGER.md) — historical (2026-09-16) project gap audit PG-01…PG-13
 - [V213_ALL_IN_ONE.en](V213_ALL_IN_ONE.en.md)
 - [V213_ALL_IN_ONE.zh-TW](V213_ALL_IN_ONE.zh-TW.md)
 - [V213_BILINGUAL_FIELDS](V213_BILINGUAL_FIELDS.md)
@@ -119,7 +119,7 @@ Preserve these original observations and technical rationale. Their older deploy
 - [V2_1_0_FINAL.zh-TW](V2_1_0_FINAL.zh-TW.md)
 - [TSEM-20260909](research/TSEM-20260909.md)
 - [FINAL_DELIVERY_REPORT_R75_FREE_RELAY](../state/FINAL_DELIVERY_REPORT_R75_FREE_RELAY.md)
-- [ROLLBACK_JARS_POINTER_BACKUP](../state/rollback-jars/README.md) — snapshot pointer pre-honesty back-up container (archive of retired pointer bytes; operational, not an artifact)
-- [TASK0_PHASE1D_SEALED_SNAPSHOT_FIXTURE](../cloud/test/fixtures/task0-phase1d/README.md) — byte-identical fixed sealed-snapshot fixture for deterministic-clock tests (test fixture, not a product artifact)
-- [HANDOFF_SOURCE_FEDERATION](../documents/HANDOFF_SOURCE_FEDERATION.md) — TASK0-3L source-federation full-autopilot handoff (current roles reconciled 2026-09-19)
-- [SOL_GUARD](../documents/SOL_GUARD.md) — historical record (2026-09-19; runtime on HOLD): SoL-Pi small-session compaction guard (hashes, apply recipe, verification record)
+- [ROLLBACK_JARS_POINTER_BACKUP](../state/rollback-jars/README.md) — archive of retired snapshot pointer bytes (operational)
+- [TASK0_PHASE1D_SEALED_SNAPSHOT_FIXTURE](../cloud/test/fixtures/task0-phase1d/README.md) — fixed sealed-snapshot test fixture
+- [HANDOFF_SOURCE_FEDERATION](../documents/HANDOFF_SOURCE_FEDERATION.md) — TASK0-3L source-federation handoff
+- [SOL_GUARD](../documents/SOL_GUARD.md) — historical (2026-09-19; on HOLD): SoL-Pi compaction guard
