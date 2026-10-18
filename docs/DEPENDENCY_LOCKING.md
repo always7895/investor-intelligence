@@ -32,6 +32,8 @@ The locked install the resolver runs (also what CI and R70 run explicitly):
 & $env:PROJECT_PYTHON -m pip check
 ```
 
+The workflow gate also rejects `${{ github.event.* }}`, `${{ github.head_ref }}` and `${{ inputs.* }}` inside a `run:` script; such values reach the shell only through `env:`.
+
 Commands run from the development root; stop at each nonzero exit. `PYTHONUTF8=1` matches CI (without it a CLI test fails on cp950 consoles). R75's existing validator enforces failures. Live providers require separate access/rights and source-bound acceptance; successful dependency installation is not that proof.
 
 [scripts/run_offline_tests.py](../scripts/run_offline_tests.py) supplies import stubs **only for absent optional packages**. It is not a network sandbox: installed requests/yfinance are real modules. Tests must mock live transport; never interpret the runner name as permission to fetch or publish. Distribution mode excludes repository-only metadata tests, not production acceptance requirements.

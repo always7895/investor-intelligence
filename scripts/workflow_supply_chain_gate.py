@@ -20,6 +20,9 @@ PER_COMMIT_CONCURRENCY_RE = re.compile(
 UNSAFE_RUN_SCALAR_RE = re.compile(
     r"^\s*run:\s*([&*!])(?:\s|$)", re.IGNORECASE | re.MULTILINE
 )
+RUN_KEY_RE = re.compile(r"^(\s*(?:-\s+)?)run:(.*)$")
+EXPRESSION_RE = re.compile(r"\$\{\{(.*?)\}\}")
+UNTRUSTED_CONTEXT_RE = re.compile(r"\b(?:github\.event\.|github\.head_ref\b|inputs\.)", re.IGNORECASE)
 PIP_INSTALL_RE = re.compile(r"\bpip\s+install\b", re.IGNORECASE)
 PIP_CHECK_RE = re.compile(r"\bpip\s+check\b", re.IGNORECASE)
 NPM_CI_COMMAND_RE = re.compile(
@@ -76,6 +79,35 @@ def _audit_yaml_scalar_hazards(relative: Path, text: str) -> list[str]:
             f"{relative}:{line_number}: run value begins with YAML indicator "
             f"{match.group(1)!r}; use `run: |` or quote the command"
         )
+    return findings
+
+
+def _audit_run_expressions(relative: Path, text: str) -> list[str]:
+    """Event, head_ref and input values reach a shell only through env, never as ${{ }} inside a run script."""
+    findings: list[str] = []
+    lines = text.splitlines()
+    index = 0
+    while index < len(lines):
+        match = RUN_KEY_RE.match(lines[index])
+        if not match:
+            index += 1
+            continue
+        key_column = len(match.group(1))
+        body = [(index + 1, match.group(2))]
+        index += 1
+        while index < len(lines):
+            line = lines[index]
+            if line.strip() and len(line) - len(line.lstrip()) <= key_column:
+                break
+            body.append((index + 1, line))
+            index += 1
+        for line_number, line in body:
+            for expression in EXPRESSION_RE.findall(line):
+                if UNTRUSTED_CONTEXT_RE.search(expression):
+                    findings.append(
+                        f"{relative}:{line_number}: untrusted expression {expression.strip()!r} inside a run script; "
+                        "pass it through env"
+                    )
     return findings
 
 
@@ -200,6 +232,7 @@ def audit_workflows(root: Path = ROOT) -> list[str]:
         relative = path.relative_to(root)
         text = path.read_text(encoding="utf-8")
         findings.extend(_audit_yaml_scalar_hazards(relative, text))
+        findings.extend(_audit_run_expressions(relative, text))
         findings.extend(_audit_action_refs(relative, text))
         findings.extend(_audit_runner_and_permissions(relative, text))
         findings.extend(_audit_install_commands(relative, text))
@@ -216,7 +249,7 @@ def main() -> int:
             print(f"- {finding}")
         return 1
     print(
-        "WORKFLOW SUPPLY-CHAIN GATE PASSED: valid run scalars, immutable checkout v6, "
+        "WORKFLOW SUPPLY-CHAIN GATE PASSED: valid run scalars, env-routed untrusted expressions, immutable checkout v6, "
         "stable branch/PR concurrency, trusted self-hosted runners, read-only credentials, "
         "isolated binary-only official-index hash locks with pip check, and lifecycle-script-free npm ci"
     )
