@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<edgarSubmission xmlns="http://www.sec.gov/edgar/schedule13D" xmlns:common="http://www.sec.gov/edgar/common">
+  <schemaVersion>X0202</schemaVersion>
+  <headerData>
+    <submissionType>SCHEDULE 13D/A</submissionType>
+    <filerInfo>
+      <filer>
+        <filerCredentials>
+          <cik>0002045724</cik>
+        </filerCredentials>
+      </filer>
+      <liveTestFlag>LIVE</liveTestFlag>
+    </filerInfo>
+  </headerData>
+  <formData>
+    <coverPageHeader>
+      <amendmentNo>1</amendmentNo>
+      <dateOfEvent>09/15/2026</dateOfEvent>
+      <issuerInfo>
+        <issuerCIK>0002068385</issuerCIK>
+        <issuerCusips>
+          <issuerCusipNumber>778920306</issuerCusipNumber>
+        </issuerCusips>
+        <issuerName>SharonAI Holdings Inc.</issuerName>
+      </issuerInfo>
+    </coverPageHeader>
+    <reportingPersons>
+      <reportingPersonInfo>
+        <reportingPersonCIK>0002045724</reportingPersonCIK>
+        <reportingPersonName>Situational Awareness LP</reportingPersonName>
+        <sharedVotingPower>8070950</sharedVotingPower>
+        <aggregateAmountOwned>8070950</aggregateAmountOwned>
+        <percentOfClass>21.1</percentOfClass>
+      </reportingPersonInfo>
+      <reportingPersonInfo>
+        <reportingPersonName>Situational Awareness Partners LP</reportingPersonName>
+        <sharedVotingPower>8070950</sharedVotingPower>
+        <aggregateAmountOwned>8070950</aggregateAmountOwned>
+        <percentOfClass>21.1</percentOfClass>
+      </reportingPersonInfo>
+    </reportingPersons>
+  </formData>
+</edgarSubmission>

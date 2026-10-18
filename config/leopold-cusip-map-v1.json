@@ -1,0 +1,214 @@
+{
+  "schema_version": 1,
+  "verified_on": "2026-10-18",
+  "source": "13F information tables of Situational Awareness LP, periods 2026-03-31 and 2026-06-30; SEC company_tickers_exchange.json",
+  "entries": {
+    "007903107": {
+      "ticker": "AMD",
+      "issuer": "ADVANCED MICRO DEVICES INC",
+      "verification": "13F issuer name matched SEC company ticker list entry \"ADVANCED MICRO DEVICES INC\" (AMD), 2026-10-18",
+      "note": ""
+    },
+    "038169207": {
+      "ticker": "APLD",
+      "issuer": "APPLIED DIGITAL CORP",
+      "verification": "13F issuer name matched SEC company ticker list entry \"Applied Digital Corp.\" (APLD), 2026-10-18",
+      "note": ""
+    },
+    "05614L209": {
+      "ticker": "BW",
+      "issuer": "BABCOCK & WILCOX ENTERPRISES",
+      "verification": "13F issuer name matched SEC company ticker list entry \"Babcock & Wilcox Enterprises, Inc.\" (BW), 2026-10-18",
+      "note": ""
+    },
+    "09173B107": {
+      "ticker": null,
+      "issuer": "BITFARMS LTD",
+      "reason": "13F issuer name BITFARMS LTD is absent from the SEC company ticker list on 2026-10-18; the Q2 row KEEL INFRASTRUCTURE CORP has a different CUSIP and the rename is not verified here.",
+      "verification": "No match in the SEC company ticker list, 2026-10-18",
+      "note": "Unresolved on purpose; the name fallback is not used for this CUSIP."
+    },
+    "093712107": {
+      "ticker": "BE",
+      "issuer": "BLOOM ENERGY CORP",
+      "verification": "13F issuer name matched SEC company ticker list entry \"Bloom Energy Corp\" (BE), 2026-10-18",
+      "note": ""
+    },
+    "11135F101": {
+      "ticker": "AVGO",
+      "issuer": "BROADCOM INC",
+      "verification": "13F issuer name matched SEC company ticker list entry \"Broadcom Inc.\" (AVGO), 2026-10-18",
+      "note": ""
+    },
+    "15675D103": {
+      "ticker": "CBRS",
+      "issuer": "CEREBRAS SYSTEMS INC",
+      "verification": "13F issuer name matched SEC company ticker list entry \"Cerebras Systems Inc.\" (CBRS), 2026-10-18",
+      "note": ""
+    },
+    "18452B209": {
+      "ticker": "CLSK",
+      "issuer": "CLEANSPARK INC",
+      "verification": "13F issuer name matched SEC company ticker list entry \"CLEANSPARK, INC.\" (CLSK), 2026-10-18",
+      "note": ""
+    },
+    "21873S108": {
+      "ticker": "CRWV",
+      "issuer": "COREWEAVE INC",
+      "verification": "13F issuer name matched SEC company ticker list entry \"CoreWeave, Inc.\" (CRWV), 2026-10-18",
+      "note": ""
+    },
+    "21874A106": {
+      "ticker": "CORZ",
+      "issuer": "CORE SCIENTIFIC INC NEW",
+      "verification": "13F issuer name matched SEC company ticker list entry \"Core Scientific, Inc./tx\" (CORZ), 2026-10-18",
+      "note": ""
+    },
+    "219350105": {
+      "ticker": "GLW",
+      "issuer": "CORNING INC",
+      "verification": "13F issuer name matched SEC company ticker list entry \"CORNING INC /NY\" (GLW), 2026-10-18",
+      "note": "SEC list name is CORNING INC /NY."
+    },
+    "35834F104": {
+      "ticker": "TE",
+      "issuer": "T1 ENERGY INC",
+      "verification": "13F issuer name matched SEC company ticker list entry \"T1 Energy Inc.\" (TE), 2026-10-18",
+      "note": ""
+    },
+    "433921103": {
+      "ticker": "HIVE",
+      "issuer": "HIVE DIGITAL TECHNOLOGIES LT",
+      "verification": "13F issuer name matched SEC company ticker list entry \"HIVE Digital Technologies Ltd.\" (HIVE), 2026-10-18",
+      "note": "Canadian issuer; Nasdaq-listed shares (HIVE)."
+    },
+    "456788108": {
+      "ticker": "INFY",
+      "issuer": "INFOSYS LTD",
+      "verification": "13F issuer name matched SEC company ticker list entry \"Infosys Ltd\" (INFY), 2026-10-18",
+      "note": "Indian company; the 13F row is the NYSE ADS (INFY)."
+    },
+    "458140100": {
+      "ticker": "INTC",
+      "issuer": "INTEL CORP",
+      "verification": "13F issuer name matched SEC company ticker list entry \"INTEL CORP\" (INTC), 2026-10-18",
+      "note": ""
+    },
+    "486917107": {
+      "ticker": "KEEL",
+      "issuer": "KEEL INFRASTRUCTURE CORP",
+      "verification": "13F issuer name matched SEC company ticker list entry \"Keel Infrastructure Corp.\" (KEEL), 2026-10-18",
+      "note": ""
+    },
+    "595112103": {
+      "ticker": "MU",
+      "issuer": "MICRON TECHNOLOGY INC",
+      "verification": "13F issuer name matched SEC company ticker list entry \"MICRON TECHNOLOGY INC\" (MU), 2026-10-18",
+      "note": ""
+    },
+    "67066G104": {
+      "ticker": "NVDA",
+      "issuer": "NVIDIA CORPORATION",
+      "verification": "13F issuer name matched SEC company ticker list entry \"NVIDIA CORP\" (NVDA), 2026-10-18",
+      "note": ""
+    },
+    "68389X105": {
+      "ticker": "ORCL",
+      "issuer": "ORACLE CORP",
+      "verification": "13F issuer name matched SEC company ticker list entry \"ORACLE CORP\" (ORCL), 2026-10-18",
+      "note": ""
+    },
+    "73933G202": {
+      "ticker": null,
+      "issuer": "POWER SOLUTIONS INTL INC",
+      "reason": "13F issuer name POWER SOLUTIONS INTL INC is absent from the SEC company ticker list on 2026-10-18.",
+      "verification": "No match in the SEC company ticker list, 2026-10-18",
+      "note": "Unresolved on purpose; the name fallback is not used for this CUSIP."
+    },
+    "74347M108": {
+      "ticker": "PUMP",
+      "issuer": "PROPETRO HLDG CORP",
+      "verification": "13F issuer name matched SEC company ticker list entry \"ProPetro Holding Corp.\" (PUMP), 2026-10-18",
+      "note": ""
+    },
+    "767292105": {
+      "ticker": "RIOT",
+      "issuer": "RIOT PLATFORMS INC",
+      "verification": "13F issuer name matched SEC company ticker list entry \"Riot Platforms, Inc.\" (RIOT), 2026-10-18",
+      "note": ""
+    },
+    "778920306": {
+      "ticker": "SHAZ",
+      "issuer": "SHARONAI HOLDINGS INC",
+      "verification": "13F issuer name matched SEC company ticker list entry \"SharonAI Holdings Inc.\" (SHAZ), 2026-10-18",
+      "note": ""
+    },
+    "80004C200": {
+      "ticker": "SNDK",
+      "issuer": "SANDISK CORP",
+      "verification": "13F issuer name matched SEC company ticker list entry \"Sandisk Corp\" (SNDK), 2026-10-18",
+      "note": ""
+    },
+    "83418M103": {
+      "ticker": "SEI",
+      "issuer": "SOLARIS ENERGY INFRAS INC",
+      "verification": "13F issuer name matched SEC company ticker list entry \"Solaris Energy Infrastructure, Inc.\" (SEI), 2026-10-18",
+      "note": ""
+    },
+    "861012102": {
+      "ticker": "STM",
+      "issuer": "STMICROELECTRONICS",
+      "verification": "13F issuer name matched SEC company ticker list entry \"STMicroelectronics N.V.\" (STM), 2026-10-18",
+      "note": "Dutch/Swiss-based issuer STMicroelectronics N.V.; NYSE-listed shares (STM)."
+    },
+    "874039100": {
+      "ticker": "TSM",
+      "issuer": "TAIWAN SEMICONDUCTOR MANUFAC",
+      "verification": "13F issuer name matched SEC company ticker list entry \"TAIWAN SEMICONDUCTOR MANUFACTURING CO LTD\" (TSM), 2026-10-18",
+      "note": "Taiwan company; the 13F row is the NYSE ADS (TSM)."
+    },
+    "92189F676": {
+      "ticker": null,
+      "issuer": "VANECK ETF TRUST",
+      "reason": "Generic issuer name VANECK ETF TRUST; the SEC company ticker list holds several VanEck ETFs and the 13F row has no fund name, so no single ticker is verified.",
+      "verification": "No match in the SEC company ticker list, 2026-10-18",
+      "note": "Unresolved on purpose; the name fallback is not used for this CUSIP."
+    },
+    "928298108": {
+      "ticker": "VSH",
+      "issuer": "VISHAY INTERTECHNOLOGY INC",
+      "verification": "13F issuer name matched SEC company ticker list entry \"VISHAY INTERTECHNOLOGY INC\" (VSH), 2026-10-18",
+      "note": ""
+    },
+    "G11448100": {
+      "ticker": "BTDR",
+      "issuer": "BITDEER TECHNOLOGIES GROUP",
+      "verification": "13F issuer name matched SEC company ticker list entry \"Bitdeer Technologies Group\" (BTDR), 2026-10-18",
+      "note": "Singapore-based issuer; Nasdaq-listed Class A shares (BTDR)."
+    },
+    "G96115103": {
+      "ticker": "WYFI",
+      "issuer": "WHITEFIBER INC",
+      "verification": "13F issuer name matched SEC company ticker list entry \"WhiteFiber, Inc.\" (WYFI), 2026-10-18",
+      "note": "Foreign-incorporated issuer; Nasdaq-listed shares (WYFI)."
+    },
+    "N07059210": {
+      "ticker": "ASML",
+      "issuer": "ASML HLDG NV N Y REGISTRY",
+      "verification": "13F issuer name matched SEC company ticker list entry \"ASML HOLDING NV\" (ASML), 2026-10-18",
+      "note": "Dutch company; 13F lists the New York registry shares (ASML is also the Nasdaq ticker)."
+    },
+    "N97284108": {
+      "ticker": "NBIS",
+      "issuer": "NEBIUS GROUP N.V.",
+      "verification": "13F issuer name matched SEC company ticker list entry \"Nebius Group N.V.\" (NBIS), 2026-10-18",
+      "note": "Dutch company (Nebius Group N.V.); Nasdaq-listed shares."
+    },
+    "Q4982L109": {
+      "ticker": "IREN",
+      "issuer": "IREN LIMITED",
+      "verification": "13F issuer name matched SEC company ticker list entry \"IREN Ltd\" (IREN), 2026-10-18",
+      "note": "Australian-based issuer; Nasdaq-listed ordinary shares (IREN)."
+    }
+  }
+}
