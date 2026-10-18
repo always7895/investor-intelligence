@@ -160,6 +160,52 @@ class FixtureStanceTests(unittest.TestCase):
         self.assertIsNone(rows["NEGA"]["last_stance"])  # no anaphoric object
 
 
+class FirstPersonVerbTests(unittest.TestCase):
+    """V18 S1: first-person verbs (I or we within two tokens before the verb) and the counterfactual guard."""
+
+    CASES = [
+        ("I sold $XXXX today", "BEARISH"),
+        ("I just sold $XXXX", "BEARISH"),
+        ("we've finally dumped $XXXX", "BEARISH"),
+        ("I closed my $XXXX", "BEARISH"),
+        ("I closed out $XXXX", "BEARISH"),
+        ("I scaled out of $XXXX", "BEARISH"),
+        ("I've rotated out of $XXXX", "BEARISH"),
+        ("I'm out of $XXXX", "BEARISH"),
+        ("I scaled back $XXXX", "TRIM"),
+        ("I also took some off $XXXX", "TRIM"),
+        ("I doubled down on $XXXX", "BULLISH"),
+        ("I loaded up on $XXXX", "BULLISH"),
+        ("we increased my position in $XXXX", "BULLISH"),
+        ("I raised my stake in $XXXX", "BULLISH"),
+        ("I opened a position in $XXXX", "BULLISH"),
+        ("I should have sold $XXXX", None),  # counterfactual: no stance
+        ("shoulda sold $XXXX", None),
+        ("wish I sold $XXXX", None),
+        ("if only I had dumped $XXXX", None),
+        ("I could have bought more $XXXX", None),  # existing phrase, now guarded
+        ("He sold $XXXX", None),  # third person
+        ("The fund dumped $XXXX", None),
+        ("closed my $XXXX", None),  # no pronoun
+        ("Closed $XXXX at 12", None),  # plain "closed" never counts
+        ("I sold out of capacity at $XXXX", None),  # supply talk, not a first-person sale
+        ("I sold covered calls on $XXXX", None),  # option writing is not an exit
+        ("I sold puts on $XXXX", None),  # a short put is not a bearish exit
+        ("I bought puts on $XXXX", "BEARISH"),
+    ]
+
+    def test_phrase_table(self):
+        for index, (text, expected) in enumerate(self.CASES, start=1):
+            rows, _ = build([make_post(index, text, 1)])
+            self.assertEqual(rows["XXXX"]["last_stance"], expected, text)
+
+    def test_sold_then_bought_splits_targets(self):
+        rows, _ = build([make_post(1, "I sold $XXXX and bought $YYYY", 1)])
+        self.assertEqual((rows["XXXX"]["last_stance"], rows["YYYY"]["last_stance"]), ("BEARISH", "BULLISH"))
+        rows, _ = build([make_post(2, "I dumped $XXXX and I loaded up on $YYYY", 1)])
+        self.assertEqual((rows["XXXX"]["last_stance"], rows["YYYY"]["last_stance"]), ("BEARISH", "BULLISH"))
+
+
 class RecencyTests(unittest.TestCase):
     def test_flip_to_bearish(self):
         posts = [make_post(i, "Still holding $FLIP, added more", 60 + i * 10) for i in range(6)]

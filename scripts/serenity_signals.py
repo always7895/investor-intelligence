@@ -63,15 +63,22 @@ OEMBED_OK_DAYS = 30
 OEMBED_PASSES = 2
 
 CASHTAG = re.compile(r"\$([A-Za-z][A-Za-z0-9.]{0,7})\b")
+# First person for the verbs below: the pronoun I or we, at most two tokens before the verb ("I've just", "we also").
+FP = r"(?P<fp>\b(?:i|we)(?:'ve|'m|\s+have|\s+am)?\s+(?:(?:just|finally|also)\s+){0,2})"
 # Stance phrases, matched per clause in this priority: exit, trim, topic, bullish (overlaps go to the earlier class).
 EXIT_PHRASES = re.compile(
-    r"\b(?:sold (?:my|all|the rest|out of)|exited|exit(?:ing)? my|no longer (?:own|hold|long)|shorting|shorted|"
-    r"short(?=\s+\$)|(?:i'm|i am|am|went) short|puts?\s+on|bearish on|avoid|not a fan|overvalued|wouldn't touch)\b", re.I)
+    r"(?:" + FP + r"(?:sold(?!\s+(?:out|puts?|calls?|covered|cash|premium|options?)\b)(?: off)?|dumped|closed (?:my|out)|"
+    r"(?:scaled|rotated) out of)\b|\bi(?:'m| am) out of\b)"
+    r"|\b(?:sold (?:my|all|the rest|out of)|exited|exit(?:ing)? my|no longer (?:own|hold|long)|shorting|shorted|"
+    r"short(?=\s+\$)|(?:i'm|i am|am|went) short|(?<!\bsold )(?<!\bselling )puts?\s+on|bearish on|avoid|not a fan|overvalued|"
+    r"wouldn't touch)\b", re.I)
 TRIM_PHRASES = re.compile(
-    r"\b(?:trimmed|trimming|(?:took|taking) profits?|(?:reduced|reducing|cut|cutting) my (?:position|stake))\b", re.I)
+    r"(?:" + FP + r"(?:scaled back|took some off)\b)"
+    r"|\b(?:trimmed|trimming|(?:took|taking) profits?|(?:reduced|reducing|cut|cutting) my (?:position|stake))\b", re.I)
 TOPIC_PHRASES = re.compile(r"\b(?:bottlenecks?|shortages?|sold out|allocations?|supply.constrained)\b", re.I)
 BULLISH_PHRASES = re.compile(
-    r"\b(?:own(?:ing)?|holding|added|adding|add(?:ed)? more|bought|buying|my position|top holding|largest position|"
+    r"(?:" + FP + r"(?:doubled down on|loaded up on|(?:increased|raised) my (?:position|stake)|opened a position)\b)"
+    r"|\b(?:own(?:ing)?|holding|added|adding|add(?:ed)? more|bought|buying|my position|top holding|largest position|"
     r"conviction|bullish on|long(?=\s+\$)|(?:i'm|i am|am|went|stay(?:ing)?|still) long\b(?!\W*(?:term|time))|"
     r"started a (?:new )?position|initiated|accumulat\w*|cost.averag\w*)\b", re.I)
 NEGATION_BEFORE = re.compile(r"\b(?:not|never|no|don't|dont|didn't|didnt)\b\W+(?:\w+\W+){0,2}$", re.I)
@@ -83,7 +90,8 @@ EXCEPT_MARKER = re.compile(r"\b(?:except|other than|apart from|aside from|beside
 # "I thought $X was overvalued" states a past view, not a current exit.
 PAST_VIEW_BEFORE = re.compile(r"\b(?:thought|used to think|used to)\b(?:\W+\w+){0,6}\W*$", re.I)
 # "a guide on how to do DD when shorting $X" or "if you're long $X" frames a case, not his own stance (any phrase class).
-HYPOTHETICAL_BEFORE = re.compile(r"\b(?:how to|guide (?:on|to)|if you(?:'re| are)?|in case you)\b(?:\W+\w+){0,4}\W*$", re.I)
+HYPOTHETICAL_BEFORE = re.compile(r"\b(?:how to|guide (?:on|to)|if you(?:'re| are)?|in case you|(?:should|could|would)(?: not)?(?: have|'ve)|"
+                                 r"shoulda|coulda|woulda|wish i|if only i)\b(?:\W+\w+){0,4}\W*$", re.I)
 # A post he marks as satire or a joke carries no stance for any ticker it names (its mentions still count).
 SATIRE = re.compile(r"\b(?:satire|satirical|parody|just kidding|(?:don't|do not) (?:actually )?take this (?:post )?seriously)\b"
                     r"|(?<![\w/])/s(?![\w/])", re.I)
@@ -227,7 +235,7 @@ def phrase_matches(clause: str, spans: list[tuple[int, int, str, dict[str, Any]]
             if any(start < taken_end and taken_start < end for taken_start, taken_end in taken):
                 continue
             before = clause[:start]
-            if kind != "TOPIC" and HYPOTHETICAL_BEFORE.search(before):
+            if kind != "TOPIC" and HYPOTHETICAL_BEFORE.search(clause[:start + len(match.groupdict().get("fp") or "")]):
                 continue
             if kind == "EXIT" and PAST_VIEW_BEFORE.search(before):
                 continue
