@@ -109,9 +109,13 @@ def verify(data, manifest=None, *, now=None, expected_profile=None, expected_con
     for field in ("stale_lease", "replay", "exact_model_mismatch"): require(data.get(field) == "PASS", "NEGATIVE_GATE_UNPROVEN:"+field)
     return {"status":"PASS", "live_qa":"PASS", "live_free_relay_smoke":"PASS", "release_ready":True, "exact_model":selected, "model_profile_sha256":profile_sha256(profile) if profile else None, "max_latency_ms":max(r["total_ms"] for r in rows), "production_mutation_by_ci":False}
 
-if __name__ == "__main__":
+def main(argv=None):
     p=argparse.ArgumentParser(description=__doc__); p.add_argument("--receipt",type=Path,required=True)
     p.add_argument('--model-profile', type=Path, help='Expected profile for schema2 receipts; default is the source template')
-    args=p.parse_args()
+    p.add_argument('--contract-id', help='Require this publication contract id in the readiness proof; omitted accepts v1 and v2 receipts')
+    args=p.parse_args(argv)
     intended = parse_profile(args.model_profile.read_text(encoding='utf-8-sig')) if args.model_profile else None
-    print(json.dumps(verify(json.loads(args.receipt.read_text(encoding='utf-8-sig')), expected_profile=intended)))
+    print(json.dumps(verify(json.loads(args.receipt.read_text(encoding='utf-8-sig')), expected_profile=intended, expected_contract_id=args.contract_id)))
+
+if __name__ == "__main__":
+    main()

@@ -304,4 +304,65 @@ foreach($script:status in @(200,409,404)){
                 with self.subTest(path=path.name):
                     self.assertEqual(PUBLICATION_CONTRACT_HASHES.get(row.get('publication_contract_id')), row.get('publication_contract_sha256'))
 
+class ContractIdWiringAndLoopbackProxyTests(unittest.TestCase):
+    def test_qa_evidence_cli_passes_contract_id_only_when_given(self):
+        import tempfile
+        import verify_r75_qa_evidence as module
+        with tempfile.TemporaryDirectory() as directory:
+            receipt = Path(directory) / 'receipt.json'
+            receipt.write_text('{}', encoding='utf-8')
+            for argv, expected in ((['--receipt', str(receipt)], None),
+                                   (['--receipt', str(receipt), '--contract-id', 'v213-r75-publication-mode-v2'], 'v213-r75-publication-mode-v2')):
+                with self.subTest(expected=expected), patch.object(module, 'verify', return_value={'status': 'PASS'}) as fake, patch('builtins.print'):
+                    module.main(argv)
+                    self.assertEqual(fake.call_args.kwargs['expected_contract_id'], expected)
+
+    def test_hotfix_verifier_passes_contract_id_to_the_live_receipt_check(self):
+        import hashlib, tempfile
+        import verify_r75_qa_evidence as live
+        import verify_v213_r75_free_relay_hotfix as hotfix
+        raw = b'{}'
+        digest = hashlib.sha256(raw).hexdigest()
+        refs = {'qa_live_receipt_path': 'state/synthetic-qa.json', 'qa_live_receipt_sha256': digest,
+                'exact_model': 'synthetic-model', 'model_profile_sha256': None}
+        receipts = [{'release_ready': True, 'qa_live_receipt_path': refs['qa_live_receipt_path'], 'qa_live_receipt_sha256': digest}]
+        def fake_live(data, manifest=None, *, expected_profile=None, expected_contract_id=None):
+            if expected_contract_id not in (None, 'v213-r75-publication-mode-v1'):
+                raise ValueError('READINESS_PROOF_INVALID')  # a v1 proof against any other required id
+            return {'exact_model': 'synthetic-model', 'model_profile_sha256': None}
+        with tempfile.TemporaryDirectory() as directory, patch.object(live, 'verify', side_effect=fake_live):
+            qa = Path(directory) / 'qa.json'
+            qa.write_bytes(raw)
+            hotfix.verify_qa_binding({}, refs, receipts, qa)
+            hotfix.verify_qa_binding({}, refs, receipts, qa, expected_contract_id=None)
+            with self.assertRaisesRegex(hotfix.VerificationError, 'external QA qualification failed'):
+                hotfix.verify_qa_binding({}, refs, receipts, qa, expected_contract_id='v213-r75-publication-mode-v2')
+
+    def test_router_requests_ignore_ambient_proxies(self):
+        import v213_qa_live_gate as gate
+        props = SimpleNamespace(status_code=200, json=lambda: {'role': 'router', 'max_instances': 1})
+        listener = json.dumps({'pid': 1, 'name': 'llama-server'})
+        with patch('v213_qa_live_gate.subprocess.run', return_value=SimpleNamespace(stdout=listener)),                 patch('v213_qa_live_gate.requests.get', return_value=props) as get:
+            gate.router_limits()
+            self.assertEqual(get.call_args.kwargs['proxies'], {'http': None, 'https': None})
+
+    def test_live_gate_session_does_not_trust_ambient_environment(self):
+        import tempfile
+        import v213_qa_live_gate as gate
+        created = []
+        def make_session():
+            session = SimpleNamespace(trust_env=True)
+            created.append(session)
+            return session
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            (home / 'InvestorIntelligence/UserData/config').mkdir(parents=True)
+            (home / 'InvestorIntelligence/UserData/config/v213-llama-router.preset.ini').write_text('[synthetic]', encoding='utf-8')
+            argv = ['gate', '--live-isolated', '--readiness-only', '--output', str(home / 'new-evidence.json')]
+            with patch.dict('os.environ', {'LOCALAPPDATA': str(home)}), patch.object(sys, 'argv', argv),                     patch.object(gate, 'source_manifest', return_value={}),                     patch('v213_qa_live_gate.requests.Session', side_effect=make_session),                     patch('v213_qa_live_gate.subprocess.run', side_effect=RuntimeError('SYNTHETIC_STOP')):
+                with self.assertRaises(RuntimeError):
+                    gate.main()
+        self.assertEqual(len(created), 1)
+        self.assertIs(created[0].trust_env, False)
+
 if __name__=='__main__':unittest.main()

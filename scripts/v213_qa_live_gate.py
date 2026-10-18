@@ -37,13 +37,16 @@ def validate_router_proof(listener, props):
     return {"pid": listener["pid"], "models_max": 1, "proof": "loopback_props_and_listener"}
 
 
+NO_PROXIES = {"http": None, "https": None}  # loopback requests ignore ambient proxy settings
+
+
 def router_limits():
     # Prove the process owning this listener, not any unrelated llama process.
     # Router /props reports the effective cap even when CIM hides CommandLine.
     command = "$ErrorActionPreference='Stop'; $owners=@(Get-NetTCPConnection -State Listen -LocalPort 8080 | Select-Object -ExpandProperty OwningProcess -Unique); if($owners.Count -ne 1){throw 'ROUTER_LISTENER_AMBIGUOUS'}; $p=Get-Process -Id $owners[0]; [pscustomobject]@{pid=$p.Id;name=$p.ProcessName}|ConvertTo-Json -Compress"
     raw = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command], capture_output=True, text=True, check=True, timeout=20).stdout
     if not raw.strip(): raise RuntimeError("ROUTER_MODELS_MAX_PROOF_UNAVAILABLE")
-    response = requests.get("http://127.0.0.1:8080/props", timeout=10, allow_redirects=False)
+    response = requests.get("http://127.0.0.1:8080/props", timeout=10, allow_redirects=False, proxies=NO_PROXIES)
     if response.status_code != 200: raise RuntimeError("ROUTER_PROPS_UNAVAILABLE")
     return validate_router_proof(json.loads(raw), response.json())
 
@@ -135,7 +138,7 @@ def main():
     router, canonical, catalog = None, None, None
     if not args.readiness_only:
         router = router_limits()
-        response = requests.get("http://127.0.0.1:8080/models", timeout=10, allow_redirects=False)
+        response = requests.get("http://127.0.0.1:8080/models", timeout=10, allow_redirects=False, proxies=NO_PROXIES)
         if response.status_code != 200: raise RuntimeError("ROUTER_CATALOG_UNAVAILABLE")
         catalog = response.json().get("data")
         canonical = resolve_model_id(selected, catalog)
@@ -151,6 +154,7 @@ def main():
     gateway_domain = "v213-free-relay-gateway." + generation
     gateway_secret = hmac.new(synthetic_auth.encode(), gateway_domain.encode(), hashlib.sha256).hexdigest()
     session = requests.Session()
+    session.trust_env = False  # this loopback session never uses an ambient proxy
     evidence = {"schema_version": 2 if profile else 1, "status": "FAIL", "started_at": datetime.now(timezone.utc).isoformat(), "scope": "READINESS_ONLY" if args.readiness_only else "FULL_LIVE", "source_manifest": manifest, "router": router, "preset_sha256": preset_sha,
                 "exact_model": selected, "canonical_model": canonical,
                 "model_catalog": [{"id": m["id"], "aliases": m.get("aliases", [])} for m in catalog] if catalog else None,

@@ -191,7 +191,7 @@ def verify_model_binding(files, refs, receipts, archive_sha):
     return identity
 
 
-def verify_qa_binding(files, refs, receipts, qa_receipt):
+def verify_qa_binding(files, refs, receipts, qa_receipt, expected_contract_id=None):
     bound = ('scripts/r75_release_inputs.py' in files or 'qa_live_receipt_path' in refs
              or 'qa_live_receipt_sha256' in refs or any('qa_live_receipt_path' in r for r in receipts))
     if not bound:
@@ -216,7 +216,7 @@ def verify_qa_binding(files, refs, receipts, qa_receipt):
     try:
         from verify_r75_qa_evidence import verify as verify_live
         profile = parse_profile(files['config/v213-model-profile-v1.json'][1].decode('utf-8-sig')) if 'config/v213-model-profile-v1.json' in files else None
-        qualified = verify_live(data, manifest, expected_profile=profile)
+        qualified = verify_live(data, manifest, expected_profile=profile, expected_contract_id=expected_contract_id)
         if any(qualified.get(key) != refs.get(key) for key in ('exact_model', 'model_profile_sha256')):
             raise ValueError('QA model identity differs from archive')
     except (ValueError, KeyError, TypeError, UnicodeError):
@@ -242,7 +242,7 @@ def verify_scope_binding(refs: dict, manifest: dict, verified: list[dict], artif
 
 
 def verify(archive: Path, checksum: Path, commit: str, run_id: str, receipts: list[Path], qa_receipt: Path | None = None,
-           artifact_name: str = DEFAULT_ARTIFACT_NAME) -> dict:
+           artifact_name: str = DEFAULT_ARTIFACT_NAME, expected_contract_id: str | None = None) -> dict:
     commit = commit.lower()
     if not HEX40.fullmatch(commit) or not run_id.isdigit() or not ARTIFACT_NAME.fullmatch(artifact_name):
         raise VerificationError("invalid immutable identity")
@@ -344,7 +344,7 @@ def verify(archive: Path, checksum: Path, commit: str, run_id: str, receipts: li
             deployment[0].get("extracted_zip_runtime_install") != "PASS"):
         raise VerificationError("extracted ZIP Worker gate receipt missing or inconsistent")
     model_binding = verify_model_binding(files, refs, verified, actual)
-    verify_qa_binding(files, refs, verified, qa_receipt)
+    verify_qa_binding(files, refs, verified, qa_receipt, expected_contract_id)
     return {
         **model_binding,
         "status": "PASS", "artifact_kind": "R75_FREE_WORKERS_RELAY_HOTFIX",
@@ -372,10 +372,11 @@ def main() -> int:
     parser.add_argument("--qa-live-receipt", type=Path)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--artifact-name", default=DEFAULT_ARTIFACT_NAME)
+    parser.add_argument("--qa-contract-id", help="Require this publication contract id in the QA live receipt; omitted keeps v1 and v2 accepted")
     args = parser.parse_args()
     try:
         result = verify(args.archive, args.checksum, args.source_commit, args.workflow_run_id, args.receipt, args.qa_live_receipt,
-                        args.artifact_name)
+                        args.artifact_name, args.qa_contract_id)
     except (OSError, UnicodeError, zipfile.BadZipFile, VerificationError) as exc:
         print(f"V213_R75_FREE_RELAY_ARTIFACT_VERIFICATION = FAIL; reason={type(exc).__name__}")
         return 1
