@@ -43,9 +43,10 @@ Policy/history: `git show 42770026:state/STATUS.md`. Owned kill-on-close jobs, l
 
 ## Open work
 
-- Low notes kept: V15 N1 TSM calendar_locator wording and N4 catalog_count 101 in the sealed builders (both change reviewed or archived bytes); old Worker lacks the non-official consensus wording until stage 3; GO delta V13 F1 wording in the pinned drivers; V18 N1 options guard only for `sold` + puts/calls, N2 short counterfactual window (no live case).
+- V18b (feat/v18b-serenity-guards, IMPLEMENTED_UNVERIFIED): V18 N1, option nouns up to three tokens after "sold" are not exits (live: 2025-09-22 TSM calls); N2, the counterfactual frame stops at a comma or "so"/"but".
+- Low notes kept: V15 N1 TSM calendar_locator wording and N4 catalog_count 101 in the sealed builders (both change reviewed or archived bytes); old Worker lacks the non-official consensus wording until stage 3; GO delta V13 F1 wording in the pinned drivers.
 - Live: KV sync SUCCEEDED on the first attempt every cycle since H1 except 14:12Z (TRANSIENT_HTTP, pointer kept; next cycle OK); TAIFEX 17:30 run sees the previous trade_date until dataset 11320 publishes (a time change is a new registration).
-- Carried (see `git show bd5848b:state/STATUS.md`): N6; F8; G9a N2; G2-B1 M04/M22; auth-capture; unpinned winget cloudflared (SC-2); workers.dev rename (operator); launcher EXE rebuild. Closed by V17 (inv-c): C1 wiring, RoutingCheckOnly row, QA gate proxy, `npx wrangler`, Node major, V12 N3, V15 N2/N3/N5, V11 bounds, GO r2 F2-F6, l5 bench, HIST, erratum, workers.dev check, KV 7009.
+- Carried (see `git show bd5848b:state/STATUS.md`): N6; F8; G9a N2; G2-B1 M04/M22; auth-capture; unpinned winget cloudflared (SC-2); workers.dev rename (operator); launcher EXE rebuild. Closed by V17: `R/v17-evidence-a43bef58/inv-c`.
 - Environment-only failures: bridge_model_identity, model_profile, qa_capacity_security outside pinned hosts; source_declared_candidates under long roots; CI embeddable Python.
 - Operator questions: M5, O11/O12 (`R/REQUESTS-OPEN-DECISIONS-MODEL-OPTIONS-CLAUDECODE-a43bef58-20261011.txt`); dataset 11321 rights. Deferred/external: S1, T11-F1A D2/D3, BATCH08D P3(c)/DIL-4/DIL-6/1800 s/B5/B7, BATCH09 G6 F05B, 15 BLOCKED modules, 03f GAP_OPEN, M5 native, L5 qa.ts recertification, P6 host execution, G9b. Earlier lanes: global options rights, identity rebuild, O5, source diversity, F06/A3/CRWV, Lane2/3, CRDO-RPO-01, SEC-cache, LINE bounds, native M2/M3, provenance block. Not whole-project completion.
 
@@ -55,4 +56,4 @@ History: `git show bd5848b:state/STATUS.md`. Since: P0 run 1 tool defect (p0.ps1
 
 ## Next
 
-V16-V18 install needs a Sonnet GO and authorization; stage 2 watch to the 23:12Z cycle (read with the stage 3 gate at 00:48Z); stage 3 on 2026-10-19 00:48Z and its watch; rollout writer receipt and Sonnet acceptance; then the Q2 merges and the final STATUS. Boundaries: credentials, billing, broker, trades, M5, BATCH02D. No trades.
+V18b H5 and acceptance; V16-V18 install needs a Sonnet GO and authorization; stage 2 watch to the 23:12Z cycle (read with the stage 3 gate at 00:48Z); stage 3 on 2026-10-19 00:48Z and its watch; rollout writer receipt and Sonnet acceptance; then the Q2 merges and the final STATUS. Boundaries: credentials, billing, broker, trades, M5, BATCH02D. No trades.
