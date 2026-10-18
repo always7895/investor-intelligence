@@ -38,6 +38,7 @@ Rollback baseline：eb52ece1-8749-4526-a464-3356ec2dbc65
 - 清除舊 v2.1.2 bridge/tunnel 孤兒程序；
 - 清除驗證用 temporary scripts、logs 與短路徑副本；
 - 保留正式 artifact 與 post-download receipt；
+- 確認當時僅一個 llama.cpp Router、`models-max=1`、`qwen38-q6` loaded（2026-09 的紀錄；llama.cpp 已退役，模型自 2026-10-11 起改為自動偵測）；
 - 保留早晚資料刷新工作；
 - 保留新的 v2.1.3 FREE_RELAY task、Gateway、cloudflared 與 heartbeat。
 
@@ -105,6 +106,8 @@ Detected-model route                  PASS
 08:00/21:00 schedules retained         PASS
 Secrets not printed                    PASS
 ```
+
+`Detected-model route` 於 2026-10-18 取代原本的 `Exact qwen38-q6 route` 檢查列（模型改為自動偵測）。
 
 ## English summary
 
