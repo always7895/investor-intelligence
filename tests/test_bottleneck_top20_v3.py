@@ -297,6 +297,49 @@ class LeadMathV16Tests(unittest.TestCase):
         self.assertEqual(engine.effective_13f_weight({"long_weight": 0.2}, self.FILING, edge)[1], None)
         self.assertEqual(engine.effective_13f_weight({"long_weight": 0.2}, self.FILING, edge + timedelta(days=1)), (0.0, "STALE_13F"))
 
+    def test_direction_factor_table(self):
+        base = {"long_weight": 0.2, "long_value_usd": 1000.0, "prior_shares": 100.0, "put_notional_usd": 0.0}
+        cases = [
+            ({**base, "shares_change": 0.0}, 1.0, []),
+            ({**base, "shares_change": -49.0}, 1.0, []),
+            ({**base, "shares_change": -50.0}, 0.5, ["TRIM"]),  # equality counts as a trim
+            ({**base, "shares_change": -100.0}, 0.5, ["TRIM"]),
+            ({**base, "shares_change": 40.0}, 1.0, []),
+            ({**base, "shares_change": None, "prior_shares": None}, 1.0, []),  # NEW
+            ({**base, "shares_change": -5.0, "prior_shares": 0.0}, 1.0, []),  # prior 0 never trims
+            ({**base, "shares_change": 0.0, "put_notional_usd": 499.0}, 1.0, []),
+            ({**base, "shares_change": 0.0, "put_notional_usd": 500.0}, 0.75, ["HEDGED"]),
+            ({**base, "shares_change": -60.0, "put_notional_usd": 900.0}, 0.375, ["TRIM", "HEDGED"]),
+            ({**base, "shares_change": 0.0, "put_notional_usd": 900.0, "long_value_usd": 0.0}, 1.0, []),
+            ({"long_weight": 0.2}, 1.0, []),
+            ({"long_weight": 0.2, "shares_change": "x", "prior_shares": float("nan")}, 1.0, []),
+        ]
+        for pos, factor, reasons in cases:
+            self.assertEqual(engine.direction_factor(pos), (factor, reasons), pos)
+        self.assertEqual(engine.direction_factor(None), (1.0, []))
+        self.assertLessEqual((engine.TRIM_FACTOR, engine.HEDGE_FACTOR), (0.5, 0.75))
+
+    def test_direction_scales_the_effective_weight_and_old_rows_stay_identical(self):
+        old = {"long_weight": 0.28, "currency_factor": 0.25}
+        self.assertEqual(engine.effective_13f_weight(old, self.FILING, self.NOW), (0.28 * 0.25, None))
+        trimmed = {**old, "shares_change": -60.0, "prior_shares": 100.0, "long_value_usd": 10.0, "put_notional_usd": 9.0}
+        weight, reason = engine.effective_13f_weight(trimmed, self.FILING, self.NOW)
+        self.assertAlmostEqual(weight, 0.28 * 0.25 * 0.375)
+        self.assertIsNone(reason)
+        self.assertEqual(engine.effective_13f_weight(trimmed, {"period": "2026-01-01"}, self.NOW), (0.0, "STALE_13F"))
+
+    def test_trimmed_name_ranks_below_an_otherwise_equal_name(self):
+        held = {"long_weight": 0.2, "currency_factor": 1.0, "shares_change": 0.0, "prior_shares": 100.0}
+        trimmed = {**held, "shares_change": -80.0}
+        lead_held = engine.company_lead(None, held, 1.0, 1.0, "EXPLOSION", self.FILING, self.NOW)
+        lead_trimmed = engine.company_lead(None, trimmed, 1.0, 1.0, "EXPLOSION", self.FILING, self.NOW)
+        self.assertGreater(lead_held, lead_trimmed)
+        self.assertAlmostEqual(lead_trimmed, engine.fund_lead_part(0.1) * 30)
+        rows = [{"leopold": held}, {"leopold": trimmed}]
+        raw, eff = engine.layer_fund_weight(rows, self.FILING, self.NOW)
+        self.assertAlmostEqual(raw, 0.4)  # the sealed raw sum is untouched
+        self.assertAlmostEqual(eff, 0.3)
+
     def test_concave_13f_part(self):
         self.assertAlmostEqual(engine.fund_lead_part(0.30), 0.3)
         self.assertAlmostEqual(engine.fund_lead_part(0.60), 0.3)  # saturates at the same maximum as before

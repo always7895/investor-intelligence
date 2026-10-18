@@ -970,6 +970,10 @@ CHAIN_WEIGHT_FALLBACK = 0.6
 FUND_WEIGHT_CAP = 0.30          # long_weight at which the 13F part of the company lead saturates
 FUND_LEAD_MAX = 0.3             # maximum 13F part of the company lead (unchanged since v3)
 STALE_13F_DAYS = 200
+TRIM_FACTOR = 0.5               # judgment-node multiplier (JEV 2026-10-18): shares cut by at least TRIM_CUT versus the prior 13F
+HEDGE_FACTOR = 0.75             # judgment-node multiplier (Xor, master 2026-10-18): own put notional at least HEDGE_RATIO of the long value
+TRIM_CUT = 0.5
+HEDGE_RATIO = 0.5
 MIRROR_FRESH_HOURS = 72
 MIRROR_STALE_DAYS = 14
 
@@ -997,8 +1001,25 @@ def _parse_day(value: Any) -> date | None:
         return None
 
 
+def direction_factor(pos: dict[str, Any] | None) -> tuple[float, list[str]]:
+    """(factor, reasons) from the direction of the fund's own position: TRIM when its shares fell by at least half versus the
+    prior 13F (NEW or a prior of 0 never trims), HEDGED when its own put notional is at least half of its long value (puts on
+    other tickers, such as sector ETFs, are never netted). Missing or unreadable fields give 1.0. Never above 1.0."""
+    factor, reasons = 1.0, []
+    pos = pos or {}
+    prior, change = _finite(pos.get("prior_shares")), _finite(pos.get("shares_change"))
+    if prior is not None and change is not None and prior > 0 and change / prior <= -TRIM_CUT:
+        factor *= TRIM_FACTOR
+        reasons.append("TRIM")
+    puts, long_value = _finite(pos.get("put_notional_usd")), _finite(pos.get("long_value_usd"))
+    if puts is not None and long_value is not None and long_value > 0 and puts >= HEDGE_RATIO * long_value:
+        factor *= HEDGE_FACTOR
+        reasons.append("HEDGED")
+    return factor, reasons
+
+
 def effective_13f_weight(pos: dict[str, Any] | None, filing: dict[str, Any] | None, now: datetime) -> tuple[float, str | None]:
-    """w_eff = long_weight * currency_factor (1.0 when absent) * age factor; the age factor is 0 (STALE_13F) when the
+    """w_eff = long_weight * min(1, currency_factor (1.0 when absent) * direction_factor) * age factor; the age factor is 0 (STALE_13F) when the
     filing period is more than STALE_13F_DAYS before the build time, else 1. Returns (w_eff, reason)."""
     if not pos:
         return 0.0, None
@@ -1008,7 +1029,7 @@ def effective_13f_weight(pos: dict[str, Any] | None, filing: dict[str, Any] | No
     period = _parse_day((filing or {}).get("period"))
     if period is not None and (now.date() - period).days > STALE_13F_DAYS:
         return 0.0, "STALE_13F"
-    return max(0.0, weight) * factor, None
+    return max(0.0, weight) * min(1.0, factor * direction_factor(pos)[0]), None
 
 
 def fund_lead_part(w_eff: float) -> float:
@@ -1188,6 +1209,7 @@ def build(fetch: Callable[[str], bytes] | None, now: datetime, with_news: bool =
         total = heat_by.get(company["layer"], 0) + capture + lead + confirm + size - penalty
         company["long_term_return"] = long_term
         company["archetype"] = archetype
+        company["direction_reason"] = direction_factor(pos)[1]
         company["score"] = round(max(0.0, total), 1)
         company["score_parts"] = {"layer_heat": heat_by.get(company["layer"], 0), "capture": round(capture, 2), "capture_detail": capture_detail,
                                   "lead": round(lead, 2), "confirmation": round(confirm, 2), "size": size, "penalty": penalty}
