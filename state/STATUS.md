@@ -22,7 +22,8 @@ DEVELOPMENT_COMPLETE=false; FUNCTIONAL_PROJECT_COMPLETE=false; FINAL_RELEASE_COM
 - V17 gaps and minimization, 3968196 (feat/v17-gaps-minimize, pushed): Serenity third-party header lists and "trimmed those positions" (LULU no longer BEARISH); opt-in `--contract-id`; QA gate ignores host proxies; 7 history-only Markdown files deleted (102 -> 95); S residue in `_archive/v17-s-residue-20261018T140946Z`. `R/final-a43bef58-v17-g1` PASS_AS_RULED. Receipts `R/EXECUTOR-V17-RESULT-...`, `R/SONNET-V17-INDEPENDENT-ACCEPT-...` ACCEPT-WITH-NOTES. Skill synced (`_archive/instruction-sync-20261018T172235Z`).
 - V18 community fits, 02d4fbd (feat/v18-community-optimize, pushed): 13F PRN rows, CUSIP check digits, cover reconciliation (x0.5), the fund's Form 3/4; Top20 TRIM 0.5 / HEDGED 0.75 (Top20 unchanged); Serenity first-person verbs, counterfactuals (8 live posts; BEARISH only CRWV); workflow gate bans untrusted `${{ }}` in `run:`. `R/final-a43bef58-v18-g1` PASS_AS_RULED. Receipts `R/EXECUTOR-V18-RESULT-...`, `R/SONNET-V18-INDEPENDENT-ACCEPT-...` ACCEPT-WITH-NOTES. Skill synced (`_archive/instruction-sync-20261018T201144Z`).
 - V18b Serenity guards, 8ed3698 (feat/v18b-serenity-guards, pushed): V18 N1/N2. `R/final-a43bef58-v18b-g2` PASS_AS_RULED (g1: one observation race, rerun). Receipts `R/EXECUTOR-V18B-RESULT-...`, `R/SONNET-V18B-INDEPENDENT-ACCEPT-...` ACCEPT-WITH-NOTES. Skill synced (`_archive/instruction-sync-20261019T024505Z`).
-- V19 Nasdaq US options + yfinance 1.7.0, f5ccc58 (feat/v19-nasdaq-us-yfinance, pushed): operator A1/A4; the Nasdaq US chain is a labelled Yahoo fallback (AS OF <= 4 days); yfinance 1.7.0 + lxml locked (locally; redo on the runner). `R/final-a43bef58-v19-g1` PASS_AS_RULED. Receipts `R/EXECUTOR-V19-RESULT-...`, `R/SONNET-V19-INDEPENDENT-ACCEPT-...` ACCEPT.
+- V19 Nasdaq US options + yfinance 1.7.0, f5ccc58: operator A1/A4; `R/final-a43bef58-v19-g1` PASS_AS_RULED; `R/SONNET-V19-INDEPENDENT-ACCEPT-...` ACCEPT (relock on the runner later).
+- V20/V21, 9b71a1c (feat/v20-v21-line-ui-strategies, pushed): bulleted Flex cards; CC, CSP and collar per cycle, floor 2%; `R/final-a43bef58-v2021-g1` PASS_AS_RULED; `R/SONNET-V2021-INDEPENDENT-ACCEPT-...` ACCEPT.
 - Ruled BLOCKED 20: the 15 n1-g10 native/vault modules + installer_diagnostics, installer_parse_evidence, local_model_endpoint, v213_free_relay_watchdog, v213_journal_reconciliation (sandbox PATH/cwd; reruns outside the sandbox OK).
 
 ## Rollout v10 (executed 2026-10-13; plan 172fe218, target 8d98136, `R/SONNET-ROLLOUT10-GO-...`)
@@ -45,7 +46,6 @@ Policy/history: `git show 42770026:state/STATUS.md`. Owned kill-on-close jobs, l
 
 ## Open work
 
-- V20/V21 (feat/v20-v21-line-ui-strategies, IMPLEMENTED_UNVERIFIED; `R/OPERATOR-DECISION-V2{0,1}-...`): bulleted Flex cards; each cycle prices CC, CSP, collar (same labelled sources), floor 2%, no new KV keys.
 - Low notes kept: V15 N1/N4 in the sealed builders; old Worker lacks the non-official consensus wording until stage 3; GO delta V13 F1 wording in the pinned drivers; V18b F1 option nouns beyond three tokens, F2 a dash break (no live case).
 - Live: KV sync SUCCEEDED on the first attempt every cycle since H1 except 14:12Z (TRANSIENT_HTTP, pointer kept; next cycle OK); TAIFEX 17:30 run sees the previous trade_date until dataset 11320 publishes (a time change is a new registration).
 - Carried (see `git show bd5848b:state/STATUS.md`): N6; F8; G9a N2; G2-B1 M04/M22; auth-capture; unpinned winget cloudflared (SC-2); workers.dev rename (operator); launcher EXE rebuild.
@@ -58,4 +58,4 @@ History: `git show bd5848b:state/STATUS.md`. Since: P0 run 1 tool defect (p0.ps1
 
 ## Next
 
-V20/V21 H5 and acceptance; V16-V21 install/deploy needs a Sonnet GO and authorization; stage 3 P6b (authorized, 2026-10-20 00:48Z) and its watch; rollout writer receipt and Sonnet acceptance; then the Q2 merges and the final STATUS. Boundaries: credentials, billing, broker, trades, M5, BATCH02D. No trades.
+V16-V21 install/deploy needs a Sonnet GO and authorization; stage 3 P6b (authorized, 2026-10-20 00:48Z) and its watch; rollout writer receipt and Sonnet acceptance; then the Q2 merges and the final STATUS. Boundaries: credentials, billing, broker, trades, M5, BATCH02D. No trades.
