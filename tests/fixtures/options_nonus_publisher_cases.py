@@ -241,7 +241,16 @@ def _sealed_world(specs: list[dict[str, Any]], now: datetime, requests: list[str
         if "/api/quote/" in url:
             for spec in specs:
                 if spec["kind"] == "US" and f"/api/quote/{spec['symbol'].replace('-', '.').lower()}/option-chain" in url:
-                    return {"data": {"table": {"rows": spec["nasdaq_rows"] or []}}}
+                    if "nasdaq_error" in spec:  # V19: a bot challenge or non-JSON body surfaces as the transport's exception
+                        raise spec["nasdaq_error"]
+                    day = now.date()
+                    data: dict[str, Any] = {"table": {"rows": spec["nasdaq_rows"] or []}}
+                    if "nasdaq_last_trade" in spec:  # V19: an explicit data.lastTrade text; None leaves it out
+                        if spec["nasdaq_last_trade"] is not None:
+                            data["lastTrade"] = spec["nasdaq_last_trade"]
+                    else:
+                        data["lastTrade"] = f"LAST TRADE: $1.00 (AS OF {day.strftime('%b').upper()} {day.day}, {day.year})"
+                    return {"data": data}
             return {"data": {"table": {"rows": []}}}
         raise AssertionError("UNEXPECTED_TRANSPORT:" + url)
 

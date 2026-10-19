@@ -76,16 +76,21 @@
       "name": "Nasdaq public option-chain pages",
       "authority": "Nasdaq",
       "jurisdictions": ["US"],
-      "data_roles": ["delayed_quotes_candidate", "contract_reference"],
+      "data_roles": ["delayed_quotes_candidate", "contract_reference", "delayed_option_quotes"],
       "official_url": "https://www.nasdaq.com/market-activity/stocks",
       "rights_evidence_url": "https://www.nasdaq.com/market-activity/quotes/option-chain",
-      "rights_status": "review_before_enable",
+      "rights_status": "operator_accepted_unlicensed",
       "automated_access_allowed": null,
-      "rights_reviewed_at": null,
-      "review_notes": "Automated API access, free-tier continuity and redistribution rights remain unverified; website display alone is not sufficient.",
-      "adapter_status": "not_implemented",
-      "runtime_enabled": false,
-      "line_quote_eligible": false
+      "rights_reviewed_at": "2026-10-19",
+      "review_notes": "NOT a rights review and NOT a licence: the Nasdaq terms grant only personal, non-commercial use and forbid distribution, no redistribution grant for Nasdaq US option-chain data exists and none was obtained, and automated API access and free-tier continuity remain unverified. The operator decided on 2026-10-19 (OPERATOR-DECISION-V18-BOUNDARY-ITEMS-A1-A4-C1-C3-20261019, quoted in docs/PUBLIC_OPTIONS_PROVIDER_RIGHTS_REVIEW.md) to add the Nasdaq US option chain on the same terms as the Nordic decision, as the fallback for a cycle Yahoo could not read, accepting that exposure. The status is pinned to this provider id, this decision and this scope in scripts/public_options_provider_gate.py and cloud/src/v213/public-options-admission.ts; the LINE answer discloses the source as the Nasdaq US option chain (public quote page API), unofficial, delayed, and that it is shown on the operator's decision without a redistribution licence. The chain carries no per-quote time, so the producer shows a cycle only when its AS OF date is within 4 calendar days. review_valid_through is the operator acceptance window; it is not a licence expiry. Revert: set runtime_enabled and line_quote_eligible to false together, see the revert steps in the rights review document.",
+      "adapter_status": "candidate_implemented",
+      "runtime_enabled": true,
+      "line_quote_eligible": true,
+      "review_valid_through": "2027-10-19",
+      "admitted_scopes": [
+        {"jurisdiction": "US", "venue": "US_LISTED_OPTIONS", "instrument_kind": "equity_option", "quote_basis": "delayed", "publication_scope": "public_line_quote"}
+      ],
+      "operator_decision": {"decision_id": "OPERATOR-DECISION-V18-BOUNDARY-ITEMS-A1-A4-C1-C3-20261019", "decided_at": "2026-10-19", "record": "docs/PUBLIC_OPTIONS_PROVIDER_RIGHTS_REVIEW.md"}
     },
     {
       "id": "nyse_options_reference",

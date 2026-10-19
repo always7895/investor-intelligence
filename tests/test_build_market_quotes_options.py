@@ -28,6 +28,11 @@ def row(strike, bid, ask, delta=None):
     return {"strike": strike, "bid": bid, "ask": ask, "delta": delta, "iv": None, "oi": 10, "volume": 1}
 
 
+def last_trade(day) -> str:
+    """The Nasdaq US chain's data.lastTrade text for an as-of day (V19 freshness guard)."""
+    return f"LAST TRADE: $100.00 (AS OF {day.strftime('%b').upper()} {day.day}, {day.year})"
+
+
 class SuggestionTests(unittest.TestCase):
     def test_highest_strike_worth_selling_then_a_balanced_one(self):
         spot, dte = 100.0, 30
@@ -457,7 +462,7 @@ class FallbackTests(unittest.TestCase):
                     {"expirygroup": "October 23, 2026"},
                     {"expirygroup": "", "strike": "250.00", "c_Bid": "2.00", "c_Ask": "2.10", "c_Openinterest": "--", "c_Volume": "7"},
                     {"expirygroup": "", "strike": "260.00", "c_Bid": "--", "c_Ask": "0.90", "c_Openinterest": "5", "c_Volume": "1"}]
-            return {"data": {"table": {"rows": rows}}}
+            return {"data": {"lastTrade": last_trade(self.TODAY - timedelta(days=1)), "table": {"rows": rows}}}
         builder.http_json = fake_http
         out = builder.nasdaq_us_options("BRK-B", 225.0, self.TODAY, self.STAMP)
         self.assertIn("/quote/brk.b/option-chain", self.urls[0])
@@ -469,7 +474,8 @@ class FallbackTests(unittest.TestCase):
         self.assertLessEqual(weekly["delta"], builder.MAX_HIGH_STRIKE_DELTA)
         self.assertEqual(out["weekly"]["suggestions"][0]["oi"], 1200)
         self.assertTrue(out["weekly"]["provenance"].startswith("https://www.nasdaq.com/"))
-        self.assertEqual(out["weekly"]["rights_status"], "candidate_local_review")
+        self.assertEqual(out["weekly"]["rights_status"], "operator_accepted_unlicensed")
+        self.assertEqual({k: out["weekly"][k] for k in builder.NASDAQ_US_OPTION_IDENTITY}, builder.NASDAQ_US_OPTION_IDENTITY)
         builder.http_json = lambda url: (_ for _ in ()).throw(OSError("blocked"))
         self.assertEqual(builder.nasdaq_us_options("NVDA", 225.0, self.TODAY, self.STAMP)["monthly"]["unavailable"], "Nasdaq 期權鏈讀取失敗")
 
@@ -1025,7 +1031,7 @@ class OptionPresessionAcceptanceTests(unittest.TestCase):
             self.assertFalse(h["read"])
 
         # 7. Nasdaq US nonempty responses without a selected expiry
-        builder.http_json = lambda url: {"data": {"table": {"rows": [
+        builder.http_json = lambda url: {"data": {"lastTrade": last_trade(self.TODAY), "table": {"rows": [
             {"expirygroup": "December 18, 2026"},
             {"strike": "100.00", "c_Bid": "1.0", "c_Ask": "1.1", "c_Volume": "10", "c_Openinterest": "10"}
         ]}}}
@@ -1126,7 +1132,7 @@ class OptionPresessionAcceptanceTests(unittest.TestCase):
             {"expirygroup": "October 23, 2026"},
             {"strike": "115.00", "c_Bid": "2.00", "c_Ask": "2.10", "c_Volume": "100", "c_Openinterest": "50"}
         ]
-        builder.http_json = lambda url: nasdaq_urls.append(url) or {"data": {"table": {"rows": nasdaq_rows_with_quotes}}}
+        builder.http_json = lambda url: nasdaq_urls.append(url) or {"data": {"lastTrade": last_trade(self.TODAY), "table": {"rows": nasdaq_rows_with_quotes}}}
 
         res_v2 = builder.us_cycles("V2", 100.0, self.TODAY, self.STAMP)
         self.assertEqual(len(nasdaq_urls), 1)  # Called exactly once!
@@ -1140,7 +1146,7 @@ class OptionPresessionAcceptanceTests(unittest.TestCase):
             {"expirygroup": "October 23, 2026"},
             {"strike": "110.00", "c_Bid": "0.00", "c_Ask": "0.00", "c_Volume": "100", "c_Openinterest": "50"}
         ]
-        builder.http_json = lambda url: nasdaq_urls.append(url) or {"data": {"table": {"rows": nasdaq_rows_zero}}}
+        builder.http_json = lambda url: nasdaq_urls.append(url) or {"data": {"lastTrade": last_trade(self.TODAY), "table": {"rows": nasdaq_rows_zero}}}
 
         res_v3 = builder.us_cycles("V2", 100.0, self.TODAY, self.STAMP)
         self.assertEqual(len(nasdaq_urls), 1)
@@ -1328,7 +1334,7 @@ class OptionPresessionAcceptanceTests(unittest.TestCase):
 
         def nasdaq(url: str) -> dict[str, Any]:
             requests.append(url)
-            return {"data": {"table": {"rows": [
+            return {"data": {"lastTrade": last_trade(self.TODAY), "table": {"rows": [
                 {"expirygroup": "October 2, 2026"}, {"strike": "110.00", "c_Bid": "1.00", "c_Ask": "1.10"},
                 {"expirygroup": "October 23, 2026"}, {"strike": "115.00", "c_Bid": "2.00", "c_Ask": "2.10"},
                 {"expirygroup": "November 20, 2026"}, {"strike": "120.00", "c_Bid": "3.00", "c_Ask": "3.10"}]}}}

@@ -1,0 +1,176 @@
+{
+  "schema": "v19-nasdaq-us-options-fixture-v1",
+  "description": "A slice (one Nasdaq-fallback ticker and one Yahoo sibling) of the sealed v213:options:v2 object that the real producer and the real sealer emit for a US run in which Yahoo fails for one ticker, under a catalog carrying all three pinned operator-accepted providers: the fallback ticker claims the Nasdaq US identity with quote_basis delayed, the sibling the Yahoo identity. SYNTHETIC prices, real shape.",
+  "operator_decision": "OPERATOR-DECISION-V18-BOUNDARY-ITEMS-A1-A4-C1-C3-20261019",
+  "all": {
+    "generated_at": "2026-10-19T14:00:00Z",
+    "options": {
+      "SYNTHNQ00": {
+        "weekly": {
+          "ticker": "SYNTHNQ00",
+          "strategy": "COVERED_CALL",
+          "expiry": "2026-10-23",
+          "dte": 4,
+          "spot": 100.0,
+          "currency": "USD",
+          "multiplier": 100,
+          "quote_basis": "delayed",
+          "timestamp": "2026-10-19T14:00:00Z",
+          "source": "Nasdaq US option chain (public quote page API, delayed; Yahoo fallback)",
+          "provenance": "https://www.nasdaq.com/market-activity/stocks/synthnq00/option-chain",
+          "rights_status": "operator_accepted_unlicensed",
+          "suggestions": [
+            {
+              "role": "HIGH_STRIKE",
+              "strike": 107.0,
+              "bid": 0.45,
+              "ask": 0.49,
+              "mid": 0.47,
+              "limit_price": 0.47,
+              "premium_per_contract": 47.0,
+              "period_yield": 0.0047,
+              "annualized_yield": 0.428875,
+              "upside_to_strike": 0.07,
+              "delta": 0.149,
+              "delta_basis": "QUOTE_IMPLIED",
+              "iv": 0.599,
+              "oi": null,
+              "volume": null,
+              "spread_pct": 0.0851
+            }
+          ],
+          "provider_id": "nasdaq_public_option_chain",
+          "jurisdiction": "US",
+          "venue": "US_LISTED_OPTIONS",
+          "instrument_kind": "equity_option",
+          "publication_scope": "public_line_quote",
+          "asof_date": "2026-10-19",
+          "weekly_week": "CURRENT"
+        },
+        "monthly": {
+          "ticker": "SYNTHNQ00",
+          "strategy": "COVERED_CALL",
+          "expiry": "2026-11-16",
+          "dte": 28,
+          "spot": 100.0,
+          "currency": "USD",
+          "multiplier": 100,
+          "quote_basis": "delayed",
+          "timestamp": "2026-10-19T14:00:00Z",
+          "source": "Nasdaq US option chain (public quote page API, delayed; Yahoo fallback)",
+          "provenance": "https://www.nasdaq.com/market-activity/stocks/synthnq00/option-chain",
+          "rights_status": "operator_accepted_unlicensed",
+          "suggestions": [
+            {
+              "role": "HIGH_STRIKE",
+              "strike": 119.0,
+              "bid": 1.38,
+              "ask": 1.47,
+              "mid": 1.425,
+              "limit_price": 1.42,
+              "premium_per_contract": 142.0,
+              "period_yield": 0.0142,
+              "annualized_yield": 0.185107,
+              "upside_to_strike": 0.19,
+              "delta": 0.172,
+              "delta_basis": "QUOTE_IMPLIED",
+              "iv": 0.5999,
+              "oi": null,
+              "volume": null,
+              "spread_pct": 0.0632
+            }
+          ],
+          "provider_id": "nasdaq_public_option_chain",
+          "jurisdiction": "US",
+          "venue": "US_LISTED_OPTIONS",
+          "instrument_kind": "equity_option",
+          "publication_scope": "public_line_quote",
+          "asof_date": "2026-10-19"
+        }
+      },
+      "SYNTHUS00": {
+        "weekly": {
+          "ticker": "SYNTHUS00",
+          "strategy": "COVERED_CALL",
+          "expiry": "2026-10-26",
+          "dte": 7,
+          "spot": 100.0,
+          "currency": "USD",
+          "multiplier": 100,
+          "quote_basis": "delayed",
+          "timestamp": "2026-10-19T14:00:00Z",
+          "source": "Yahoo Finance option chain (unofficial, delayed)",
+          "provenance": "https://finance.yahoo.com/quote/SYNTHUS00/options?date=2026-10-26; delta=Black-Scholes(quoted IV)",
+          "rights_status": "operator_accepted_unlicensed",
+          "suggestions": [
+            {
+              "role": "HIGH_STRIKE",
+              "strike": 109.0,
+              "bid": 0.66,
+              "ask": 0.71,
+              "mid": 0.685,
+              "limit_price": 0.68,
+              "premium_per_contract": 68.0,
+              "period_yield": 0.0068,
+              "annualized_yield": 0.354571,
+              "upside_to_strike": 0.09,
+              "delta": 0.162,
+              "delta_basis": "QUOTED_IV",
+              "iv": 0.6,
+              "oi": 10,
+              "volume": 5,
+              "spread_pct": 0.073
+            }
+          ],
+          "provider_id": "yahoo_finance_option_chain",
+          "jurisdiction": "US",
+          "venue": "US_LISTED_OPTIONS",
+          "instrument_kind": "equity_option",
+          "publication_scope": "public_line_quote",
+          "asof_date": "2026-10-19",
+          "weekly_week": "NEXT"
+        },
+        "monthly": {
+          "ticker": "SYNTHUS00",
+          "strategy": "COVERED_CALL",
+          "expiry": "2026-11-16",
+          "dte": 28,
+          "spot": 100.0,
+          "currency": "USD",
+          "multiplier": 100,
+          "quote_basis": "delayed",
+          "timestamp": "2026-10-19T14:00:00Z",
+          "source": "Yahoo Finance option chain (unofficial, delayed)",
+          "provenance": "https://finance.yahoo.com/quote/SYNTHUS00/options?date=2026-11-16; delta=Black-Scholes(quoted IV)",
+          "rights_status": "operator_accepted_unlicensed",
+          "suggestions": [
+            {
+              "role": "HIGH_STRIKE",
+              "strike": 119.0,
+              "bid": 1.38,
+              "ask": 1.47,
+              "mid": 1.425,
+              "limit_price": 1.42,
+              "premium_per_contract": 142.0,
+              "period_yield": 0.0142,
+              "annualized_yield": 0.185107,
+              "upside_to_strike": 0.19,
+              "delta": 0.172,
+              "delta_basis": "QUOTED_IV",
+              "iv": 0.6,
+              "oi": 10,
+              "volume": 5,
+              "spread_pct": 0.0632
+            }
+          ],
+          "provider_id": "yahoo_finance_option_chain",
+          "jurisdiction": "US",
+          "venue": "US_LISTED_OPTIONS",
+          "instrument_kind": "equity_option",
+          "publication_scope": "public_line_quote",
+          "asof_date": "2026-10-19"
+        }
+      }
+    }
+  }
+}

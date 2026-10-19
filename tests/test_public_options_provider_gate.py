@@ -44,12 +44,12 @@ class PublicOptionsProviderGateTests(unittest.TestCase):
         self.assertGreaterEqual(summary["authority_count"], 10)
         self.assertGreaterEqual(summary["jurisdiction_count"], 6)
         self.assertEqual(summary["automation_prohibited_count"], 4)
-        self.assertEqual(summary["pending_rights_count"], 7)
+        self.assertEqual(summary["pending_rights_count"], 6)  # V19: the Nasdaq US row left review_before_enable
         self.assertEqual(summary["reviewed_public_access_count"], 1)
         # V11 (operator 2026-10-13): the ONLY provider that can ever be enabled is the pinned operator-accepted Yahoo one (no rights-reviewed
         # provider is live). These invariants hold whether or not the catalog currently carries that entry.
         eligible = summary["fully_eligible_provider_ids"]
-        self.assertTrue(set(eligible) <= {"yahoo_finance_option_chain", "nasdaq_nordic_option_chain"}, eligible)
+        self.assertTrue(set(eligible) <= {"yahoo_finance_option_chain", "nasdaq_nordic_option_chain", "nasdaq_public_option_chain"}, eligible)
         self.assertEqual(summary["fully_eligible_count"], len(eligible))
         self.assertEqual(summary["runtime_enabled_count"], len(eligible))
         self.assertEqual(summary["line_quote_eligible_count"], len(eligible))

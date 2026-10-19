@@ -13,7 +13,7 @@ met by a cached last good value, an age limit and an explicit unavailability rea
 | --- | --- | --- | --- |
 | Stock lookup price | price shard (`loadListingPrice`: exchange daily feeds; the Japan and Korea shards are Yahoo daily closes) | Yahoo quote (hourly) as the cross-check, shown only where it is a different provider (2026-10-04 note below) | two sources where the shard is an exchange feed; Japan and Korea share Yahoo and are NOT independent corroboration |
 | Covered-call spot price | Yahoo quote | Alpha Vantage `GLOBAL_QUOTE` for a US listing Yahoo cannot quote (DPAPI key, daily budget) | two sources (US) |
-| US option chains | Yahoo option chain | Nasdaq US option chain for a cycle Yahoo cannot read (operator 2026-09-26: Nasdaq data accepted) | two sources |
+| US option chains | Yahoo option chain | Nasdaq US option chain for a cycle Yahoo cannot read (operator 2026-09-26: Nasdaq data accepted; operator 2026-10-19: shown as a labelled, admitted source with an AS OF freshness guard of 4 calendar days) | two sources |
 | Stockholm option chains | Nasdaq Nordic (the exchange) | none free | exchange authority; DEFERRED_WITH_REASON |
 | Market corroboration (sealed run) | Yahoo | Nasdaq historical, stooq, hfmarketdata | Nasdaq restored (ISO query dates); stooq unreachable from this host; hfmarketdata frozen at 2026-09-03 |
 | Price shards | one official feed per market (Yahoo for Japan/Korea) | previous shard within its age limit | **single per market**: OPEN |

@@ -34,8 +34,10 @@ without two-sided quotes stays unavailable with its reason.
 
 Public admission (operator 2026-10-13): the Yahoo option-chain cycles claim the catalog identity YAHOO_OPTION_IDENTITY (provider_id,
 jurisdiction, venue, instrument_kind, publication_scope; quote_basis is the cycle's own). Only the audited catalog admits it
-(config/public-options-provider-candidates.json, scripts/public_options_provider_gate.py); the Nasdaq US fallback claims
-no identity and stays unadmitted. Outside the regular US session Yahoo returns zero bid and ask: a chain READ without any valid two-sided
+(config/public-options-provider-candidates.json, scripts/public_options_provider_gate.py); the Nasdaq US fallback (operator
+2026-10-19, same terms) claims NASDAQ_US_OPTION_IDENTITY with the rights label operator_accepted_unlicensed, its own quote_basis "delayed",
+and is shown only when the chain's "AS OF" date is within NASDAQ_US_MAX_ASOF_AGE_DAYS of the run date; it is used only for cycles Yahoo
+could not read and is never carried forward. Outside the regular US session Yahoo returns zero bid and ask: a chain READ without any valid two-sided
 quote then takes the last valid in-session cycle of the same ticker, period and expiry (quote_basis previous_session_last, the capture's
 own timestamp, spot and dte) from the carry-forward state (scripts/options_carry_forward.py; --carry-state or V213_OPTIONS_CARRY_STATE,
 by default next to --output). A live valid cycle always wins.
@@ -124,6 +126,16 @@ YAHOO_RIGHTS_LABEL = "operator_accepted_unlicensed"
 NORDIC_OPTION_IDENTITY = {"provider_id": "nasdaq_nordic_option_chain", "jurisdiction": "SE", "venue": "NASDAQ_STOCKHOLM_OPTIONS",
                           "instrument_kind": "equity_option", "publication_scope": "public_line_quote"}
 NORDIC_RIGHTS_LABEL = "operator_accepted_unlicensed"
+# The identity a Nasdaq US option-chain cycle (the Yahoo fallback) CLAIMS (operator 2026-10-19, same terms as Yahoo and Nordic; never authority,
+# a test pins this equal to the catalog's admitted scope). The cycle keeps its own quote_basis "delayed": Nasdaq US cycles are never carried forward.
+NASDAQ_US_OPTION_IDENTITY = {"provider_id": "nasdaq_public_option_chain", "jurisdiction": "US", "venue": "US_LISTED_OPTIONS",
+                             "instrument_kind": "equity_option", "publication_scope": "public_line_quote"}
+NASDAQ_US_RIGHTS_LABEL = "operator_accepted_unlicensed"
+# The chain carries no per-quote time (table.asOf is null); data.lastTrade says "(AS OF OCT 15, 2026)". A cycle whose as-of date is absent,
+# unparsable or older than this many calendar days (weekend plus a holiday) against the run date is not shown.
+NASDAQ_US_MAX_ASOF_AGE_DAYS = 4
+NASDAQ_US_STALE_TEXT = "Nasdaq 報價日期過舊或無法確認"
+_ASOF_RE = re.compile(r"AS OF\s+([A-Za-z]{3,9})\.?\s+(\d{1,2}),?\s+(\d{4})", re.IGNORECASE)
 OPTION_TWO_SIDED_COVERAGE_RATIO_NUMERATOR = 1
 OPTION_TWO_SIDED_COVERAGE_RATIO_DENOMINATOR = 10
 # Policy threshold: strictly below 1/10 (10%) two-sided coverage across read chains triggers guard
@@ -534,6 +546,18 @@ def _cycles_from_calls(calls: list[dict[str, Any]], ticker: str, spot: float, st
     return CyclesResult(out, health=health_records)
 
 
+def _nasdaq_us_asof(payload: Any) -> date | None:
+    """The 'AS OF <MON DD, YYYY>' date of data.lastTrade, or None when absent or unparsable."""
+    try:
+        text = payload["data"]["lastTrade"]
+        match = _ASOF_RE.search(text) if isinstance(text, str) else None
+        if not match:
+            return None
+        return datetime.strptime(f"{match.group(1)[:3].title()} {int(match.group(2))} {match.group(3)}", "%b %d %Y").date()
+    except Exception:
+        return None
+
+
 def nasdaq_us_options(symbol: str, spot: float, today: date, stamp: str) -> CyclesResult:
     """Fallback US chain from Nasdaq's public quote-page API: two-sided call quotes without implied volatility, so no
     delta (as for Nasdaq Stockholm). Class shares use a dot there (BRK-B -> brk.b)."""
@@ -541,7 +565,8 @@ def nasdaq_us_options(symbol: str, spot: float, today: date, stamp: str) -> Cycl
     url = NASDAQ_US_CHAIN.format(symbol=urllib.parse.quote(symbol.replace("-", ".").lower()),
                                  start=(today + timedelta(days=low)).isoformat(), end=(today + timedelta(days=high)).isoformat())
     try:
-        rows = http_json(url)["data"]["table"]["rows"]
+        payload = http_json(url)
+        rows = payload["data"]["table"]["rows"]
         if rows is None:
             rows = []
     except Exception:
@@ -553,6 +578,11 @@ def nasdaq_us_options(symbol: str, spot: float, today: date, stamp: str) -> Cycl
                          "status": "EMPTY_RESPONSE", "read": False, "two_sided": False} for c in CYCLES]
         return CyclesResult({c: {"unavailable": _missing_text("Nasdaq 無 {low}-{high} 天到期的上市期權", c, *CYCLES[c])} for c in CYCLES},
                             health=empty_health)
+    asof = _nasdaq_us_asof(payload)
+    if asof is None or (today - asof).days > NASDAQ_US_MAX_ASOF_AGE_DAYS:
+        stale_health = [{"venue": "US", "underlying": symbol, "expiry": None, "cycle": c,
+                         "status": "STALE_ASOF", "read": False, "two_sided": False} for c in CYCLES]
+        return CyclesResult({c: {"unavailable": NASDAQ_US_STALE_TEXT} for c in CYCLES}, health=stale_health)
     calls: list[dict[str, Any]] = []
     expiry: date | None = None
     for row in rows:
@@ -570,8 +600,8 @@ def nasdaq_us_options(symbol: str, spot: float, today: date, stamp: str) -> Cycl
     return _cycles_from_calls(calls, symbol, spot, stamp, currency="USD",
                               source="Nasdaq US option chain (public quote page API, delayed; Yahoo fallback)",
                               provenance=f"https://www.nasdaq.com/market-activity/stocks/{symbol.replace('-', '.').lower()}/option-chain",
-                              rights="candidate_local_review", missing="Nasdaq 無 {low}-{high} 天到期的上市期權",
-                              venue="US", underlying=symbol, today=today)
+                              rights=NASDAQ_US_RIGHTS_LABEL, missing="Nasdaq 無 {low}-{high} 天到期的上市期權",
+                              venue="US", underlying=symbol, today=today, identity=NASDAQ_US_OPTION_IDENTITY)
 
 
 def _yahoo_unread(value: dict[str, Any] | None) -> bool:

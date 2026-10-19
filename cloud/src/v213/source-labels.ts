@@ -15,7 +15,7 @@ const EXACT: Record<string, string> = {
   "Yahoo Finance (unofficial, delayed)": "Yahoo Finance（非官方，延遲）",
   "Yahoo Finance option chain (unofficial, delayed)": "Yahoo Finance 期權鏈（非官方，延遲）",
   "Nasdaq Nordic option chain (exchange public web API, delayed)": "Nasdaq Nordic 期權鏈（交易所公開網頁 API，非官方授權，延遲）",
-  "Nasdaq US option chain (public quote page API, delayed; Yahoo fallback)": "Nasdaq 美股期權鏈（公開報價頁 API，延遲；Yahoo 備援）",
+  "Nasdaq US option chain (public quote page API, delayed; Yahoo fallback)": "Nasdaq 美股期權鏈（公開報價頁 API，非官方授權，延遲；Yahoo 備援）",
 };
 
 const PATTERNS: [RegExp, (match: RegExpExecArray) => string][] = [

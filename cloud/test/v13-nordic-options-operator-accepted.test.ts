@@ -30,8 +30,18 @@ const RUN = "20261019T080000Z-abcdefabcde3";
 
 const entry = (doc: Doc, id: string): Doc => doc.providers.find((item: Doc) => item.id === id)!;
 /** The repository catalog with optional per-row mutations (a deep copy; the root selection follows `selected` when given). */
+// V19: the Nasdaq US entry (decided 2026-10-19) lies after this file's 2026-10-17 clocks, where it would make the whole catalog unusable; its own
+// rows live in v19-nasdaq-us-options-operator-accepted.test.ts. Here it keeps its pre-decision, unadmitted shape so these rows prove Nordic alone.
+const NASDAQ_UNADMITTED: Doc = {
+  id: "nasdaq_public_option_chain", name: "Nasdaq public option-chain pages", authority: "Nasdaq", jurisdictions: ["US"],
+  data_roles: ["delayed_quotes_candidate", "contract_reference"], official_url: "https://www.nasdaq.com/market-activity/stocks",
+  rights_evidence_url: "https://www.nasdaq.com/market-activity/quotes/option-chain", rights_status: "review_before_enable",
+  automated_access_allowed: null, rights_reviewed_at: null, review_notes: "Automated API access, free-tier continuity and redistribution rights remain unverified.",
+  adapter_status: "not_implemented", runtime_enabled: false, line_quote_eligible: false,
+};
 function catalogWith(mutate?: (nordic: Doc, yahoo: Doc, doc: Doc) => void): Doc {
   const doc = clone(repository);
+  doc.providers = doc.providers.map((item: Doc) => (item.id === "nasdaq_public_option_chain" ? clone(NASDAQ_UNADMITTED) : item));
   mutate?.(entry(doc, NORDIC_ID), entry(doc, YAHOO_ID), doc);
   return doc;
 }
@@ -112,7 +122,7 @@ describe("the repository catalog carries exactly the two pinned operator-accepte
     expect(yahoo.operator_decision.decision_id).toBe("OPERATOR-DECISION-OPTIONS-DISPLAY-ALL-20261013");
     expect(yahoo.admitted_scopes).toEqual([YAHOO_SCOPE, { ...YAHOO_SCOPE, quote_basis: "previous_session_last" }]);
     const enabled = repository.providers.filter((item: Doc) => item.runtime_enabled === true).map((item: Doc) => item.id).sort();
-    expect(enabled).toEqual([NORDIC_ID, YAHOO_ID].sort());
+    expect(enabled).toEqual([NORDIC_ID, YAHOO_ID, "nasdaq_public_option_chain"].sort());  // V19: the third pinned provider
   });
 });
 

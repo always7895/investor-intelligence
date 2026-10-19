@@ -90,7 +90,7 @@ class OperatorAcceptedPositiveTests(unittest.TestCase):
         self.assertTrue(repository["production_quote_provider_selected"])
         findings, summary = gate.audit_public_options_providers(ROOT)
         self.assertEqual(findings, [])
-        self.assertEqual(summary["fully_eligible_provider_ids"], sorted([support.NORDIC_ID, support.YAHOO_ID]))  # V13: the second pinned provider
+        self.assertEqual(summary["fully_eligible_provider_ids"], sorted([support.NASDAQ_ID, support.NORDIC_ID, support.YAHOO_ID]))  # V13/V19: the second and third pinned providers
 
     def test_the_worker_constants_mirror_the_python_pins(self) -> None:
         source = (ROOT / "cloud" / "src" / "v213" / "public-options-admission.ts").read_text(encoding="utf-8")
@@ -109,8 +109,8 @@ class OperatorAcceptedRejectionTests(unittest.TestCase):
     def test_every_other_provider_decision_stays_rejected_even_with_the_status_forged_on(self) -> None:
         with support.catalog_root() as root:
             base = support.catalog_document()
-            others = [item["id"] for item in base["providers"] if item["id"] != support.YAHOO_ID]
-            self.assertGreaterEqual(len(others), 12)
+            others = [item["id"] for item in base["providers"] if item["id"] not in (support.YAHOO_ID, support.NASDAQ_ID)]  # the Nasdaq US id is pinned since V19
+            self.assertGreaterEqual(len(others), 11)
             for provider_id in others:
                 with self.subTest(provider=provider_id):
                     document = copy.deepcopy(base)
@@ -129,7 +129,7 @@ class OperatorAcceptedRejectionTests(unittest.TestCase):
         with support.catalog_root() as root:
             policy = gate.load_public_option_policy(root, today=support.TODAY)
         for provider_id in ("cboe_public_options_market_data", "occ_public_market_data", "marketdata_app_free_forever",
-                            "tradier_broker_market_data_api", "taifex_public_options", "nasdaq_public_option_chain"):
+                            "tradier_broker_market_data_api", "taifex_public_options", "nyse_options_reference"):
             self.assertIsNone(policy.provider(provider_id), provider_id)
             self.assertEqual(gate.public_option_cycle_admission({**CLAIM, "provider_id": provider_id}, policy), gate.OPTION_RIGHTS_NOT_ADMITTED)
 

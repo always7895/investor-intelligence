@@ -52,7 +52,8 @@ const ADAPTER_STATUSES = new Set(["not_implemented", "candidate_implemented", "a
 const PROHIBITED_IDS = ["cboe_public_options_market_data", "marketdata_app_free_forever", "occ_public_market_data",
   "tradier_broker_market_data_api"];
 // Operator-accepted display WITHOUT a redistribution licence (operator 2026-10-13, R/OPERATOR-DECISION-OPTIONS-DISPLAY-ALL-20261013.txt;
-// operator 2026-10-17, R/OPERATOR-DECISION-OPTIONS-NORDIC-DISPLAY-20261017.txt,
+// operator 2026-10-17, R/OPERATOR-DECISION-OPTIONS-NORDIC-DISPLAY-20261017.txt;
+// operator 2026-10-19, R/OPERATOR-DECISION-V18-BOUNDARY-ITEMS-A1-A4-C1-C3-20261019.txt (Nasdaq US option chain),
 // docs/PUBLIC_OPTIONS_PROVIDER_RIGHTS_REVIEW.md). Not a rights review and never a licence. Safety-invariant constants mirrored from
 // scripts/public_options_provider_gate.py (OPERATOR_ACCEPTED_PROVIDERS), not a second approval catalog: only these provider ids, each with
 // exactly its own decision and a subset of these scopes, can carry the status; any other provider claiming it invalidates the catalog.
@@ -69,6 +70,12 @@ const OPERATOR_ACCEPTED: Readonly<Record<string, { readonly decision: Readonly<R
     decision: { decision_id: "OPERATOR-DECISION-OPTIONS-NORDIC-DISPLAY-20261017", decided_at: "2026-10-17", record: "docs/PUBLIC_OPTIONS_PROVIDER_RIGHTS_REVIEW.md" },
     scopes: new Set([
       JSON.stringify(["SE", "NASDAQ_STOCKHOLM_OPTIONS", "equity_option", "delayed", "public_line_quote"]),
+    ]),
+  },
+  nasdaq_public_option_chain: {
+    decision: { decision_id: "OPERATOR-DECISION-V18-BOUNDARY-ITEMS-A1-A4-C1-C3-20261019", decided_at: "2026-10-19", record: "docs/PUBLIC_OPTIONS_PROVIDER_RIGHTS_REVIEW.md" },
+    scopes: new Set([
+      JSON.stringify(["US", "US_LISTED_OPTIONS", "equity_option", "delayed", "public_line_quote"]),
     ]),
   },
 };

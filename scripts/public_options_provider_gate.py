@@ -56,7 +56,8 @@ AUTOMATION_PROHIBITED_PROVIDER_IDS = {
 }
 ADAPTER_REVIEWED = "adapter_reviewed"
 # Operator-accepted display WITHOUT a redistribution licence (operator 2026-10-13, R/OPERATOR-DECISION-OPTIONS-DISPLAY-ALL-20261013.txt;
-# operator 2026-10-17, R/OPERATOR-DECISION-OPTIONS-NORDIC-DISPLAY-20261017.txt,
+# operator 2026-10-17, R/OPERATOR-DECISION-OPTIONS-NORDIC-DISPLAY-20261017.txt; operator 2026-10-19,
+# R/OPERATOR-DECISION-V18-BOUNDARY-ITEMS-A1-A4-C1-C3-20261019.txt (Nasdaq US option chain),
 # recorded in docs/PUBLIC_OPTIONS_PROVIDER_RIGHTS_REVIEW.md). It is NOT a rights review and never a licence. It is pinned like the
 # automation-prohibited decisions: only these provider ids, with exactly this decision, and only (a subset of) these admitted scopes
 # can carry the status; any other provider claiming it is a finding and is never admitted. Mirrored in
@@ -82,6 +83,16 @@ OPERATOR_ACCEPTED_PROVIDERS = {
         },
         "scopes": frozenset({
             ("SE", "NASDAQ_STOCKHOLM_OPTIONS", "equity_option", "delayed", "public_line_quote"),
+        }),
+    },
+    "nasdaq_public_option_chain": {
+        "operator_decision": {
+            "decision_id": "OPERATOR-DECISION-V18-BOUNDARY-ITEMS-A1-A4-C1-C3-20261019",
+            "decided_at": "2026-10-19",
+            "record": "docs/PUBLIC_OPTIONS_PROVIDER_RIGHTS_REVIEW.md",
+        },
+        "scopes": frozenset({
+            ("US", "US_LISTED_OPTIONS", "equity_option", "delayed", "public_line_quote"),
         }),
     },
 }

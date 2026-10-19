@@ -148,6 +148,22 @@ premium "Shall be expressed in Swedish Kronor or Euro depending on the underlyin
   other currency stays a conflict; a size other than "100" stays nonstandard; quotes must still be real two-sided bid/ask.
 - Re-calculated (adjusted) contracts are not modelled: a size other than "100" is refused rather than rescaled.
 
+## Nasdaq US option chain (V19, the labelled Yahoo fallback)
+
+`nasdaq_us_options` in `scripts/build_market_quotes_options.py` reads the Nasdaq quote-page API
+(`api.nasdaq.com/api/quote/{symbol}/option-chain`) only for a cycle Yahoo could not read (no expiry list, a failed chain). Retained shape
+(2026-10-19, HTTP 200, 4.5 KB): `expirygroup` header rows, then strike rows with `c_Bid`, `c_Ask`, `c_Openinterest` ("--" when unknown);
+`table.asOf` is null and `data.lastTrade` carries the only date, "LAST TRADE: $343.46 (AS OF OCT 15, 2026)", four days before the request.
+Rule:
+
+- The cycle is shown only when the "AS OF" date is within 4 calendar days of the run date; an absent or unparsable date, or an older one,
+  is unavailable (health `STALE_ASOF`). A bot challenge or non-JSON body is `READ_ERROR`; nothing is retried.
+- No implied volatility or delta is published: the delta is Black-Scholes from the strike's own bid/ask mid (`QUOTE_IMPLIED`).
+- No merge with Yahoo, no averaging, no second display; a cycle Yahoo read without a qualifying strike keeps Yahoo's reason.
+- Rights: an operator decision, not a licence (2026-10-19, [PUBLIC_OPTIONS_PROVIDER_RIGHTS_REVIEW](PUBLIC_OPTIONS_PROVIDER_RIGHTS_REVIEW.md));
+  the cycle claims the catalog identity `nasdaq_public_option_chain` with the label `operator_accepted_unlicensed`, quote basis `delayed`,
+  and is never carried forward.
+
 ## Independent delivery paths to investigate
 
 | Source | Evidence | Appropriate scope / unresolved limitation |
