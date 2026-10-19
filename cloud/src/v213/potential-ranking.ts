@@ -6,7 +6,7 @@
 import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
 import { buildCompanyDataReportFlex, buildCompanyDataReportMessages, validateCompanyDataReport, type CompanyDataReport } from "./deep-analysis";
 import {
-  LINE_THEME as T, chip, divider, footnote, headerStyle, labelValue, menuAction, meter, phaseLadder, rankBadge, section, signColor,
+  LINE_THEME as T, altSummary, bulletRow, chip, detailsButton, disclosureLine, divider, kvRow, footnote, headerStyle, labelValue, menuAction, meter, phaseLadder, rankBadge, section,
   statTile, uiBox, uiText,
 } from "./line-theme";
 
@@ -94,9 +94,9 @@ function bubble(ranking: PotentialRanking, row: PotentialRecord) {
         ], { layout: "horizontal", spacing: "sm" }),
       ], "key"),
       section("獲利與股本 / Margins & dilution", [
-        labelValue("毛利率年變化", pct(row.gross_margin_change_pp, " 個百分點"), { weight: "bold", color: signColor(pct(row.gross_margin_change_pp)) }),
-        labelValue("營業利益率年變化", pct(row.operating_margin_change_pp, " 個百分點"), { weight: "bold", color: signColor(pct(row.operating_margin_change_pp)) }),
-        labelValue("稀釋後股數年變化", pct(row.dilution_yoy_pct)),
+        kvRow("毛利率年變化", pct(row.gross_margin_change_pp, " 個百分點")),
+        kvRow("營業利益率年變化", pct(row.operating_margin_change_pp, " 個百分點")),
+        kvRow("稀釋後股數年變化", pct(row.dilution_yoy_pct)),
       ], "detail"),
       ordersSection(row),
       section("舊版准入狀態 / Legacy gate", [
@@ -105,8 +105,8 @@ function bubble(ranking: PotentialRanking, row: PotentialRecord) {
       ], "context"),
     ], { paddingAll: "lg", spacing: "md", backgroundColor: T.paper }),
     footer: uiBox([
-      menuAction("詳細報告 / Report", `潛力報告 ${row.ticker}`),
-      footnote(`資料計算日 ${ranking.as_of}｜BLS、SEC XBRL、證交所與櫃買中心官方資料計算；不是預測或投資建議`),
+      detailsButton(`${row.ticker} 詳細報告`, `潛力報告 ${row.ticker}`),
+      disclosureLine([`資料計算日 ${ranking.as_of}`, "BLS、SEC XBRL、證交所與櫃買中心官方資料計算", "不是預測或投資建議"]),
     ], { paddingAll: "lg", spacing: "sm", backgroundColor: T.paper }),
   };
 }
@@ -122,8 +122,8 @@ function ordersSection(row: PotentialRecord) {
   return section("訂單實現情境 / If orders deliver", [
     uiBox(HORIZONS.map(([key, label]) => statTile(`${label} 已簽約覆蓋`, coverageText(orders.coverage_pct[key]),
       undefined, floorText(orders.coverage_pct[key], orders.floor_growth_pct[key]))), { layout: "horizontal", spacing: "sm" }),
-    footnote(`已簽約訂單（RPO，${orders.as_of}）依 ${orders.form}（${orders.filed}）揭露時程認列，對比最近一季營收 × 期間季數；`
-      + "覆蓋超過 100% 才有成長下限（利潤率、股數、本益比不變；未計新接訂單）。"),
+    bulletRow(`已簽約訂單（RPO，${orders.as_of}）依 ${orders.form}（${orders.filed}）揭露時程認列，對比最近一季營收 × 期間季數；`
+      + "覆蓋超過 100% 才有成長下限（利潤率、股數、本益比不變；未計新接訂單）。", { color: T.subtle }),
   ], "detail");
 }
 
@@ -156,13 +156,13 @@ export function buildOrderRealizationFlex(ranking: PotentialRanking): LineOutbou
           uiBox([meter(o.coverage_pct.m24!, top, T.ink, true), uiText(`2Y ${coverageText(o.coverage_pct.m24)}`, "xs", T.ink, { weight: "bold", flex: 0 })],
             { layout: "horizontal", spacing: "sm", alignItems: "center" }),
           uiText(HORIZONS.map(([key, label]) => `${label} ${coverageText(o.coverage_pct[key])}（${floorText(o.coverage_pct[key], o.floor_growth_pct[key])}）`).join("｜"),
-            "xxs", T.muted),
+            "xs", T.muted),
         ], { flex: 1, spacing: "xs" }),
       ], { layout: "horizontal", spacing: "md" });
       return index > 0 ? [divider(), block] : [block];
     }), { paddingAll: "lg", spacing: "md", backgroundColor: T.paper }),
     footer: uiBox([
-      footnote("覆蓋＝已簽約訂單在期間內依揭露時程認列的營收 ÷（最近一季營收 × 期間季數）。超過 100% 的部分是營收與股價成長下限，假設利潤率、股數與本益比不變，未計新接訂單；不是預測或投資建議。"),
+      disclosureLine(["覆蓋＝已簽約訂單在期間內依揭露時程認列的營收 ÷（最近一季營收 × 期間季數）。超過 100% 的部分是營收與股價成長下限，假設利潤率、股數與本益比不變，未計新接訂單", "不是預測或投資建議"]),
       menuAction("回潛力榜", "潛力榜"),
     ], { paddingAll: "lg", spacing: "sm", backgroundColor: T.paper }),
   };
@@ -189,7 +189,8 @@ export function buildPotentialRankingFlex(ranking: PotentialRanking): LineOutbou
   const messages: LineOutboundMessage[] = [];
   // Same shape as Top20: at most 4 carousels of 5 bubbles (LINE reply limit and project carousel rule).
   for (let start = 0; start < bubbles.length; start += 5) {
-    messages.push({ type: "flex", altText: `資料驅動潛力榜 ${start + 1}–${Math.min(start + 5, bubbles.length)}/${bubbles.length}（官方資料計算，非預測）`,
+    messages.push({ type: "flex", altText: altSummary({ topic: `資料驅動潛力榜第 ${start + 1}–${Math.min(start + 5, bubbles.length)} 名（共 ${bubbles.length}）`,
+      status: "官方資料計算，非預測", next: "點公司看詳細報告" }),
       contents: { type: "carousel", contents: bubbles.slice(start, start + 5) } });
   }
   assertLineMessages(messages);

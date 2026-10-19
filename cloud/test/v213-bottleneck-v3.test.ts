@@ -93,7 +93,7 @@ describe("bottleneck-explosion Top20 v3", () => {
     const withReport = buildBottleneckDetail(parsed, "S1", "flex") as { type: string; altText: string }[];
     expect(withReport.length).toBeGreaterThanOrEqual(2);
     expect(withReport.length).toBeLessThanOrEqual(5);
-    expect(withReport[0]!.altText).toBe("瓶頸詳情｜S1 合成一號");  // the detail card first, then the company report
+    expect(withReport[0]!.altText).toContain("S1 合成一號 瓶頸詳情");  // the detail card first, then the company report
     const s1 = JSON.stringify(withReport);
     expect(s1).toContain("Synthetic One");
     expect(s1).toContain("已簽約訂單可支撐的營收成長（RPO 認列時程）");

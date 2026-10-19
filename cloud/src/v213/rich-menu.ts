@@ -13,7 +13,7 @@ import { admitPublicOption, OPTION_RIGHTS_NOT_ADMITTED_ZH, OptionRightsNotAdmitt
 import { pinPublicSnapshot } from "./public-snapshot";
 import { v213Top20LineAnswer } from "./top20-presentation";
 import { loadV213FreshTop20Report, v213TimesAreFresh, v213EvidenceWithinWindow, V213_STALE_RECORDS_MESSAGE, type V213Top20Env } from "./top20-report";
-import { LINE_THEME as T, footerStyle, menuAction, menuBox, menuText, productHeader, section, sectionTitle } from "./line-theme";
+import { LINE_THEME as T, altSummary, bulletRow, disclosureLine, footerStyle, menuAction, menuBox, menuText, productHeader, section, sectionTitle } from "./line-theme";
 import {
   buildEducationalStrategyFlex,
   buildEducationalStrategyText,
@@ -120,12 +120,17 @@ function panel(
   paragraphs: readonly string[],
   actions: readonly (readonly [string, string])[],
   isText = false,
+  /** V20: shorter bullets for the flex form (the text form keeps `paragraphs`) and the one-line disclosure under them. */
+  flex?: { bullets: readonly string[]; disclosure?: string },
 ): LineOutboundMessage[] {
   if (isText) return panelTextMessages(title, subtitle, paragraphs, actions);
-  const messages: LineOutboundMessage[] = [{ type: "flex", altText: `${title}｜${subtitle}`, contents: { type: "carousel", contents: [{
+  const bullets = flex?.bullets ?? paragraphs;
+  const messages: LineOutboundMessage[] = [{ type: "flex", altText: altSummary({ topic: title, status: subtitle, next: actions[0]?.[0] ?? "點選下方按鈕" }),
+    contents: { type: "carousel", contents: [{
     type: "bubble", size: "mega",
     header: productHeader("韭菜守護者 · 公開研究", title),
-    body: menuBox([section(subtitle, paragraphs.map(p => menuText(p)), "detail")], { backgroundColor: T.paper, paddingAll: "lg" }),
+    body: menuBox([section(subtitle, bullets.map(p => bulletRow(p)), "detail"), ...(flex?.disclosure ? [disclosureLine([flex.disclosure])] : [])],
+      { backgroundColor: T.paper, paddingAll: "lg" }),
     footer: menuBox(actions.map(([label, command]) => menuAction(label, command)), { ...footerStyle }),
   }] } }];
   assertLineMessages(messages);
@@ -246,14 +251,20 @@ export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promis
   if (/^(?:七欄\s*top\s*20|舊版\s*top\s*20)(?:\s*文字)?$/i.test(command)) {
     return v213Top20LineAnswer(env, { ...query, normalized: /文字\s*$/.test(command) ? "Top20 文字" : "Top20" });
   }
-  if (/^(?:選單|菜单|menu|功能導覽|功能导航)$/i.test(command)) {
+  if (/^(?:選單|菜单|menu|功能導覽|功能导航)(?:\s*文字)?$/i.test(command)) {
     return panel("研究功能導覽", "三個入口 · 不連券商 · 不自動下單", [
       "A｜TOP20：瓶頸爆發 TOP20（Serenity／Leopold 線索＋財報、訂單與交易所報價）；輸入「瓶頸詳情 代號」（例：瓶頸詳情 NVDA）看單一公司完整卡片。歷史報酬不是未來預測。",
       "B｜宏觀產業分析：TOP5產業總覽與12–36M因果鏈分析；輸入「產業爆發榜」看 Leopold 因果鏈產業排序。",
       "C｜期權與個股快查：輸入「代號 每月期權」或「代號 每週期權」（例：NVDA 每月期權，格式範例非推薦）看備兌買權建議；直接輸入代號或名稱（例：2330、SIVE）查延遲報價；「期權教學」看策略範例。",
       "D｜資料驅動潛力榜：輸入「潛力榜」；依官方資料每日重算，輸入「潛力報告 代號」看逐項數據報告，「訂單實現榜」看已簽約訂單覆蓋排序。",
       "E｜舊版七欄榜請輸入「七欄Top20」。本服務不連券商、不下單，內容非投資建議。",
-    ], NAV, isEnvText);
+    ], NAV, commandText, { bullets: [
+      "A｜TOP20：瓶頸爆發 TOP20 排名；歷史報酬不是未來預測",
+      "B｜宏觀產業：TOP5產業總覽、「產業爆發榜」",
+      "C｜期權與個股快查：「NVDA 每月期權」、直接輸入代號或名稱",
+      "D｜潛力榜：「潛力榜」「潛力報告 代號」「訂單實現榜」",
+      "E｜舊版七欄榜：「七欄Top20」",
+    ], disclosure: "不連券商、不下單，內容非投資建議｜完整說明：輸入「選單 文字」" });
   }
 
   // --- Primary Macro Home Entry: 宏觀產業分析 & TOP5 產業總覽 ---

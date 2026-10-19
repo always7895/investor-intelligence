@@ -4,7 +4,7 @@ import type { FieldLocale } from "./field-labels";
 import { buildCompanyEvidenceMessages } from "./company-evidence-report";
 import { buildTop20DeepAnalysisMessages, companyDataReportFromSealed } from "./deep-analysis";
 import { pinPublicSnapshot } from "./public-snapshot";
-import { LINE_THEME as T, chip, divider, footnote, headerStyle, kpiTile, labelValue, menuAction, section, uiBox, uiText } from "./line-theme";
+import { LINE_THEME as T, altSummary, chip, detailsButton, disclosureLine, divider, footnote, headerStyle, kpiTile, labelValue, uiBox, uiText } from "./line-theme";
 import { parseResearchProductRequest, unavailableResearchProduct } from "./research-product-request";
 import { getTwoYearTotalReturnDisplay } from "./top20-return-evidence";
 import {
@@ -51,14 +51,27 @@ export function buildV213Top20Messages(report: V213Top20Report, locale: FieldLoc
     assertLineMessages(messages);
     return messages;
   }
+  const testOnly = report.records.some(row => row.test_only_admission === true);
+  // V20: the long banners (test path / research candidate, scenario status, notice) collapse into ONE disclosure line;
+  // the full text stays one tap away in the company text message (`Top20 公司文字 ...`). The seven label/value pairs are
+  // the external presentation contract (inspectSevenFieldFlex): verbatim, unclipped, each label once, value right after.
+  const disclosure = disclosureLine([
+    testOnly ? "TEST-ONLY 測試展示，尚未完成正式現況驗證" : "研究候選 LIMITED_RESEARCH_CANDIDATE，公司主張未達獨立雙來源驗證",
+    `資料擷取 ${report.evidence_capture_at ?? "-"} UTC｜報告產生 ${localTime} 台北`,
+    "歷史報酬，非預測；公開研究，非投資建議",
+    "6個月／1年／2年情境推算尚缺逐筆訂單與估值依據，不是零成長或零風險",
+    "完整免責與英文版：輸入「Top20 文字」",
+  ]);
   const bubbles = report.records.map(record => {
     const values = v213Top20DisplayValues(record);
+    const stamp = new Date(report.generated_at).toISOString();
     return {
       type: "bubble", size: "mega",
       header: uiBox([
         uiBox([
           chip(`#${record.rank}`),
-          uiText(`TOP20 · ${record.rank}/20 · 研究候選 / Candidate`, "xxs", T.headerMuted, { gravity: "center", flex: 1 }),
+          uiText(`TOP20 · ${record.rank}/20 · 研究候選`, "xxs", T.headerMuted, { gravity: "center", flex: 1 }),
+          ...(testOnly ? [chip("TEST-ONLY", T.cycleCaution, T.cycleCautionText)] : []),
         ], { layout: "horizontal", spacing: "md" }),
         uiBox([
           uiText(labels[0]!, "xxs", T.headerSubtle),
@@ -69,35 +82,30 @@ export function buildV213Top20Messages(report: V213Top20Report, locale: FieldLoc
         uiText("歷史報酬，非預測 / Not forecasts", "xxs", T.headerMuted, { weight: "bold" }),
       ], { ...headerStyle, spacing: "md" }),
       body: uiBox([
-        section("報酬 / Returns", [
-          uiBox([
-            kpiTile("2Y 總報酬", getTwoYearTotalReturnDisplay(record)),
-            kpiTile(labels[1]!, values[1]!),
-            kpiTile(labels[2]!, values[2]!),
-          ], { layout: "horizontal", spacing: "sm" }),
-        ], "key"),
-        section("公司 / Company", [
-          labelValue(labels[3]!, values[3]!, { weight: "bold" }),
-          divider(),
-          labelValue(labels[4]!, values[4]!, { weight: "bold" }),
-        ], "detail"),
-        section("訂單 / Orders", [
-          labelValue(labels[5]!, values[5]!, { weight: "bold" }),
-          divider(),
-          labelValue(labels[6]!, values[6]!),
-        ], "context"),
+        uiBox([
+          kpiTile("2Y 總報酬", getTwoYearTotalReturnDisplay(record)),
+          kpiTile(labels[1]!, values[1]!),
+          kpiTile(labels[2]!, values[2]!),
+        ], { layout: "horizontal", spacing: "sm" }),
+        labelValue(labels[3]!, values[3]!, { weight: "bold" }),
+        labelValue(labels[4]!, values[4]!, { weight: "bold" }),
+        divider(),
+        labelValue(labels[5]!, values[5]!, { weight: "bold" }),
+        labelValue(labels[6]!, values[6]!),
       ], { paddingAll: "lg", spacing: "md", backgroundColor: T.paper }),
       footer: uiBox([
-        ...(reference ? [menuAction("深度化分析 / Deep analysis",
-          `Top20 深度化分析 ${record.ticker} ${new Date(report.generated_at).toISOString()} ${reference.snapshot} ${reference.reportSha256}`
-        )] : [footnote("詳情入口未綁定 / Unbound detail reference")]),
-        footnote(SCENARIO_STATUS), footnote(generated), footnote(admission), footnote(NOTICE),
+        ...(reference ? [
+          detailsButton(`${record.ticker} 深度化分析`, `Top20 深度化分析 ${record.ticker} ${stamp} ${reference.snapshot} ${reference.reportSha256}`),
+        ] : [footnote("詳情入口未綁定 / Unbound detail reference")]),
+        disclosure,
       ], { paddingAll: "lg", spacing: "sm", backgroundColor: T.paper }),
     };
   });
   const messages: LineOutboundMessage[] = [];
   for (let start = 0; start < bubbles.length; start += 5) {
-    messages.push({ type: "flex", altText: `Top20 ${start + 1}–${start + 5}/20 · 七欄公開研究 / Public research. 歷史報酬非預測 / Not forecasts.`,
+    const end = Math.min(start + 5, bubbles.length);
+    messages.push({ type: "flex", altText: altSummary({ topic: `Top20 第 ${start + 1}–${end} 名七欄摘要`,
+      status: "研究候選，歷史報酬非預測", next: "點公司查看深度化分析" }),
       contents: { type: "carousel", contents: bubbles.slice(start, start + 5) } });
   }
   assertLineMessages(messages);

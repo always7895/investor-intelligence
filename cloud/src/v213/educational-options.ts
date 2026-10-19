@@ -6,7 +6,7 @@
  */
 
 import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
-import { LINE_THEME as T, menuAction, menuBox, menuText, headerStyle } from "./line-theme";
+import { LINE_THEME as T, altSummary, bulletRow, detailsButton, disclosureLine, menuAction, menuBox, menuText, headerStyle, uiBox } from "./line-theme";
 import type { OptionEducationalStrategyCard } from "./market-product-schema";
 
 export const EDUCATIONAL_DISCLAIMER = "教學範例，非推薦" as const;
@@ -169,42 +169,19 @@ function cardToBubble(card: OptionEducationalStrategyCard) {
       { ...menuText(card.strategy_name, "md", T.headerText), weight: "bold" },
       menuText(`模擬標的：${card.illustrative_ticker}｜${card.expiry_dte}`, "xs", T.headerMuted),
     ], { ...headerStyle }),
-    body: menuBox([
-      menuBox([
-        menuText("標的與履約設定", "xs", T.muted),
-        { ...menuText(card.strikes, "sm", T.ink), weight: "bold" },
-        { ...menuText(`收支：${card.debit_credit}`, "xs", T.ink), weight: "bold" },
-      ], { backgroundColor: T.soft, paddingAll: "sm", cornerRadius: "sm" }),
-      menuBox([
-        menuText(`損益平衡：${card.breakeven}`, "xs", T.ink),
-        menuText(`最大利潤：${card.maxprofit}（算術參考：${mpText}）`, "xs", T.ink),
-        menuText(`最大損失：${card.maxloss}（算術參考：$${card.payoff_reference.max_loss_amount.toFixed(2)}）`, "xs", T.negative),
-      ], { spacing: "xs" }),
-      { type: "separator", color: T.border },
-      menuBox([
-        menuText("履約與指派風險", "xs", T.muted),
-        menuText(card.assignment_exercise_risk, "xs", T.ink),
-      ], { spacing: "xs" }),
-      menuBox([
-        menuText("適用情境", "xs", T.muted),
-        menuText(card.appropriate_scenarios, "xs", T.ink),
-        menuText("不適用情境", "xs", T.muted),
-        menuText(card.inappropriate_scenarios, "xs", T.ink),
-      ], { spacing: "xs" }),
-      menuBox([
-        menuText("關鍵假設與警語", "xs", T.muted),
-        menuText(`• 單位：${card.assumptions.quantity_multiplier}`, "xxs", T.muted),
-        menuText(`• 擔保：${card.assumptions.collateral}`, "xxs", T.muted),
-        menuText(`• 摩擦：${card.assumptions.specific_caveats}`, "xxs", T.muted),
-      ], { backgroundColor: T.soft, paddingAll: "sm", cornerRadius: "sm", borderColor: T.frame, borderWidth: "light" }),
-    ], { paddingAll: "lg", spacing: "md", backgroundColor: T.paper }),
-    footer: menuBox([
-      menuText(`狀態：${card.status}（模擬基準日：${card.simulated_as_of}）`, "xxs", T.muted),
-      menuText("本內容僅為選擇權結構教學，絕非投資建議、即時行情或委託下單指示。", "xxs", T.muted),
+    body: uiBox([
+      bulletRow(`做法：${card.strikes}`, { size: "sm", weight: "bold" }),
+      bulletRow(`收支：${card.debit_credit}；損益平衡：${card.breakeven}`),
+      bulletRow(`最大利潤：${card.maxprofit}（算術參考：${mpText}）`),
+      bulletRow(`最大損失：${card.maxloss}（算術參考：$${card.payoff_reference.max_loss_amount.toFixed(2)}）`, { color: T.negative }),
+      bulletRow(`履約與指派風險：${card.assignment_exercise_risk}`),
+      bulletRow(`擔保：${card.assumptions.collateral}`),
+    ], { paddingAll: "lg", spacing: "sm", backgroundColor: T.paper }),
+    footer: uiBox([
+      disclosureLine([`狀態：${card.status}（模擬基準日：${card.simulated_as_of}）`, "本內容僅為選擇權結構教學，絕非投資建議、即時行情或委託下單指示"]),
+      detailsButton("查看適用情境與假設", `期權教學 ${card.strategy_id} 文字`),
       menuAction("範例：NVDA 每月期權", "NVDA 每月期權"),
-      menuAction("期權試算說明", "期權試算說明"),
-      menuAction("回功能選單", "選單"),
-    ], { paddingAll: "md", backgroundColor: T.soft }),
+    ], { paddingAll: "md", spacing: "sm", backgroundColor: T.soft }),
   };
 }
 
@@ -221,7 +198,8 @@ export function buildEducationalStrategyFlex(
   // LINE Flex carousel allows at most 5 bubbles in assertLineMessages
   const messages: LineOutboundMessage[] = [{
     type: "flex",
-    altText: `期權策略教學範例（共${cards.length}種）｜${EDUCATIONAL_DISCLAIMER}`,
+    altText: altSummary({ topic: cards.length === 1 ? `${cards[0]!.strategy_name.split("（")[0]} 期權策略教學` : `期權策略教學範例（共${cards.length}種）`,
+      status: EDUCATIONAL_DISCLAIMER, next: "點選查看適用情境與假設" }),
     contents: {
       type: "carousel",
       contents: bubbles,

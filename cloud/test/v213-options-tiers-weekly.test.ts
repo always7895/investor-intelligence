@@ -260,7 +260,8 @@ describe("LINE card: three tiers, week marker, tiny-DTE notice", () => {
     expect(two).toBeGreaterThan(one);
     expect(three).toBeGreaterThan(two);
     for (const strike of ["$112.00", "$108.00", "$106.00"]) expect(flex).toContain(strike);
-    expect(flex).toContain("履約價與權利金介於高履約價與平衡型之間；被指派機率也居中。");
+    // V20: the tier note was removed from the flex card; its meaning is carried by the tier title.
+    expect(flex).toContain("建議二：中間型（權利金與被指派機率居中）");
   });
   it("without a middle the two original titles are unchanged", () => {
     const flex = render(tierCycle({ middle: false }));

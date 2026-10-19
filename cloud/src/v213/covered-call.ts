@@ -11,7 +11,7 @@ import {
 } from "./option-recommendation-rules";
 import { admitPublicOption, OptionRightsNotAdmittedError } from "./public-options-admission";
 import {
-  LINE_THEME as T, chip, footerStyle, footnote, menuAction, meter, productHeader, section, statTile, uiBox, uiText,
+  LINE_THEME as T, altSummary, bulletRow, chip, detailsButton, disclosureLine, footerStyle, footnote, kvRow, menuAction, meter, productHeader, section, uiBox, uiText,
 } from "./line-theme";
 
 export interface CoveredCallSuggestion {
@@ -231,20 +231,21 @@ function assignmentText(item: CoveredCallSuggestion): string {
   return `被指派機率參考：Delta ${item.delta.toFixed(2)}（約 ${Math.round(item.delta * 100)}%${basis ? `，${basis}` : ""}）`;
 }
 
+/** V20: one tier as four figure rows (strike, limit, premium per contract, annualized), the assignment reference as a bullet and
+ * the liquidity as one muted line. The role note (the tier's meaning) lives in the tier title and the text edition. */
 function suggestionSection(cycle: CoveredCallCycle, item: CoveredCallSuggestion, index: number) {
   const title = tierTitle(item, index);
-  const note = ROLE[item.role][1];
   const assignment = assignmentText(item);
   return section(title, [
-    uiBox([statTile("履約價", money(item.strike, cycle.currency), undefined, `距現價 +${pct(item.upside_to_strike)}`),
-      statTile("建議賣出限價", money(item.limit_price, cycle.currency), undefined, `Bid ${money(item.bid, cycle.currency)}／中價 ${money(item.mid, cycle.currency)}／Ask ${money(item.ask, cycle.currency)}`)],
-      { layout: "horizontal", spacing: "sm" }),
-    uiBox([statTile("每口權利金", money(item.premium_per_contract, cycle.currency), undefined, "100 股／口"),
-      statTile("年化收益", pct(item.annualized_yield), undefined, `期間 ${pct(item.period_yield, 2)}`)], { layout: "horizontal", spacing: "sm" }),
+    kvRow("履約價", money(item.strike, cycle.currency), { sub: `距現價 +${pct(item.upside_to_strike)}` }),
+    kvRow("建議賣出限價", money(item.limit_price, cycle.currency), { emphasis: true, sub: `Bid ${money(item.bid, cycle.currency)}／中價 ${money(item.mid, cycle.currency)}／Ask ${money(item.ask, cycle.currency)}` }),
+    kvRow("每口權利金", money(item.premium_per_contract, cycle.currency), { sub: "100 股／口" }),
+    kvRow("年化收益", pct(item.annualized_yield), { sub: `期間 ${pct(item.period_yield, 2)}` }),
     meter(Math.min(1, item.upside_to_strike / 0.5) * 100),
-    uiText(assignment, "xs", T.ink),
-    uiText(`流動性：OI ${countZh(item.oi)}｜成交量 ${countZh(item.volume)}｜價差占中價 ${spreadZh(item.spread_pct)}`, "xxs", T.muted),
-    footnote(note),
+    bulletRow(assignment),
+    uiText(`流動性：OI ${countZh(item.oi)}｜成交量 ${countZh(item.volume)}｜價差占中價 ${spreadZh(item.spread_pct)}`, "xs", T.muted),
+    // Only the tier whose note states the selection criterion (the annualized-yield floor) keeps its note.
+    ...(item.role === "HIGH_STRIKE" ? [footnote(ROLE.HIGH_STRIKE[1])] : []),
   ], item.role === "HIGH_STRIKE" ? "key" : "detail");
 }
 
@@ -301,19 +302,21 @@ export function buildCoveredCallMessages(cycle: CoveredCallCycle, periodLabel: s
     body: uiBox([
       ...(carriedLabel ? [uiText(carriedLabel, "xs", T.ink)] : []),
       ...displayTiers(cycle).map((item, index) => suggestionSection(cycle, item, index)),
-      ...(shortDteNoticeZh(cycle) ? [footnote(shortDteNoticeZh(cycle)!)] : []),
-      footnote("前提：持有 100 股、賣出 1 口買權收取權利金；股價超過履約價可能被指派，上漲收益封頂於履約價。限價：價差 25% 內取中間價，較寬時取 Bid＋四分之一價差。"),
+      ...(shortDteNoticeZh(cycle) ? [bulletRow(shortDteNoticeZh(cycle)!, { color: T.caution })] : []),
+      bulletRow("前提：持有 100 股、賣出 1 口買權；超過履約價可能被指派，上漲收益封頂。限價：價差 25% 內取中間價，較寬時取 Bid＋四分之一價差。"),
     ], { paddingAll: "lg", spacing: "md" }),
     footer: uiBox([
-      footnote(`來源：${sourceZh(cycle.source)}，${carried ? "前一交易時段擷取時間" : "擷取時間"} ${cycle.timestamp}（來源報價時間未提供）`),
-      footnote(`資料出處：${cycle.provenance}`),
-      ...(operatorNotice ? [footnote(operatorNotice)] : []),
-      footnote("公開行情觀察，非個人化投資建議；延遲／非即時可執行；年化收益非保證報酬；正股仍承擔下跌風險；本服務不下單。"),
+      disclosureLine([
+        `來源：${sourceZh(cycle.source)}，${carried ? "前一交易時段擷取時間" : "擷取時間"} ${cycle.timestamp}（來源報價時間未提供）`,
+        `資料出處：${cycle.provenance}`,
+        ...(operatorNotice ? [operatorNotice] : []),
+        "公開行情觀察，非個人化投資建議；延遲／非即時可執行；年化收益非保證報酬；正股仍承擔下跌風險；本服務不下單",
+      ]),
+      detailsButton(`${cycle.ticker} 完整報價與出處`, `${cycle.ticker} ${periodLabel.includes("每月") ? "每月" : "每週"}期權 文字`),
       menuAction("期權策略教學", "期權教學"),
-      menuAction("回功能選單", "選單"),
     ], footerStyle),
   };
-  const messages: LineOutboundMessage[] = [{ type: "flex", altText: `備兌買權建議：${cycle.ticker} ${cycle.expiry}${carried ? "（前一時段報價）" : ""}`,
+  const messages: LineOutboundMessage[] = [{ type: "flex", altText: altSummary({ topic: `${cycle.ticker} ${cycle.expiry} 備兌買權建議`, status: `${carried ? "前一時段報價" : "延遲報價"}，非投資建議`, next: "點選查看完整報價與出處" }),
     contents: { type: "carousel", contents: [bubble] } }];
   assertLineMessages(messages);
   return messages;

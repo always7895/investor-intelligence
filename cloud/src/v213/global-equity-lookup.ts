@@ -1,6 +1,6 @@
 import { adrRoute, marketHasOptions } from "./option-routes";
 import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
-import { LINE_THEME as T, menuAction, menuBox, menuText, headerStyle } from "./line-theme";
+import { LINE_THEME as T, bulletRow, disclosureLine, menuAction, menuBox, menuText, headerStyle } from "./line-theme";
 import { pinPublicSnapshot, type PublicSnapshotView } from "./public-snapshot";
 import type { V213Top20Env } from "./top20-report";
 import type { ParsedQuery } from "../core";
@@ -521,16 +521,15 @@ export function buildGlobalEquityLookupMessages(
         ...(secFallback ? [menuText(SEC_FALLBACK_NOTICE, "xs", T.ink)] : []),
       ], { backgroundColor: T.soft, paddingAll: "md", cornerRadius: "md", spacing: "xs" }),
       menuBox([
-        menuText(`標的：${identity.canonicalSymbol}`, "sm", T.ink),
-        menuText(`原文名稱：${nameEn}`, "xs", T.ink),
-        menuText(`中文名稱：${nameZh}`, "xs", T.muted),
-        menuText(`計價幣別：${identity.currency}`, "xs", T.muted),
+        bulletRow(`標的：${identity.canonicalSymbol}`, { size: "sm", weight: "bold" }),
+        bulletRow(`原文名稱：${nameEn}`),
+        bulletRow(`中文名稱：${nameZh}`, { color: T.muted }),
+        bulletRow(`計價幣別：${identity.currency}`, { color: T.muted }),
         ...(shownCandidates ? [menuText(["候選市場：", ...visibleLines, ...omissionNote, candidateNote].join("\n"), "xs", T.muted)] : []),
       ], { spacing: "xs", paddingAll: "sm" }),
     ], { paddingAll: "lg", spacing: "md", backgroundColor: T.paper }),
     footer: menuBox([
-      menuText(`來源：${sourceZh(result.source)}`, "xxs", T.muted),
-      menuText(disclaimerShown, "xxs", T.muted),
+      disclosureLine([`來源：${sourceZh(result.source)}`, disclaimerShown]),
       ...footerActions,
     ], { backgroundColor: T.paper, paddingAll: "md", spacing: "xs" }),
   };

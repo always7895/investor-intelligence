@@ -12,7 +12,7 @@
 import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
 import { sourceZh } from "./source-labels";
 import {
-  LINE_THEME as T, chip, divider, footerStyle, footnote, headerStyle, menuAction, menuBox, menuText, meter, panel,
+  LINE_THEME as T, altSummary, chip, detailsButton, divider, footerStyle, footnote, headerStyle, menuAction, menuBox, menuText, meter, panel,
   packCarousels, railTitle, rankBadge, richText, stackedBar, statTile, timelineStep, uiBox, uiText,
 } from "./line-theme";
 import type {
@@ -102,7 +102,7 @@ export function buildMacroOverviewBubble(overview: MacroTop5Overview) {
   });
 
   const actionButtons = overview.industries.slice(0, 3).map(ind =>
-    menuAction(`第${ind.rank !== null ? ind.rank : "1"}名卡片`, `宏觀產業 卡片 ${ind.industry_id}`),
+    detailsButton(`第${ind.rank !== null ? ind.rank : "1"}名產業卡片`, `宏觀產業 卡片 ${ind.industry_id}`),
   );
 
   return {
@@ -120,10 +120,10 @@ export function buildMacroOverviewBubble(overview: MacroTop5Overview) {
         uiText(
           isShortfall
             ? `短缺通報：符合高標準市場成長率、瓶頸與價值鏈證據之合格產業候選僅 ${overview.qualified_count} 個（未達 5 個門檻）。系統拒絕假裝湊滿 5 個或捏造虛假排名。`
-            : "本總覽由候選產業池依量化機會準則動態評選產生，非固定前五大產業清單，絕不以候選公司家數占比冒充市場成長率。",
-          "xxs", isShortfall ? T.negative : T.muted,
+            : "依量化機會準則動態評選，非固定前五大清單；不以候選公司家數占比冒充市場成長率。",
+          "xs", isShortfall ? T.negative : T.muted,
         ),
-        ...(knowledgeNotice ? [uiText(knowledgeNotice, "xxs", T.muted)] : []),
+        ...(knowledgeNotice ? [uiText(knowledgeNotice, "xs", T.muted)] : []),
       ], { backgroundColor: isShortfall ? T.paleNegative : T.soft, paddingAll: "md", cornerRadius: "md", spacing: "sm" }),
       railTitle("評選名單", "條長＝機會分數（0–100）"),
       ...(rows.length > 0 ? rows : [uiText("（當前無合格准入產業）", "xs", T.muted)]),
@@ -178,9 +178,9 @@ function industryCardBubble(card: MacroIndustryCard, rt: Rich) {
         tagged("受益", card.beneficiaries_key_suppliers.join("、"), rt)]),
       uiBox([railTitle("催化劑時程（6M / 1Y / 2Y）"),
         uiBox([
-          timelineStep("6M", [rt(card.catalysts.m6, "xxs")], false, true),
-          timelineStep("1Y", [rt(card.catalysts.y1, "xxs")]),
-          timelineStep("2Y", [rt(card.catalysts.y2, "xxs")], true),
+          timelineStep("6M", [rt(card.catalysts.m6, "xs")], false, true),
+          timelineStep("1Y", [rt(card.catalysts.y1, "xs")]),
+          timelineStep("2Y", [rt(card.catalysts.y2, "xs")], true),
         ], { spacing: "none", paddingTop: "sm" })]),
       panel([uiText("生命週期與風險", "xxs", T.caution, { weight: "bold" }), rt(card.risks_lifecycle, "xs", T.muted)], "caution"),
     ], { paddingAll: "lg", spacing: "lg", backgroundColor: T.paper }),
@@ -328,7 +328,7 @@ export function buildMacroIndustryCardFlex(card: MacroIndustryCard): LineOutboun
   const rankLabel = validated.rank !== null ? `第${validated.rank}名` : "未定排名";
   const messages: LineOutboundMessage[] = [{
     type: "flex",
-    altText: `宏觀產業卡片 · ${rankLabel}：${validated.industry_name}`,
+    altText: altSummary({ topic: `宏觀產業卡片：${validated.industry_name}`, status: `${rankLabel}，機會分數 ${validated.opportunity_score}/100`, next: "點選查看 10 維深度化分析" }),
     contents: {
       type: "carousel",
       contents: [bubble],
@@ -374,7 +374,7 @@ export function buildMacroDeepAnalysisFlex(analysis: MacroDeepAnalysis): LineOut
   const bubble = buildMacroDeepAnalysisBubble(validated);
   const messages: LineOutboundMessage[] = [{
     type: "flex",
-    altText: `宏觀產業深度化分析 · ${validated.industry_name}`,
+    altText: altSummary({ topic: `宏觀產業深度化分析：${validated.industry_name}`, status: "10 維因果鏈與來源憑證", next: "點選回產業卡片" }),
     contents: {
       type: "carousel",
       contents: [bubble],

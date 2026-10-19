@@ -206,6 +206,81 @@ export const stackedBar = (parts: readonly { label: string; weight: number }[]) 
   ], { spacing: "sm" });
 };
 
+// --- V20 density primitives (additive): one glance = headline number + a few bullets; detail behind a specific button. ---
+
+/** Code-point-safe ellipsis for non-required prose only (never for disclosures, figures or source names). */
+export function clampText(text: string, maxChars: number): string {
+  const chars = Array.from(text);
+  return chars.length <= maxChars ? text : `${chars.slice(0, Math.max(1, maxChars - 1)).join("")}…`;
+}
+
+/** Small ink dot that marks a bullet (6px, `flex:0`); the density test recognises bullet rows by it. */
+export const BULLET_DOT_SIZE = "6px";
+const bulletDot = () => ({ type: "box", layout: "vertical", contents: [], width: BULLET_DOT_SIZE, height: BULLET_DOT_SIZE,
+  cornerRadius: "3px", backgroundColor: T.ink, flex: 0, offsetTop: "6px" });
+
+/** One bullet: ink dot plus wrapping text. `maxLines` only for prose whose truncation cannot hide a figure or disclosure. */
+export function bulletRow(text: string, options: { size?: string; maxLines?: number; color?: string; weight?: "bold" | "regular" } = {}) {
+  const { size = "xs", maxLines, color = T.ink, weight } = options;
+  return uiBox([bulletDot(), uiText(text, size, color, { flex: 1, ...(maxLines ? { maxLines } : {}), ...(weight === "bold" ? { weight } : {}) })],
+    { layout: "horizontal", spacing: "sm" });
+}
+
+/** Specific button: "<verb> <target>" naming what opens; vague labels are rejected. */
+/** LINE rejects a message action label over 20 characters. */
+export const BUTTON_LABEL_MAX = 20;
+const VAGUE_LABELS = new Set(["詳情", "更多", "詳細", "查看", "查看更多", "Details", "More", "details", "more"]);
+export function detailsButton(label: string, command: string) {
+  if (VAGUE_LABELS.has(label.trim())) throw new Error("V20_BUTTON_LABEL_VAGUE");
+  return menuAction(clampText(label, BUTTON_LABEL_MAX), command);
+}
+
+/** At most `max` bullets; when more exist a muted "另有 N 項" row (and, if given, a details button) follows. Never use it
+ * to drop a required disclosure: disclosures go through `disclosureLine`. */
+export function bulletList(items: readonly string[], options: { max?: number; size?: string; maxLines?: number;
+  more?: { label: string; command: string } } = {}): unknown[] {
+  const { max = 5, size = "xs", maxLines, more } = options;
+  const shown = items.slice(0, max);
+  const rest = items.length - shown.length;
+  return [
+    ...shown.map(item => bulletRow(item, { size, maxLines })),
+    ...(rest > 0 ? [uiText(`另有 ${rest} 項`, "xs", T.subtle), ...(more ? [detailsButton(more.label, more.command)] : [])] : []),
+  ];
+}
+
+/** Label/value row: muted label (`flex:2`), bold right-aligned value (`flex:3`), sign-coloured. Wraps by default (a figure is never cut). */
+export function kvRow(label: string, value: string, options: { emphasis?: boolean; maxLines?: number; color?: string; sub?: string } = {}) {
+  const { emphasis = false, maxLines, color = signColor(value), sub } = options;
+  const row = uiBox([
+    uiText(label, "xs", T.subtle, { flex: 2, gravity: "top" }),
+    uiText(value, emphasis ? "md" : "sm", color, { flex: 3, align: "end", weight: "bold", ...(maxLines ? { maxLines } : {}) }),
+  ], { layout: "horizontal", spacing: "sm" });
+  return sub === undefined ? row : uiBox([row, uiText(sub, "xs", T.subtle, { align: "end" })], { spacing: "xs" });
+}
+
+/** Label, a bar proportional to value/max, and the displayed value. */
+export const barRow = (label: string, value: number, display: string, max = 100) => uiBox([
+  uiText(label, "xs", T.subtle, { flex: 2 }),
+  uiBox([meter(value, max, T.ink, true)], { flex: 3, justifyContent: "center" }),
+  uiText(display, "xs", T.ink, { flex: 2, align: "end", weight: "bold" }),
+], { layout: "horizontal", spacing: "sm", alignItems: "center" });
+
+/** ONE xxs line for every required disclosure and source label, parts joined by "｜". Not clamped: the long form of each
+ * part stays reachable through a details button. */
+export const disclosureLine = (parts: readonly string[]) => uiText(parts.filter(part => part.length > 0).join("｜"), "xxs", T.subtle);
+
+/** The card's headline number: muted label, one large figure, optional sub line. */
+export const heroStat = (label: string, value: string, sub?: string, color: string = signColor(value)) => uiBox([
+  uiText(label, "xs", T.subtle),
+  uiText(value, value.length > 10 ? "xl" : "3xl", color, { weight: "bold" }),
+  ...(sub ? [uiText(sub, "xs", T.subtle)] : []),
+], { spacing: "xs" });
+
+/** altText "<topic>｜<status>｜<next>" within 120 characters (code-point safe). */
+export function altSummary(parts: { topic: string; status: string; next: string }): string {
+  return clampText(`${parts.topic}｜${parts.status}｜${parts.next}`, 120);
+}
+
 /** Carousels of at most five bubbles and 46 KB each (LINE caps a carousel at 50 KB); validated before return. */
 export function packCarousels(bubbles: readonly unknown[], altText: (index: number, total: number) => string): LineOutboundMessage[] {
   const size = (value: unknown) => new TextEncoder().encode(JSON.stringify(value)).length;
