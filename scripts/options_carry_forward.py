@@ -51,9 +51,9 @@ TICKER_RE = re.compile(r"^[A-Z0-9][A-Z0-9\-]{0,15}$")  # US keys only: no dotted
 CYCLE_KEYS = frozenset({
     "ticker", "strategy", "expiry", "dte", "spot", "currency", "multiplier", "quote_basis", "timestamp", "source", "provenance",
     "rights_status", "provider_id", "jurisdiction", "venue", "instrument_kind", "publication_scope", "suggestions", "middle_suggestion",
-    "asof_date", "weekly_week",
+    "asof_date", "weekly_week", "strategies",
 })
-REQUIRED_CYCLE_KEYS = CYCLE_KEYS - {"middle_suggestion", "weekly_week"}
+REQUIRED_CYCLE_KEYS = CYCLE_KEYS - {"middle_suggestion", "weekly_week", "strategies"}
 SUGGESTION_KEYS = frozenset({
     "role", "strike", "bid", "ask", "mid", "limit_price", "premium_per_contract", "period_yield", "annualized_yield", "upside_to_strike",
     "delta", "delta_basis", "iv", "oi", "volume", "spread_pct",
@@ -82,7 +82,8 @@ def _closed_shape(cycle: Any) -> bool:
         return False
     suggestions = cycle.get("suggestions")
     items = [*(suggestions if isinstance(suggestions, list) else []), *([cycle["middle_suggestion"]] if "middle_suggestion" in cycle else [])]
-    return bool(items) and all(isinstance(item, dict) and set(item) == SUGGESTION_KEYS for item in items)
+    # V21: the optional `strategies` object is closed by the shared validator (exact key sets per block, leg and item), run on every stored cycle.
+    return (bool(items) or isinstance(cycle.get("strategies"), dict)) and all(isinstance(item, dict) and set(item) == SUGGESTION_KEYS for item in items)
 
 
 def _stored_cycle_ok(ticker: str, period: str, cycle: Any, now: datetime) -> bool:
@@ -188,6 +189,9 @@ class CarryForward:
             return None
         carried = copy.deepcopy(captured)
         carried["quote_basis"] = CARRIED_QUOTE_BASIS
+        for block in (carried.get("strategies") or {}).values():  # V21: a block's label follows its cycle's basis
+            if isinstance(block, dict) and "quote_basis" in block:
+                block["quote_basis"] = CARRIED_QUOTE_BASIS
         try:
             if option_rights.public_option_cycle_admission(carried, self._policy_for(now)) is not None:
                 return None

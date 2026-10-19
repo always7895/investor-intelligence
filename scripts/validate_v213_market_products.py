@@ -258,6 +258,173 @@ CARRIED_QUOTE_BASIS = "previous_session_last"
 CARRIED_MAX_AGE_SECONDS = 4 * 86400  # four calendar days (a weekend or a holiday); live rows keep the 5-hour bound
 
 
+# ---- V21 (operator 2026-10-19): the additive `strategies` object of a covered-call cycle -------------------------------------------------
+# Shape: strategies = {cc?: {unavailable}, csp: {suggestions[1..2], label} | {unavailable}, collar: {items[1..2], label} | {unavailable}}; the
+# label (rights_status, provider_id, quote_basis, timestamp) equals the cycle's own. cc appears only when the cycle has no covered call
+# (suggestions == []), and then only as {unavailable}. A cycle with no covered call needs at least one real csp or collar block.
+STRATEGY_NAMES = ("cc", "csp", "collar")
+STRATEGY_LABEL_KEYS = ("rights_status", "provider_id", "quote_basis", "timestamp")
+STRATEGY_DELTA_BASES = (None, "QUOTED", "QUOTED_IV", "QUOTE_IMPLIED")
+STRATEGY_ROLES = (["CONSERVATIVE"], ["CONSERVATIVE", "BALANCED"])
+STRATEGY_UNAVAILABLE_MAX = 200
+
+
+def _finite_number(value, name):
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise MarketProductValidationError(f"STRICT_FINITE_NUMBER_REQUIRED: {name}")
+    try:
+        number = float(value)
+    except (OverflowError, ValueError, TypeError) as error:
+        raise MarketProductValidationError(f"STRICT_FINITE_NUMBER_REQUIRED: {name}") from error
+    if not math.isfinite(number):
+        raise MarketProductValidationError(f"STRICT_FINITE_NUMBER_REQUIRED: {name}")
+    return number
+
+
+def _agree(actual, expected, name, code):
+    if abs(_finite_number(actual, name) - expected) > max(1e-4, abs(expected) * 1e-3):
+        raise MarketProductValidationError(f"{code}_DERIVED_MISMATCH: {name}")
+
+
+STRATEGY_LEG_KEYS = frozenset({"strike", "bid", "ask", "limit_price", "delta", "delta_basis"})
+STRATEGY_CSP_KEYS = STRATEGY_LEG_KEYS | {"role", "premium_per_contract", "cash_required", "annualized_yield", "breakeven", "downside_buffer"}
+STRATEGY_COLLAR_KEYS = frozenset({"role", "call", "net_premium_per_share", "max_loss_per_share", "max_gain_per_share", "break_even",
+                                  "worst_case_net_per_share"})
+
+
+def _strategy_leg(leg, *, buy: bool, spot: float, put: bool, band: tuple[float, float], code: str, extra: frozenset = frozenset()) -> dict:
+    """One quoted leg (exact key set STRATEGY_LEG_KEYS plus `extra`): strike on the right side of the spot, a two-sided quote, the limit on
+    the right side of the mid (the mid is derived from bid and ask), an absolute delta inside the band and a known delta basis."""
+    if not isinstance(leg, dict) or set(leg) != STRATEGY_LEG_KEYS | extra:
+        raise MarketProductValidationError(f"{code}_SHAPE")
+    strike, bid, ask, limit = (_finite_number(leg.get(key), key) for key in ("strike", "bid", "ask", "limit_price"))
+    if not ((0 < strike < spot) if put else (strike > spot > 0)):
+        raise MarketProductValidationError(f"{code}_STRIKE_NOT_OUT_OF_THE_MONEY")
+    if not 0 < bid <= ask:
+        raise MarketProductValidationError(f"{code}_PRICES_INCONSISTENT")
+    mid = (bid + ask) / 2
+    if buy and not mid - 1e-9 <= limit <= ask + 1e-9:
+        raise MarketProductValidationError(f"{code}_BUY_LIMIT_OUTSIDE_MID_ASK")
+    if not buy and not bid - 1e-9 <= limit <= mid + 1e-9:
+        raise MarketProductValidationError(f"{code}_PRICES_INCONSISTENT")
+    delta = _finite_number(leg.get("delta"), "delta")
+    if not 0 < delta <= 1:
+        raise MarketProductValidationError("INVALID_DELTA_RANGE")
+    if not band[0] - rules.DELTA_BAND_TOLERANCE <= delta <= band[1] + rules.DELTA_BAND_TOLERANCE:
+        raise MarketProductValidationError(f"{code}_DELTA_OUTSIDE_BAND")
+    if leg.get("delta_basis") not in STRATEGY_DELTA_BASES or leg.get("delta_basis") is None:
+        raise MarketProductValidationError("INVALID_DELTA_BASIS")
+    return {"strike": strike, "bid": bid, "ask": ask, "mid": mid, "limit": limit}
+
+
+def _strategy_label(block: dict, cycle: dict, items_key: str, extra: tuple = ()) -> list:
+    if set(block) != {items_key, *extra, *STRATEGY_LABEL_KEYS}:
+        raise MarketProductValidationError("STRATEGY_BLOCK_KEYS")
+    for key in STRATEGY_LABEL_KEYS:
+        if block[key] != cycle.get(key):
+            raise MarketProductValidationError(f"STRATEGY_LABEL_MISMATCH: {key}")
+    items = block[items_key]
+    if not isinstance(items, list) or not 1 <= len(items) <= 2 or not all(isinstance(item, dict) for item in items):
+        raise MarketProductValidationError("STRATEGY_ITEM_COUNT")
+    if [item.get("role") for item in items] not in STRATEGY_ROLES:
+        raise MarketProductValidationError("STRATEGY_ROLES")
+    return items
+
+
+def validate_strategy_block(name: str, block, cycle: dict) -> None:
+    """One strategy block of a cycle (csp or collar; cc only ever {unavailable}), against the cycle's spot, dte and label. Raises
+    MarketProductValidationError; publish_sealed_snapshot replaces only the failing block."""
+    if name not in STRATEGY_NAMES or not isinstance(block, dict):
+        raise MarketProductValidationError("STRATEGY_BLOCK_INVALID")
+    if "unavailable" in block:
+        text = block["unavailable"]
+        if set(block) != {"unavailable"} or not isinstance(text, str) or not text.strip() or len(text) > STRATEGY_UNAVAILABLE_MAX:
+            raise MarketProductValidationError("STRATEGY_UNAVAILABLE_INVALID")
+        return
+    if name == "cc":
+        raise MarketProductValidationError("STRATEGY_CC_BLOCK_MUST_BE_UNAVAILABLE")
+    spot = _finite_number(cycle.get("spot"), "spot")
+    dte = cycle.get("dte")
+    if not isinstance(dte, int) or isinstance(dte, bool) or dte < 0:
+        raise MarketProductValidationError("INVALID_DTE")
+    days = rules.effective_days(dte)
+    band = rules.CONSERVATIVE_DELTA_BAND
+    if name == "csp":
+        items = _strategy_label(block, cycle, "suggestions")
+        for item in items:
+            if set(item) != STRATEGY_CSP_KEYS:
+                raise MarketProductValidationError("CSP_SHAPE")
+            leg = _strategy_leg({key: item[key] for key in STRATEGY_LEG_KEYS}, buy=False, spot=spot, put=True, band=band, code="CSP")
+            strike, limit = leg["strike"], leg["limit"]
+            expected = {"premium_per_contract": limit * 100, "cash_required": strike * 100, "annualized_yield": limit / strike * 365 / days,
+                        "breakeven": strike - limit, "downside_buffer": 1 - strike / spot}
+            for key, value in expected.items():
+                _agree(item.get(key), value, key, "CSP")
+        if len(items) == 2 and not items[1]["strike"] > items[0]["strike"]:
+            raise MarketProductValidationError("CSP_BALANCED_NOT_HIGHER")
+        return
+    items = _strategy_label(block, cycle, "items", ("put",))
+    put = _strategy_leg(block["put"], buy=True, spot=spot, put=True, band=rules.PROTECTIVE_PUT_DELTA_BAND, code="COLLAR_PUT")
+    for item in items:
+        if set(item) != STRATEGY_COLLAR_KEYS:
+            raise MarketProductValidationError("COLLAR_SHAPE")
+        call = _strategy_leg(item["call"], buy=False, spot=spot, put=False, band=band, code="COLLAR_CALL")
+        net = call["limit"] - put["limit"]
+        expected = {"net_premium_per_share": net, "max_loss_per_share": spot - put["strike"] - net, "max_gain_per_share": call["strike"] - spot + net,
+                    "break_even": spot - net, "worst_case_net_per_share": call["bid"] - put["ask"]}
+        for key, value in expected.items():
+            _agree(item.get(key), value, key, "COLLAR")
+    if len(items) == 2 and not items[1]["call"]["strike"] < items[0]["call"]["strike"]:
+        raise MarketProductValidationError("COLLAR_BALANCED_NOT_LOWER")
+
+
+def validate_strategies(cycle: dict) -> None:
+    """The whole `strategies` object of a cycle (strict; the sealer first degrades each failing block, see degrade_bad_strategy_blocks)."""
+    strategies = cycle.get("strategies")
+    if not isinstance(strategies, dict) or not strategies or not set(strategies) <= set(STRATEGY_NAMES):
+        raise MarketProductValidationError("STRATEGIES_INVALID")
+    suggestions = cycle.get("suggestions")
+    if suggestions == [] and not isinstance(strategies.get("cc"), dict):
+        raise MarketProductValidationError("STRATEGY_CC_UNAVAILABLE_REQUIRED")
+    if suggestions != [] and "cc" in strategies:
+        raise MarketProductValidationError("STRATEGY_CC_PRESENT_WITH_SUGGESTIONS")
+    for name, block in strategies.items():
+        validate_strategy_block(name, block, cycle)
+    if suggestions == [] and all("unavailable" in strategies.get(name, {"unavailable": ""}) for name in ("csp", "collar")):
+        raise MarketProductValidationError("COVERED_CALL_SUGGESTION_COUNT")
+
+
+STRATEGY_DEGRADED_TEXT = "報價未通過驗證"
+
+
+def degrade_bad_strategy_blocks(cycle):
+    """A copy of `cycle` in which every csp/collar block that fails validate_strategy_block is replaced by {unavailable}, an unknown
+    strategy name or a malformed `strategies` object is removed, and everything else (above all a good covered call) is untouched. A cycle
+    that is not a dict, or has no `strategies`, is returned as it is. The caller then runs the strict cycle validator."""
+    if not isinstance(cycle, dict) or "strategies" not in cycle:
+        return cycle
+    out = dict(cycle)
+    strategies = cycle["strategies"]
+    if not isinstance(strategies, dict):
+        del out["strategies"]
+        return out
+    kept = {}
+    for name, block in strategies.items():
+        if name not in STRATEGY_NAMES:
+            continue
+        try:
+            validate_strategy_block(name, block, cycle)
+            kept[name] = block
+        except (MarketProductValidationError, TypeError, ValueError, KeyError, AttributeError, OverflowError):
+            if name != "cc":
+                kept[name] = {"unavailable": STRATEGY_DEGRADED_TEXT}
+    if kept:
+        out["strategies"] = kept
+    else:
+        del out["strategies"]
+    return out
+
+
 def validate_covered_call_cycle(cycle: dict, evaluated_at: str | datetime | None = None, document_at: str | datetime | None = None,
                                 period: str | None = None, *, allow_previous_session: bool = False) -> None:
     """Covered-call sell suggestions for one underlying and cycle (scripts/build_market_quotes_options.py): out-of-the-money
@@ -388,12 +555,13 @@ def validate_covered_call_cycle(cycle: dict, evaluated_at: str | datetime | None
     spot = finite(cycle.get("spot"), "spot")
     annual_days = rules.effective_days(dte)  # annualized over at least one day: a DTE-0 contract never divides by zero
     suggestions = cycle.get("suggestions")
-    if not isinstance(suggestions, list) or not 1 <= len(suggestions) <= 2:
+    # V21: no covered call (an empty list) is allowed only beside a `strategies` object that validates and holds a real csp or collar block.
+    if not isinstance(suggestions, list) or not (1 <= len(suggestions) <= 2 or (not suggestions and "strategies" in cycle)):
         raise MarketProductValidationError("COVERED_CALL_SUGGESTION_COUNT")
     if not all(isinstance(item, dict) for item in suggestions):
         raise MarketProductValidationError("COVERED_CALL_SUGGESTION_SHAPE")
     roles = [item.get("role") for item in suggestions]
-    if roles not in (["HIGH_STRIKE"], ["HIGH_STRIKE", "BALANCED"]):
+    if roles not in ([], ["HIGH_STRIKE"], ["HIGH_STRIKE", "BALANCED"]):
         raise MarketProductValidationError("COVERED_CALL_ROLES")
     def check_item(item: dict) -> float:
         strike, bid, ask, mid, limit = (finite(item.get(key), key) for key in ("strike", "bid", "ask", "mid", "limit_price"))
@@ -444,6 +612,10 @@ def validate_covered_call_cycle(cycle: dict, evaluated_at: str | datetime | None
         middle_strike = check_item(middle)
         if not suggestions[0]["strike"] > middle_strike > suggestions[1]["strike"]:
             raise MarketProductValidationError("COVERED_CALL_MIDDLE_NOT_BETWEEN")
+    if "strategies" in cycle:
+        validate_strategies(cycle)
+    elif not suggestions:
+        raise MarketProductValidationError("COVERED_CALL_SUGGESTION_COUNT")
 
 
 COVERAGE_SCHEMA = "v213-options-coverage-v1"

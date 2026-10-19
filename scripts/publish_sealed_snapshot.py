@@ -844,10 +844,13 @@ def lazy_price_bodies(path: Path, now: datetime) -> "dict[str, str]":
     return bodies
 
 
+LAZY_BODY_MAX_BYTES = 1_900_000  # per lazy market body (quotes, options)
+
+
 def lazy_market_bodies(path: Path, now: datetime) -> "dict[str, str]":
     """Delayed quotes and covered-call suggestions (scripts/build_market_quotes_options.py) as two lazy bodies; each cycle
     must pass the shared validator or is replaced by an explicit unavailability reason."""
-    from validate_v213_market_products import MarketProductValidationError, validate_covered_call_cycle
+    from validate_v213_market_products import MarketProductValidationError, degrade_bad_strategy_blocks, validate_covered_call_cycle
     import public_options_provider_gate as option_rights
     # Public RIGHTS admission (distinct from the shared FORMAT validator and from the honest local-candidate labels): the audited
     # canonical catalog is loaded ONCE; a cycle reaches v213:options:v2 only when its claimed identity matches an admitted scope of a
@@ -875,6 +878,9 @@ def lazy_market_bodies(path: Path, now: datetime) -> "dict[str, str]":
                     # AttributeError that escapes to the whole-document catch and discards healthy cycles.
                     # The sealer is the one caller that also accepts the previous-session carry-forward basis (its own age, session and
                     # expiry rules live in the validator; the claimed basis must be an admitted scope of the catalog above).
+                    # V21: a csp or collar block that fails its checks becomes {unavailable} on its own; the covered call and the other block
+                    # survive. Only a cycle-level failure (or no real strategy left on a cycle without a covered call) drops the cycle.
+                    value = degrade_bad_strategy_blocks(value)
                     validate_covered_call_cycle(value, evaluated_at=now, document_at=doc["generated_at"], period=cycle,
                                                 allow_previous_session=True)
                     options[ticker][cycle] = value
@@ -884,9 +890,18 @@ def lazy_market_bodies(path: Path, now: datetime) -> "dict[str, str]":
         option_doc = {"schema": "v213-options-v2", "generated_at": doc["generated_at"], "options": options}
         bodies = {"v213:quotes:v1": json.dumps(quotes, ensure_ascii=False, separators=(",", ":"), allow_nan=False),
                   "v213:options:v2": json.dumps(option_doc, ensure_ascii=False, separators=(",", ":"), allow_nan=False)}
+        if len(bodies["v213:options:v2"].encode("utf-8")) > LAZY_BODY_MAX_BYTES:
+            # V21: the strategies are additive. Over the size cap they are dropped first (a cycle that has only strategies becomes
+            # unavailable), so the covered calls still publish instead of the whole options object being withheld.
+            for per_ticker in options.values():
+                for cycle, value in list(per_ticker.items()):
+                    if isinstance(value, dict) and "strategies" in value:
+                        per_ticker[cycle] = ({k: v for k, v in value.items() if k != "strategies"} if value.get("suggestions")
+                                             else {"unavailable": "報價資料量超過上限，策略暫不提供"})
+            bodies["v213:options:v2"] = json.dumps(option_doc, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
     except (OSError, ValueError, KeyError, TypeError, AttributeError):
         return {}
-    return bodies if all(len(body.encode("utf-8")) <= 1_900_000 for body in bodies.values()) else {}
+    return bodies if all(len(body.encode("utf-8")) <= LAZY_BODY_MAX_BYTES for body in bodies.values()) else {}
 
 
 COVERAGE_KEY = "v213:options-coverage:v1"

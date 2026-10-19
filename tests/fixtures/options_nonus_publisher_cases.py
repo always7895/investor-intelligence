@@ -343,7 +343,7 @@ READ_FAILED = "讀取或解析失敗"
 TERMS_UNCONFIRMED = "合約單位或幣別來源未確認"
 NONSTANDARD = "合約單位非標準100股"
 NO_TWO_SIDED = "所選到期無有效雙邊報價"
-STRATEGY_MISS = "沒有年化權利金達 6% 且有雙邊報價的履約價"
+STRATEGY_MISS = "沒有年化權利金達 2% 且有雙邊報價的履約價"
 PRECISION = "兩位以上小數"  # recommendation capability of the two-decimal display, not a source-identity or quote failure
 
 

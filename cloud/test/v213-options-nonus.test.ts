@@ -244,7 +244,7 @@ describe("OPTIONS-NONUS-02 bridge: exact Python-emitted bodies through the Worke
     const read = async (key: string) => textOf(await reply(env, `${key} 每月期權`));
     expect(await read("QLASTSALE.ST")).toContain("所選到期無有效雙邊報價");
     expect(await read("QLASTSALE.ST")).not.toContain("沒有年化權利金");
-    expect(await read("QMISS.ST")).toContain("沒有年化權利金達 6% 且有雙邊報價的履約價");
+    expect(await read("QMISS.ST")).toContain("沒有年化權利金達 2% 且有雙邊報價的履約價");
     expect(await read("QMISS.ST")).not.toContain("所選到期無有效雙邊報價");
     expect(await read("TSIZE50.ST")).toContain("合約單位非標準100股");
     const identity = await sealedEnv("identity_matrix");

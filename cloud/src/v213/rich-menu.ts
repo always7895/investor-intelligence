@@ -426,7 +426,7 @@ export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promis
     const isText = isEnvText || /文字\s*$/i.test(command);
     const view = await pinPublicSnapshot(env);
     const statusTextBase = view.integrity === "sealed"
-      ? "備兌買權建議（持有100股賣買權收權利金）：觀察清單內美股（Yahoo Finance，延遲、非官方）與 Nasdaq Stockholm（交易所公開 API，延遲）每小時更新；每個週期最多給三個價格：高履約價（不易被賣掉）、中間型與平衡型（缺少中間履約價時只顯示兩個）；每週＝當週到期。清單外標的或無雙邊報價時維持不可用。"
+      ? "保守期權三策略：備兌買權（持股賣買權）、現金擔保賣權（備現金賣賣權）、領口（持股＋買保護賣權＋賣買權）；觀察清單內美股（Yahoo Finance／Nasdaq，延遲、非官方）與 Nasdaq Stockholm（延遲）每小時更新；每週＝當週到期。清單外標的維持不可用；某策略無雙邊報價時只該策略顯示無資料。"
       : "OPTION_DATA_UNAVAILABLE：目前沒有已封存驗收的公開期權快照；舊鍵 options:latest／latest_options 殘留或存在本身不計為可用，不代表權利金為0或沒有風險。";
     const statusText = `${statusTextBase} 各市場來源與缺口狀態：輸入「${GLOBAL_SOURCE_STATUS_COMMAND}」（僅來源說明，非即時報價）。`;
 

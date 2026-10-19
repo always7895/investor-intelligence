@@ -200,7 +200,7 @@ class BridgeFixtureTests(unittest.TestCase):
         for key in ("TSZLEADING.ST", "TSZEXP.ST", "TSZLONG.ST"):
             self.assertIn("合約單位或幣別來源未確認", terms[key]["monthly"]["unavailable"])
             self.assertNotIn("非標準", terms[key]["monthly"]["unavailable"])
-        self.assertIn("沒有年化權利金達 6%", terms["QMISS.ST"]["monthly"]["unavailable"])
+        self.assertIn("沒有年化權利金達 2%", terms["QMISS.ST"]["monthly"]["unavailable"])
 
     def test_dte_matrices_follow_the_policy_windows_for_every_selector(self):
         for case, keys in (("dte_nordic_matrix", [f"ND{d}.ST" for d in generator.NORDIC_DTES]),

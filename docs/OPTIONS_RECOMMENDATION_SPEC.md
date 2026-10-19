@@ -153,13 +153,25 @@ Local owner mode may label coverage only from authenticated local whole-share da
 
 Per underlying and cycle the sealed `v213:options:v2` row carries up to three strike tiers (operator 2026-09-26 and 2026-10-11):
 
-- `HIGH_STRIKE` (title "建議一：高履約價（不易被賣掉）"): the highest out-of-the-money strike whose bid pays at least 6% annualized with model Delta at most 0.20;
+- `HIGH_STRIKE` (title "建議一：高履約價（不易被賣掉）"): the highest out-of-the-money strike whose bid pays at least 2% annualized (operator 2026-10-19; it was 6%) with model Delta at most 0.20;
 - `MIDDLE` (optional, "中間型（權利金與被指派機率居中）"): a strike strictly between the two others, the one whose Delta is nearest 0.25 (the strike nearest 2.5% out of the money when a Delta is missing); absent when no listed strike lies between, never padded or duplicated;
 - `BALANCED` ("平衡型（收較多權利金）"): the lower strike whose Delta is nearest 0.30.
 
 Strikes are strictly descending HIGH > MIDDLE > BALANCED. Titles are numbered by display position (一, 二, 三) without gaps, so a row without a middle shows exactly the two earlier titles. Every tier carries its own sell limit (mid rounded down to the 0.01 tick when the spread is within 25% of mid, otherwise Bid plus a quarter of the spread, never below Bid or above mid); limit prices are not required to be ordered across tiers, only the strikes are.
 
 Compatibility: `suggestions` keeps one or two entries with the roles `HIGH_STRIKE` or `HIGH_STRIKE`,`BALANCED`, so a Worker that predates the middle tier ignores the additive `middle_suggestion` key and renders the two original tiers; rows sealed before the change simply have no middle tier and render two. The Python publish gate and the Worker validator both reject a malformed middle tier (wrong role, not strictly between, fewer than two neighbours, any failed per-item check) for that cycle only. The shared definition lives in `scripts/option_recommendation_rules.py` and its TypeScript twin `cloud/src/v213/option-recommendation-rules.ts`.
+
+#### Three conservative strategies per cycle (V21, operator 2026-10-19)
+
+Every weekly and monthly cycle carries a covered call, a cash-secured put (CSP) and a collar, conservative first, in the additive optional `strategies` object of the same sealed row (no new KV key; a row without it is an older row and shows the covered call only):
+
+- `cc`: present only as `{"unavailable": reason}` when the cycle has no covered-call strike (`suggestions` is then `[]`, allowed only beside a real `csp` or `collar` block);
+- `csp`: out-of-the-money puts with a two-sided quote, absolute Delta 0.20-0.30 (shared `CONSERVATIVE_DELTA_BAND`), bid at least 2% annualized on the cash (strike x 100); `CONSERVATIVE` = Delta nearest 0.20, optional `BALANCED` = Delta nearest 0.30 at a higher strike; sell limit as for the covered call; carries cash required, break-even and downside buffer;
+- `collar`: long stock, a protective put (absolute Delta nearest 0.15 inside 0.05-0.25, buy limit = mid rounded up, never above Ask) and the short call in the same 0.20-0.30 band (nearest 0.20 first); net premium (credit positive), maximum loss, maximum gain, break-even and the worst-case net from Bid and Ask; no yield floor.
+
+Each of `csp` and `collar` is `{"unavailable": reason}` or a block with `rights_status`, `provider_id`, `quote_basis` and `timestamp` equal to the cycle's. A strategy whose leg lacks a valid two-sided quote or a Delta is unavailable on its own; nothing is modelled. The put side of Yahoo, Nasdaq US and Nasdaq Nordic is covered by the same `operator_accepted_unlicensed` label and decision as their calls; puts do not count towards `OPTION_TWO_SIDED_COVERAGE_LOW`. The Python publish gate degrades a failing `csp` or `collar` block to `{"unavailable": ...}` without dropping a good covered call, and drops the strategies first when the options object would exceed its size cap.
+
+The Worker mirrors those checks in `cloud/src/v213/covered-call.ts` (`validateCoveredCallCycle`): a failing `csp` or `collar` block becomes "no data" alone, `suggestions` may be empty only beside a real block, and a row without `strategies` shows both put-based strategies as no data. The LINE card is one flex message of at most four bubbles (overview, covered call, cash-secured put, collar; a strategy without data has no detail bubble), every bubble carrying the source and rights label, quote basis and capture time in its single disclosure line.
 
 ### Cash-secured put
 

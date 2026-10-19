@@ -36,6 +36,12 @@ MIN_ANNUALIZATION_DAYS = 1
 SHORT_DTE_NOTICE_MAX = 2         # dte 0-2: the annualized yield is labelled as amplified
 MIDDLE_DELTA = 0.25
 MIDDLE_MONEYNESS = 1.025
+# V21 (operator 2026-10-19): the conservative short-leg delta band shared by the cash-secured put and the collar's short call (absolute delta,
+# the strike nearest the lower edge first), and the collar's protective put (absolute delta nearest the target inside its window).
+CONSERVATIVE_DELTA_BAND = (0.20, 0.30)
+PROTECTIVE_PUT_DELTA = 0.15
+PROTECTIVE_PUT_DELTA_BAND = (0.05, 0.25)
+DELTA_BAND_TOLERANCE = 0.0005    # a displayed delta is rounded to three digits; validators accept the band edge within this
 WEEK_CURRENT = "CURRENT"
 WEEK_NEXT = "NEXT"
 # Regular-session close in exchange-local minutes after midnight (expiry-day cut-off; no holiday calendar is inferred).

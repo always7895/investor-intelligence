@@ -1,0 +1,395 @@
+{
+ "cases": {
+  "nordic_monthly_sek": {
+   "asof_date": "2026-09-30",
+   "currency": "SEK",
+   "dte": 28,
+   "expiry": "2026-10-28",
+   "instrument_kind": "equity_option",
+   "jurisdiction": "SE",
+   "middle_suggestion": {
+    "annualized_yield": 0.169464,
+    "ask": 1.32,
+    "bid": 1.28,
+    "delta": 0.267,
+    "delta_basis": "QUOTE_IMPLIED",
+    "iv": 0.3005,
+    "limit_price": 1.3,
+    "mid": 1.3,
+    "oi": 40,
+    "period_yield": 0.013,
+    "premium_per_contract": 130.0,
+    "role": "MIDDLE",
+    "spread_pct": 0.0308,
+    "strike": 106.0,
+    "upside_to_strike": 0.06,
+    "volume": 4
+   },
+   "multiplier": 100,
+   "provenance": "https://api.nasdaq.com/api/nordic/instruments/TX1/option-chain",
+   "provider_id": "nasdaq_nordic_option_chain",
+   "publication_scope": "public_line_quote",
+   "quote_basis": "delayed",
+   "rights_status": "operator_accepted_unlicensed",
+   "source": "Nasdaq Nordic option chain (exchange public web API, delayed)",
+   "spot": 100.0,
+   "strategies": {
+    "collar": {
+     "items": [
+      {
+       "break_even": 99.54,
+       "call": {
+        "ask": 1.09,
+        "bid": 1.05,
+        "delta": 0.231,
+        "delta_basis": "QUOTE_IMPLIED",
+        "limit_price": 1.07,
+        "strike": 107.0
+       },
+       "max_gain_per_share": 7.46,
+       "max_loss_per_share": 7.54,
+       "net_premium_per_share": 0.46,
+       "role": "CONSERVATIVE",
+       "worst_case_net_per_share": 0.42
+      },
+      {
+       "break_even": 99.31,
+       "call": {
+        "ask": 1.32,
+        "bid": 1.28,
+        "delta": 0.267,
+        "delta_basis": "QUOTE_IMPLIED",
+        "limit_price": 1.3,
+        "strike": 106.0
+       },
+       "max_gain_per_share": 6.69,
+       "max_loss_per_share": 7.31,
+       "net_premium_per_share": 0.69,
+       "role": "BALANCED",
+       "worst_case_net_per_share": 0.65
+      }
+     ],
+     "provider_id": "nasdaq_nordic_option_chain",
+     "put": {
+      "ask": 0.63,
+      "bid": 0.59,
+      "delta": 0.139,
+      "delta_basis": "QUOTE_IMPLIED",
+      "limit_price": 0.61,
+      "strike": 92.0
+     },
+     "quote_basis": "delayed",
+     "rights_status": "operator_accepted_unlicensed",
+     "timestamp": "2026-09-30T17:00:00Z"
+    },
+    "csp": {
+     "provider_id": "nasdaq_nordic_option_chain",
+     "quote_basis": "delayed",
+     "rights_status": "operator_accepted_unlicensed",
+     "suggestions": [
+      {
+       "annualized_yield": 0.138678,
+       "ask": 1.02,
+       "bid": 0.98,
+       "breakeven": 93.0,
+       "cash_required": 9400.0,
+       "delta": 0.205,
+       "delta_basis": "QUOTE_IMPLIED",
+       "downside_buffer": 0.06,
+       "limit_price": 1.0,
+       "premium_per_contract": 100.0,
+       "role": "CONSERVATIVE",
+       "strike": 94.0
+      },
+      {
+       "annualized_yield": 0.209115,
+       "ask": 1.56,
+       "bid": 1.52,
+       "breakeven": 94.46,
+       "cash_required": 9600.0,
+       "delta": 0.285,
+       "delta_basis": "QUOTE_IMPLIED",
+       "downside_buffer": 0.04,
+       "limit_price": 1.54,
+       "premium_per_contract": 154.0,
+       "role": "BALANCED",
+       "strike": 96.0
+      }
+     ],
+     "timestamp": "2026-09-30T17:00:00Z"
+    }
+   },
+   "strategy": "COVERED_CALL",
+   "suggestions": [
+    {
+     "annualized_yield": 0.049536,
+     "ask": 0.4,
+     "bid": 0.36,
+     "delta": 0.1,
+     "delta_basis": "QUOTE_IMPLIED",
+     "iv": 0.3006,
+     "limit_price": 0.38,
+     "mid": 0.38,
+     "oi": 40,
+     "period_yield": 0.0038,
+     "premium_per_contract": 38.0,
+     "role": "HIGH_STRIKE",
+     "spread_pct": 0.1053,
+     "strike": 112.0,
+     "upside_to_strike": 0.12,
+     "volume": 4
+    },
+    {
+     "annualized_yield": 0.202054,
+     "ask": 1.57,
+     "bid": 1.53,
+     "delta": 0.305,
+     "delta_basis": "QUOTE_IMPLIED",
+     "iv": 0.2997,
+     "limit_price": 1.55,
+     "mid": 1.55,
+     "oi": 40,
+     "period_yield": 0.0155,
+     "premium_per_contract": 155.0,
+     "role": "BALANCED",
+     "spread_pct": 0.0258,
+     "strike": 105.0,
+     "upside_to_strike": 0.05,
+     "volume": 4
+    }
+   ],
+   "ticker": "SIVE.ST",
+   "timestamp": "2026-09-30T17:00:00Z",
+   "venue": "NASDAQ_STOCKHOLM_OPTIONS"
+  },
+  "yahoo_monthly_full": {
+   "asof_date": "2026-09-30",
+   "currency": "USD",
+   "dte": 28,
+   "expiry": "2026-10-28",
+   "instrument_kind": "equity_option",
+   "jurisdiction": "US",
+   "middle_suggestion": {
+    "annualized_yield": 0.169464,
+    "ask": 1.32,
+    "bid": 1.28,
+    "delta": 0.267,
+    "delta_basis": "QUOTED_IV",
+    "iv": 0.3,
+    "limit_price": 1.3,
+    "mid": 1.3,
+    "oi": 100,
+    "period_yield": 0.013,
+    "premium_per_contract": 130.0,
+    "role": "MIDDLE",
+    "spread_pct": 0.0308,
+    "strike": 106.0,
+    "upside_to_strike": 0.06,
+    "volume": 10
+   },
+   "multiplier": 100,
+   "provenance": "https://finance.yahoo.com/quote/AAA/options?date=2026-10-28; delta=Black-Scholes(quoted IV)",
+   "provider_id": "yahoo_finance_option_chain",
+   "publication_scope": "public_line_quote",
+   "quote_basis": "delayed",
+   "rights_status": "operator_accepted_unlicensed",
+   "source": "Yahoo Finance option chain (unofficial, delayed)",
+   "spot": 100.0,
+   "strategies": {
+    "collar": {
+     "items": [
+      {
+       "break_even": 99.54,
+       "call": {
+        "ask": 1.09,
+        "bid": 1.05,
+        "delta": 0.231,
+        "delta_basis": "QUOTED_IV",
+        "limit_price": 1.07,
+        "strike": 107.0
+       },
+       "max_gain_per_share": 7.46,
+       "max_loss_per_share": 7.54,
+       "net_premium_per_share": 0.46,
+       "role": "CONSERVATIVE",
+       "worst_case_net_per_share": 0.42
+      },
+      {
+       "break_even": 99.31,
+       "call": {
+        "ask": 1.32,
+        "bid": 1.28,
+        "delta": 0.267,
+        "delta_basis": "QUOTED_IV",
+        "limit_price": 1.3,
+        "strike": 106.0
+       },
+       "max_gain_per_share": 6.69,
+       "max_loss_per_share": 7.31,
+       "net_premium_per_share": 0.69,
+       "role": "BALANCED",
+       "worst_case_net_per_share": 0.65
+      }
+     ],
+     "provider_id": "yahoo_finance_option_chain",
+     "put": {
+      "ask": 0.63,
+      "bid": 0.59,
+      "delta": 0.14,
+      "delta_basis": "QUOTED_IV",
+      "limit_price": 0.61,
+      "strike": 92.0
+     },
+     "quote_basis": "delayed",
+     "rights_status": "operator_accepted_unlicensed",
+     "timestamp": "2026-09-30T17:00:00Z"
+    },
+    "csp": {
+     "provider_id": "yahoo_finance_option_chain",
+     "quote_basis": "delayed",
+     "rights_status": "operator_accepted_unlicensed",
+     "suggestions": [
+      {
+       "annualized_yield": 0.138678,
+       "ask": 1.02,
+       "bid": 0.98,
+       "breakeven": 93.0,
+       "cash_required": 9400.0,
+       "delta": 0.205,
+       "delta_basis": "QUOTED_IV",
+       "downside_buffer": 0.06,
+       "limit_price": 1.0,
+       "premium_per_contract": 100.0,
+       "role": "CONSERVATIVE",
+       "strike": 94.0
+      },
+      {
+       "annualized_yield": 0.209115,
+       "ask": 1.56,
+       "bid": 1.52,
+       "breakeven": 94.46,
+       "cash_required": 9600.0,
+       "delta": 0.284,
+       "delta_basis": "QUOTED_IV",
+       "downside_buffer": 0.04,
+       "limit_price": 1.54,
+       "premium_per_contract": 154.0,
+       "role": "BALANCED",
+       "strike": 96.0
+      }
+     ],
+     "timestamp": "2026-09-30T17:00:00Z"
+    }
+   },
+   "strategy": "COVERED_CALL",
+   "suggestions": [
+    {
+     "annualized_yield": 0.049536,
+     "ask": 0.4,
+     "bid": 0.36,
+     "delta": 0.099,
+     "delta_basis": "QUOTED_IV",
+     "iv": 0.3,
+     "limit_price": 0.38,
+     "mid": 0.38,
+     "oi": 100,
+     "period_yield": 0.0038,
+     "premium_per_contract": 38.0,
+     "role": "HIGH_STRIKE",
+     "spread_pct": 0.1053,
+     "strike": 112.0,
+     "upside_to_strike": 0.12,
+     "volume": 10
+    },
+    {
+     "annualized_yield": 0.202054,
+     "ask": 1.57,
+     "bid": 1.53,
+     "delta": 0.305,
+     "delta_basis": "QUOTED_IV",
+     "iv": 0.3,
+     "limit_price": 1.55,
+     "mid": 1.55,
+     "oi": 100,
+     "period_yield": 0.0155,
+     "premium_per_contract": 155.0,
+     "role": "BALANCED",
+     "spread_pct": 0.0258,
+     "strike": 105.0,
+     "upside_to_strike": 0.05,
+     "volume": 10
+    }
+   ],
+   "ticker": "AAA",
+   "timestamp": "2026-09-30T17:00:00Z",
+   "venue": "US_LISTED_OPTIONS"
+  },
+  "yahoo_monthly_no_covered_call": {
+   "asof_date": "2026-09-30",
+   "currency": "USD",
+   "dte": 28,
+   "expiry": "2026-10-28",
+   "instrument_kind": "equity_option",
+   "jurisdiction": "US",
+   "multiplier": 100,
+   "provenance": "https://finance.yahoo.com/quote/AAA/options?date=2026-10-28; delta=Black-Scholes(quoted IV)",
+   "provider_id": "yahoo_finance_option_chain",
+   "publication_scope": "public_line_quote",
+   "quote_basis": "delayed",
+   "rights_status": "operator_accepted_unlicensed",
+   "source": "Yahoo Finance option chain (unofficial, delayed)",
+   "spot": 100.0,
+   "strategies": {
+    "cc": {
+     "unavailable": "本次回應有 2026-10-28（28天）買權，但所選到期無有效雙邊報價（買賣價須為正且不倒掛）"
+    },
+    "collar": {
+     "unavailable": "沒有 delta 介於 0.20–0.30 且有雙邊報價的價外買權"
+    },
+    "csp": {
+     "provider_id": "yahoo_finance_option_chain",
+     "quote_basis": "delayed",
+     "rights_status": "operator_accepted_unlicensed",
+     "suggestions": [
+      {
+       "annualized_yield": 0.138678,
+       "ask": 1.02,
+       "bid": 0.98,
+       "breakeven": 93.0,
+       "cash_required": 9400.0,
+       "delta": 0.205,
+       "delta_basis": "QUOTED_IV",
+       "downside_buffer": 0.06,
+       "limit_price": 1.0,
+       "premium_per_contract": 100.0,
+       "role": "CONSERVATIVE",
+       "strike": 94.0
+      },
+      {
+       "annualized_yield": 0.209115,
+       "ask": 1.56,
+       "bid": 1.52,
+       "breakeven": 94.46,
+       "cash_required": 9600.0,
+       "delta": 0.284,
+       "delta_basis": "QUOTED_IV",
+       "downside_buffer": 0.04,
+       "limit_price": 1.54,
+       "premium_per_contract": 154.0,
+       "role": "BALANCED",
+       "strike": 96.0
+      }
+     ],
+     "timestamp": "2026-09-30T17:00:00Z"
+    }
+   },
+   "strategy": "COVERED_CALL",
+   "suggestions": [],
+   "ticker": "AAA",
+   "timestamp": "2026-09-30T17:00:00Z",
+   "venue": "US_LISTED_OPTIONS"
+  }
+ },
+ "note": "synthetic; generated by tests/fixtures/v21_worker_cases.py",
+ "stamp": "2026-09-30T17:00:00Z"
+}

@@ -345,7 +345,7 @@ class CarryUnitTests(unittest.TestCase):
         state = carry.CarryForward(Path(tempfile.gettempdir()) / "v11-unused-state.json", policy=self.policy)
         state.cycles, state._loaded = {"T00": {"weekly": cycle}}, True
         health = [{"venue": "US", "underlying": "T00", "expiry": "2026-10-16", "cycle": "weekly", "status": "READ", "read": True, "two_sided": False}]
-        for entry in ({"unavailable": "2026-10-16 到期的價外買權中，沒有年化權利金達 6% 且有雙邊報價的履約價"},   # a live "no strike qualifies" answer
+        for entry in ({"unavailable": "2026-10-16 到期的價外買權中，沒有年化權利金達 2% 且有雙邊報價的履約價"},   # a live "no strike qualifies" answer
                       {"unavailable": "期權鏈讀取失敗"},                                                       # a read failure
                       copy.deepcopy(cycle)):                                                                    # a live valid cycle
             options = {"T00": {"weekly": entry}}

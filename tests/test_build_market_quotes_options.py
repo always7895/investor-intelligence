@@ -39,17 +39,18 @@ class SuggestionTests(unittest.TestCase):
         rows = [row(95, 7, 7.2, 0.7), row(105, 2.0, 2.1, 0.33), row(110, 1.0, 1.05, 0.2), row(115, 0.6, 0.65, 0.15),
                 row(125, 0.3, 0.35, 0.08), row(140, 0.05, 0.1, 0.02), row(150, 0.4, 5.0, 0.01)]
         suggestions = builder.covered_call_suggestions(rows, spot, dte)
-        # 125 pays 0.30 on the bid = 3.65% annualized < 6%; 115 pays 7.3% with delta 0.15 -> highest qualifying strike.
+        # V21 floor 2%: 140 pays 0.05 on the bid = 0.61% annualized (refused); 125 pays 0.30 = 3.65% with delta 0.08 -> highest qualifying strike
+        # (it was refused under the old 6% floor, which made 115 the high strike).
         self.assertEqual([s["role"] for s in suggestions], ["HIGH_STRIKE", "BALANCED"])
-        self.assertEqual(suggestions[0]["strike"], 115)
+        self.assertEqual(suggestions[0]["strike"], 125)
         self.assertEqual(suggestions[1]["strike"], 105)  # delta nearest 0.30 below the first strike
-        self.assertEqual(suggestions[0]["limit_price"], 0.62)  # mid 0.625 rounded down to the tick
-        self.assertAlmostEqual(suggestions[0]["annualized_yield"], 0.62 / 100 * 365 / 30, places=6)
+        self.assertEqual(suggestions[0]["limit_price"], 0.32)  # mid 0.325 rounded down to the tick
+        self.assertAlmostEqual(suggestions[0]["annualized_yield"], 0.32 / 100 * 365 / 30, places=6)
 
     def test_a_chain_without_delta_or_iv_is_capped_by_the_delta_its_quotes_imply(self):
         spot, dte, years = 100.0, 30, 30 / 365
         fair = lambda strike, vol: round(builder.bs_call_price(spot, strike, years, vol), 2)  # noqa: E731
-        # 150 is quoted at a 160% volatility: it pays far more than 6% annualized, but the delta its quote implies is
+        # 150 is quoted at a 160% volatility: it pays far more than 2% annualized, but the delta its quote implies is
         # over the 0.20 cap. 130 (45% volatility) pays too little; 120 (50%) is the highest strike within both limits.
         rows = [row(150, fair(150, 1.6) - 0.01, fair(150, 1.6) + 0.01), row(130, fair(130, 0.45) - 0.01, fair(130, 0.45) + 0.01),
                 row(120, fair(120, 0.5) - 0.01, fair(120, 0.5) + 0.01), row(110, fair(110, 0.5) - 0.01, fair(110, 0.5) + 0.01)]
@@ -484,7 +485,7 @@ class FallbackTests(unittest.TestCase):
         good = {"ticker": "NVDA", "expiry": "2026-10-23"}
         builder.nasdaq_us_options = lambda symbol, spot, today, stamp: calls.append(symbol) or {"weekly": good, "monthly": good}
         builder.us_options = lambda symbol, spot, today, stamp: {"weekly": {"unavailable": "期權鏈讀取失敗"},
-                                                                 "monthly": {"unavailable": "2026-10-23 到期的價外買權中，沒有年化權利金達 6%"}}
+                                                                 "monthly": {"unavailable": "2026-10-23 到期的價外買權中，沒有年化權利金達 2%"}}
         out = builder.us_cycles("NVDA", 225.0, self.TODAY, self.STAMP)
         self.assertEqual(out["weekly"], good)
         self.assertIn("沒有年化權利金", out["monthly"]["unavailable"])  # a read chain keeps its own reason
@@ -936,7 +937,7 @@ class OptionPresessionAcceptanceTests(unittest.TestCase):
         spot = 100.0
         # 1. All ITM (strike 80 < spot 100)
         row_itm = CallRow(strike=80.0, bid=21.0, ask=21.5, impliedVolatility=0.3, volume=10, openInterest=5)
-        # 2. Yield too little (bid 0.05 -> yield ~2% < 6%)
+        # 2. Yield too little (bid 0.05 -> yield ~0.7% < 2%)
         row_low_yield = CallRow(strike=150.0, bid=0.05, ask=0.10, impliedVolatility=0.3, volume=10, openInterest=5)
         # 3. Delta too high for high strike (delta 0.35 > 0.20)
         row_high_delta = CallRow(strike=105.0, bid=3.5, ask=3.6, impliedVolatility=0.45, volume=10, openInterest=5)
@@ -1864,7 +1865,7 @@ class NonUsTypedEvidenceTests(unittest.TestCase):
             monthly = [h for h in out.health if h["cycle"] == "monthly"][0]
             self.assertEqual((monthly["read"], monthly["two_sided"]), (True, False), label)
         miss = self.nordic([self.call(28, bid="0.01", ask="0.02")])
-        self.assertIn("沒有年化權利金達 6% 且有雙邊報價的履約價", miss["monthly"]["unavailable"])
+        self.assertIn("沒有年化權利金達 2% 且有雙邊報價的履約價", miss["monthly"]["unavailable"])
         self.assertEqual([(h["read"], h["two_sided"]) for h in miss.health if h["cycle"] == "monthly"], [(True, True)])
 
     def test_nordic_policy_window_boundaries_and_native_identity(self):
@@ -2074,7 +2075,7 @@ class NonUsTypedEvidenceTests(unittest.TestCase):
     def test_the_yahoo_to_nasdaq_retry_classification_is_unchanged(self):
         unread = {"unavailable": "無 21-45 天到期的上市期權（Yahoo Finance 期權到期日清單）"}
         failed = {"unavailable": "期權鏈讀取失敗"}
-        strategy_miss = {"unavailable": "2026-10-28 到期的價外買權中，沒有年化權利金達 6% 且有雙邊報價的履約價"}
+        strategy_miss = {"unavailable": "2026-10-28 到期的價外買權中，沒有年化權利金達 2% 且有雙邊報價的履約價"}
         self.assertTrue(builder._yahoo_unread(unread))
         self.assertTrue(builder._yahoo_unread(failed))
         self.assertFalse(builder._yahoo_unread(strategy_miss))
