@@ -399,29 +399,54 @@ def _finite(value: Any) -> float | None:
     return number if math.isfinite(number) else None
 
 
-def yahoo_consensus(ticker: Any, symbol: str, price: float | None, info: dict[str, Any] | None) -> dict[str, Any] | None:
-    """Analyst consensus for the current (0y) and next (+1y) fiscal year and the mean target price (Yahoo Finance,
-    unofficial). Each figure keeps its analyst count; None when Yahoo has no next-year revenue estimate."""
-    def row(frame: Any, period: str) -> tuple[float | None, int | None]:
-        if frame is None or getattr(frame, "empty", True) or period not in frame.index:
-            return None, None
-        count = _finite(frame.loc[period].get("numberOfAnalysts"))
-        return _finite(frame.loc[period].get("avg")), int(count) if count else None
-    revenue0, _ = row(ticker.revenue_estimate, "0y")
-    revenue1, revenue_n = row(ticker.revenue_estimate, "+1y")
-    if not revenue0 or not revenue1 or revenue0 <= 0:
+def analyst_number(value):
+    try:
+        return None if isinstance(value, bool) else _finite(value)
+    except OverflowError:
         return None
-    eps0, _ = row(ticker.earnings_estimate, "0y")
-    eps1, eps_n = row(ticker.earnings_estimate, "+1y")
+
+
+def _analyst_outlook(symbol, price, r0, r1, rn, e0, e1, en, target, tn, asof):
+    """Keep independent published analyst fields; missing revenue never removes EPS/target evidence."""
+    def count(value):
+        n = _finite(value) if not isinstance(value, bool) else None
+        return int(n) if n is not None and n > 0 and n == int(n) else None
+    rn, en, tn = count(rn), count(en), count(tn)
+    positive = lambda x: x is not None and math.isfinite(x) and x > 0
+    rg = _finite(r1 / r0 - 1) if positive(r0) and positive(r1) else None
+    if en is None:
+        e0 = e1 = None
+    eg = _finite(e1 / e0 - 1) if positive(e0) and positive(e1) else None
+    if not positive(target) or tn is None:
+        target = tn = None
+    upside = _finite(target / price - 1) if target is not None and positive(price) else None
+    if rg is None and e1 is None and target is None:
+        return None
+    return {"source": "Yahoo Finance analyst estimates (unofficial)",
+            "source_url": f"https://finance.yahoo.com/quote/{symbol}/analysis", "asof": asof,
+            "revenue_fy0": r0, "revenue_fy1": r1, "revenue_growth": rg, "revenue_analysts": rn,
+            "eps_fy0": e0, "eps_fy1": e1, "eps_growth": eg, "eps_analysts": en,
+            "target_mean": target, "target_analysts": tn, "price": price, "target_upside": upside}
+
+
+def yahoo_consensus(ticker: Any, symbol: str, price: float | None, info: dict[str, Any] | None, *, as_of: datetime | None = None) -> dict[str, Any] | None:
+    """Independent revenue/EPS/target observations; a failed endpoint cannot erase another field."""
+    def pair(field):
+        try:
+            frame = getattr(ticker, field)
+            def row(period):
+                if frame is None or getattr(frame, "empty", True) or period not in frame.index:
+                    return None, None
+                return analyst_number(frame.loc[period].get("avg")), analyst_number(frame.loc[period].get("numberOfAnalysts"))
+            return row("0y")[0], *row("+1y")
+        except Exception:
+            return None, None, None
+    r0, r1, rn = pair("revenue_estimate")
+    e0, e1, en = pair("earnings_estimate")
     info = info or {}
-    target, target_n = _finite(info.get("targetMeanPrice")), _finite(info.get("numberOfAnalystOpinions"))
-    return {"source": "Yahoo Finance analyst estimates (unofficial)", "source_url": f"https://finance.yahoo.com/quote/{symbol}/analysis",
-            "asof": utc_now().date().isoformat(), "revenue_fy0": revenue0, "revenue_fy1": revenue1,
-            "revenue_growth": revenue1 / revenue0 - 1, "revenue_analysts": revenue_n,
-            "eps_fy0": eps0, "eps_fy1": eps1, "eps_analysts": eps_n,
-            "eps_growth": eps1 / eps0 - 1 if eps0 and eps1 and eps0 > 0 and eps1 > 0 else None,
-            "target_mean": target, "target_analysts": int(target_n) if target_n else None,
-            "price": price, "target_upside": target / price - 1 if target and price and price > 0 else None}
+    return _analyst_outlook(symbol, price, r0, r1, rn, e0, e1, en,
+                            analyst_number(info.get("targetMeanPrice")), analyst_number(info.get("numberOfAnalystOpinions")),
+                            (as_of or utc_now()).date().isoformat())
 
 
 NASDAQ_ANALYST = "https://api.nasdaq.com/api/analyst/{symbol}/{kind}"
@@ -501,7 +526,8 @@ def outlook(symbol: str, fund: dict[str, Any] | None, consensus: dict[str, Any] 
         orders = korea_orders(symbol, captured.operand("korea_orders") if captured else KOREA_ORDERS)
     scenarios = []
     if consensus:
-        scenarios.append({"kind": "REVENUE_CONSTANT_PS", "change": consensus["revenue_growth"]})
+        if consensus.get("revenue_growth") is not None:
+            scenarios.append({"kind": "REVENUE_CONSTANT_PS", "change": consensus["revenue_growth"]})
         if consensus.get("eps_growth") is not None:
             scenarios.append({"kind": "EPS_CONSTANT_PE", "change": consensus["eps_growth"]})
         if consensus.get("target_upside") is not None:
@@ -544,7 +570,7 @@ def yahoo_data(symbol: str, lineage: dict[str, Any] | None = None, *, config_pat
     except Exception:
         pass
     try:
-        out["consensus"] = yahoo_consensus(ticker, symbol, last, info)
+        out["consensus"] = yahoo_consensus(ticker, symbol, last, info, as_of=as_of)
     except Exception:
         out["consensus"] = None
     try:
@@ -642,7 +668,7 @@ def captured_yahoo_data(symbol, captured, lineage, as_of):
         summary = captured.operand("yahoo/summary/" + symbol)
         modules = json.loads(summary.read_text())["quoteSummary"]["result"][0] if summary.exists() else {}
         quote = modules.get("price") or {}
-        number = lambda value: _finite(value.get("raw")) if isinstance(value, dict) else _finite(value)
+        number = lambda value: analyst_number(value.get("raw")) if isinstance(value, dict) else analyst_number(value)
         currency = quote.get("currency") or meta.get("currency")
         price = returns["price"]
         out["market"] = {"source": "Yahoo Finance adjusted daily close (unofficial)",
@@ -656,15 +682,10 @@ def captured_yahoo_data(symbol, captured, lineage, as_of):
         r0, r1 = number((fy0.get("revenueEstimate") or {}).get("avg")), number((fy1.get("revenueEstimate") or {}).get("avg"))
         e0, e1 = number((fy0.get("earningsEstimate") or {}).get("avg")), number((fy1.get("earningsEstimate") or {}).get("avg"))
         target = number(financial.get("targetMeanPrice"))
-        if r0 and r0 > 0 and r1 is not None:
-            out["consensus"] = {"source": "Yahoo Finance analyst consensus (unofficial)",
-                "source_url": f"https://finance.yahoo.com/quote/{symbol}/analysis", "asof": iso(as_of)[:10],
-                "revenue_fy0": r0, "revenue_fy1": r1, "revenue_growth": r1 / r0 - 1,
-                "revenue_analysts": number((fy1.get("revenueEstimate") or {}).get("numberOfAnalysts")),
-                "eps_fy0": e0, "eps_fy1": e1, "eps_growth": e1 / e0 - 1 if e0 and e0 > 0 and e1 is not None else None,
-                "eps_analysts": number((fy1.get("earningsEstimate") or {}).get("numberOfAnalysts")),
-                "target_mean": target, "target_analysts": number(financial.get("numberOfAnalystOpinions")),
-                "price": price, "target_upside": target / price - 1 if target and price else None}
+        out["consensus"] = _analyst_outlook(symbol, price, r0, r1,
+            number((fy1.get("revenueEstimate") or {}).get("numberOfAnalysts")), e0, e1,
+            number((fy1.get("earningsEstimate") or {}).get("numberOfAnalysts")), target,
+            number(financial.get("numberOfAnalystOpinions")), iso(as_of)[:10])
         series = captured.operand("yahoo/financials/" + symbol)
         if series.exists():
             rows = json.loads(series.read_text())["timeseries"]["result"]

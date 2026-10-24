@@ -550,21 +550,30 @@ def _sealed_revenue_check(raw: "object") -> "dict | None":
             "cumulative_yoy": cumulative, "currency": currency}
 
 
-def _sealed_outlook(raw: "object") -> "dict | None":
+def _sealed_outlook(raw: "object", cutoff: "datetime | None" = None) -> "dict | None":
     """Orders, consensus and scenario figures from the v3 builder, reduced to known keys with finite numbers and https
     sources; anything malformed is dropped rather than sealed."""
     if not isinstance(raw, dict):
         return None
 
     def number(value: object) -> "float | None":
-        return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value) else None
+        try:
+            return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value) else None
+        except OverflowError:
+            return None
+
 
     def text(value: object, limit: int) -> "str | None":
         return value[:limit] if isinstance(value, str) and value else None
 
     orders = raw.get("orders") if isinstance(raw.get("orders"), dict) else None
+    order_clock = orders.get("as_of") if orders else None
+    try:
+        order_clock_ok = isinstance(order_clock, str) and date.fromisoformat(order_clock).isoformat() == order_clock and order_clock <= (cutoff or datetime.now(timezone.utc)).date().isoformat()
+    except ValueError:
+        order_clock_ok = False
     sealed_orders = None
-    if orders and orders.get("kind") in ("RPO", "BACKLOG") and number(orders.get("amount")) and \
+    if orders and order_clock_ok and orders.get("kind") in ("RPO", "BACKLOG") and number(orders.get("amount")) and \
             str(orders.get("source_url", "")).startswith("https://"):
         sealed_orders = {"kind": orders["kind"], "amount": number(orders["amount"]), "currency": text(orders.get("currency"), 8),
                          "as_of": text(orders.get("as_of"), 12), "yoy": number(orders.get("yoy")), "scope": text(orders.get("scope"), 40),
@@ -578,15 +587,38 @@ def _sealed_outlook(raw: "object") -> "dict | None":
         sealed_orders = {"kind": "NOT_DISCLOSED", "reason": text(orders.get("reason"), 200)}
     consensus = raw.get("consensus") if isinstance(raw.get("consensus"), dict) else None
     sealed_consensus = None
-    if consensus and number(consensus.get("revenue_growth")) is not None and str(consensus.get("source_url", "")).startswith("https://"):
-        sealed_consensus = {key: number(consensus.get(key)) for key in ("revenue_fy0", "revenue_fy1", "revenue_growth", "revenue_analysts",
-                                                                     "eps_fy0", "eps_fy1", "eps_growth", "eps_analysts",
-                                                                     "target_mean", "target_analysts", "price", "target_upside")}
-        sealed_consensus.update(source=text(consensus.get("source"), 80), source_url=consensus["source_url"][:400],
-                                asof=text(consensus.get("asof"), 12))
+    if consensus and str(consensus.get("source_url", "")).startswith("https://"):
+        candidate = {key: number(consensus.get(key)) for key in ("revenue_fy0", "revenue_fy1", "revenue_growth", "revenue_analysts",
+                        "eps_fy0", "eps_fy1", "eps_growth", "eps_analysts", "target_mean", "target_analysts", "price", "target_upside")}
+        def count(n):
+            return n is not None and n > 0 and n.is_integer()
+        clock = consensus.get("asof")
+        try:
+            clock_ok = isinstance(clock, str) and date.fromisoformat(clock).isoformat() == clock and clock <= (cutoff or datetime.now(timezone.utc)).date().isoformat()
+        except ValueError:
+            clock_ok = False
+        if candidate["revenue_growth"] is None:
+            clock_ok = clock_ok and clock == (cutoff or datetime.now(timezone.utc)).date().isoformat() and bool(re.fullmatch(r"https://finance\.yahoo\.com/quote/[A-Za-z0-9.\-]+/analysis", consensus["source_url"]))
+        target_ok = clock_ok and candidate["target_mean"] is not None and candidate["target_mean"] > 0 and count(candidate["target_analysts"])
+        eps_ok = clock_ok and candidate["eps_fy1"] is not None and count(candidate["eps_analysts"])
+        if not target_ok:
+            candidate.update(target_mean=None, target_analysts=None, target_upside=None)
+        else:
+            price = candidate["price"]
+            candidate["target_upside"] = number(candidate["target_mean"] / price - 1) if price is not None and price > 0 else None
+        if not eps_ok:
+            candidate.update(eps_fy0=None, eps_fy1=None, eps_growth=None, eps_analysts=None)
+        else:
+            e0, e1 = candidate["eps_fy0"], candidate["eps_fy1"]
+            candidate["eps_growth"] = number(e1 / e0 - 1) if e0 is not None and e0 > 0 and e1 > 0 else None
+        if candidate["revenue_growth"] is not None or target_ok or eps_ok:
+            sealed_consensus = candidate
+            sealed_consensus.update(source=text(consensus.get("source"), 80), source_url=consensus["source_url"][:400], asof=text(clock, 12))
+    scenario_field = {"REVENUE_CONSTANT_PS": "revenue_growth", "EPS_CONSTANT_PE": "eps_growth", "ANALYST_TARGET": "target_upside"}
     scenarios = [{"kind": row["kind"], "change": number(row.get("change"))} for row in raw.get("scenarios") or []
-                 if isinstance(row, dict) and row.get("kind") in ("REVENUE_CONSTANT_PS", "EPS_CONSTANT_PE", "ANALYST_TARGET")
-                 and number(row.get("change")) is not None][:3]
+                 if isinstance(row, dict) and row.get("kind") in scenario_field and sealed_consensus
+                 and number(row.get("change")) is not None
+                 and number(row.get("change")) == sealed_consensus.get(scenario_field[row["kind"]])][:3]
     second = raw.get("consensus_second") if isinstance(raw.get("consensus_second"), dict) else None
     sealed_second = None
     if second and str(second.get("source_url", "")).startswith("https://") and \
@@ -834,7 +866,7 @@ def captured_bottleneck_v3_body(raw: bytes, now: datetime, effective_inputs=None
                 "layer": entry["layer"], "archetype": entry["archetype"], "score": entry["score"],
                 "role": entry["role"][:200], "role_zh": str(role_zh)[:200] if role_zh else None,
                 "role_source": entry["role_source"], "outlook": _with_order_forecast(
-                    entry["symbol"], _sealed_outlook(entry.get("outlook")), (entry.get("outlook") or {}).get("orders"),
+                    entry["symbol"], _sealed_outlook(entry.get("outlook"), generated), (entry.get("outlook") or {}).get("orders"),
                     order_scenarios.get(entry["symbol"]), generated, order_claim_registry,
                     consensus_cache=consensus_cache, effective_inputs=effective_inputs,
                     guidance_wire_enabled=guidance_wire_enabled, guidance_machine_enabled=guidance_machine_enabled,
