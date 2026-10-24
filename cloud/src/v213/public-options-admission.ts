@@ -265,13 +265,21 @@ function validCatalogProviders(root: unknown, today: number): Record<string, unk
   return rows;
 }
 
+/** validCatalogProviders is a pure function of the imported catalog constant and the UTC day, so one isolate validates it once per day, not once per row
+ * (the coverage page used to re-validate the whole catalog for each of ~600 cycles). */
+let catalogForDay: { readonly today: number; readonly providers: Record<string, unknown>[] | null } | undefined;
+function catalogProvidersFor(today: number): Record<string, unknown>[] | null {
+  if (catalogForDay === undefined || catalogForDay.today !== today) catalogForDay = { today, providers: validCatalogProviders(catalog as unknown, today) };
+  return catalogForDay.providers;
+}
+
 /** Public admission of one row (a covered-call cycle or an option contract quote) against the canonical catalog at `nowMs`.
  * Fail closed on every uncertainty, including an unexpected exception. */
 export function admitPublicOption(subject: unknown, nowMs: number = Date.now()): PublicOptionAdmission {
   try {
     if (!isRecord(subject) || !Number.isFinite(nowMs)) return DENIED;
     const today = Math.floor(nowMs / DAY_MS) * DAY_MS;
-    const providers = validCatalogProviders(catalog as unknown, today);  // the WHOLE catalog first, before any requested entry
+    const providers = catalogProvidersFor(today);  // the WHOLE catalog first, before any requested entry
     if (providers === null) return DENIED;
     const claimed: Record<string, string> = {};
     for (const field of ["provider_id", "jurisdiction", "venue", "instrument_kind", "quote_basis", "publication_scope"]) {

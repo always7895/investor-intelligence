@@ -12,7 +12,7 @@ import {
   identityNameBucket, identitySymbolBucket, identityTokenBucket, identityTokenKey, leadingTokenQuery, loadIdentityCatalogForQuery, nameTokens,
 } from "../src/v213/identity-shards";
 import { freeRelayRequestEnv } from "../src/v213/production-worker";
-import { pinPublicSnapshot } from "../src/v213/public-snapshot";
+import { clearVerifiedLazyBodies, pinPublicSnapshot } from "../src/v213/public-snapshot";
 import { SNAPSHOT_LAZY_KEY_RE, SNAPSHOT_SEAL_KEY } from "../src/v213/snapshot-seal";
 import { asKv, MemoryKv } from "./fake-kv";
 import { sealUnboundReport } from "./sealed-report-migration";
@@ -131,6 +131,7 @@ interface SealOptions { tokens?: boolean; edit?: (objects: Shards) => void; tamp
 
 /** A sealed run whose manifest lists the identity shards as lazy objects stored under blob:v1:<sha256>. */
 async function sealed(options: SealOptions = {}): Promise<Sealed> {
+  clearVerifiedLazyBodies();  // each sealed() call is a new snapshot whose blobs may be dropped or altered under the same digests
   const kv = new MemoryKv();
   const stamp = new Date(Date.now() - 60_000).toISOString().replace(/\.\d{3}Z$/, "Z");
   kv.values.set("v213:top20-report:latest", JSON.stringify({ synthetic: "report" }));

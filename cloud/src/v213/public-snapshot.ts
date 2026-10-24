@@ -1,6 +1,10 @@
 import type { StorageEnv } from "../storage";
 import { withAlphaVantageOwnerOnly } from "./alpha-vantage-viewer";
+import { knownVerifiedLazy, rememberVerifiedLazy } from "./sealed-slice";
 import { readLazySealedObject, readSealedSnapshot, SNAPSHOT_RUN_RE, SNAPSHOT_SEAL_KEY } from "./snapshot-seal";
+
+// The per-isolate memory of verified lazy bodies lives in sealed-slice.ts (in-memory only); this module stays a read-only KV view.
+export { clearVerifiedLazyBodies } from "./sealed-slice";
 
 interface SnapshotPointer { run_id?: unknown; runId?: unknown; }
 export interface PublicSnapshotView {
@@ -10,6 +14,10 @@ export interface PublicSnapshotView {
   json<T>(logicalKeys: string[]): Promise<T | null>;
   text(logicalKeys: string[]): Promise<string | null>;
   hasSealedObject?(logicalKey: string): boolean;
+  /** Sealed (sha256, byte length) of a lazy object, from the verified manifest; undefined for anything else. */
+  sealedDigest?(logicalKey: string): { readonly sha256: string; readonly utf8_bytes: number } | undefined;
+  /** Non-owner views only (alpha-vantage-viewer.ts): whether the covered-call underlying `key` must be withheld from this viewer. */
+  withheldOptionKey?(key: string): Promise<boolean>;
 }
 
 export function hasSealedManifestObject(view: PublicSnapshotView, logicalKey: string): boolean {
@@ -75,7 +83,12 @@ async function readPublicSnapshot(env: StorageEnv): Promise<PublicSnapshotView> 
           if (!digest) return undefined;
           let pending = lazyBodies.get(key);
           if (!pending) {
-            pending = readLazySealedObject(digest, blobKey => env.PUBLIC_CACHE.get(blobKey, "text"));
+            const known = knownVerifiedLazy(digest.sha256);
+            pending = known !== undefined ? Promise.resolve(known)
+              : readLazySealedObject(digest, blobKey => env.PUBLIC_CACHE.get(blobKey, "text")).then(body => {
+                if (body !== null) rememberVerifiedLazy(digest.sha256, body);
+                return body;
+              });
             lazyBodies.set(key, pending);
           }
           return (await pending) ?? undefined;
@@ -84,6 +97,9 @@ async function readPublicSnapshot(env: StorageEnv): Promise<PublicSnapshotView> 
           runId: verified.pointer.run_id, kind: "snapshot", integrity: "sealed",
           hasSealedObject(key: string) {
             return verified.objects.has(key) || verified.lazy.has(key);
+          },
+          sealedDigest(key: string) {
+            return verified.lazy.get(key);
           },
           async text(logicalKeys) {
             for (const key of logicalKeys) {

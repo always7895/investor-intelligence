@@ -70,6 +70,22 @@ async function sha(raw: string, limit = MAX_OBJECT): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", bytes(raw, limit));
   return Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, "0")).join("");
 }
+/** True when `raw` has no lone surrogate, i.e. when UTF-8 encoding it and decoding it again (the check bytes() makes) returns `raw`. */
+function wellFormed(raw: string): boolean {
+  const native = (raw as unknown as { isWellFormed?: () => boolean }).isWellFormed;
+  return typeof native === "function" ? native.call(raw) : new TextDecoder("utf-8", { fatal: true }).decode(ENCODER.encode(raw)) === raw;
+}
+
+/** Read-side verification of one stored body against its sealed (byte length, sha256): ONE encode, the length checked on those bytes, the digest
+ *  taken over the SAME bytes. The former sequence (bytes() for the length, then sha() which ran bytes() again, each with a fatal-decode round trip
+ *  and a string compare) encoded and decoded the whole body twice. The round-trip condition is kept, as a native well-formedness test of the string. */
+async function bodyMatchesSealed(raw: string, limit: number, entry: { readonly sha256: string; readonly utf8_bytes: number }): Promise<boolean> {
+  if (typeof raw !== "string" || raw.length === 0 || raw.length > limit || !wellFormed(raw)) return false;
+  const value = ENCODER.encode(raw);
+  if (value.byteLength > limit || value.byteLength !== entry.utf8_bytes) return false;
+  const digest = await crypto.subtle.digest("SHA-256", value);
+  return Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, "0")).join("") === entry.sha256;
+}
 function control(raw: string, limit: number): Record<string, unknown> {
   bytes(raw, limit);
   let value: unknown;
@@ -181,7 +197,7 @@ export async function readSealedSnapshot(rawPointer: string, get: (key: string) 
   for (const key of presentKeys) {
     const body = await get(prefix + key); requireSeal(body !== null);
     const entry = definitions[key] as unknown as ObjectDigest;
-    requireSeal(bytes(body, MAX_OBJECT).byteLength === entry.utf8_bytes && await sha(body) === entry.sha256);
+    requireSeal(await bodyMatchesSealed(body, MAX_OBJECT, entry));
     objects.set(key, body);
   }
   claim(objects.get("v213:activation-claim")!, manifest as unknown as SnapshotSealMeta);
@@ -193,8 +209,8 @@ export async function readSealedSnapshot(rawPointer: string, get: (key: string) 
 export async function readLazySealedObject(digest: LazyObjectDigest, get: (key: string) => Promise<string | null>): Promise<string | null> {
   try {
     const body = await get(SNAPSHOT_LAZY_BLOB_PREFIX + digest.sha256);
-    if (body === null || bytes(body, MAX_OBJECT).byteLength !== digest.utf8_bytes) return null;
-    return (await sha(body)) === digest.sha256 ? body : null;
+    if (body === null) return null;
+    return (await bodyMatchesSealed(body, MAX_OBJECT, digest)) ? body : null;
   } catch {
     return null;
   }

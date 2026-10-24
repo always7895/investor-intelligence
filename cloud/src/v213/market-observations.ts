@@ -5,6 +5,8 @@ import type { PublicSnapshotView } from "./public-snapshot";
 import { MARKET_SUFFIX_SCHEMES, type GlobalIdentityRecord } from "./global-identity";
 import { validateCoveredCallCycle, isValidUtcIsoInstant, type CoveredCallCycle } from "./covered-call";
 import { admitPublicOption, OPTION_RIGHTS_NOT_ADMITTED_ZH } from "./public-options-admission";
+import { withheldOptionCycles } from "./alpha-vantage-viewer";
+import { parseObjectMember, sealedHeader } from "./sealed-slice";
 
 export const QUOTES_KEY = "v213:quotes:v1";
 export const OPTIONS_KEY = "v213:options:v2";
@@ -128,6 +130,33 @@ export interface DetailedOptionObservation {
   period?: "weekly" | "monthly";
 }
 
+type OptionsDocument = { schema?: unknown; generated_at?: unknown; options?: Record<string, Record<string, unknown>> };
+
+/** The options document reduced to the candidate underlying's own DEPTH-1 entry, read from the verified text without parsing the other tickers
+ * (the full document is 1-2 MB; one question needs one entry; the member index of sealed-slice.ts is built once per isolate and digest). `undefined` = not decidable this way: the caller runs the unchanged
+ * full-parse path, which stays the authority for every invalid, unusual or ambiguous shape. A non-owner view withholds an Alpha Vantage
+ * derived underlying exactly as its json() does (alpha-vantage-viewer.ts). */
+async function optionsDocumentForKeys(view: PublicSnapshotView, keys: readonly string[]): Promise<OptionsDocument | undefined> {
+  try {
+    const text = await view.text([OPTIONS_KEY]);
+    if (text === null) return undefined;
+    const header = sealedHeader(text, "v213-options-v2", "options");
+    if (header === undefined) return undefined;
+    const sealedSha256 = typeof view.sealedDigest === "function" ? view.sealedDigest(OPTIONS_KEY)?.sha256 : undefined;
+    const options: Record<string, Record<string, unknown>> = {};
+    for (const key of keys) {
+      const member = parseObjectMember(text, header, key, sealedSha256);
+      if (member === undefined) return undefined;
+      if (member === null) continue;
+      options[key] = (typeof view.withheldOptionKey === "function" && await view.withheldOptionKey(key) ? withheldOptionCycles(member) : member) as Record<string, unknown>;
+      break;  // the first candidate key that exists wins, as keys.find() does below
+    }
+    return { schema: "v213-options-v2", generated_at: header.generated_at, options };
+  } catch {
+    return undefined;
+  }
+}
+
 /** Detailed sealed observation for underlying candidate keys and cycle with typed diagnostic status. */
 export async function loadDetailedOptionObservation(
   view: PublicSnapshotView,
@@ -141,7 +170,8 @@ export async function loadDetailedOptionObservation(
   if (typeof view.hasSealedObject === "function" && !view.hasSealedObject(OPTIONS_KEY)) {
     return { status: "DOCUMENT_ABSENT", period };
   }
-  const doc = await view.json<{ schema?: unknown; generated_at?: unknown; options?: Record<string, Record<string, unknown>> }>([OPTIONS_KEY]);
+  const wanted = typeof candidateKeys === "string" ? [candidateKeys] : candidateKeys;
+  const doc = (await optionsDocumentForKeys(view, wanted)) ?? await view.json<OptionsDocument>([OPTIONS_KEY]);
   if (!doc || typeof doc !== "object" || doc.schema !== "v213-options-v2" || !doc.options || typeof doc.options !== "object" || Array.isArray(doc.options)) {
     return { status: "DOCUMENT_INVALID_OR_UNREADABLE", period };
   }

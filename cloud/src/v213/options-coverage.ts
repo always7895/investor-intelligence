@@ -262,8 +262,15 @@ async function recomputeObserved(view: PublicSnapshotView, link: NonNullable<Val
 Promise<{ rows: CoverageObserved[]; validUntil: number } | null> {
   const text = await view.text([OPTIONS_KEY]);
   if (text === null) return null;
-  const measured = await sha256Hex(text);
-  if (measured.hex !== link.sha256 || measured.bytes !== link.utf8_bytes) return null;
+  // view.text() only ever returns bytes that matched their sealed (sha256, length), so comparing the link with that sealed pair is the same
+  // proof as hashing the text again; a view without the sealed pair (a test double) still hashes.
+  const sealed = typeof view.sealedDigest === "function" ? view.sealedDigest(OPTIONS_KEY) : undefined;
+  if (sealed !== undefined) {
+    if (sealed.sha256 !== link.sha256 || sealed.utf8_bytes !== link.utf8_bytes) return null;
+  } else {
+    const measured = await sha256Hex(text);
+    if (measured.hex !== link.sha256 || measured.bytes !== link.utf8_bytes) return null;
+  }
   let doc: unknown;
   try { doc = JSON.parse(text); } catch { return null; }
   if (!isRecord(doc) || doc.schema !== "v213-options-v2" || !isRecord(doc.options) || !isValidUtcIsoInstant(doc.generated_at)) return null;
