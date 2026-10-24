@@ -138,7 +138,7 @@ NASDAQ_US_OPTION_IDENTITY = {"provider_id": "nasdaq_public_option_chain", "juris
                              "instrument_kind": "equity_option", "publication_scope": "public_line_quote"}
 NASDAQ_US_RIGHTS_LABEL = "operator_accepted_unlicensed"
 # The chain carries no per-quote time (table.asOf is null); data.lastTrade says "(AS OF OCT 15, 2026)". A cycle whose as-of date is absent,
-# unparsable or older than this many calendar days (weekend plus a holiday) against the run date is not shown.
+# unparsable, future-dated or older than this many calendar days (weekend plus a holiday) against the run date is not shown.
 NASDAQ_US_MAX_ASOF_AGE_DAYS = 4
 NASDAQ_US_STALE_TEXT = "Nasdaq 報價日期過舊或無法確認"
 _ASOF_RE = re.compile(r"AS OF\s+([A-Za-z]{3,9})\.?\s+(\d{1,2}),?\s+(\d{4})", re.IGNORECASE)
@@ -765,7 +765,7 @@ def nasdaq_us_options(symbol: str, spot: float, today: date, stamp: str) -> Cycl
         return CyclesResult({c: {"unavailable": _missing_text("Nasdaq 無 {low}-{high} 天到期的上市期權", c, *CYCLES[c])} for c in CYCLES},
                             health=empty_health)
     asof = _nasdaq_us_asof(payload)
-    if asof is None or (today - asof).days > NASDAQ_US_MAX_ASOF_AGE_DAYS:
+    if asof is None or not 0 <= (today - asof).days <= NASDAQ_US_MAX_ASOF_AGE_DAYS:
         stale_health = [{"venue": "US", "underlying": symbol, "expiry": None, "cycle": c,
                          "status": "STALE_ASOF", "read": False, "two_sided": False} for c in CYCLES]
         return CyclesResult({c: {"unavailable": NASDAQ_US_STALE_TEXT} for c in CYCLES}, health=stale_health)
@@ -907,6 +907,12 @@ def alpha_vantage_quote(symbol: str, stamp: str) -> dict[str, Any] | None:
             "source": "Alpha Vantage GLOBAL_QUOTE（免費金鑰，最近交易日；Yahoo 備援）", "source_url": public_url}
 
 
+def _standard_yahoo_us_contract(row: Any) -> bool:
+    """Yahoo REGULAR explicitly denotes the standard US contract; unknown terms never imply 100 USD shares."""
+    size, currency = getattr(row, "contractSize", None), getattr(row, "currency", None)
+    return isinstance(size, str) and isinstance(currency, str) and size == "REGULAR" and currency == "USD"
+
+
 def _yahoo_put_rows(option_chain: Any) -> list[dict[str, Any]] | None:
     """The put rows of a Yahoo chain (strike, bid, ask, quoted IV, open interest, volume); None when the chain object has no put table."""
     try:
@@ -915,6 +921,8 @@ def _yahoo_put_rows(option_chain: Any) -> list[dict[str, Any]] | None:
             return None
         out = []
         for row in table.itertuples():
+            if not _standard_yahoo_us_contract(row):
+                continue
             strike = _float(getattr(row, "strike", None))
             if strike is not None and _is_finite_positive(strike):
                 out.append({"strike": float(strike), "bid": _float(getattr(row, "bid", None)), "ask": _float(getattr(row, "ask", None)),
@@ -975,6 +983,8 @@ def us_options(symbol: str, spot: float, today: date, stamp: str) -> CyclesResul
         rows = []
         eligible_rows = []
         for row in chain.itertuples():
+            if not _standard_yahoo_us_contract(row):
+                continue
             strike = _float(getattr(row, "strike", None))
             bid = _float(getattr(row, "bid", None))
             ask = _float(getattr(row, "ask", None))

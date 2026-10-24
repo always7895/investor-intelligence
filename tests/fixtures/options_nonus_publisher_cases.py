@@ -221,7 +221,8 @@ def _sealed_world(specs: list[dict[str, Any]], now: datetime, requests: list[str
 
         def option_chain(self, expiry: str) -> Any:
             dte = (date.fromisoformat(expiry) - TODAY).days
-            rows = [types.SimpleNamespace(strike=k, bid=b, ask=a, impliedVolatility=0.6, openInterest=10, volume=5)
+            rows = [types.SimpleNamespace(strike=k, bid=b, ask=a, impliedVolatility=0.6, openInterest=10, volume=5,
+                                           contractSize="REGULAR", currency="USD")
                     for k, b, a in self.spec["chains"].get(dte, [])]
             return types.SimpleNamespace(calls=types.SimpleNamespace(itertuples=lambda: iter(rows)))
 

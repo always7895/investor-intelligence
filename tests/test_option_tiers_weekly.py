@@ -198,7 +198,8 @@ class TierProducerTests(unittest.TestCase):
 
 
 def fake_yahoo(expiries, rows=((120.0, 0.20, 0.24),), iv=0.9):
-    calls = [types.SimpleNamespace(strike=k, bid=b, ask=a, impliedVolatility=iv, openInterest=5, volume=2) for k, b, a in rows]
+    calls = [types.SimpleNamespace(strike=k, bid=b, ask=a, impliedVolatility=iv, openInterest=5, volume=2,
+                                   contractSize="REGULAR", currency="USD") for k, b, a in rows]
     chain = types.SimpleNamespace(calls=types.SimpleNamespace(itertuples=lambda: iter(calls)))
     ticker = types.SimpleNamespace(options=list(expiries), option_chain=lambda expiry: chain)
     return mock.patch.dict(sys.modules, {"yfinance": types.SimpleNamespace(Ticker=lambda symbol: ticker)})

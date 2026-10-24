@@ -427,6 +427,33 @@ class ValidatorTests(unittest.TestCase):
 class SealingTests(unittest.TestCase):
     NOW = datetime(2026, 9, 30, 17, 5, tzinfo=UTC)
 
+    def test_yahoo_nonstandard_unknown_or_mismatched_contract_terms_never_publish_strategies(self):
+        for size, currency in (("MINI", "USD"), ("REGULAR", "EUR"), (None, "USD"), ("REGULAR", None), ("UNKNOWN", "USD"),
+                               (["REGULAR"], "USD"), ("REGULAR", {"currency": "USD"}), (100, "USD")):
+            with self.subTest(size=size, currency=currency):
+                chain = chains.yahoo_chain()
+                for table in (chain.calls, chain.puts):
+                    for row in table.itertuples():
+                        row.contractSize, row.currency = size, currency
+                cycle = yahoo_cycle(chain)
+                self.assertEqual(list(cycle), ["unavailable"])
+                body = self.seal({"AAA": {"monthly": cycle}}, {"AAA"})
+                output = json.loads(body["v213:options:v2"])["options"]["AAA"]["monthly"]
+                self.assertEqual(list(output), ["unavailable"])
+        good = yahoo_cycle()
+        validate(good)
+        self.assertEqual(good["multiplier"], 100)
+        self.assertTrue(good["strategies"]["csp"]["suggestions"])
+        self.assertTrue(good["strategies"]["collar"]["items"])
+        # A malformed side does not erase independently verified standard contracts on the other side.
+        chain = chains.yahoo_chain()
+        for row in chain.puts.itertuples(): row.contractSize = "MINI"
+        cycle = yahoo_cycle(chain)
+        validate(cycle)
+        self.assertTrue(cycle["suggestions"])
+        self.assertIn("unavailable", cycle["strategies"]["csp"])
+        self.assertIn("unavailable", cycle["strategies"]["collar"])
+
     def seal(self, options: dict, tickers: set[str]) -> dict:
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / "market_quotes_options.json"

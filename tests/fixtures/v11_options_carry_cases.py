@@ -32,7 +32,8 @@ IN_SESSION = datetime(2026, 10, 13, 15, 0, tzinfo=UTC)    # Tuesday 11:00 New Yo
 OFF_SESSION = datetime(2026, 10, 13, 21, 30, tzinfo=UTC)  # Tuesday 17:30 New York, after the close (Yahoo quotes read zero)
 EXPIRIES = ["2026-10-16", "2026-10-23", "2026-11-13", "2026-11-20"]
 
-CallRow = namedtuple("CallRow", ["strike", "bid", "ask", "impliedVolatility", "openInterest", "volume", "lastPrice"])
+CallRow = namedtuple("CallRow", ["strike", "bid", "ask", "impliedVolatility", "openInterest", "volume", "lastPrice", "contractSize", "currency"],
+                     defaults=("REGULAR", "USD"))
 GOOD_ROWS = [CallRow(115.0, 0.90, 1.00, 0.35, 120, 15, 0.95), CallRow(110.0, 1.40, 1.50, 0.35, 200, 30, 1.45),
              CallRow(105.0, 2.40, 2.50, 0.35, 300, 40, 2.45)]
 ZERO_ROWS = [CallRow(row.strike, 0.0, 0.0, row.impliedVolatility, row.openInterest, 0, row.lastPrice) for row in GOOD_ROWS]  # the after-hours read

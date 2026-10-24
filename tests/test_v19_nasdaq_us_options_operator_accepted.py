@@ -423,9 +423,26 @@ class NasdaqFreshnessAndTransportTests(unittest.TestCase):
             with self.subTest(text=text):
                 self.assert_stale(self.run_with(text))
 
-    def test_a_future_dated_chain_is_not_treated_as_stale_by_age_but_the_retained_format_parses(self) -> None:
-        out = self.run_with("LAST TRADE: $343.46 (AS OF OCT 19, 2026)")  # the retained text shape, today's date
-        self.assertNotIn("unavailable", out["weekly"])
+    def test_future_as_of_dates_are_refused(self) -> None:
+        for days in (1, 365):
+            with self.subTest(future_days=days):
+                self.assert_stale(self.run_with(last_trade_text(self.RUN_DATE + timedelta(days=days))))
+
+    def test_actual_producer_and_publisher_preserve_as_of_boundaries(self) -> None:
+        for age in (0, 4, 5, -1, -365):
+            with self.subTest(age_days=age):
+                document = cases.produce_and_seal(support.all_policy(), cases.specs({
+                    "nasdaq_last_trade": last_trade_text(self.RUN_DATE - timedelta(days=age)),
+                }))
+                for period in builder.CYCLES:
+                    cycle = document["options"][cases.NASDAQ_TICKER][period]
+                    if 0 <= age <= 4:
+                        self.assertNotIn("unavailable", cycle, (age, period))
+                        self.assertEqual(cycle["provider_id"], support.NASDAQ_ID)
+                    else:
+                        self.assertEqual(cycle, {"unavailable": builder.NASDAQ_US_STALE_TEXT}, (age, period))
+                    # Refusing Nasdaq cannot contaminate a healthy Yahoo sibling.
+                    self.assertEqual(document["options"]["SYNTHUS00"][period]["provider_id"], support.YAHOO_ID)
 
     def test_a_bot_challenge_or_non_json_body_is_a_read_error_never_a_quote(self) -> None:
         bodies = (b"<html><head><title>Access Denied</title></head><body>challenge</body></html>", b"", b"not json", b"\xff\xfe\x00")

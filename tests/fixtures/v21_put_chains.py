@@ -36,7 +36,8 @@ class _Table:
 def yahoo_chain(calls: list[tuple] = CALLS, puts: list[tuple] | None = PUTS, *, iv: float = IV) -> types.SimpleNamespace:
     """What yfinance returns: .calls and .puts tables with strike, bid, ask, impliedVolatility, openInterest, volume."""
     def table(rows):
-        return _Table([types.SimpleNamespace(strike=k, bid=b, ask=a, impliedVolatility=iv, openInterest=100, volume=10) for k, b, a in rows])
+        return _Table([types.SimpleNamespace(strike=k, bid=b, ask=a, impliedVolatility=iv, openInterest=100, volume=10,
+                                            contractSize="REGULAR", currency="USD") for k, b, a in rows])
     chain = types.SimpleNamespace(calls=table(calls))
     if puts is not None:
         chain.puts = table(puts)

@@ -592,8 +592,8 @@ class SealingTests(unittest.TestCase):
             self.assertEqual(publisher.lazy_market_bodies(path, now + timedelta(hours=6)), {})
 
 
-CallRow = namedtuple("CallRow", ["strike", "bid", "ask", "impliedVolatility", "openInterest", "volume", "lastPrice"],
-                     defaults=(None, None, None, None, None, None, None))
+CallRow = namedtuple("CallRow", ["strike", "bid", "ask", "impliedVolatility", "openInterest", "volume", "lastPrice", "contractSize", "currency"],
+                     defaults=(None, None, None, None, None, None, None, "REGULAR", "USD"))
 
 
 class FakeOptionChainCalls:
@@ -1990,7 +1990,8 @@ class NonUsTypedEvidenceTests(unittest.TestCase):
         from unittest import mock
 
         def chain(rows):
-            calls = [types.SimpleNamespace(strike=k, bid=b, ask=a, impliedVolatility=0.5, openInterest=1, volume=1) for k, b, a in rows]
+            calls = [types.SimpleNamespace(strike=k, bid=b, ask=a, impliedVolatility=0.5, openInterest=1, volume=1,
+                                           contractSize="REGULAR", currency="USD") for k, b, a in rows]
             return types.SimpleNamespace(calls=types.SimpleNamespace(itertuples=lambda: iter(calls)))
         expiry = (self.TODAY + timedelta(days=28)).isoformat()
         for label, rows in {"zero": [(120.0, 0.0, 0.0)], "one-sided": [(120.0, 0.5, None)], "crossed": [(120.0, 0.7, 0.6)],
@@ -2060,7 +2061,8 @@ class NonUsTypedEvidenceTests(unittest.TestCase):
         expiry = (self.TODAY + timedelta(days=9)).isoformat()  # Fri 2026-10-09 (next week's weekly as of Wed 2026-09-30)
 
         def chain(rows):
-            calls = [types.SimpleNamespace(strike=k, bid=b, ask=a, impliedVolatility=0.6, openInterest=1, volume=1) for k, b, a in rows]
+            calls = [types.SimpleNamespace(strike=k, bid=b, ask=a, impliedVolatility=0.6, openInterest=1, volume=1,
+                                           contractSize="REGULAR", currency="USD") for k, b, a in rows]
             return types.SimpleNamespace(calls=types.SimpleNamespace(itertuples=lambda: iter(calls)))
         for strike, expect_precision in ((15.505, True), (15.5, False)):
             ticker = types.SimpleNamespace(options=[expiry], option_chain=lambda e, strike=strike: chain([(strike, 0.12, 0.14)]))
