@@ -4,6 +4,8 @@ param(
 
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
+$env:PROJECT_NODE = $null
+$env:PROJECT_NPM = $null
 
 function Test-NodeCandidate {
     param(
@@ -101,7 +103,6 @@ Do not place credentials in these variables.
 }
 
 $nodeDirectory = Split-Path $resolved.Node
-$env:PATH = "$nodeDirectory;$env:PATH"
 
 if ($env:GITHUB_ENV) {
     # A package must not dirty its exact checkout through ambient npm exports.
@@ -122,5 +123,8 @@ if ($env:GITHUB_ENV) {
     "NPM_CONFIG_CACHE=$cachePath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 }
 
+$env:PATH = "$nodeDirectory;$env:PATH"
+$env:PROJECT_NODE = $resolved.Node
+$env:PROJECT_NPM = $resolved.Npm
 Write-Host "Using Node $($resolved.NodeVersion) at $($resolved.Node)"
 Write-Host "Using npm $($resolved.NpmVersion) at $($resolved.Npm)"
