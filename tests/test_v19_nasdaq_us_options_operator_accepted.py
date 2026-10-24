@@ -419,7 +419,9 @@ class NasdaqFreshnessAndTransportTests(unittest.TestCase):
 
     def test_a_missing_or_garbled_date_is_stale(self) -> None:
         for text in (None, "", "LAST TRADE: $343.46", "LAST TRADE: $343.46 (AS OF)", "LAST TRADE: $343.46 (AS OF FOO 15, 2026)",
-                     "LAST TRADE: $343.46 (AS OF OCT 32, 2026)", "LAST TRADE: $343.46 (AS OF 2026-10-19)", 12345, ["AS OF OCT 19, 2026"]):
+                     "LAST TRADE: $343.46 (AS OF OCT 32, 2026)", "LAST TRADE: $343.46 (AS OF 2026-10-19)", 12345, ["AS OF OCT 19, 2026"],
+                     "LAST TRADE: $343.46 (AS OF OCTOPUS 19, 2026)", "LAST TRADE: $343.46 (AS OF OCT 19, 20260)",
+                     "LAST TRADE: $343.46 (AS OF OCTO 19, 2026)", "LAST TRADE: $343.46 (AS OF FEB 30, 2026)"):
             with self.subTest(text=text):
                 self.assert_stale(self.run_with(text))
 
@@ -442,6 +444,27 @@ class NasdaqFreshnessAndTransportTests(unittest.TestCase):
                     else:
                         self.assertEqual(cycle, {"unavailable": builder.NASDAQ_US_STALE_TEXT}, (age, period))
                     # Refusing Nasdaq cannot contaminate a healthy Yahoo sibling.
+                    self.assertEqual(document["options"]["SYNTHUS00"][period]["provider_id"], support.YAHOO_ID)
+
+    def test_actual_producer_and_publisher_refuse_malformed_month_and_year_tokens(self) -> None:
+        # R/ASTRA-V23-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt M1: a month is a whole month name or abbreviation and a year exactly four digits;
+        # a garbled token is "date unconfirmed" through the real producer and compact publisher, never the date its first letters spell.
+        day = self.RUN_DATE
+        abbr, full = day.strftime("%b").upper(), day.strftime("%B").upper()
+        refused = (f"{abbr}OPUS {day.day}, {day.year}", f"{abbr} {day.day}, {day.year}0", f"{abbr} {day.day}, {day.year}1", f"{abbr}X {day.day}, {day.year}")
+        admitted = (f"{full} {day.day}, {day.year}", f"{abbr}. {day.day}, {day.year}", f"{abbr.title()} {day.day} {day.year}")
+        for token in refused + admitted:
+            with self.subTest(token=token):
+                document = cases.produce_and_seal(support.all_policy(), cases.specs({
+                    "nasdaq_last_trade": f"LAST TRADE: $343.46 (AS OF {token})",
+                }))
+                for period in builder.CYCLES:
+                    cycle = document["options"][cases.NASDAQ_TICKER][period]
+                    if token in admitted:
+                        self.assertNotIn("unavailable", cycle, (token, period))
+                        self.assertEqual(cycle["provider_id"], support.NASDAQ_ID)
+                    else:
+                        self.assertEqual(cycle, {"unavailable": builder.NASDAQ_US_STALE_TEXT}, (token, period))
                     self.assertEqual(document["options"]["SYNTHUS00"][period]["provider_id"], support.YAHOO_ID)
 
     def test_a_bot_challenge_or_non_json_body_is_a_read_error_never_a_quote(self) -> None:

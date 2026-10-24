@@ -141,7 +141,11 @@ NASDAQ_US_RIGHTS_LABEL = "operator_accepted_unlicensed"
 # unparsable, future-dated or older than this many calendar days (weekend plus a holiday) against the run date is not shown.
 NASDAQ_US_MAX_ASOF_AGE_DAYS = 4
 NASDAQ_US_STALE_TEXT = "Nasdaq 報價日期過舊或無法確認"
-_ASOF_RE = re.compile(r"AS OF\s+([A-Za-z]{3,9})\.?\s+(\d{1,2}),?\s+(\d{4})", re.IGNORECASE)
+# A month is a whole English month name or abbreviation and a year exactly four digits: "OCTOPUS" or "20260" is unparsable, never Oct or 2026.
+_ASOF_RE = re.compile(r"\bAS OF\s+([A-Za-z]{3,9})\.?\s+(\d{1,2}),?\s+(\d{4})(?!\d)", re.IGNORECASE)
+_ASOF_MONTHS = {name: number for number, names in enumerate((
+    ("JAN", "JANUARY"), ("FEB", "FEBRUARY"), ("MAR", "MARCH"), ("APR", "APRIL"), ("MAY",), ("JUN", "JUNE"), ("JUL", "JULY"),
+    ("AUG", "AUGUST"), ("SEP", "SEPT", "SEPTEMBER"), ("OCT", "OCTOBER"), ("NOV", "NOVEMBER"), ("DEC", "DECEMBER")), start=1) for name in names}
 OPTION_TWO_SIDED_COVERAGE_RATIO_NUMERATOR = 1
 OPTION_TWO_SIDED_COVERAGE_RATIO_DENOMINATOR = 10
 # Policy threshold: strictly below 1/10 (10%) two-sided coverage across read chains triggers guard
@@ -737,9 +741,10 @@ def _nasdaq_us_asof(payload: Any) -> date | None:
     try:
         text = payload["data"]["lastTrade"]
         match = _ASOF_RE.search(text) if isinstance(text, str) else None
-        if not match:
+        month = _ASOF_MONTHS.get(match.group(1).upper()) if match else None
+        if month is None:
             return None
-        return datetime.strptime(f"{match.group(1)[:3].title()} {int(match.group(2))} {match.group(3)}", "%b %d %Y").date()
+        return date(int(match.group(3)), month, int(match.group(2)))
     except Exception:
         return None
 
