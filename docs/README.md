@@ -91,7 +91,7 @@ Current acceptance register: [STATUS](../state/STATUS.md). Release identity: [RE
 
 ## Dated evidence and historical technical references / 歷史與有日期的技術證據
 
-Dated histories remain in their source revisions and R receipts; they are not current authority. Use STATUS and the applicable contract for current state.
+Dated histories remain in their source revisions and R receipts; they are not current authority. Use STATUS and the applicable contract for current state. Retired notes and reports: `git show 34417b9:<path>`; source documents merged on 2026-10-24 (AUTHORITATIVE_SOURCE_CATALOG, SOURCE_POLICY_INDEX, KV_NAMESPACE_ISOLATION): `git show 147d616:docs/<name>.md`.
 
 Older deployment/PASS/coverage claims here are scoped to their recorded revision, not today; current contracts and STATUS win. 未改寫歷史證據為今日成功。
 

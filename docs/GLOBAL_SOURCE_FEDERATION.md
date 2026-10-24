@@ -4,7 +4,7 @@
 
 ## 設計目標｜Design objective
 
-Investor Intelligence 不設定固定來源數量上限。R75 source-planning inventory 目前為 101；此為快照而非上限，catalog membership does not imply runtime activation. Runtime activation is governed by authority, identity, legal/free access, provenance, freshness, schema, adapter and health gates.
+Investor Intelligence 不設定固定來源數量上限。R75 source-planning inventory 目前為 103（config/authoritative-source-catalog.json catalog_source_count_snapshot）；此為快照而非上限，catalog membership does not imply runtime activation. Runtime activation is governed by authority, identity, legal/free access, provenance, freshness, schema, adapter and health gates.
 
 ```text
 NO_ARTIFICIAL_SOURCE_COUNT_LIMIT
