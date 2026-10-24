@@ -17,6 +17,8 @@ export interface PotentialRecord {
   readonly dilution_yoy_pct: number | null; readonly next_review_at: string | null;
   /** If signed orders (RPO) are delivered on the schedule the latest 10-Q/10-K discloses; absent when not disclosed. */
   readonly orders?: OrderCoverage | null;
+  /** Worker projection only; never accepted from the serialized payload. */
+  readonly orders_freshness?: "STALE_OR_UNVERIFIED";
 }
 type Horizon = "m6" | "m12" | "m24";
 export interface OrderCoverage {
@@ -68,7 +70,7 @@ export function validatePotentialRanking(raw: unknown): PotentialRanking | null 
     seen.add(row.ticker);
   }
   const reports = value.reports && typeof value.reports === "object" && !Array.isArray(value.reports) ? value.reports : {};
-  const records = value.records.map((row: any) => ({ ...row, orders: readOrders(row.orders) }));
+  const records = value.records.map((row: any) => ({ ...row, orders: readOrders(row.orders), orders_freshness: undefined }));
   return { as_of: value.as_of, quarter: value.quarter, records, reports };
 }
 
@@ -114,11 +116,18 @@ function bubble(ranking: PotentialRanking, row: PotentialRecord) {
 const coverageText = (v: number | null) => (v === null ? "未揭露" : `${v < 10 ? v.toFixed(1) : v.toFixed(0)}%`); // 0.3% must not read as 0%
 const floorText = (coverage: number | null, floor: number | null) =>
   floor !== null ? `成長下限 ${floor >= 0 ? "+" : ""}${floor.toFixed(1)}%` : coverage !== null ? "需新訂單" : "—";
+const ORDER_CALCULATION_UNAVAILABLE = "訂單計算資料已過期或無法驗證";
+const withheldOrdersNotice = (ranking: PotentialRanking) => ranking.records.some(row => row.orders_freshness)
+  ? `${ORDER_CALCULATION_UNAVAILABLE}的公司已略過；其餘排名仍依本輪產業資料。` : null;
+const noCompleteOrders = (ranking: PotentialRanking) => withheldOrdersNotice(ranking)
+  ? `${ORDER_CALCULATION_UNAVAILABLE}；目前沒有可驗證且完整的 6M、1Y、2Y 訂單計算資料。`
+  : "本輪潛力榜沒有同時揭露 6M、1Y、2Y 認列時程的公司；不以推估補足。";
 
 /** 6M/1Y/2Y: share of the current revenue run rate already signed, and the growth floor where it exceeds 100%. */
 function ordersSection(row: PotentialRecord) {
   const orders = row.orders;
-  if (!orders) return section("訂單實現情境 / If orders deliver", [footnote("最新 10-Q／10-K 未揭露 RPO 認列時程或期間不一致；不推估。")], "context");
+  if (!orders) return section("訂單實現情境 / If orders deliver", [footnote(row.orders_freshness ? ORDER_CALCULATION_UNAVAILABLE
+    : "最新 10-Q／10-K 未揭露 RPO 認列時程或期間不一致；不推估。")], "context");
   return section("訂單實現情境 / If orders deliver", [
     uiBox(HORIZONS.map(([key, label]) => statTile(`${label} 已簽約覆蓋`, coverageText(orders.coverage_pct[key]),
       undefined, floorText(orders.coverage_pct[key], orders.floor_growth_pct[key]))), { layout: "horizontal", spacing: "sm" }),
@@ -136,7 +145,7 @@ export function orderRealizationRanking(ranking: PotentialRanking): PotentialRec
 
 export function buildOrderRealizationFlex(ranking: PotentialRanking): LineOutboundMessage[] | string {
   const rows = orderRealizationRanking(ranking);
-  if (rows.length === 0) return "本輪潛力榜沒有同時揭露 6M、1Y、2Y 認列時程的公司；不以推估補足。";
+  if (rows.length === 0) return noCompleteOrders(ranking);
   const top = Math.max(100, ...rows.map(row => row.orders!.coverage_pct.m24!));
   const bubble = {
     type: "bubble", size: "mega",
@@ -162,6 +171,7 @@ export function buildOrderRealizationFlex(ranking: PotentialRanking): LineOutbou
       return index > 0 ? [divider(), block] : [block];
     }), { paddingAll: "lg", spacing: "md", backgroundColor: T.paper }),
     footer: uiBox([
+      ...(withheldOrdersNotice(ranking) ? [footnote(withheldOrdersNotice(ranking)!)] : []),
       disclosureLine(["覆蓋＝已簽約訂單在期間內依揭露時程認列的營收 ÷（最近一季營收 × 期間季數）。超過 100% 的部分是營收與股價成長下限，假設利潤率、股數與本益比不變，未計新接訂單", "不是預測或投資建議"]),
       menuAction("回潛力榜", "潛力榜"),
     ], { paddingAll: "lg", spacing: "sm", backgroundColor: T.paper }),
@@ -174,10 +184,11 @@ export function buildOrderRealizationFlex(ranking: PotentialRanking): LineOutbou
 
 export function buildOrderRealizationText(ranking: PotentialRanking): LineOutboundMessage[] | string {
   const rows = orderRealizationRanking(ranking);
-  if (rows.length === 0) return "本輪潛力榜沒有同時揭露 6M、1Y、2Y 認列時程的公司；不以推估補足。";
+  if (rows.length === 0) return noCompleteOrders(ranking);
   const lines = ["【訂單實現排序】只列 6M、1Y、2Y 認列時程都已揭露的公司，依 2Y 已簽約覆蓋排序",
     ...rows.map((row, index) => `${index + 1}. ${row.ticker} ${row.name}｜` + HORIZONS.map(([key, label]) =>
       `${label} ${coverageText(row.orders!.coverage_pct[key])}（${floorText(row.orders!.coverage_pct[key], row.orders!.floor_growth_pct[key])}）`).join("｜")),
+    ...(withheldOrdersNotice(ranking) ? [withheldOrdersNotice(ranking)!] : []),
     "覆蓋＝已簽約訂單在期間內認列的營收 ÷（最近一季營收 × 期間季數）；超過 100% 才有成長下限（利潤率、股數、本益比不變，未計新接訂單）。非預測、非投資建議。"];
   const messages: LineOutboundMessage[] = [{ type: "text", text: lines.join("\n").slice(0, 4900) }];
   assertLineMessages(messages);
@@ -217,7 +228,7 @@ export function buildPotentialRankingText(ranking: PotentialRanking): LineOutbou
   const lines = [`【資料驅動潛力榜】資料季度 ${ranking.quarter}｜計算日 ${ranking.as_of}`,
     "排序：舊版准入狀態（排除擁擠、緩解、受阻；受阻可能含融資條件，不等同營運論點失效）→ 雙來源確認優先 → 公開的資料強度公式；每產業最多 5 家。非預測、非投資建議。",
     ...ranking.records.map(r => `#${r.rank} ${r.ticker} ${r.name}｜${r.industry_name}｜舊版准入狀態 ${PHASE_ZH[r.phase]}｜強度 ${r.strength}｜營收 ${pct(r.revenue_yoy_pct)}｜RPO ${pct(r.rpo_yoy_pct)}`
-      + (r.orders ? `｜1Y 已簽約覆蓋 ${coverageText(r.orders.coverage_pct.m12)}` : "")),
+      + (r.orders ? `｜1Y 已簽約覆蓋 ${coverageText(r.orders.coverage_pct.m12)}` : r.orders_freshness ? `｜${ORDER_CALCULATION_UNAVAILABLE}` : "")),
     "訂單實現排序：輸入「訂單實現榜」。",
     "詳細報告：輸入「潛力報告 代號」，例如：潛力報告 " + ranking.records[0]!.ticker];
   const messages = packCompleteLines(lines);

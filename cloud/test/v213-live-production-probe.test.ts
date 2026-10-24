@@ -4,6 +4,7 @@ import { loadV213FreshTop20Report, V213_STALE_RECORDS_MESSAGE } from "../src/v21
 import { INSUFFICIENT_EVIDENCE_MESSAGE } from "../src/v213/bottleneck-report";
 import { handleGlobalEquityLookup } from "../src/v213/global-equity-lookup";
 import { v213PublicLineAnswer } from "../src/v213/rich-menu";
+import { pinPublicSnapshot } from "../src/v213/public-snapshot";
 import { parseQuery } from "../src/core";
 import { asKv, MemoryKv } from "./fake-kv";
 import type { ParsedQuery } from "../src/core";
@@ -109,27 +110,28 @@ it("seal/object tamper (in-memory copy) is rejected fail-closed", async () => {
   }
 });
 
-it("sealed snapshot replay (fresh clock): Macro TOP5, TOP5, query gates and fail-closed grid", async () => {
+it("sealed snapshot replay: legacy macro without rotation basis refuses; fresh Top20 and query gates keep their contract", async () => {
   const e = envAt(3600);
+
+  // Preserve the historical publisher fixture bytes. A fresh seal cannot supply its
+  // missing rotation calculation date. New-schema macro positives live in v213-macro-freshness.test.ts.
+  const view = await pinPublicSnapshot(e);
+  expect(view.integrity).toBe("sealed");
+  const legacyMacro = await view.json<Record<string, unknown>>(["v213:macro-industry:latest"]);
+  expect(legacyMacro?.data_basis).toBeUndefined();
 
   // 1) LINE text "宏觀產業分析"
   const macroReply = await v213PublicLineAnswer(e, parseQuery("宏觀產業分析 文字"));
   expect(macroReply).not.toBeNull();
   const macroStr = JSON.stringify(macroReply);
-  expect(macroStr).not.toContain("MACRO_TOP5_SHORTFALL");
-  expect(macroStr).not.toContain("TOP5 宏觀產業總覽准入門檻未達成");
-  expect(macroStr).toContain("TOP5產業總覽");
-  expect(macroStr).toContain("先進封裝與高頻寬記憶體");
-  expect(macroStr).toContain("高速光通訊與 CPO");
-  expect(macroStr).toContain("電網與電力基礎設施");
-  expect(macroStr).toContain("半導體前段設備與關鍵特用化學材料");
-  expect(macroStr).toContain("先進散熱與液冷系統");
+  expect(macroStr).toContain("MACRO_TOP5_SHORTFALL");
+  expect(macroStr).not.toContain("先進封裝與高頻寬記憶體");
+  expect(macroStr).not.toContain("高速光通訊與 CPO");
 
   // 2) "TOP5產業總覽"
   const top5Reply = await v213PublicLineAnswer(e, parseQuery("TOP5產業總覽 文字"));
   expect(top5Reply).not.toBeNull();
-  expect(JSON.stringify(top5Reply)).not.toContain("MACRO_TOP5_SHORTFALL");
-  expect(JSON.stringify(top5Reply)).toContain("TOP5產業總覽");
+  expect(JSON.stringify(top5Reply)).toContain("MACRO_TOP5_SHORTFALL");
 
   // 3) Top20 admitted (same fixture, fresh clock)
   admit(await loadV213FreshTop20Report(e as never, RANKING), "replay Top20");

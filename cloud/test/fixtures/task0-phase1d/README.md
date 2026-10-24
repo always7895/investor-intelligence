@@ -25,6 +25,9 @@ These clocks are invented test inputs, not new evidence for the historical GEV/6
 
 The original two files above remain byte-identical. Their row age is computed directly from the UTC strings:
 (2026-09-17T10:24:10Z - 2026-09-15T11:00:00Z) / 1 h = 47.4027778 h (> 14 h);
-the formal dispatcher negative now requires Top20 refusal while Macro still completes. The positive
-keeps its original no-lease Top20/Macro intent with rows inside the documented 14 h bound.
+the formal dispatcher negative requires Top20 refusal. These retained macro objects have no
+`data_basis.as_of`, so the current reader also refuses their unknown rotation age, even with a fresh
+seal. Their bytes and hashes remain unchanged. The fresh-row Top20 positive keeps its documented
+14 h bound; new-schema macro positives and missing-basis negatives use the separate synthetic
+`cloud/test/v213-macro-freshness.test.ts` fixtures and all seven authorized LINE entries.
 This tests a user-visible refusal change; it is not Production rollout or live recertification.

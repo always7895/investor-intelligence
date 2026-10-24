@@ -29,7 +29,7 @@ const RANKING = { as_of: "2026-09-25", quarter: "2026 Q2", records: [row(1, "SYN
 
 async function sealedEnv(ranking: unknown = RANKING) {
   const overview = { schema_version: 1, title: "TOP5產業總覽", generated_at: STAMP, horizon: "12-36M", qualified_count: 0,
-    shortfall: 5, status: "SHORTFALL_NOT_QUALIFIED", industries: [], potential_ranking: ranking };
+    shortfall: 5, status: "SHORTFALL_NOT_QUALIFIED", industries: [], data_basis: { as_of: "2026-09-25" }, potential_ranking: ranking };
   const bodies: [string, string][] = SNAPSHOT_OBJECT_KEYS.map(key => [key, JSON.stringify({ synthetic_fixture: true, key })]);
   bodies.find(([key]) => key === "last_successful_pipeline_timestamp")![1] = STAMP;
   bodies.find(([key]) => key === "v213:activation-claim")![1] = JSON.stringify({ schema_version: 1, transaction_id: TX, run_id: RUN,
@@ -116,7 +116,8 @@ describe("data-driven potential ranking", () => {
     const orders = (m6: number | null, m12: number | null, m24: number | null) => ({ as_of: "2026-06-30", form: "10-Q", filed: "2026-07-29",
       coverage_pct: { m6, m12, m24 }, floor_growth_pct: { m6: m6 !== null && m6 > 100 ? +(m6 - 100).toFixed(1) : null,
         m12: m12 !== null && m12 > 100 ? +(m12 - 100).toFixed(1) : null, m24: m24 !== null && m24 > 100 ? +(m24 - 100).toFixed(1) : null } });
-    const ranking = { ...RANKING, records: [
+    const ranking = { ...RANKING, reports: Object.fromEntries(["SYNA", "SYNB", "SYNC", "SYND"].map(ticker =>
+      [ticker, { ...REPORT, ticker, name: `Synthetic ${ticker} Corp.` }])), records: [
       { ...row(1, "SYNA"), orders: orders(103, 103, 89.7) },
       { ...row(2, "SYNB"), orders: orders(206.3, 206.3, 206.3) },
       { ...row(3, "SYNC"), orders: orders(45.9, 91.8, null) },       // 2Y not disclosed: excluded from the order view

@@ -11,6 +11,7 @@ import { loadIdentityCatalogForQuery } from "./identity-shards";
 import { buildCoveredCallMessages, validateCoveredCallCycle } from "./covered-call";
 import { admitPublicOption, OPTION_RIGHTS_NOT_ADMITTED_ZH, OptionRightsNotAdmittedError } from "./public-options-admission";
 import { pinPublicSnapshot } from "./public-snapshot";
+import { freshPotentialCompanyData, loadFreshMacroDocument } from "./macro-freshness";
 import { v213Top20LineAnswer } from "./top20-presentation";
 import { loadV213FreshTop20Report, v213TimesAreFresh, v213EvidenceWithinWindow, V213_STALE_RECORDS_MESSAGE, type V213Top20Env } from "./top20-report";
 import { LINE_THEME as T, altSummary, bulletRow, disclosureLine, footerStyle, menuAction, menuBox, menuText, productHeader, section, sectionTitle } from "./line-theme";
@@ -25,7 +26,6 @@ import {
   buildMacroIndustryCardText,
   buildMacroTop5OverviewFlex,
   buildMacroTop5OverviewText,
-  MACRO_PRODUCT_KEY,
   macroHomeShortfallLine,
   macroOverviewState,
   macroShortfallReport,
@@ -52,8 +52,9 @@ type Env = V213Top20Env & { V213_LINE_PRESENTATION?: string };
 
 /** Industry card and deep analysis travel inside the sealed TOP5 overview (the seal admits one macro
  * object); legacy per-industry keys are read only as a fallback. Invalid entries are ignored. */
-async function sealedMacroEntry(view: Awaited<ReturnType<typeof pinPublicSnapshot>>, targetId: string, kind: "card" | "deep") {
-  const overview = await view.json<Record<string, unknown>>([MACRO_PRODUCT_KEY]);
+async function sealedMacroEntry(env: Env, view: Awaited<ReturnType<typeof pinPublicSnapshot>>, targetId: string, kind: "card" | "deep") {
+  const overview = await loadFreshMacroDocument(env, view);
+  if (!overview) return null;
   try {
     if (overview && kind === "card" && Array.isArray(overview.industries)) {
       const raw = (overview.industries as Record<string, unknown>[]).find(row => String(row?.industry_id ?? "").toLowerCase() === targetId);
@@ -64,9 +65,10 @@ async function sealedMacroEntry(view: Awaited<ReturnType<typeof pinPublicSnapsho
   } catch {
     return null;
   }
-  return kind === "card"
+  const legacy = await (kind === "card"
     ? view.json<MacroIndustryCard>([`v213:macro-industry:${targetId}`])
-    : view.json<MacroDeepAnalysis>([`v213:macro-deep:${targetId}`]);
+    : view.json<MacroDeepAnalysis>([`v213:macro-deep:${targetId}`]));
+  return await loadFreshMacroDocument(env, view) ? legacy : null;
 }
 const V3_UNAVAILABLE = "瓶頸爆發 TOP20 目前沒有已封存且在時效內的資料，未以舊資料替代。輸入「七欄Top20」可看舊版七欄榜。";
 
@@ -273,10 +275,18 @@ export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promis
     const view = await pinPublicSnapshot(env);
 
     // 1. Route choice and counts come only from the shared root validator, never from a raw claimed status or count.
-    const macro = macroOverviewState(view.integrity === "sealed" ? await view.json<unknown>([MACRO_PRODUCT_KEY]) : null);
+    let macro = macroOverviewState(await loadFreshMacroDocument(env, view));
     if (macro.kind === "VALID" && macro.overview.status === "ADMITTED_TOP5") {
       return isText ? buildMacroTop5OverviewText(macro.overview) : buildMacroTop5OverviewFlex(macro.overview);
     }
+    // 2. Load Top20 before revalidating both fallback data sources against the final clock.
+    const report = await loadV213FreshTop20Report(env, parseQuery("Top20"));
+    // The fallback awaits unrelated readers too: counts and phase metadata must use the final clock.
+    macro = macroOverviewState(await loadFreshMacroDocument(env, view));
+    // No storage reads follow: evaluate company evidence against the final execution clock too.
+    const reportEvidenceFresh = report && typeof report !== "string" ? await v213EvidenceWithinWindow(report.records.map(r => ({
+      freshAsOf: r.orders_state_as_of, retrievedAt: r.retrieved_at, evidenceClass: r.evidence_class, sealTime: report.generated_at,
+    }))) : false;
     // Only a validated overview carries its time metadata; an absent or invalid root shows the UNKNOWN notice.
     const knowledgeNotice = phaseKnowledgeWithheldNotice(macro.kind === "VALID" ? macro.overview : null);
     const shortfallLine = macroHomeShortfallLine(macro);
@@ -286,8 +296,6 @@ export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promis
         ? "MACRO_PRODUCT_INVALID：本輪已封存之宏觀總覽未通過驗證，已拒絕使用，不據以推論任何合格產業數。GDP、CPI、利率、匯率等值不得由來源健康狀態或候選資料直接升格發布。"
         : "MACRO_PRODUCT_NOT_SEALED：目前尚無已驗收的獨立宏觀報告。GDP、CPI、利率、匯率等值不得由來源健康狀態或候選資料直接升格發布。";
 
-    // 2. Check Top20 fresh report for company industry distribution context
-    const report = await loadV213FreshTop20Report(env, parseQuery("Top20"));
     const navActions = [
       ["TOP5 產業總覽", "TOP5產業總覽"],
       ["TOP20 公司證據", "TOP20"],
@@ -306,7 +314,7 @@ export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promis
       return panel("宏觀產業分析", "當輪產業資料不可用 · 短缺通報", errLines, navActions, isText);
     }
 
-    if (!(await v213EvidenceWithinWindow(report.records.map(r => ({ freshAsOf: r.orders_state_as_of, retrievedAt: r.retrieved_at, evidenceClass: r.evidence_class, sealTime: report.generated_at }))))) {
+    if (!reportEvidenceFresh) {
       const staleLines = [
         shortfallLine,
         "公司資料過期：" + V213_STALE_RECORDS_MESSAGE,
@@ -357,7 +365,7 @@ export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promis
   if (/^(?:TOP5(?:產業總覽|產業)?|宏觀(?:產業)?總覽)(?:\s*文字)?$/i.test(command)) {
     const isText = isEnvText || /文字\s*$/i.test(command);
     const view = await pinPublicSnapshot(env);
-    const macro = macroOverviewState(view.integrity === "sealed" ? await view.json<unknown>([MACRO_PRODUCT_KEY]) : null);
+    const macro = macroOverviewState(await loadFreshMacroDocument(env, view));
     if (macro.kind === "VALID" && macro.overview.status === "ADMITTED_TOP5") {
       return isText ? buildMacroTop5OverviewText(macro.overview) : buildMacroTop5OverviewFlex(macro.overview);
     }
@@ -500,9 +508,9 @@ export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promis
   if (potentialReport || orderView || /^(?:潛力榜|潜力榜|資料驅動潛力榜|潛力\s*top\s*20)(?:\s*文字)?$/i.test(command)) {
     const isText = isEnvText || /文字\s*$/i.test(command);
     const view = await pinPublicSnapshot(env);
-    const overview = view.integrity === "sealed" ? await view.json<Record<string, unknown>>([MACRO_PRODUCT_KEY]) : null;
-    const ranking = validatePotentialRanking(overview?.potential_ranking);
-    if (!ranking) {
+    const overview = await loadFreshMacroDocument(env, view);
+    const validatedRanking = validatePotentialRanking(overview?.potential_ranking);
+    if (!validatedRanking) {
       const macro = macroOverviewState(overview);
       const knowledgeNotice = phaseKnowledgeWithheldNotice(macro.kind === "VALID" ? macro.overview : null);
       return panel("資料驅動潛力榜", "本輪未封存", [
@@ -511,7 +519,8 @@ export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promis
         ...(knowledgeNotice ? [knowledgeNotice] : []),
       ], [["TOP5 產業總覽", "TOP5產業總覽"], ["回功能選單", "選單"]], isText);
     }
-    if (potentialReport) return buildPotentialReport(ranking, potentialReport[1]!, String(overview?.generated_at ?? ranking.as_of), isText);
+    const ranking = freshPotentialCompanyData(validatedRanking, String(overview!.generated_at));
+    if (potentialReport) return buildPotentialReport(ranking, potentialReport[1]!, String(overview!.generated_at), isText);
     if (orderView) return isText ? buildOrderRealizationText(ranking) : buildOrderRealizationFlex(ranking);
     return isText ? buildPotentialRankingText(ranking) : buildPotentialRankingFlex(ranking);
   }
@@ -522,7 +531,7 @@ export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promis
     const targetId = cardMatch[1]!.toLowerCase();
     const view = await pinPublicSnapshot(env);
     if (view.integrity === "sealed") {
-      const card = await sealedMacroEntry(view, targetId, "card") as MacroIndustryCard | null;
+      const card = await sealedMacroEntry(env, view, targetId, "card") as MacroIndustryCard | null;
       if (card) {
         return isText ? buildMacroIndustryCardText(card) : buildMacroIndustryCardFlex(card);
       }
@@ -540,7 +549,7 @@ export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promis
     const targetId = deepMatch[1]!.toLowerCase();
     const view = await pinPublicSnapshot(env);
     if (view.integrity === "sealed") {
-      const deep = await sealedMacroEntry(view, targetId, "deep") as MacroDeepAnalysis | null;
+      const deep = await sealedMacroEntry(env, view, targetId, "deep") as MacroDeepAnalysis | null;
       if (deep) {
         return isText ? buildMacroDeepAnalysisText(deep) : buildMacroDeepAnalysisFlex(deep);
       }
