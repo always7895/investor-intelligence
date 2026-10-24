@@ -1,8 +1,8 @@
 {
  "schema": "revenue-guidance-approval-v1",
- "registry_sha256": "10ec9ebe7a315ac5895151b57d2e2a755a92845446d9e9e1f7cda9e47c9ea04d",
- "approved_at": "2026-10-17T13:34:53Z",
- "reviewer": "Claude Code (sole tracked writer), V14: TSM verified against _archive/lane-v14-guidance/sources 2026-10-17T13:34:53Z",
+ "registry_sha256": "dd8bc9f4a651e50df90baafb70a18e10f845b9066a6baedfbd4aade8c135036b",
+ "approved_at": "2026-10-23T11:40:17Z",
+ "reviewer": "Parent Codex scoped facts/routing: CODEX-FRESHNESS-SOURCE-REVIEW-20261023.json",
  "records": {
   "SNDK": {
    "record_sha256": "4913ef463884bf4ff7bb624c02b7154a85560adc8e3917ec291759ea4f32d73c",
@@ -428,7 +428,7 @@
    ]
   },
   "AAOI": {
-   "record_sha256": "17aa4df21dd594563aa8ad38740213fafe8e74d3de9f233ba38fa147687bd348",
+   "record_sha256": "a3773b67c3c84d6b5b4fd907dfe117815419640e01769c66730f1026a6685d36",
    "decisions": [
     {
      "kind": "CLAIM",
@@ -470,7 +470,7 @@
      "kind": "ROUTING",
      "ref": "routing",
      "decision": "VERBATIM_IN_SOURCE",
-     "reviewed_at": "2026-09-28T16:32:10Z"
+     "reviewed_at": "2026-10-23T11:40:17Z"
     }
    ]
   },
@@ -522,19 +522,13 @@
    ]
   },
   "BE": {
-   "record_sha256": "9d58219ae624a5ae4a7f88131a150d5740d58d4f3c33a774c3138cd8049b04f0",
+   "record_sha256": "14d634dfd916cdd03b32d4262ee948bc9fa786afb66748571bc884bc37b5969b",
    "decisions": [
     {
      "kind": "CLAIM",
      "ref": "BE-FY-GUIDANCE",
      "decision": "VERBATIM_IN_SOURCE",
-     "reviewed_at": "2026-09-28T16:32:10Z"
-    },
-    {
-     "kind": "ACTUAL",
-     "ref": "2025-09-30",
-     "decision": "VALUE_IN_SOURCE",
-     "reviewed_at": "2026-09-28T16:32:10Z"
+     "reviewed_at": "2026-10-23T11:40:17Z"
     },
     {
      "kind": "ACTUAL",
@@ -558,19 +552,25 @@
      "kind": "CALENDAR",
      "ref": "calendar",
      "decision": "RULE_QUOTED",
-     "reviewed_at": "2026-09-28T16:32:10Z"
+     "reviewed_at": "2026-10-23T11:40:17Z"
     },
     {
      "kind": "FY_RECONCILIATION",
      "ref": "fy_reconciliation",
      "decision": "DERIVATION_OPERANDS_IN_SOURCE",
-     "reviewed_at": "2026-09-28T16:32:10Z"
+     "reviewed_at": "2026-10-23T11:40:17Z"
     },
     {
      "kind": "ROUTING",
      "ref": "routing",
      "decision": "VERBATIM_IN_SOURCE",
-     "reviewed_at": "2026-09-28T16:32:10Z"
+     "reviewed_at": "2026-10-23T11:40:17Z"
+    },
+    {
+     "kind": "ACTUAL",
+     "ref": "2026-09-30",
+     "decision": "VALUE_IN_SOURCE",
+     "reviewed_at": "2026-10-23T11:40:17Z"
     }
    ]
   },
@@ -657,7 +657,7 @@
    ]
   },
   "NBIS": {
-   "record_sha256": "7c9ed31ba725075965d6e71c75631df4218636a770847e865ba55c2dc9964921",
+   "record_sha256": "52f538b76748b44d5eb5fa64b2ffa962e6c080c6be3d4bb1d6e3cbfb4baa9389",
    "decisions": [
     {
      "kind": "CLAIM",
@@ -711,7 +711,7 @@
      "kind": "ROUTING",
      "ref": "routing",
      "decision": "VERBATIM_IN_SOURCE",
-     "reviewed_at": "2026-09-28T16:32:10Z"
+     "reviewed_at": "2026-10-23T11:40:17Z"
     }
    ]
   },
@@ -939,7 +939,7 @@
    ]
   },
   "TSM": {
-   "record_sha256": "ffd78c5db5f9418e98d782dfcc62758b62872ed6e03d1d8868b7507def83a8dd",
+   "record_sha256": "789a68d3dfcfaf67002181d289db4e44b62c6b040d2083dc986944102e9835cb",
    "decisions": [
     {
      "kind": "CLAIM",
@@ -981,7 +981,7 @@
      "kind": "ROUTING",
      "ref": "routing",
      "decision": "VERBATIM_IN_SOURCE",
-     "reviewed_at": "2026-10-17T13:34:53Z"
+     "reviewed_at": "2026-10-23T11:40:17Z"
     }
    ]
   }

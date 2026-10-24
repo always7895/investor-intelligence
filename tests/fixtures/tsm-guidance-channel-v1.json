@@ -1,0 +1,443 @@
+{
+  "scope": "SYNTHETIC_TEST_ONLY_NOT_LIVE_RECEIPT_OR_ACCEPTANCE",
+  "issuer": "TSM",
+  "report_day": "2026-10-23",
+  "generated_at": "2026-10-23T12:00:00Z",
+  "forecast": {
+    "version": 3,
+    "issuer": "TSM",
+    "formula": "ORDERS-V3-01",
+    "status": "AVAILABLE",
+    "reason": null,
+    "revenue_status": "AVAILABLE",
+    "revenue_basis": "COMPANY_GUIDANCE",
+    "revenue_reason": null,
+    "revenue_diagnostic": null,
+    "horizon_convention": "FISCAL_2Q_4Q",
+    "anchor_date": "2026-09-30",
+    "cutoff": "2026-10-23T12:00:00Z",
+    "m6": {
+      "status": "AVAILABLE",
+      "basis": "COMPANY_GUIDANCE",
+      "basis_label": "公司營收財測＋模型（非訂單）",
+      "amount": 106600000000.0,
+      "currency": "USD",
+      "start": "2026-10-01",
+      "end": "2027-03-31",
+      "horizon_label": "約6個月（2財季）",
+      "qualifier": "自2026-10-01起，非今日起",
+      "ttm_revenue": 193520000000.0,
+      "scenario": {
+        "status": "AVAILABLE",
+        "change": 0.23615458320025562
+      },
+      "warning": null,
+      "contracted_recognition": null
+    },
+    "m12": {
+      "status": "AVAILABLE",
+      "basis": "COMPANY_GUIDANCE",
+      "basis_label": "公司營收財測＋模型（非訂單）",
+      "amount": 213200000000.0,
+      "currency": "USD",
+      "start": "2026-10-01",
+      "end": "2027-09-30",
+      "horizon_label": "約1年（4財季）",
+      "qualifier": "自2026-10-01起，非今日起",
+      "ttm_revenue": 213200000000.0,
+      "scenario": {
+        "status": "AVAILABLE",
+        "change": 0.3618652187799425
+      },
+      "warning": null,
+      "contracted_recognition": null
+    },
+    "reported_quarters": [
+      {
+        "fiscal_label": "4Q25",
+        "start": "2025-10-01",
+        "end": "2025-12-31",
+        "revenue": 33730000000.0,
+        "currency": "USD",
+        "scope": "COMPANY",
+        "accounting_basis": "IFRS",
+        "document_id": "TSM-1Q26-MR",
+        "locator": "Summary table, Net Revenue (US$ billions), 4Q25 column: 33.73 (TIFRS, consolidated)"
+      },
+      {
+        "fiscal_label": "1Q26",
+        "start": "2026-01-01",
+        "end": "2026-03-31",
+        "revenue": 35900000000.0,
+        "currency": "USD",
+        "scope": "COMPANY",
+        "accounting_basis": "IFRS",
+        "document_id": "TSM-1Q26-MR",
+        "locator": "Summary table, Net Revenue (US$ billions), 1Q26 column: 35.90 (TIFRS, consolidated)"
+      },
+      {
+        "fiscal_label": "2Q26",
+        "start": "2026-04-01",
+        "end": "2026-06-30",
+        "revenue": 40200000000.0,
+        "currency": "USD",
+        "scope": "COMPANY",
+        "accounting_basis": "IFRS",
+        "document_id": "TSM-3Q26-MR",
+        "locator": "Summary table, Net Revenue (US$ billions), 2Q26 column: 40.20 (TIFRS, consolidated)"
+      },
+      {
+        "fiscal_label": "3Q26",
+        "start": "2026-07-01",
+        "end": "2026-09-30",
+        "revenue": 46720000000.0,
+        "currency": "USD",
+        "scope": "COMPANY",
+        "accounting_basis": "IFRS",
+        "document_id": "TSM-3Q26-MR",
+        "locator": "Summary table, Net Revenue (US$ billions), 3Q26 column: 46.72 (TIFRS, consolidated)"
+      }
+    ],
+    "baseline_b": 156550000000.0,
+    "forward_quarters": [
+      {
+        "quarter_index": 1,
+        "fiscal_label": "4Q26",
+        "start": "2026-10-01",
+        "end": "2026-12-31",
+        "amount": 53300000000.0,
+        "derivation": "公司財測"
+      },
+      {
+        "quarter_index": 2,
+        "fiscal_label": "1Q27",
+        "start": "2027-01-01",
+        "end": "2027-03-31",
+        "amount": 53300000000.0,
+        "derivation": "模型：之後各季持平於公司財測"
+      },
+      {
+        "quarter_index": 3,
+        "fiscal_label": "2Q27",
+        "start": "2027-04-01",
+        "end": "2027-06-30",
+        "amount": 53300000000.0,
+        "derivation": "模型：之後各季持平於公司財測"
+      },
+      {
+        "quarter_index": 4,
+        "fiscal_label": "3Q27",
+        "start": "2027-07-01",
+        "end": "2027-09-30",
+        "amount": 53300000000.0,
+        "derivation": "模型：之後各季持平於公司財測"
+      }
+    ],
+    "warning": null,
+    "contracted_recognition": null,
+    "stock_sensitivity": null,
+    "order_view": {
+      "status": "UNAVAILABLE",
+      "reason": "NO_ORDERS",
+      "m6": {
+        "status": "UNAVAILABLE",
+        "reason": "NO_ORDERS",
+        "scenario": {
+          "status": "NO_BASIS",
+          "reason": "NO_ORDER_BASIS"
+        }
+      },
+      "m12": {
+        "status": "UNAVAILABLE",
+        "reason": "NO_ORDERS",
+        "scenario": {
+          "status": "NO_BASIS",
+          "reason": "NO_ORDER_BASIS"
+        }
+      }
+    },
+    "references": [],
+    "assumptions": "條件情境：營收依上述推估實現，P/S與股數不變；以最新已報四季為基準，非目標價、非今日起報酬",
+    "evidence": {
+      "revenue_registry_status": "OK",
+      "revenue_registry_sha256": "dd8bc9f4a651e50df90baafb70a18e10f845b9066a6baedfbd4aade8c135036b",
+      "cutoff": "2026-10-23T12:00:00Z",
+      "formula": "ORDERS-V3-01",
+      "horizon_convention": "FISCAL_2Q_4Q",
+      "consensus_enabled": true,
+      "url_prefixes": [
+        "https://investor.tsmc.com/english/"
+      ],
+      "documents": [
+        {
+          "id": "TSM-3Q26-ER",
+          "issuer": "TSM",
+          "publisher": "Taiwan Semiconductor Manufacturing Company Limited",
+          "title": "TSMC Reports Third Quarter EPS of NT$29.43 (3Q26 earnings release)",
+          "source_kind": "ISSUER_EARNINGS_RELEASE",
+          "url": "https://investor.tsmc.com/english/encrypt/files/encrypt_file/reports/2026-10/526b65af7305df2dde6b9ece6812b1fdf1e49f9b/3Q26%20EarningsRelease.pdf",
+          "published_date": "2026-10-15",
+          "retrieved_at": "2026-10-17T10:49:11Z",
+          "sha256": "c56119b240c1f7ba728c58228b14cb51d3a756d808af41e7d4b53b46ba29734a",
+          "byte_size": 171803,
+          "lineage_id": "TSM-3Q26-ER"
+        },
+        {
+          "id": "TSM-3Q26-MR",
+          "issuer": "TSM",
+          "publisher": "Taiwan Semiconductor Manufacturing Company Limited",
+          "title": "TSMC 3Q26 Quarterly Management Report",
+          "source_kind": "ISSUER_EARNINGS_RELEASE",
+          "url": "https://investor.tsmc.com/english/encrypt/files/encrypt_file/reports/2026-10/f83780000ddc0c3b48e57a87eab6814c4ab35058/3Q26%20ManagementReport.pdf",
+          "published_date": "2026-10-15",
+          "retrieved_at": "2026-10-17T10:49:13Z",
+          "sha256": "27b5b92d05207bf662756edfbe72494c5f34a007a79306ae040d957886b411d2",
+          "byte_size": 468113,
+          "lineage_id": "TSM-3Q26-MR"
+        },
+        {
+          "id": "TSM-1Q26-MR",
+          "issuer": "TSM",
+          "publisher": "Taiwan Semiconductor Manufacturing Company Limited",
+          "title": "TSMC 1Q26 Quarterly Management Report",
+          "source_kind": "ISSUER_EARNINGS_RELEASE",
+          "url": "https://investor.tsmc.com/english/encrypt/files/encrypt_file/reports/2026-04/5508a9df8981f587c73dbfaf9f577f142e22bbb1/1Q26ManagementReport.pdf",
+          "published_date": "2026-04-16",
+          "retrieved_at": "2026-10-17T11:31:04Z",
+          "sha256": "4878487acab931ea06635a8bb97cbb9dcf14e2140d4c480667298ca1c43e8bdc",
+          "byte_size": 4653875,
+          "lineage_id": "TSM-1Q26-MR"
+        }
+      ],
+      "claims": [
+        {
+          "id": "TSM-Q-GUIDANCE",
+          "document_id": "TSM-3Q26-ER",
+          "locator": "Business outlook for fourth quarter 2026 (first bullet)",
+          "passage": "Revenue is expected to be between US$52.3 billion and US$54.3 billion",
+          "metric": "REVENUE",
+          "assertion_kind": "COMPANY_GUIDANCE",
+          "currency": "USD",
+          "unit_multiplier": 1,
+          "amount": null,
+          "low": 52300000000.0,
+          "high": 54300000000.0,
+          "stated_point": null,
+          "original_representation": "between US$52.3 billion and US$54.3 billion",
+          "scope": "COMPANY",
+          "scope_label": "全公司",
+          "fiscal_label": "4Q26",
+          "period_kind": "QUARTER",
+          "period_start": "2026-10-01",
+          "period_end": "2026-12-31",
+          "accounting_basis": "IFRS"
+        }
+      ],
+      "reported_quarters": [
+        {
+          "fiscal_label": "4Q25",
+          "start": "2025-10-01",
+          "end": "2025-12-31",
+          "revenue": 33730000000.0,
+          "currency": "USD",
+          "scope": "COMPANY",
+          "accounting_basis": "IFRS",
+          "document_id": "TSM-1Q26-MR",
+          "locator": "Summary table, Net Revenue (US$ billions), 4Q25 column: 33.73 (TIFRS, consolidated)"
+        },
+        {
+          "fiscal_label": "1Q26",
+          "start": "2026-01-01",
+          "end": "2026-03-31",
+          "revenue": 35900000000.0,
+          "currency": "USD",
+          "scope": "COMPANY",
+          "accounting_basis": "IFRS",
+          "document_id": "TSM-1Q26-MR",
+          "locator": "Summary table, Net Revenue (US$ billions), 1Q26 column: 35.90 (TIFRS, consolidated)"
+        },
+        {
+          "fiscal_label": "2Q26",
+          "start": "2026-04-01",
+          "end": "2026-06-30",
+          "revenue": 40200000000.0,
+          "currency": "USD",
+          "scope": "COMPANY",
+          "accounting_basis": "IFRS",
+          "document_id": "TSM-3Q26-MR",
+          "locator": "Summary table, Net Revenue (US$ billions), 2Q26 column: 40.20 (TIFRS, consolidated)"
+        },
+        {
+          "fiscal_label": "3Q26",
+          "start": "2026-07-01",
+          "end": "2026-09-30",
+          "revenue": 46720000000.0,
+          "currency": "USD",
+          "scope": "COMPANY",
+          "accounting_basis": "IFRS",
+          "document_id": "TSM-3Q26-MR",
+          "locator": "Summary table, Net Revenue (US$ billions), 3Q26 column: 46.72 (TIFRS, consolidated)"
+        }
+      ],
+      "forward_intervals": [
+        {
+          "fiscal_label": "4Q26",
+          "start": "2026-10-01",
+          "end": "2026-12-31",
+          "calendar_document_id": "TSM-3Q26-ER",
+          "calendar_locator": "TSMC today announced consolidated revenue ... for the third quarter ended September 30, 2026 (calendar quarters)"
+        },
+        {
+          "fiscal_label": "1Q27",
+          "start": "2027-01-01",
+          "end": "2027-03-31",
+          "calendar_document_id": "TSM-3Q26-ER",
+          "calendar_locator": "TSMC today announced consolidated revenue ... for the third quarter ended September 30, 2026 (calendar quarters)"
+        },
+        {
+          "fiscal_label": "2Q27",
+          "start": "2027-04-01",
+          "end": "2027-06-30",
+          "calendar_document_id": "TSM-3Q26-ER",
+          "calendar_locator": "TSMC today announced consolidated revenue ... for the third quarter ended September 30, 2026 (calendar quarters)"
+        },
+        {
+          "fiscal_label": "3Q27",
+          "start": "2027-07-01",
+          "end": "2027-09-30",
+          "calendar_document_id": "TSM-3Q26-ER",
+          "calendar_locator": "TSMC today announced consolidated revenue ... for the third quarter ended September 30, 2026 (calendar quarters)"
+        }
+      ],
+      "fy_reconciliation": null,
+      "latest_release_check": {
+        "issuer": "TSM",
+        "checked_at": "2026-10-23T12:00:00Z",
+        "status": "OK",
+        "guidance_document_id": "TSM-3Q26-ER",
+        "guidance_published_date": "2026-10-15",
+        "anchor_end": "2026-09-30",
+        "coverage": "SEC_WIRE_IR",
+        "channels": [
+          {
+            "kind": "SEC_SUBMISSIONS",
+            "url": "https://data.sec.gov/submissions/CIK0001046179.json",
+            "status": "OK",
+            "checked_through": "2026-10-23",
+            "complete": true
+          },
+          {
+            "kind": "WIRE_PRESS_RELEASES",
+            "url": "https://api.nasdaq.com/api/news/topic/press_release?q=symbol:tsm|assetclass:stocks",
+            "status": "OK",
+            "checked_through": "2026-10-23",
+            "complete": true
+          },
+          {
+            "kind": "ISSUER_IR",
+            "url": "https://pr.tsmc.com/english/latest-news",
+            "status": "OK",
+            "checked_through": "2026-10-23",
+            "complete": true
+          }
+        ],
+        "later_documents": [],
+        "digest": "9bcd34247ffa5f69f876e8d1c02cb4ff9a33e312f106ddcb8378da1803db6227"
+      },
+      "reviewed_later_documents": [
+        {
+          "id": "0001046179-26-000726",
+          "disposition": "REVIEWED_IRRELEVANT",
+          "reviewed_at": "2026-10-23T11:39:56Z",
+          "note": "Oct15 6-K furnishes exact reviewed Q3 release/reference and earnings presentation; Q4 revenue guidance USD52.3..54.3B matches reference; independently reviewed: CODEX-FRESHNESS-SOURCE-REVIEW-20261023.json"
+        },
+        {
+          "id": "0001046179-26-000728",
+          "disposition": "REVIEWED_IRRELEVANT",
+          "reviewed_at": "2026-10-23T11:39:56Z",
+          "note": "Oct22 month-end ownership/pledges/assets/capital/bonds/cancellation report for September; no results or revenue guidance; independently reviewed: CODEX-FRESHNESS-SOURCE-REVIEW-20261023.json"
+        }
+      ],
+      "consensus": null,
+      "order_evidence": {
+        "registry_status": "EMPTY",
+        "registry_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "cutoff": "2026-10-23T12:00:00Z",
+        "url_prefixes": [],
+        "documents": [],
+        "claims": [],
+        "selection": {
+          "status": "OK",
+          "active": [],
+          "current_stock": null,
+          "schedule": null,
+          "filing": null,
+          "excluded": []
+        },
+        "periodic": null,
+        "stock_orders": null
+      },
+      "release_channels": {
+        "sec_cik": 1046179,
+        "wire_symbol": "TSM",
+        "wire_names": [
+          "TSMC",
+          "Taiwan Semiconductor"
+        ],
+        "ir": {
+          "kind": "TSMC_NEWS_HTML",
+          "url": "https://pr.tsmc.com/english/latest-news"
+        },
+        "ir_guidance_release_title": "TSMC Reports Third Quarter EPS of NT$29.43"
+      },
+      "consensus_fault": null,
+      "release_check_fault": null,
+      "approval_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "approval_approved_at": "2026-10-23T11:59:00Z",
+      "approval_decisions": [
+        {
+          "kind": "CLAIM",
+          "ref": "TSM-Q-GUIDANCE",
+          "decision": "VERBATIM_IN_SOURCE",
+          "reviewed_at": "2026-10-23T11:59:00Z"
+        },
+        {
+          "kind": "ACTUAL",
+          "ref": "2025-12-31",
+          "decision": "VALUE_IN_SOURCE",
+          "reviewed_at": "2026-10-23T11:59:00Z"
+        },
+        {
+          "kind": "ACTUAL",
+          "ref": "2026-03-31",
+          "decision": "VALUE_IN_SOURCE",
+          "reviewed_at": "2026-10-23T11:59:00Z"
+        },
+        {
+          "kind": "ACTUAL",
+          "ref": "2026-06-30",
+          "decision": "VALUE_IN_SOURCE",
+          "reviewed_at": "2026-10-23T11:59:00Z"
+        },
+        {
+          "kind": "ACTUAL",
+          "ref": "2026-09-30",
+          "decision": "VALUE_IN_SOURCE",
+          "reviewed_at": "2026-10-23T11:59:00Z"
+        },
+        {
+          "kind": "CALENDAR",
+          "ref": "calendar",
+          "decision": "RULE_QUOTED",
+          "reviewed_at": "2026-10-23T11:59:00Z"
+        },
+        {
+          "kind": "ROUTING",
+          "ref": "routing",
+          "decision": "RULE_QUOTED",
+          "reviewed_at": "2026-10-23T11:59:00Z"
+        }
+      ]
+    }
+  }
+}

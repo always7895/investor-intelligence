@@ -1249,7 +1249,7 @@ function checkV3Evidence(value: any, ev: any, issuer: string, reportDay: string,
       // The official IR channel (Astra W1 ruling, astra-ir-coverage): a reviewed feed kind and its https base
       // (<=400 chars), with the reviewed guidance-release title (<=200) required alongside it.
       && (rc.ir === undefined || rc.ir === null || (isObject(rc.ir)
-        && (rc.ir.kind === "Q4_PRESS_RELEASES" || rc.ir.kind === "RSS" || rc.ir.kind === "NEWSROOM_HTML")
+        && (rc.ir.kind === "Q4_PRESS_RELEASES" || rc.ir.kind === "RSS" || rc.ir.kind === "NEWSROOM_HTML" || rc.ir.kind === "TSMC_NEWS_HTML")
         && typeof rc.ir.url === "string" && rc.ir.url.startsWith("https://") && rc.ir.url.length > 8 && rc.ir.url.length <= 400))
       && (rc.ir === undefined || rc.ir === null || typeof rc.ir_guidance_release_title === "string"
         && rc.ir_guidance_release_title.length > 0 && rc.ir_guidance_release_title.length <= 200)), "V3_RELEASE_CHANNELS");
@@ -1438,7 +1438,7 @@ function checkV3Evidence(value: any, ev: any, issuer: string, reportDay: string,
   // reviewed IR channel the company-guidance path is suspended with the distinct IR_COVERAGE_MISSING diagnostic
   // (never NOT_DISCLOSED, zero or consensus), while order recognition stays independent.
   const irSpec = rc && isObject(rc) && isObject(rc.ir)
-    && (rc.ir.kind === "Q4_PRESS_RELEASES" || rc.ir.kind === "RSS" || rc.ir.kind === "NEWSROOM_HTML")
+    && (rc.ir.kind === "Q4_PRESS_RELEASES" || rc.ir.kind === "RSS" || rc.ir.kind === "NEWSROOM_HTML" || rc.ir.kind === "TSMC_NEWS_HTML")
     && typeof rc.ir.url === "string" ? rc.ir : null;
   let irHost: string | null = null;
   if (irSpec) {
@@ -2131,7 +2131,7 @@ function parseV3(value: any, reportDay: string, issuer: string, generatedAt: str
       const rc = isObject(ev.release_channels) ? ev.release_channels : null;
       // The official IR host (Astra W1 ruling): when the record carries the reviewed IR wiring, the recompute binds
       // the ISSUER_IR channel to that host and requires it in the channel set.
-      const irUrl = rc && isObject(rc.ir) && (rc.ir.kind === "Q4_PRESS_RELEASES" || rc.ir.kind === "RSS" || rc.ir.kind === "NEWSROOM_HTML")
+      const irUrl = rc && isObject(rc.ir) && (rc.ir.kind === "Q4_PRESS_RELEASES" || rc.ir.kind === "RSS" || rc.ir.kind === "NEWSROOM_HTML" || rc.ir.kind === "TSMC_NEWS_HTML")
         && typeof rc.ir.url === "string" ? rc.ir.url : null;
       let irHostBind: string | undefined;
       if (irUrl) { try { irHostBind = new URL(irUrl).host; } catch { irHostBind = undefined; } }
@@ -2608,7 +2608,7 @@ export function parseOrderForecastV3Machine(raw: unknown, reportDay: string, iss
       const rc = record.release_channels;
       if (!isObject(rc) || !isObject(rc.ir) || receipt.coverage !== "SEC_WIRE_IR") return "FRESHNESS_UNVERIFIED";
       let host: string; try { host = new URL(rc.ir.url).host; } catch { return "FRESHNESS_UNVERIFIED"; }
-      if (!["Q4_PRESS_RELEASES", "RSS", "NEWSROOM_HTML"].includes(rc.ir.kind)) return "FRESHNESS_UNVERIFIED";
+      if (!["Q4_PRESS_RELEASES", "RSS", "NEWSROOM_HTML", "TSMC_NEWS_HTML"].includes(rc.ir.kind)) return "FRESHNESS_UNVERIFIED";
       const doc = record.documents.find((d: any) => d.id === receipt.guidance_document_id);
       if (!doc) return "FRESHNESS_UNVERIFIED";
       return recomputeReceiptStatus(receipt, [], cutoff.slice(0,10), doc.published_date, Date.parse(cutoff), rc.sec_cik, rc.wire_symbol, host);
