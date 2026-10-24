@@ -96,7 +96,7 @@ interface OrdersFigure {
   guidance?: { kind?: string | null; year?: number | null; amount: number; previous?: number | null } | null;
 }
 interface Consensus {
-  revenue_fy0: number | null; revenue_fy1: number | null; revenue_growth: number; revenue_analysts: number | null;
+  revenue_fy0: number | null; revenue_fy1: number | null; revenue_growth: number | null; revenue_analysts: number | null;
   eps_fy0: number | null; eps_fy1: number | null; eps_growth: number | null; eps_analysts: number | null;
   target_mean: number | null; target_analysts: number | null; price: number | null; target_upside: number | null;
   source: string | null; source_url: string; asof: string | null;
@@ -303,7 +303,22 @@ function validRevenueCheck(raw: any): boolean {
     && raw.currency === rule.currency && optNum(raw.revenue_yoy) && optNum(raw.cumulative_yoy) && (num(raw.revenue_yoy) || num(raw.cumulative_yoy));
 }
 
-function validOutlook(raw: any): boolean {
+function validPartialAnalyst(c: any, generatedAt: string): boolean {
+  const count = (n: unknown) => typeof n === "number" && Number.isInteger(n) && n > 0;
+  const finiteOrNull = (n: number) => Number.isFinite(n) ? n : null;
+  const same = (actual: unknown, expected: number | null) => expected === null ? actual == null : num(actual) && Math.abs(actual - expected) <= 1e-10;
+  if (!calendarDay(c.asof) || c.asof !== generatedAt.slice(0, 10)
+    || !/^https:\/\/finance\.yahoo\.com\/quote\/[A-Za-z0-9.\-]+\/analysis$/.test(c.source_url)) return false;
+  const target = num(c.target_mean) && c.target_mean > 0 && count(c.target_analysts);
+  const eps = num(c.eps_fy1) && count(c.eps_analysts);
+  if ((!target && (c.target_mean != null || c.target_upside != null || c.target_analysts != null))
+    || (!eps && (c.eps_fy1 != null || c.eps_growth != null || c.eps_analysts != null))) return false;
+  return (target || eps)
+    && same(c.target_upside, target && num(c.price) && c.price > 0 ? finiteOrNull(c.target_mean / c.price - 1) : null)
+    && same(c.eps_growth, eps && num(c.eps_fy0) && c.eps_fy0 > 0 && c.eps_fy1 > 0 ? finiteOrNull(c.eps_fy1 / c.eps_fy0 - 1) : null);
+}
+
+function validOutlook(raw: any, generatedAt: string): boolean {
   if (raw === undefined || raw === null) return true;
   if (typeof raw !== "object" || !Array.isArray(raw.scenarios) || raw.scenarios.length > 3
     || !raw.scenarios.every((row: any) => row && SCENARIOS.has(row.kind) && num(row.change))) return false;
@@ -311,13 +326,16 @@ function validOutlook(raw: any): boolean {
   const ordersOk = o === null || o === undefined
     || (o.kind === "NOT_DISCLOSED" && optStr(o.reason, 200))
     || ((o.kind === "RPO" || o.kind === "BACKLOG") && num(o.amount) && o.amount > 0 && https(o.source_url) && optStr(o.currency, 8)
-      && optStr(o.as_of, 12) && optNum(o.yoy) && optStr(o.scope, 40) && optStr(o.source, 120)
+      && calendarDay(o.as_of) && o.as_of <= generatedAt.slice(0, 10) && optNum(o.yoy) && optStr(o.scope, 40) && optStr(o.source, 120)
       && (o.intake_quarter === undefined || o.intake_quarter === null || (num(o.intake_quarter.amount) && optNum(o.intake_quarter.yoy)))
       && (o.guidance === undefined || o.guidance === null || (num(o.guidance.amount) && optNum(o.guidance.year) && optNum(o.guidance.previous))));
   const c = raw.consensus;
-  const consensusOk = c === null || c === undefined || (typeof c === "object" && num(c.revenue_growth) && https(c.source_url)
+  const consensusOk = c === null || c === undefined || (typeof c === "object" && optNum(c.revenue_growth) && https(c.source_url)
+    && (num(c.revenue_growth) || validPartialAnalyst(c, generatedAt))
     && ["revenue_fy0", "revenue_fy1", "revenue_analysts", "eps_fy0", "eps_fy1", "eps_growth", "eps_analysts", "target_mean",
       "target_analysts", "price", "target_upside"].every(key => optNum(c[key])) && optStr(c.source, 80) && optStr(c.asof, 12));
+  if (c && c.revenue_growth == null && raw.scenarios.some((row: any) =>
+    row.change !== c[({ REVENUE_CONSTANT_PS: "revenue_growth", EPS_CONSTANT_PE: "eps_growth", ANALYST_TARGET: "target_upside" } as Record<string, string>)[row.kind]!])) return false;
   const s = raw.consensus_second;
   const secondOk = s === null || s === undefined || (typeof s === "object" && https(s.source_url)
     && ["target_mean", "target_upside", "target_analysts", "eps_fy0", "eps_fy1", "eps_growth", "eps_analysts"].every(key => optNum(s[key]))
@@ -329,7 +347,7 @@ function validEntry(raw: any, generatedAt: string): raw is BottleneckEntry {
   return raw && Number.isInteger(raw.rank) && str(raw.symbol, 16) && str(raw.name, 160) && str(raw.layer, 40)
     && (raw.name_zh === undefined || raw.name_zh === null || (str(raw.name_zh, 40) && ZH_SOURCES.has(String(raw.name_zh_source))))
     && (raw.archetype === "EXPLOSION" || raw.archetype === "COMPOUNDER") && num(raw.score) && str(raw.role, 200)
-    && optStr(raw.role_zh, 200) && validOutlook(raw.outlook)
+    && optStr(raw.role_zh, 200) && validOutlook(raw.outlook, generatedAt)
     && raw.role_source && https(raw.role_source.url) && str(raw.role_source.date, 20)
     && raw.parts && ["layer_heat", "capture", "lead", "confirmation", "size", "penalty"].every(key => num(raw.parts[key]))
     && (raw.fundamentals === null || (raw.fundamentals && str(raw.fundamentals.source, 80) && https(raw.fundamentals.source_url)
@@ -482,12 +500,18 @@ const MIN_ANALYSTS = 3;
 const SCENARIO_NOTE = "分析師共識情境＝本財年→下一財年共識成長，套用目前股價與估值倍數的算術推算；市場若已反映部分成長，實際漲幅較小。非預測、非投資建議。";
 
 /** "目前訂單": SEC remaining performance obligations or the company's own order backlog, else why none is shown. */
-function currentOrders(outlook: Outlook | null | undefined, filer: boolean): string {
+const ORDER_STOCK_MAX_AGE_DAYS = 200; // same source-state ceiling as order_forecast.py
+function ordersAreCurrent(o: Outlook["orders"], reportDay: string): boolean {
+  return !!o && o.kind !== "NOT_DISCLOSED" && calendarDay(o.as_of)
+    && daysBetween(o.as_of, reportDay) >= 0 && daysBetween(o.as_of, reportDay) <= ORDER_STOCK_MAX_AGE_DAYS;
+}
+function currentOrders(outlook: Outlook | null | undefined, filer: boolean, reportDay: string): string {
   const o = outlook?.orders;
   if (!o) return filer ? "目前訂單：最新 10-Q／10-K 未申報剩餘履約義務（RPO）。" : "目前訂單：非 SEC 定期申報公司，未取得公司公布的在手訂單。";
   if (o.kind === "NOT_DISCLOSED") return `目前訂單：未揭露${o.reason ? `（${o.reason}）` : ""}。`;
   const label = o.kind === "RPO" ? "剩餘履約義務（RPO，已簽約未認列）" : `在手訂單${o.scope ? `（${o.scope}）` : ""}`;
   const yoy = o.yoy === null || o.yoy === undefined ? "" : `，年增 ${pct(o.yoy, 0)}`;
+  if (!ordersAreCurrent(o, reportDay)) return `歷史披露（${day(o.as_of)}；已過期，不作目前訂單／預測）：${label} ${money(o.amount, o.currency)}。`;
   return `目前訂單：${label} ${money(o.amount, o.currency)}（${day(o.as_of)}${yoy}）。`;
 }
 
@@ -501,10 +525,10 @@ function newOrderGuidance(orders: OrdersFigure | null | undefined): NonNullable<
 
 /** "未來預估": the company's own order guidance and new orders where published, and the analyst consensus revenue
  * (an estimate of revenue, not of orders). */
-function futureOutlook(outlook: Outlook | null | undefined): string[] {
+function futureOutlook(outlook: Outlook | null | undefined, reportDay: string): string[] {
   const lines: string[] = [];
   const o = outlook?.orders;
-  if (o && o.kind !== "NOT_DISCLOSED") {
+  if (o && o.kind !== "NOT_DISCLOSED" && ordersAreCurrent(o, reportDay)) {
     if (o.intake_quarter) lines.push(`最新一季新接訂單 ${money(o.intake_quarter.amount, o.currency)}${o.intake_quarter.yoy === null || o.intake_quarter.yoy === undefined ? "" : `（年增 ${pct(o.intake_quarter.yoy, 0)}）`}。`);
     const guidance = newOrderGuidance(o);
     if (guidance) lines.push(`公司指引：${guidance.year} 年新接訂單 ${money(guidance.amount, o.currency)}${num(guidance.previous) && guidance.previous > 0 ? `（原 ${money(guidance.previous, o.currency)}）` : ""}。`);
@@ -520,19 +544,41 @@ function futureOutlook(outlook: Outlook | null | undefined): string[] {
       lines.push(`兩家來源目標價差距大（Yahoo ${pct(yahooTarget, 0)}／Nasdaq ${pct(s.target_upside, 0)}），請審慎參考。`);
     }
   }
-  if (!c) lines.push("分析師營收共識：未取得。");
+  if (!c || c.revenue_growth == null) {
+    lines.push("分析師營收共識：未取得。");
+    if (c?.eps_fy1 != null) lines.push(`分析師 EPS 共識（非訂單）：下一財年 ${c.eps_fy1}（${c.eps_analysts} 位）${c.eps_growth != null ? `，成長 ${pct(c.eps_growth, 1)}` : "；未具備可比正值，未推算成長"}。`);
+    if (c?.target_mean != null) lines.push(`分析師平均目標價（非訂單）：${c.target_mean}（${c.target_analysts} 位）。`);
+  }
   else lines.push(`分析師營收共識（非訂單）：下一財年營收 ${pct(c.revenue_growth, 1)}${c.revenue_analysts ? `（${c.revenue_analysts} 位）` : ""}`
     + `${c.eps_growth === null || c.eps_growth === undefined ? "" : `；EPS ${pct(c.eps_growth, 1)}${c.eps_analysts ? `（${c.eps_analysts} 位）` : ""}`}。`);
   return lines;
 }
 
+function scenarioCount(outlook: Outlook | null | undefined, kind: ScenarioKind): number {
+  const c = outlook?.consensus;
+  return (kind === "ANALYST_TARGET" ? c?.target_analysts : kind === "EPS_CONSTANT_PE" ? c?.eps_analysts : c?.revenue_analysts) ?? 0;
+}
+function scenarioSample(outlook: Outlook | null | undefined, kind: ScenarioKind): string {
+  const count = scenarioCount(outlook, kind);
+  return count < MIN_ANALYSTS ? `僅 ${count} 位分析師，參考性低（樣本不足）` : `${count} 位分析師`;
+}
+function compactScenarioText(outlook: Outlook | null | undefined): string {
+  const all = outlook?.scenarios ?? [];
+  const rows = all.filter(row => scenarioCount(outlook, row.kind) >= MIN_ANALYSTS);
+  return "分析師共識情境（非訂單）：" + (rows.length ? rows.map(row => `${SCENARIO_LABEL[row.kind]} ${pct(row.change, 0)}`).join("、")
+    : all.length ? "分析師樣本不足，不列推算。" : "無可計算的正值基礎或分析師共識，不列推算。");
+}
+
 /** Price change if the consensus is realized at unchanged valuation multiples, and the mean analyst target. */
 function scenarioBlocks(outlook: Outlook | null | undefined, compact: boolean): unknown[] {
   const c = outlook?.consensus;
-  const rows = outlook?.scenarios ?? [];
-  if (!c || rows.length === 0) return [uiText("分析師共識情境（非訂單）：無分析師共識可推算。", "xs", T.ink)];
-  const analysts = c.revenue_analysts ?? 0;
-  if (compact && analysts < MIN_ANALYSTS) return [uiText(`分析師共識情境（非訂單）：分析師樣本不足（${analysts} 位），不列推算。`, "xs", T.ink)];
+  const allRows = outlook?.scenarios ?? [];
+  const countFor = (kind: ScenarioKind) => (kind === "ANALYST_TARGET" ? c?.target_analysts : kind === "EPS_CONSTANT_PE" ? c?.eps_analysts : c?.revenue_analysts) ?? 0;
+  const rows = compact ? allRows.filter(row => countFor(row.kind) >= MIN_ANALYSTS) : allRows;
+  if (!c || allRows.length === 0) return [uiText("分析師共識情境（非訂單）：無分析師共識可推算。", "xs", T.ink)];
+  const analystsFor = (kind: ScenarioKind) => (kind === "ANALYST_TARGET" ? c.target_analysts : kind === "EPS_CONSTANT_PE" ? c.eps_analysts : c.revenue_analysts) ?? 0;
+  const analysts = Math.min(...allRows.map(row => analystsFor(row.kind)));
+  if (compact && rows.length === 0) return [uiText(`分析師共識情境（非訂單）：分析師樣本不足（${analysts} 位），不列推算。`, "xs", T.ink)];
   const sub = (kind: ScenarioKind) => kind === "ANALYST_TARGET" ? (c.target_analysts ? `${c.target_analysts} 位` : undefined)
     : kind === "EPS_CONSTANT_PE" ? (c.eps_analysts ? `${c.eps_analysts} 位` : undefined) : (c.revenue_analysts ? `${c.revenue_analysts} 位` : undefined);
   return [
@@ -646,6 +692,7 @@ export function outlookTiles(doc: BottleneckV3, entry: BottleneckEntry): [string
   const secFiler = ordersOf(doc, entry.symbol).filer || entry.fundamentals?.source === "SEC EDGAR XBRL companyfacts";
   const orders: [string, string, string] = !o ? ["現有訂單", "未揭露", secFiler ? "未申報 RPO" : "公司未公布"]
     : o.kind === "NOT_DISCLOSED" ? ["現有訂單", "未揭露", "公司未公布"]
+    : !ordersAreCurrent(o, doc.generated_at.slice(0, 10)) ? ["歷史披露（已過期）", money(o.amount, o.currency), `${day(o.as_of)}；不作目前訂單／預測`]
     : ["現有訂單", money(o.amount, o.currency), `${o.kind === "RPO" ? "RPO" : "在手"} ${day(o.as_of)}${o.yoy === null || o.yoy === undefined ? "" : ` 年增${pct(o.yoy, 0)}`}`];
   return [orders, ...proxyTile(doc, entry)];
 }
@@ -659,7 +706,7 @@ const PROXY_MAX_AGE_DAYS = 200;
 const PROXY_YOY_FAULT = 3;
 export function proxyTile(doc: BottleneckV3, entry: BottleneckEntry): [string, string, string][] {
   const o = entry.outlook?.orders;
-  if (o && o.kind !== "NOT_DISCLOSED") return [];
+  if (o && o.kind !== "NOT_DISCLOSED" && ordersAreCurrent(o, doc.generated_at.slice(0, 10))) return [];
   const fund = entry.fundamentals;
   const reportDay = doc.generated_at.slice(0, 10);
   const age = fund && /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(fund.quarter_end ?? "")
@@ -804,6 +851,7 @@ function companyBubble(doc: BottleneckV3, entry: BottleneckEntry, lean = false) 
       kvRow("6個月報酬", pct(entry.market.ret_6m, 0)),
       kvRow("2年年化", long.value, { sub: long.sub }),
       ...forecastRows(bullets),
+      ...(entry.outlook?.consensus && entry.outlook.consensus.revenue_growth == null ? scenarioBlocks(entry.outlook, true) : []),
       ...evidenceNotes,
     ], { paddingAll: "lg", spacing: "sm" }),
     footer: uiBox([
@@ -829,7 +877,7 @@ function longTermText(market: Market): string {
 
 export function buildBottleneckTop20Messages(doc: BottleneckV3, style: "flex" | "text"): LineOutboundMessage[] {
   if (style === "text") {
-    const lines = doc.top.map(entry => `${entry.rank}. ${entry.symbol} ${chineseName(entry)}（${entry.name}）｜${layerName(doc, entry.layer)}｜${entry.score.toFixed(1)}分｜營收年增 ${pct(entry.fundamentals?.revenue_yoy ?? null, 0)}｜6個月 ${pct(entry.market.ret_6m, 0)}｜2年年化 ${longTermText(entry.market)}｜${forecastText(forecastOf(doc, entry), money)}`);
+    const lines = doc.top.map(entry => `${entry.rank}. ${entry.symbol} ${chineseName(entry)}（${entry.name}）｜${layerName(doc, entry.layer)}｜${entry.score.toFixed(1)}分｜營收年增 ${pct(entry.fundamentals?.revenue_yoy ?? null, 0)}｜6個月 ${pct(entry.market.ret_6m, 0)}｜2年年化 ${longTermText(entry.market)}｜${currentOrders(entry.outlook, ordersOf(doc, entry.symbol).filer || entry.fundamentals?.source === "SEC EDGAR XBRL companyfacts", doc.generated_at.slice(0, 10))}｜${forecastText(forecastOf(doc, entry), money)}${entry.outlook?.consensus?.revenue_growth == null && entry.outlook?.consensus ? `｜${compactScenarioText(entry.outlook)}` : ""}`);
     // Paginated into at most five messages of whole entries (never an entry cut away by a length limit).
     const blocks = [`瓶頸爆發 TOP20（v3，產生 ${doc.generated_at}）`,
       "排序：層級熱度＋公司捕獲＋社群與機構線索＋市場確認＋爆發性；2年年化報酬為負者排除。分拆、恢復交易、IPO 或重整新股不足2年者，改用已核實正常交易首日以來年化（至少1年，非2年）；沿革未核實且價格不足2年者不列入。非投資建議。",
@@ -914,7 +962,6 @@ function detailBubbles(doc: BottleneckV3, entry: BottleneckEntry) {
   const floorNote = orders ? `${orders.form}（${orders.filed}）揭露的認列時程，RPO 基準日 ${orders.as_of}；＝該期間將認列之已簽約金額÷目前營收水準−1。僅指營收，不是股價下限；未計新訂單、取消或遞延。`
     : !filer ? "非 SEC 定期申報公司：無 RPO 認列時程，不推估訂單實現金額" : "最新財報未揭露認列時程，不推估6個月／1年／2年實現金額";
   const rows = outlook?.scenarios ?? [];
-  const analysts = outlook?.consensus?.revenue_analysts ?? 0;
   // The later-disclosure notices live on the evidence page only (once each); this page keeps the headline rows.
   const bullets = forecastBullets(outlookForecast(doc, entry).filter(([text]) => !/期後訂單消息|已由.*更新/.test(text)), 10);
   const page2 = page("訂單與情境", [
@@ -925,18 +972,17 @@ function detailBubbles(doc: BottleneckV3, entry: BottleneckEntry) {
     ...floorRows,
     bulletRow(floorNote, { color: T.subtle }),
     ...(bullets.length > 0 ? [divider(), ...forecastRows(bullets)] : []),
-    ...(rows.length > 0 && outlook?.consensus ? [divider(), ...rows.map(row => kvRow(SCENARIO_LABEL[row.kind], pct(row.change, 0))),
-      ...(analysts < MIN_ANALYSTS ? [bulletRow(`僅 ${analysts} 位分析師，參考性低`, { color: T.negative })] : [])]
+    ...(rows.length > 0 && outlook?.consensus ? [divider(), ...rows.map(row => kvRow(SCENARIO_LABEL[row.kind], pct(row.change, 0), { sub: scenarioSample(outlook, row.kind) }))]
       : [bulletRow("分析師共識情境（非訂單）：無分析師共識可推算")]),
   ], ["分析師共識情境為算術推算，非訂單、非目標價、非預測", ...(outlook?.consensus ? [`共識 ${sourceZh(outlook.consensus.source)}，${day(outlook.consensus.asof)}`] : [])]);
 
   // Evidence page: the complete order lines (windows, inputs, assumptions, later disclosures) exactly as the text edition has
   // them; nothing is cut, the page is the "details on request" half of the summary pages.
   const evidence = [
-    currentOrders(outlook, filer || fund?.source === "SEC EDGAR XBRL companyfacts"),
+    currentOrders(outlook, filer || fund?.source === "SEC EDGAR XBRL companyfacts", doc.generated_at.slice(0, 10)),
     ...proxyDetailLines(doc, entry),
     ...forecastLines(forecastOf(doc, entry), money, historyOf(doc, entry)),
-    ...futureOutlook(outlook),
+    ...futureOutlook(outlook, doc.generated_at.slice(0, 10)),
   ];
   const page3 = page("訂單依據", [...evidence.map(line => bulletRow(line)), ...(outlook?.orders && outlook.orders.kind !== "NOT_DISCLOSED"
     ? [bulletRow(`訂單來源：${sourceZh(outlook.orders.source)}：${outlook.orders.source_url}`.slice(0, 220), { size: "xxs", color: T.muted })] : []),
@@ -963,8 +1009,7 @@ function detailText(doc: BottleneckV3, entry: BottleneckEntry): string {
   const fund = entry.fundamentals;
   const long = longTerm(entry.market);
   const outlook = entry.outlook;
-  const scenarios = (outlook?.scenarios ?? []).map(row => `${SCENARIO_LABEL[row.kind]} ${pct(row.change, 0)}`).join("、");
-  const analysts = outlook?.consensus?.revenue_analysts ?? 0;
+  const scenarios = (outlook?.scenarios ?? []).map(row => `${SCENARIO_LABEL[row.kind]} ${pct(row.change, 0)}（${scenarioSample(outlook, row.kind)}）`).join("、");
   const official = officialPrevious(fund);
   return [
     `【瓶頸詳情｜#${entry.rank} ${entry.symbol} ${chineseName(entry)}（${entry.name}）】`,
@@ -975,12 +1020,12 @@ function detailText(doc: BottleneckV3, entry: BottleneckEntry): string {
     `股價（${sourceZh(entry.market.source)}，至 ${entry.market.asof}）：6個月 ${pct(entry.market.ret_6m)}、2年年化 ${long.value}${long.sub ? `（${long.sub}）` : ""}\n來源：${entry.market.source_url}`,
     ...(long.event ? [`上市沿革：${long.event}\n沿革來源：${long.sources.join("；")}`] : []),
     ...(entry.market.cross_check ? [exchangeCheck(entry.market.cross_check)] : []),
-    currentOrders(outlook, ordersOf(doc, entry.symbol).filer || fund?.source === "SEC EDGAR XBRL companyfacts")
+    currentOrders(outlook, ordersOf(doc, entry.symbol).filer || fund?.source === "SEC EDGAR XBRL companyfacts", doc.generated_at.slice(0, 10))
       + (outlook?.orders && outlook.orders.kind !== "NOT_DISCLOSED" ? `\n來源：${outlook.orders.source_url}` : ""),
     ...proxyDetailLines(doc, entry),
     ...forecastLines(forecastOf(doc, entry), money, historyOf(doc, entry)),
-    ...futureOutlook(outlook),
-    scenarios ? `分析師共識情境（非訂單）：${scenarios}${analysts < MIN_ANALYSTS ? `（僅 ${analysts} 位分析師，參考性低）` : ""}${outlook?.consensus ? `\n來源：${outlook.consensus.source_url}` : ""}` : "分析師共識情境（非訂單）：無分析師共識可推算。",
+    ...futureOutlook(outlook, doc.generated_at.slice(0, 10)),
+    scenarios ? `分析師共識情境（非訂單）：${scenarios}${outlook?.consensus ? `\n來源：${outlook.consensus.source_url}` : ""}` : "分析師共識情境（非訂單）：無分析師共識可推算。",
     `${SCENARIO_NOTE}不自動下單。`,
   ].join("\n");
 }

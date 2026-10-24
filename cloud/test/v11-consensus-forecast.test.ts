@@ -198,21 +198,40 @@ describe("analyst-consensus revenue route: an unknown or malformed consensus blo
   });
 });
 
-describe("analyst-consensus revenue route: today's sealed objects read exactly as before", () => {
+describe("analyst-consensus revenue route: legacy views plus reviewed MU contract reference", () => {
   // The rendering of every sealed outlook the earlier producers made (the reviewed golden, the real-data proofs and the
-  // producer probes) is byte-identical to the reader before this change: the hash was taken from that reader.
+  // producer probes) remains byte-identical to the original reader after removing only the explicitly asserted MU
+  // contract-reference addition. The aggregate hash still binds every original number, window, label and source.
   const golden = JSON.parse(readFileSync("../tests/fixtures/v213-orders-v3-golden-sealed.json", "utf-8"));
   const proofRpo = JSON.parse(readFileSync("../tests/fixtures/v213-orders-v3-proof-rpo.json", "utf-8"));
   const proofStates = JSON.parse(readFileSync("../tests/fixtures/v213-orders-v3-proof-states.json", "utf-8"));
   const probes = JSON.parse(readFileSync("../tests/fixtures/v213-orders-v3-probes.json", "utf-8"));
 
-  it("renders every earlier sealed outlook byte-identically and never as the consensus basis", () => {
+  it("preserves the legacy projection and only appends the reviewed MU reference", () => {
     const rendered: string[] = [];
     const take = (label: string, v3: any, v2: any, generatedAt: string, symbol: string) => {
       const f = parseOrderForecastV3(v3, generatedAt.slice(0, 10), symbol, generatedAt, v2);
       expect(f.revenueBasis ?? null, label).not.toBe("CONSENSUS");
       expect(f.consensusNote ?? null, label).toBeNull();
-      rendered.push(label, JSON.stringify(surfaces(f)));
+      const view = surfaces(f);
+      if (label === "proof-states MU") {
+        const headline = "期後訂單消息（不併入 RPO）：已簽策略客戶協議（SCA）RPO 約 US$100B（含 FQ3 後新簽，最低量×最低價）（2026-06-24）";
+        expect(f.supplements.map(c => c.id)).toEqual(["MU-SCA-RPO-2026-06-24"]);
+        expect(view.card.endsWith(`\n${headline}`)).toBe(true);
+        expect(view.text.endsWith(`｜${headline}`)).toBe(true);
+        view.card = view.card.slice(0, -headline.length - 1);
+        view.text = view.text.slice(0, -headline.length - 1);
+        const marker = `\n${headline}\n`;
+        const index = view.detail.indexOf(marker);
+        expect(index).toBeGreaterThan(0);
+        const added = view.detail.slice(index + 1).split("\n");
+        expect(added).toHaveLength(3);
+        expect(added[0]).toBe(headline);
+        expect(added[1]).toBe("　已簽合約；已簽 SCA（含 FQ3 後新簽；公司說明日，非資產負債表日）；截至 2026-06-24");
+        expect(added[2]).toBe(`　公司法說會講稿 2026-06-24（p.7, Strategic customer agreements）https://s25.q4cdn.com/621799436/files/doc_financials/2026/q3/Q3-FY26-Prepared-Remarks.pdf；原文：「${[...f.supplements[0]!.passage].slice(0, 160).join("")}」；本次查核 2026-09-27`);
+        view.detail = view.detail.slice(0, index);
+      }
+      rendered.push(label, JSON.stringify(view));
     };
     for (const symbol of Object.keys(golden)) take(`golden ${symbol}`, golden[symbol].order_forecast_v3, golden[symbol].order_forecast, "2026-09-28T15:00:00Z", symbol);
     for (const [name, proof] of [["proof-rpo", proofRpo], ["proof-states", proofStates]] as const) {

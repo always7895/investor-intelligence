@@ -3031,6 +3031,9 @@ function forecastCardV3(forecast: OrderForecast, money: Money, history: HistoryV
     }
   }
 
+  if (forecast.supplements?.length || forecast.superseded?.length) {
+    for (const line of supplementLines(forecast, money, false)) lines.push([line, false]);
+  }
   return lines;
 }
 
@@ -3063,6 +3066,7 @@ function forecastTextV3(forecast: OrderForecast, money: Money, history: HistoryV
       parts.push(`另列已簽約預計認列：1年期 ${money(rec.m12.amount, rec.m12.currency)}（起訖日 ${rec.m12.start}–${rec.m12.end}；不相加）`);
     }
   }
+  if (forecast.supplements?.length || forecast.superseded?.length) parts.push(...supplementLines(forecast, money, false));
   return parts.join("｜");
 }
 
@@ -3161,6 +3165,7 @@ function forecastLinesV3(forecast: OrderForecast, money: Money, history: History
     lines.push(`最新發布查核：${lrc.checked_at}；查核管道：${lrc.coverage}（${coverageText}）；狀態：${lrc.status}`);
   }
 
+  if (forecast.supplements?.length || forecast.superseded?.length) lines.push(...supplementLines(forecast, money, true));
   return lines;
 }
 
