@@ -35,7 +35,7 @@ if ($env:GITHUB_ACTIONS -eq "true") {
     if ([string]::IsNullOrWhiteSpace($runtimeName)) {
         $runtimeName = "default"
     }
-    $destination = Join-Path $runtimeRoot "portable-python-3.12.10-$runtimeName"
+    $destination = Join-Path $runtimeRoot ("portable-python-3.12.10-$runtimeName-"+[guid]::NewGuid().ToString('N'))
 
     & $bootstrapScript -DestinationPath $destination -ExportGitHubEnvironment
 

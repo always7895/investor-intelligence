@@ -50,6 +50,44 @@ function Download-VerifiedFile {
     }
 }
 
+function Assert-SafeDestination {
+    param([string]$Path)
+    $target = [IO.Path]::GetFullPath($Path).TrimEnd([char[]]'\/')
+    if ($target -notmatch '^[A-Za-z]:\\[^:\x00-\x1f]*$' -and $target -notmatch '^[A-Za-z]:$') { throw 'PORTABLE_DESTINATION_NOT_LOCAL' }
+    $checkout = Split-Path -Parent $PSScriptRoot
+    $protected = @([IO.Path]::GetPathRoot($target), $env:SystemRoot, $env:USERPROFILE, $env:ProgramFiles, ${env:ProgramFiles(x86)}, $checkout)
+    $cursor = Get-Item -LiteralPath $checkout
+    while ($null -ne $cursor) {
+        if ($cursor.Name -eq '_workspace') {
+            $protected += $cursor.Parent.FullName  # installed payload and its workspace/evidence are never runtime destinations
+            $protected += $cursor.FullName
+            $protected += (Join-Path $cursor.FullName 'audit-runtime')
+            $protected += (Join-Path $cursor.Parent.FullName '_archive')
+        }
+        $cursor = $cursor.Parent
+    }
+    foreach ($root in $protected) {
+        if ([string]::IsNullOrWhiteSpace($root)) { continue }
+        $root = [IO.Path]::GetFullPath($root).TrimEnd([char[]]'\/')
+        if ($target.Equals($root, [StringComparison]::OrdinalIgnoreCase) -or
+            $root.StartsWith($target+'\', [StringComparison]::OrdinalIgnoreCase) -or
+            ($root -ne [IO.Path]::GetPathRoot($target).TrimEnd([char[]]'\/') -and
+             $root -ne $env:USERPROFILE -and ([IO.Path]::GetFileName($root) -ne '_workspace') -and
+             $target.StartsWith($root+'\', [StringComparison]::OrdinalIgnoreCase))) {
+            throw 'PORTABLE_DESTINATION_PROTECTED'
+        }
+    }
+    $ancestor = $target
+    while (-not [string]::IsNullOrEmpty($ancestor)) {
+        $item = Get-Item -LiteralPath $ancestor -Force -ErrorAction SilentlyContinue
+        if ($null -ne $item -and ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw 'PORTABLE_DESTINATION_REPARSE' }
+        $ancestor = Split-Path -Parent $ancestor
+    }
+    # Existing directories, including earlier runtimes, have no authenticated ownership
+    # marker. Fail instead of deleting or reusing potentially foreign bytes.
+    if (Test-Path -LiteralPath $target) { throw 'PORTABLE_DESTINATION_OCCUPIED' }
+}
+
 function Expand-ZipVerified {
     param(
         [Parameter(Mandatory = $true)][string]$ArchivePath,
@@ -72,20 +110,28 @@ if ([string]::IsNullOrWhiteSpace($DestinationPath)) {
 }
 
 $DestinationPath = Resolve-FullPath -Path $DestinationPath
-$downloadDirectory = Join-Path (Split-Path -Parent $DestinationPath) '.portable-python-downloads'
+Assert-SafeDestination -Path $DestinationPath
+if ($ExportGitHubEnvironment -and [string]::IsNullOrWhiteSpace($env:GITHUB_ENV)) {
+    throw 'ExportGitHubEnvironment was requested outside GitHub Actions.'
+}
+if ($ExportGitHubEnvironment) {
+    $exportPath = Resolve-FullPath -Path $env:GITHUB_ENV
+    if ((Test-Path -LiteralPath $exportPath -PathType Container) -or
+        -not (Test-Path -LiteralPath (Split-Path -Parent $exportPath) -PathType Container)) { throw 'PORTABLE_ENV_EXPORT_TARGET_INVALID' }
+}
+$downloadDirectory = Join-Path (Split-Path -Parent $DestinationPath) ('.portable-python-downloads-'+[guid]::NewGuid().ToString('N'))
 $pythonArchive = Join-Path $downloadDirectory $PythonArchiveName
 $pipWheel = Join-Path $downloadDirectory $PipWheelName
-
-Remove-Item -LiteralPath $DestinationPath -Recurse -Force -ErrorAction SilentlyContinue
-Remove-Item -LiteralPath $downloadDirectory -Recurse -Force -ErrorAction SilentlyContinue
-New-Item -ItemType Directory -Force -Path $downloadDirectory | Out-Null
+$stagingDirectory = Join-Path $downloadDirectory 'runtime'
+New-Item -ItemType Directory -Force -Path (Split-Path -Parent $DestinationPath) | Out-Null
+New-Item -ItemType Directory -Path $downloadDirectory | Out-Null
 
 try {
     Download-VerifiedFile -Uri $PythonArchiveUrl -OutputPath $pythonArchive -ExpectedSha256 $PythonArchiveSha256
-    Expand-ZipVerified -ArchivePath $pythonArchive -OutputDirectory $DestinationPath
+    Expand-ZipVerified -ArchivePath $pythonArchive -OutputDirectory $stagingDirectory
 
-    $pythonExe = Join-Path $DestinationPath 'python.exe'
-    $pthFile = Join-Path $DestinationPath 'python312._pth'
+    $pythonExe = Join-Path $stagingDirectory 'python.exe'
+    $pthFile = Join-Path $stagingDirectory 'python312._pth'
     if (-not (Test-Path -LiteralPath $pythonExe -PathType Leaf)) {
         throw 'Portable CPython archive did not contain python.exe.'
     }
@@ -93,7 +139,7 @@ try {
         throw 'Portable CPython archive did not contain python312._pth.'
     }
 
-    $sitePackages = Join-Path $DestinationPath 'Lib\site-packages'
+    $sitePackages = Join-Path $stagingDirectory 'Lib\site-packages'
     New-Item -ItemType Directory -Force -Path $sitePackages | Out-Null
 
     $pthLines = [System.Collections.Generic.List[string]]::new()
@@ -122,12 +168,17 @@ try {
         throw 'Portable Python or pip validation failed.'
     }
 
+    Assert-SafeDestination -Path $DestinationPath
+    [IO.Directory]::Move($stagingDirectory, $DestinationPath)
+    $pythonExe = Join-Path $DestinationPath 'python.exe'
     if ($ExportGitHubEnvironment) {
         if ([string]::IsNullOrWhiteSpace($env:GITHUB_ENV)) {
             throw 'ExportGitHubEnvironment was requested outside GitHub Actions.'
         }
-        "PROJECT_PYTHON=$pythonExe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-        "PORTABLE_PYTHON_HOME=$DestinationPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+        try {
+            "PROJECT_PYTHON=$pythonExe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+            "PORTABLE_PYTHON_HOME=$DestinationPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+        } catch { throw 'PORTABLE_ENV_EXPORT_FAILED_RUNTIME_PRESERVED' }
     }
 
     Write-Host "Portable Python $PythonVersion with pip $PipVersion is ready."
