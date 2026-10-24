@@ -54,6 +54,23 @@ async function sealed(lazy: Record<string, unknown>, kv = new MemoryKv()) {
   kv.values.set("snapshot:current", JSON.stringify(pointer));
   return { kv, env: { PUBLIC_CACHE: asKv(kv), TENANT_PRIVATE_CACHE: asKv(new MemoryKv()), EPHEMERAL_SECURITY_CACHE: asKv(new MemoryKv()) } as never };
 }
+/** Publish run `run` into `kv` with one lazy object `body` (declared UTF-8 length offset by `lengthOffset`), resealing manifest and pointer normally. */
+async function sealedRun(kv: MemoryKv, run: string, key: string, body: string, lengthOffset = 0) {
+  kv.values.set("v213:top20-report:latest", JSON.stringify({ synthetic: "report" }));
+  kv.values.set("last_successful_pipeline_timestamp", STAMP);
+  await sealUnboundReport(kv, run);
+  const sealKey = `snapshot:${run}:${SNAPSHOT_SEAL_KEY}`;
+  const seal = JSON.parse(kv.values.get(sealKey)!);
+  const digest = await sha(body);
+  seal.objects[key] = { sha256: digest, utf8_bytes: new TextEncoder().encode(body).byteLength + lengthOffset };
+  kv.values.set(`blob:v1:${digest}`, body);
+  const sealText = JSON.stringify(seal);
+  kv.values.set(sealKey, sealText);
+  const pointer = JSON.parse(kv.values.get("snapshot:current")!);
+  pointer.seal_sha256 = await sha(sealText);
+  kv.values.set("snapshot:current", JSON.stringify(pointer));
+  return { PUBLIC_CACHE: asKv(kv), TENANT_PRIVATE_CACHE: asKv(new MemoryKv()), EPHEMERAL_SECURITY_CACHE: asKv(new MemoryKv()) } as never;
+}
 const quoteRow = (symbol: string, source: string, url: string) => ({ symbol, price: 100, previous_close: 99, change_pct: 0.01, currency: "USD", asof: STAMP, source, source_url: url });
 
 describe("sealed-slice: single-member reads of a producer-compact document", () => {
@@ -136,6 +153,34 @@ describe("sealed-slice: single-member reads of a producer-compact document", () 
     expect([...scanMembers(arrayValue, header(arrayValue).bodyStart)!.spans.keys()]).toEqual(["AAA", "BBB", "CCC", "DDD", "EEE", "FFF"]);
     expect(parseObjectMember(docOf('"AAA":{"a":1}'), header(docOf('"AAA":{"a":1}')), "aaa")).toBeUndefined();   // not the producer ticker syntax
     expect(parseObjectMember(docOf('"AAA":{"a":1}'), header(docOf('"AAA":{"a":1}')), "A".repeat(17))).toBeUndefined();
+  });
+
+  it("a document JSON.parse refuses is refused for every key, present or absent, whichever unrequested member is malformed (SOL-V24V22 F1)", () => {
+    const broken = ["not_json", "tru", "nul", '{"missing":}', '{"a":1,}', '["x",]', '"bad \\x escape"', '"raw \u0001 control"', "01", "1.", "-", "1e", "+1", "NaN"];
+    for (const value of broken) {
+      const text = docOf('"AAA":{"monthly":{"unavailable":"synthetic"}},"BROKEN":' + value);
+      expect(() => JSON.parse(text), value).toThrow();
+      const h = header(text);
+      for (const sha256 of [undefined, "d".repeat(64)]) {
+        expect(parseObjectMember(text, h, "AAA", sha256), `${value} AAA ${sha256 ?? "no digest"}`).toBeUndefined();
+        expect(parseObjectMember(text, h, "ZZZ", sha256), `${value} ZZZ ${sha256 ?? "no digest"}`).toBeUndefined();
+      }
+      clearVerifiedLazyBodies();
+    }
+    // the same members with valid JSON values answer as JSON.parse does
+    for (const value of ["null", "true", "false", "0", "-1.5e-3", '"s"', '{"a":[1,{"b":null}]}', "[]"]) {
+      const text = docOf('"AAA":{"monthly":{"unavailable":"synthetic"}},"BROKEN":' + value);
+      expect(parseObjectMember(text, header(text), "AAA"), value).toEqual(JSON.parse(text).options.AAA);
+      expect(parseObjectMember(text, header(text), "ZZZ"), value).toBeNull();
+    }
+  });
+
+  it("a member value that does not start as a JSON value (whitespace included) refuses the index, so a literal scan never stops inside a nested value", () => {
+    for (const members of ['"AAA": {"a":1,"BBB":{"b":1}}', '"AAA":\t1,"BBB":{"b":1}', '"AAA":{"a":1},"BBB": 2', '"AAA":x,"BBB":{"b":1}']) {
+      const text = docOf(members);
+      expect(scanMembers(text, header(text).bodyStart), members).toBeUndefined();
+      for (const key of ["AAA", "BBB", "ZZZ"]) expect(parseObjectMember(text, header(text), key), `${members} ${key}`).toBeUndefined();
+    }
   });
 
   it("braces, brackets, quotes, backslashes and escaped quotes inside string values never move a member boundary", () => {
@@ -256,6 +301,20 @@ describe("loadDetailedOptionObservation: depth-1 exactness equals the full-parse
     }
   });
 
+  it("a sealed document JSON.parse refuses is DOCUMENT_INVALID_OR_UNREADABLE on both paths, for a present and an absent ticker (SOL-V24V22 F1)", async () => {
+    for (const other of ["not_json", '{"missing":}', '"bad \\q"', "01"]) {
+      const body = `{"schema":"v213-options-v2","generated_at":"${STAMP}","options":{"AAA":{"monthly":{"unavailable":"synthetic unavailable"}},"BROKEN":${other}}}`;
+      expect(() => JSON.parse(body), other).toThrow();
+      const { env } = await sealed({ [OPTIONS_KEY]: body });
+      for (const viewer of ["owner", "friend"] as const) for (const key of ["AAA", "ZZZ"]) {
+        const { fast, slow } = await both(env, viewer, key, "monthly");
+        expect(slow.status, `${other} ${key} ${viewer} legacy`).toBe("DOCUMENT_INVALID_OR_UNREADABLE");
+        expect(fast, `${other} ${key} ${viewer}`).toEqual(slow);
+      }
+      clearVerifiedLazyBodies();
+    }
+  });
+
   it("a duplicate depth-1 ticker takes the full-parse path (last occurrence wins, as JSON.parse says) for every viewer and ticker", async () => {
     admitSyntheticTickers("AAA", "BBB");
     const first = cycleFor("AAA"); first.spot = 50;
@@ -337,8 +396,8 @@ describe("work budget of one options question (counts, not milliseconds)", () =>
     return { schema: "v213-options-v2", generated_at: STAMP, options };
   }
 
-  it("a hit on a ~1.7 MB document parses only the matched entry and hashes and encodes the document once", async () => {
-    admitSyntheticTickers("T0100");
+  it("a ~1.7 MB document is hashed, encoded and grammar-checked once per isolate; every later question parses only the matched entry", async () => {
+    admitSyntheticTickers("T0100", "T0200");
     const body = JSON.stringify(bigDoc(300));
     expect(new TextEncoder().encode(body).byteLength).toBeGreaterThan(1_700_000);
     const { env } = await sealed({ [OPTIONS_KEY]: body });
@@ -349,13 +408,44 @@ describe("work budget of one options question (counts, not milliseconds)", () =>
     parse.mockClear(); digest.mockClear(); encode.mockClear();
     const result = await loadDetailedOptionObservation(view, "T0100", "monthly", NOW);
     expect(result.status).toBe("FOUND");
-    const parsedChars = parse.mock.calls.reduce((n, [text]) => n + String(text).length, 0);
-    expect(parsedChars).toBeLessThan(20_000);
+    const bigParses = parse.mock.calls.filter(([text]) => String(text).length > 1_000_000);
+    expect(bigParses).toHaveLength(1);                                       // the grammar check of the member index, once
+    const smallChars = parse.mock.calls.filter(([text]) => String(text).length <= 1_000_000).reduce((n, [text]) => n + String(text).length, 0);
+    expect(smallChars).toBeLessThan(20_000);
     const hashed = digest.mock.calls.map(([, data]) => (data as Uint8Array).byteLength);
     expect(hashed.filter(n => n > 1_000_000)).toHaveLength(1);
     const encodedBig = encode.mock.results.filter(r => (r.value as Uint8Array).byteLength > 1_000_000);
     expect(encodedBig).toHaveLength(1);
+    const later = await pinPublicSnapshot(scopePublicSnapshot(env, "friend"));
+    parse.mockClear(); digest.mockClear(); encode.mockClear();
+    expect((await loadDetailedOptionObservation(later, "T0200", "monthly", NOW)).status).toBe("FOUND");
+    expect(parse.mock.calls.reduce((n, [text]) => n + String(text).length, 0)).toBeLessThan(20_000);
+    expect(digest.mock.calls.map(([, data]) => (data as Uint8Array).byteLength).filter(n => n > 1_000_000)).toHaveLength(0);
+    expect(encode.mock.results.filter(r => (r.value as Uint8Array).byteLength > 1_000_000)).toHaveLength(0);
     parse.mockRestore(); digest.mockRestore(); encode.mockRestore();
+  });
+
+  it("a remembered body is reused only for the same sealed (sha256, byte length): a later run declaring another length is refused warm as cold (SOL-V24V22 F2)", async () => {
+    const body = JSON.stringify({ schema: "v213-quotes-v1", generated_at: STAMP, quotes: { AAA: { source: "synthetic 合成" } } });
+    const kv = new MemoryKv();
+    const first = await sealedRun(kv, RUN, QUOTES_KEY, body);
+    expect(await (await pinPublicSnapshot(scopePublicSnapshot(first, "owner"))).text([QUOTES_KEY])).toBe(body);   // warm
+    const nextRun = "20260930T170000Z-abcdefabcde8";
+    const second = await sealedRun(kv, nextRun, QUOTES_KEY, body, -1);   // same digest, manifest declares one byte less
+    const warmView = await pinPublicSnapshot(scopePublicSnapshot(second, "owner"));
+    expect(warmView.runId).toBe(nextRun);
+    expect(warmView.integrity).toBe("sealed");
+    expect(await warmView.text([QUOTES_KEY])).toBeNull();
+    clearVerifiedLazyBodies();
+    expect(await (await pinPublicSnapshot(scopePublicSnapshot(second, "owner"))).text([QUOTES_KEY])).toBeNull();
+    // the correct length is still served warm after it was verified once
+    const third = await sealedRun(kv, "20260930T170000Z-abcdefabcde9", QUOTES_KEY, body);
+    expect(await (await pinPublicSnapshot(scopePublicSnapshot(third, "owner"))).text([QUOTES_KEY])).toBe(body);
+    const reads: string[] = [];
+    const original = kv.get.bind(kv);
+    vi.spyOn(kv, "get").mockImplementation(async (key: string, type?: "text" | "json") => { reads.push(key); return original(key, type); });
+    expect(await (await pinPublicSnapshot(scopePublicSnapshot(third, "owner"))).text([QUOTES_KEY])).toBe(body);
+    expect(reads.filter(key => key.startsWith("blob:v1:"))).toEqual([]);
   });
 
   it("verified lazy bodies are remembered per isolate by content address; a different digest is still read and verified, a tampered blob is still refused", async () => {

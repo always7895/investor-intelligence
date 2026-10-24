@@ -83,10 +83,10 @@ async function readPublicSnapshot(env: StorageEnv): Promise<PublicSnapshotView> 
           if (!digest) return undefined;
           let pending = lazyBodies.get(key);
           if (!pending) {
-            const known = knownVerifiedLazy(digest.sha256);
+            const known = knownVerifiedLazy(digest.sha256, digest.utf8_bytes);
             pending = known !== undefined ? Promise.resolve(known)
               : readLazySealedObject(digest, blobKey => env.PUBLIC_CACHE.get(blobKey, "text")).then(body => {
-                if (body !== null) rememberVerifiedLazy(digest.sha256, body);
+                if (body !== null) rememberVerifiedLazy(digest.sha256, digest.utf8_bytes, body);
                 return body;
               });
             lazyBodies.set(key, pending);

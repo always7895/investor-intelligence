@@ -5,9 +5,10 @@
  * performance read, never an integrity check. One string-aware scan of the container builds a member index (key -> [start, end) span of every
  * DEPTH-1 member, nothing deeper); a lookup then parses only the span of the asked key. The index is refused (undefined, and the caller runs its
  * unchanged full-parse path) for any text that is not exactly that shape: a duplicate depth-1 key, a key with an escape, a missing colon or comma,
- * a bracket of the wrong kind, an unterminated container, anything after the container but the closing brace. A refusal is never "absent".
- * The scan checks the structure of the container and the bracket balance of every value; it does not validate the syntax inside values (that is
- * the JSON.parse of the one span a lookup reads), which is why it is only used on text whose bytes already matched the sealed digest. */
+ * a bracket of the wrong kind, a value that does not start as a JSON value, an unterminated container, anything after the container but the
+ * closing brace. A refusal is never "absent". The scan checks the structure of the container and the bracket balance of every value; the grammar
+ * of the whole document is checked once by JSON.parse before an index is used (and remembered with it per sealed digest), so a document that the
+ * full-parse path refuses is refused here too, whichever member is asked (R/SOL-V24V22-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt F1). */
 export interface SealedHeader { readonly generated_at: string; readonly bodyStart: number; readonly container: string }
 export interface MemberIndex { readonly length: number; readonly spans: ReadonlyMap<string, readonly [number, number]> }
 
@@ -87,6 +88,8 @@ export function scanMembers(text: string, start: number): MemberIndex | undefine
           else { i += 1; if (c === 34) break; }
         }
       } else {
+        // a number, true, false or null; anything else (whitespace included) would let the literal scan stop inside a nested value
+        if (!(first === 45 || (first >= 48 && first <= 57) || first === 116 || first === 102 || first === 110)) return undefined;
         while (i < n) { const c = text.charCodeAt(i); if (c === 44 || c === 125) break; i += 1; }
         if (i === valueStart) return undefined;  // empty value
       }
@@ -103,11 +106,13 @@ export function scanMembers(text: string, start: number): MemberIndex | undefine
   return { length: n, spans };
 }
 
-// Per-isolate memory of lazy bodies that were ALREADY verified against their sealed sha256. The key is the content address itself, so an entry
-// can only ever hold the exact bytes that digest names; the manifest (read and verified for every question) still decides which digest a
-// question may use. It saves the KV read, the UTF-8 round trips and the SHA-256 of a 1-2 MB object on every later question of the isolate.
-// Kept here (not in public-snapshot.ts, a read-only KV view) because it is plain isolate memory.
-const VERIFIED_LAZY = new Map<string, string>();
+// Per-isolate memory of lazy bodies that were ALREADY verified against their sealed (sha256, UTF-8 byte length). The key is the content address
+// itself and the verified byte length is kept with the body, so an entry is only reused for a manifest entry that names the same pair (a manifest
+// that declares another length for the same digest is refused by the cold read and must not be served warm: SOL-V24V22 F2). The manifest (read
+// and verified for every question) still decides which digest a question may use. It saves the KV read, the UTF-8 round trips and the SHA-256 of
+// a 1-2 MB object on every later question of the isolate. Kept here (not in public-snapshot.ts, a read-only KV view) because it is plain isolate memory.
+interface VerifiedBody { readonly body: string; readonly utf8Bytes: number }
+const VERIFIED_LAZY = new Map<string, VerifiedBody>();
 const VERIFIED_LAZY_MAX_ENTRIES = 4;
 const VERIFIED_LAZY_MAX_CHARS = 6_000_000;
 /** Test seam: forget every remembered body and member index (the vitest setup file calls it before each test, so no test inherits another test's reads). */
@@ -115,27 +120,29 @@ export function clearVerifiedLazyBodies(): void {
   VERIFIED_LAZY.clear();
   clearMemberIndexes();
 }
-export function rememberVerifiedLazy(sha256: string, body: string): void {
+/** Remember `body`, just verified against the sealed pair (`sha256`, `utf8Bytes`). */
+export function rememberVerifiedLazy(sha256: string, utf8Bytes: number, body: string): void {
   VERIFIED_LAZY.delete(sha256);
-  VERIFIED_LAZY.set(sha256, body);
+  VERIFIED_LAZY.set(sha256, { body, utf8Bytes });
   let chars = 0;
-  for (const value of VERIFIED_LAZY.values()) chars += value.length;
+  for (const value of VERIFIED_LAZY.values()) chars += value.body.length;
   for (const key of VERIFIED_LAZY.keys()) {
     if (VERIFIED_LAZY.size <= VERIFIED_LAZY_MAX_ENTRIES && chars <= VERIFIED_LAZY_MAX_CHARS) break;
     if (key === sha256) continue;
-    chars -= VERIFIED_LAZY.get(key)!.length;
+    chars -= VERIFIED_LAZY.get(key)!.body.length;
     VERIFIED_LAZY.delete(key);
   }
 }
 
-/** A body already verified against `sha256` in this isolate, or undefined. */
-export function knownVerifiedLazy(sha256: string): string | undefined {
-  return VERIFIED_LAZY.get(sha256);
+/** A body already verified in this isolate against exactly the sealed pair (`sha256`, `utf8Bytes`), or undefined. */
+export function knownVerifiedLazy(sha256: string, utf8Bytes: number): string | undefined {
+  const known = VERIFIED_LAZY.get(sha256);
+  return known !== undefined && known.utf8Bytes === utf8Bytes ? known.body : undefined;
 }
 
 // Per-isolate memory of member indexes, keyed by the body's sealed sha256 (and container): the digest names exact bytes, so an index built from
-// those bytes is valid for as long as the isolate lives. Same bounds as the verified lazy bodies of public-snapshot.ts; a refused text is
-// remembered too (null), so a document that cannot be indexed is scanned once, not once per question.
+// those bytes (and the grammar check of them) is valid for as long as the isolate lives. Same bounds as the verified lazy bodies; a refused text
+// is remembered too (null), so a document that cannot be indexed is scanned and parsed once, not once per question.
 const INDEXES = new Map<string, MemberIndex | null>();
 const INDEX_LENGTHS = new Map<string, number>();
 const INDEX_MAX_ENTRIES = 4;
@@ -158,7 +165,13 @@ function rememberIndex(key: string, index: MemberIndex | null, length: number): 
   }
 }
 
-/** The member index of `text`, from the isolate memory when the sealed `sha256` of these exact bytes is known (otherwise built, not remembered). */
+/** Whether JSON.parse accepts the whole text: the full-parse path refuses anything else, so the index must not answer for it. */
+function parsesAsJson(text: string): boolean {
+  try { JSON.parse(text); return true; } catch { return false; }
+}
+
+/** The member index of `text`, from the isolate memory when the sealed `sha256` of these exact bytes is known (otherwise built, not remembered).
+ * Building costs one scan and one JSON.parse of the document, so the first question of an isolate costs what every question cost before. */
 export function memberIndexFor(text: string, header: SealedHeader, sha256?: string): MemberIndex | undefined {
   const key = sha256 === undefined ? undefined : `${sha256}:${header.container}`;
   if (key !== undefined) {
@@ -166,7 +179,8 @@ export function memberIndexFor(text: string, header: SealedHeader, sha256?: stri
     if (known === null && INDEX_LENGTHS.get(key) === text.length) return undefined;
     if (known !== undefined && known !== null && known.length === text.length) return known;
   }
-  const built = scanMembers(text, header.bodyStart);
+  let built = scanMembers(text, header.bodyStart);
+  if (built !== undefined && !parsesAsJson(text)) built = undefined;
   if (key !== undefined) rememberIndex(key, built ?? null, text.length);
   return built;
 }
