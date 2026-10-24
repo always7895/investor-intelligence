@@ -1,12 +1,10 @@
 # Investor Intelligence R75 全球權威來源聯邦｜Global Source Federation
 
-_Last reconciled / 最後核對：2026-09-05 Asia/Taipei_
-
-[文件索引](README.md)｜[權威來源目錄](AUTHORITATIVE_SOURCE_CATALOG.md)｜[最新正式發布](FINAL_RELEASE.md)
+[文件索引](README.md)｜[最新正式發布](FINAL_RELEASE.md)
 
 ## 設計目標｜Design objective
 
-Investor Intelligence 不設定八個、二十個、九十九個或一百個來源的固定上限。R75 source-planning inventory 目前為 101，但 runtime activation 仍以 authority、identity、合法免費存取、provenance、freshness、schema、adapter 與 health gate 為準。
+Investor Intelligence 不設定固定來源數量上限。R75 source-planning inventory 目前為 101；此為快照而非上限，catalog membership does not imply runtime activation. Runtime activation is governed by authority, identity, legal/free access, provenance, freshness, schema, adapter and health gates.
 
 ```text
 NO_ARTIFICIAL_SOURCE_COUNT_LIMIT
@@ -19,22 +17,9 @@ NO_ARTIFICIAL_SOURCE_COUNT_LIMIT
 
 沒有數量上限不等於無限制 scraping。每次 run 受到 request、response-byte、wall-time、retry、per-host concurrency、quota 與 cache freshness 預算約束。
 
-## 最新已驗證實機狀態｜Latest verified runtime state
+## Current acceptance and run results
 
-```text
-catalog_count = 101
-global source families = 7
-official source families = 6
-ticker coverage = 100.0%
-missing required families = none
-conflicts = 0
-claim families = 2
-claim domains = 3
-claim primary coverage = 100.0%
-non-Yahoo market corroboration = 0.0%
-```
-
-免費 non-Yahoo market data 在該 run 中不可用，因此全部 20 個候選維持 `LIMITED_RESEARCH_CANDIDATE`。這不是 source-federation failure：公司／claim diversity 與 primary coverage 通過，而缺少 market corroboration 被披露並限制信心；unsupported positive factors 在 snapshot 前歸零。
+本文件定義來源治理；實際執行結果與發布接受狀態以 [STATUS](../state/STATUS.md) 為準。Run metrics are revision-specific and do not change source authority.
 
 ## Eligible source families
 
@@ -103,7 +88,9 @@ DISABLED_HEALTH_FAILURE
 DISABLED_FREE_ONLY_POLICY
 ```
 
-Discovery 永遠不會 auto-enable source。
+Public source 啟用需要已審查的 redistribution/display 範圍（`redistribution_status=public_attribution`），只有 legal/free access 不足。
+
+Discovery 永遠不會 auto-enable source；automatic discovery 只能新增 disabled candidate metadata，不得執行 remote code 或安裝未審查 plugin。
 
 ## Registry architecture
 
@@ -118,7 +105,26 @@ Discovery 永遠不會 auto-enable source。
 - cache TTL／freshness；
 - source-specific terms/access controls。
 
+需要免費 credential 的來源在 credential 備妥前保持 disabled（`FREE_CREDENTIAL_UNAVAILABLE`），不得改用付費 fallback。
+
 超出預算時 defer，不增加 request storm，也不自動進入付費方案。
+
+### Source-of-truth order
+
+1. `docs/GLOBAL_SOURCE_FEDERATION.md`
+2. `config/sources/registry-policy.json`
+3. `scripts/source_registry.py`
+4. `config/sources/**/*.json`
+
+Every source remains lawful, free, attributable, health-checked, correction-aware and independently governed.
+
+### Related implementation files
+
+- `config/authoritative-source-catalog.json`
+- `config/authoritative-sources/*.json`
+- `schemas/authoritative-source-catalog.schema.json`
+- `scripts/authoritative_source_catalog.py`
+- `tests/test_authoritative_source_catalog.py`
 
 ## Provenance contract
 
@@ -210,6 +216,8 @@ Required source 不得要求：
 
 Licensed broker source 若使用者本來合法擁有且無新費用，也只能是 tenant/private path，不能成為 global public feed。
 
+Catalog records contain public-source metadata only; never raw LINE identifiers or messages, user query history or watchlists, owner holdings/cost/P&L/margin/account data, broker-session responses, tenant memory/private reports, or credentials/secrets.
+
 ## Release gates
 
 Production enable 前至少要求：
@@ -235,4 +243,4 @@ Production enable 前至少要求：
 
 ## English summary
 
-R75 currently plans from a 101-record catalog without a fixed ceiling. The latest verified run used seven source families and six official families with 100% ticker coverage. Free non-Yahoo market corroboration was unavailable, so confidence remained LIMITED and unsupported positive factors were withheld. Every source remains subject to strict admission, provenance, bounded-runtime and publication-mode gates.
+This federation has no fixed source-count ceiling, and catalog membership never implies runtime activation. Every source remains subject to authority, legal/free access, attribution, schema, privacy, provenance, independent corroboration, bounded runtime and publication gates. Unresolved coverage remains disclosed and limits confidence; there is no paid fallback.

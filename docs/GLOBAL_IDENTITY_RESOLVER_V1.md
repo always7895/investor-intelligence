@@ -14,7 +14,7 @@ Every query resolves deterministically into one of four mutually exclusive state
 
 ---
 
-## 2. Acceptance Revision 2 Corrections (Astra Audit)
+## 2. Catalog validation invariants
 
 ### 2.1 Complete Removal of Object References in Indexes (Defect 1)
 - Removed all object fallback and object compatibility from `by_symbol`, `by_name`, and `by_venue_and_symbol`.
@@ -71,12 +71,3 @@ Every query resolves deterministically into one of four mutually exclusive state
 
 ---
 
-## 4. Test Verification Matrix (Revision 2)
-
-| Lane | Target | Tests | Status | Retries |
-|---|---|---|---|---|
-| Behavioral RED | `v213-global-identity-integrity.test.ts` (against pre-fix code) | 10 tests, 8 failed assertions | RED_CONFIRMED | 0 |
-| Focused Lane | `integrity`, `review`, `identity`, `caller`, `lookup`, `worker-flow` | 98 passed | PASS | 0 |
-| Python Lane | `test_global_identity_index.py`, `test_public_symbol_admission.py` | 14 passed | PASS | 0 |
-| Affected Suite | Full Cloud Suite (50 test files) + `tsc --noEmit` | 775 passed, 1 skipped | PASS | 0 |
-| Catalog CLI | `scripts/global_identity_index.py` | 14,276 records indexed | PASS | 0 |

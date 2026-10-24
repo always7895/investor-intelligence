@@ -9,23 +9,15 @@ Two roles, one runtime config (`config/local-runtime-independence-v1.json`):
 
 - **PRIMARY_REASONER** — the local reasoner. The served model is auto-detected at run time, so a model or port change
   needs no config edit (mechanism and limits: [Local model auto-detection](MODEL_RUNTIME_MIGRATION.md#local-model-auto-detection)).
-  `primary_reasoner.model` is empty by design (`model_selection=FOLLOW_DETECTED`, operator 2026-10-11) and `base_url`
+  `primary_reasoner.model` is empty by design (`model_selection=FOLLOW_DETECTED`) and `base_url`
   (`http://127.0.0.1:8080/v1`) is only a loopback first-probe hint; a model id set there is a non-binding preference that never
   pins or blocks a different served model. The gateway refuses to start without `II_LOCAL_LLM_MODEL` (the
-  bridge always sets it to the served id); a handler without a selected id answers 503 `SELECTED_MODEL_NOT_CONFIGURED` and
-  forwards nothing. The deliberate pin is the explicit Strata binding (F04: runtime binding plus model profile), which stays
-  exact and refuses any other model. Servers run with `--max-concurrency 1`; while the LINE
-  gateway on `:8814` shares the server, a local task delays LINE answers (backend decision: section M7 of that document).
+  bridge always sets it to the served id); a handler without a selected id answers 503 `SELECTED_MODEL_NOT_CONFIGURED` and forwards nothing.
+  The explicit runtime binding plus model profile is the only exact pin and rejects any other model. The server uses `--max-concurrency 1`; local tasks may delay LINE answers while sharing it.
   No live qualification is claimed here.
-- **DECISION_ROUTER** — the Mapika / System One CPU decider
-  (`Mapika-decider-2b-v9`; `alias_diagnostic_only: decider-v8`) is retired in
-  the shipped config (`decision_router.retired: true`): the gateway's gate uses
-  source qualification alone, and no decider approval is required.
-
-Before 2026-09-27 the defaults were TabbyAPI `http://127.0.0.1:5000/v1` with
-exact `Qwen3.8-27B-EXL3-5.5bpw-v2`, and the Mapika decider was the active
-DECISION_ROUTER (legacy, non-retired configuration: healthy evidence
-additionally required an explicit decider approval).
+- **DECISION_ROUTER** — the legacy decision role remains retired in the shipped
+  config (`decision_router.retired: true`). Source qualification alone controls
+  the gate; no decider approval is required.
 
 Strict hard flags (JSON boolean tokens; numeric `1`/`0` rejected):
 `LOCAL_AI_ONLY=true`, `PAID_INFERENCE_ALLOWED=false`, `CLOUD_AI_FALLBACK=false`.
@@ -95,64 +87,6 @@ Agent, pane and bootstrap tooling is **DEVELOPMENT_ONLY** orchestration; it is
 NOT runtime prerequisites. Startup (`run_v213_local_llm_bridge_core*.ps1`)
 requires no such tooling and no cloud-AI fallback.
 
-## Evidence (linked, not repeated)
+## Current status
 
-- `audit-runtime/local-runtime-independence-v1/python-full-utf8-retry.log` —
-  1627 PASS (395.341s), 3 skips, 0 outer/blocked; Worker 869 PASS 1 skip +
-  typecheck PASS; four documentation/security/workflow gates + compile +
-  diffcheck PASS; PS 5.1.26100.9444 and 7.6.6 both present (all-tracked-script
-  parse in each host PASS). Process-only `PYTHONUTF8=1`/`PYTHONIOENCODING=utf-8`
-  (not global settings or market-builder changes).
-- `audit-runtime/local-runtime-independence-v1/python-full-current.log`
-  (preserved failed) — old profile transport/prerequisites + Windows
-  readerthread UTF8/CP950 mismatch (root cause of the retry).
-- `audit-runtime/local-runtime-independence-v1/contract-edges-focused-2.log` —
-  66/66 PASS (57.773s), zero outer/blocked; includes 14 archive cases.
-- `audit-runtime/local-runtime-independence-v1/live-compatibility-after-edges.log`
-  — strict real CPU READY `.9842`; actual resident exact-v2 `/v1/model` context
-  262144 and actual extractor 262144; ONE standard structured-JSON probe True.
-  Harmless backend compatibility only — NOT a production market answer / LINE /
-  live publication / full-release proof.
-- `audit-runtime/local-runtime-independence-v1/python-full-final.log` — full
-  1628 PASS 395.568s / 3 skip / 0 outside; `both-lane-json-focused-3.log` 90
-  PASS 114.229s; `live-canonical-probe-final.log` current canonical probe PASS
-  262144 + source hashes (development-only). Earlier 1627 run is historical
-  (prior to the both-lane fix), not latest.
-
-## Release status (LOCAL_DEVELOPMENT_GATES_PASS; NOT final acceptance)
-
-> **Historical record** of the batch at `977057d` (2026-09-2x), kept as evidence. It is not the current state: current identity, acceptance and release status live in `state/STATUS.md`. Nothing below authorizes resuming the paused bootstrap or provisioning a decider.
-
-- Verification base `977057d`. **NINE** runtime/config/test paths:
-  `scripts/v213_local_llm_gateway.py`, `scripts/v213_decision_backend_client.py`,
-  `scripts/v212_local_llm_gateway.py` (transport seam),
-  `config/local-runtime-independence-v1.json`,
-  `tests/test_local_runtime_independence.py`,
-  `tests/test_v213_r75_gateway_process.py`,
-  `scripts/verify_v213_r75_free_relay_hotfix.py`,
-  `tests/test_v213_free_relay_package_payload.py`,
-  `tests/test_v213_model_profile.py` (minimal regression fixture), plus
-  `AGENTS.md`/`README.md`/`state/STATUS.md` docs.
-- Status **LOCAL_DEVELOPMENT_GATES_PASS** (focused 23 PASS 55.004s 0 blocked
-  before full retry; full retry 1627 PASS). Scoped acceptance/commit PENDING;
-  no `FINAL_RELEASE_COMPLETE` / Production claim. CI at `977057d` SKIPPED, not
-  PASS.
-- CRLF_STAGING_BLOCKER_V1 resolved: exact root cause was 35 CRLF lines in the
-  new hand-maintained UTF8/no-BOM config entering the index unchanged (no
-  applicable text/EOL attribute; observed `core.autocrlf=false`); same-class
-  maintained JSON uses LF. One deterministic Qwen byte conversion removed only
-  35 CR (1025→990 bytes); parsed JSON and all other bytes equal; no attribute /
-  Git-config / generator change. First two unsuccessful EOL rewrite attempts
-  retained as NON-PASS, not accepted proof. Focused 48 PASS 52.689s / 0 outside;
-  four gates and both diffchecks PASS. Newly tracked fixture's explicit `TEST_`
-  marker fixed the scanner finding without changing runtime / assertions /
-  scanner. Mapika ACCEPT_COMMIT .9720 applies local development only; no
-  Production / bootstrap / settings mutation.
-- **Release blocker (blocked/deferred, separate):** the historical PS
-  changed-path allowlist is stale for already-accepted paths + this new work;
-  not broadened / baseline-waived. Still needed: fresh source-bound release
-  proof, Windows self-hosted acceptance, immutable archive + install gates.
-- Bootstrap **PAUSED** — stash `14097451040a0ff3f2d0cf3025bd3368e7d66960`;
-  independent 9-worktree + 9 index hashes verified, TWO parents (old
-  absent-parent receipt wrong, preserved). Settings unchanged, `/new` 0. No
-  restore/drop/resume.
+Current acceptance is recorded in [STATUS](../state/STATUS.md) and source-bound receipts. This local-development contract does not qualify a live model or authorize production, bootstrap, settings, or shared-process changes.

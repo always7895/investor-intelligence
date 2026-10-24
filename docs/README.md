@@ -35,7 +35,7 @@ Current acceptance register: [STATUS](../state/STATUS.md). Release identity: [RE
 
 - [DETAILED_REPORT_CONTRACT](DETAILED_REPORT_CONTRACT.md)
 - [MODEL_RUNTIME_MIGRATION](MODEL_RUNTIME_MIGRATION.md)
-- [LOCAL_RUNTIME_INDEPENDENCE](LOCAL_RUNTIME_INDEPENDENCE.md) — 100% local AI at the LOCAL v213 gateway: one runtime config, local-only flags, fail-closed guards; release gates PENDING
+- [LOCAL_RUNTIME_INDEPENDENCE](LOCAL_RUNTIME_INDEPENDENCE.md) — local gateway contract only; no live model qualification; acceptance is STATUS-authoritative
 - [DECLARED_CLAIM_CANDIDATES](DECLARED_CLAIM_CANDIDATES.md) — MACRO candidate-only profile; no qualification or publication
 - [PUBLIC_SOURCE_COVERAGE](PUBLIC_SOURCE_COVERAGE.md)
 - [PUBLIC_UNIVERSE_DISCOVERY](PUBLIC_UNIVERSE_DISCOVERY.md) — 公開市場掛牌識別線索發現與覆蓋邊界（零錄取）
@@ -48,7 +48,6 @@ Current acceptance register: [STATUS](../state/STATUS.md). Release identity: [RE
 - [OPTIONS_SOURCE_REVIEW](OPTIONS_SOURCE_REVIEW.md)
 - [PUBLIC_EOD_OPTIONS_SCOPE_DECISION](PUBLIC_EOD_OPTIONS_SCOPE_DECISION.md) — O11/O12 design only; grants no rights or admission
 - [PUBLIC_OPTIONS_PROVIDER_RIGHTS_REVIEW](PUBLIC_OPTIONS_PROVIDER_RIGHTS_REVIEW.md)
-- [SOURCE_POLICY_INDEX](SOURCE_POLICY_INDEX.md)
 - [SECURITY](SECURITY.md)
 - [PRIVACY_MULTI_TENANT_POLICY](PRIVACY_MULTI_TENANT_POLICY.md)
 - [IBKR_READ_ONLY](IBKR_READ_ONLY.md)
@@ -71,12 +70,10 @@ Current acceptance register: [STATUS](../state/STATUS.md). Release identity: [RE
 - [F05B_PDF_EXTRACTION_CONTRACT](F05B_PDF_EXTRACTION_CONTRACT.md) — design only; no dependency adoption
 - [TOP20_CARRY_FORWARD_V1](TOP20_CARRY_FORWARD_V1.md) — hourly seal of the validated LKG Top20, report-age contract, rollback
 - [SOURCE_DIVERSITY_AUDIT](SOURCE_DIVERSITY_AUDIT.md) — product-by-source matrix, rejected sources, remediation order
-- [AUTHORITATIVE_SOURCE_CATALOG](AUTHORITATIVE_SOURCE_CATALOG.md)
 - [GLOBAL_SOURCE_FEDERATION](GLOBAL_SOURCE_FEDERATION.md)
 - [PUBLICATION_MODE_CONTRACT_V2](PUBLICATION_MODE_CONTRACT_V2.md) — Worker/install preflight parity, contract hash, deploy order
 - [SOURCE_COVERAGE_MATRIX](SOURCE_COVERAGE_MATRIX.md)
 - [KV_DEPLOYMENT_PREFLIGHT](KV_DEPLOYMENT_PREFLIGHT.md)
-- [KV_NAMESPACE_ISOLATION](KV_NAMESPACE_ISOLATION.md)
 - [METHODOLOGY_ATTRIBUTION](METHODOLOGY_ATTRIBUTION.md)
 - [GIT_HISTORY_PRIVACY_GATES](GIT_HISTORY_PRIVACY_GATES.md)
 - [FINAL_CLEANUP_POLICY](FINAL_CLEANUP_POLICY.md)
@@ -89,12 +86,12 @@ Current acceptance register: [STATUS](../state/STATUS.md). Release identity: [RE
 - [CROSS_VALIDATION](../skills/serenity-public-research/references/CROSS_VALIDATION.md)
 - [RESEARCH_METHOD](../skills/serenity-public-research/references/RESEARCH_METHOD.md)
 - [SERENITY_LOGIC](../skills/serenity-public-research/references/SERENITY_LOGIC.md) — Serenity reasoning model reconstruction
-- [ASCHENBRENNER_CONTEXT](../skills/serenity-public-research/references/ASCHENBRENNER_CONTEXT.md) — CONTEXT_ONLY essay model and dated SEC filing snapshot
+- [ASCHENBRENNER_CONTEXT](../skills/serenity-public-research/references/ASCHENBRENNER_CONTEXT.md) — CONTEXT_ONLY essays and public filing leads
 - [user-long-term-overlay](../skills/user-long-term-overlay.md)
 
 ## Dated evidence and historical technical references / 歷史與有日期的技術證據
 
-Retired 2026-09-25 (history only, not deleted from Git): the SERENITY_H2–H6 incremental notes, SERENITY_PUBLIC_LOGIC audits, TASK0-3E–3J reports and five superseded one-off reviews/plans. Retrieve with `git show 34417b9:<path>`.
+Dated histories remain in their source revisions and R receipts; they are not current authority. Use STATUS and the applicable contract for current state.
 
 Older deployment/PASS/coverage claims here are scoped to their recorded revision, not today; current contracts and STATUS win. 未改寫歷史證據為今日成功。
 

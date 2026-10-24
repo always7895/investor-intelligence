@@ -30,6 +30,24 @@ A release must fail when:
 
 The public snapshot must be rebuilt into a fresh `PUBLIC_CACHE`. No data is copied from a legacy combined namespace. `TENANT_PRIVATE_CACHE` and `EPHEMERAL_SECURITY_CACHE` begin empty.
 
+## Namespace roles and isolation
+
+The Worker uses three independent namespaces:
+
+- `PUBLIC_CACHE`: public reports, scores, source views, option snapshots, versioned manifests and `snapshot:current`.
+- `TENANT_PRIVATE_CACHE`: encrypted, opt-in conversation memory and encrypted long-job results only.
+- `EPHEMERAL_SECURITY_CACHE`: hashed webhook-deduplication claims and pseudonymous rate-limit counters only.
+
+Non-negotiable boundaries:
+
+- Public data never stores `tenant:*`, tenant identifiers, raw LINE identifiers, messages or account data; private data never stores public snapshots or shared rankings.
+- Ephemeral security state stores no message text, answer text or raw external identifier.
+- A tenant's HMAC-derived identifier is confined to `TENANT_PRIVATE_CACHE` and `EPHEMERAL_SECURITY_CACHE`; it never enters public data.
+- The legacy `CACHE` binding is forbidden; generic private-JSON storage APIs are absent.
+- Conversation memory is off by default for the first external-user release.
+- The public publisher receives no private or ephemeral credentials. Public lookups never read tenant-private data; model context never reads option chains or another tenant's data, and may read only the current tenant's explicitly available encrypted conversation memory.
+- Owner holdings, watchlists, account/broker data and local reports never enter any of the three namespaces.
+
 ## Pre-KV replay gate and the revenue-guidance machine binding
 
 `scripts/stage_sealed_replay.py` replays a locally sealed run through the real Worker readers before any KV write. The machine tier (`--guidance-machine`) seals `v213:revenue-guidance-binding:v1` next to the Top20 v3 report, but the ordinary replay read the report without the machine opt-in and never touched the binding, so a broken binding could not fail the gate.

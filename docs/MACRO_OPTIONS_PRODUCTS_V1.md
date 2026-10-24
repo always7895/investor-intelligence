@@ -4,7 +4,7 @@
 
 本文件規範 **宏觀產業分析 (12–36M)** 與 **期權與個股快查** 兩項公開研究產品之工程架構、公開文獻依據、數值驗證門檻與封存整合邊界。
 
-本功能經 Astra Review 2 嚴格財務安全審查修復，依循嚴格之工程邊界：
+本功能遵循嚴格的財務安全與工程邊界：
 - **宏觀產業實質入口**：已正式綁定 `RICH_MENU_ACTIONS` 實體按鈕指令 `宏觀產業分析`。主首頁絕不以候選公司家數占比冒充 TOP5 宏觀產業分析。當當輪合格產業未達 5 個時，主首頁明確通報短缺（`MACRO_TOP5_SHORTFALL`，5/5 短缺），並標示 `NOT_PUBLICATION_QUALIFIED`。未准入候選產業標記 `rank: null`，嚴禁將模型原始機會分數直接排定為正式合格名次。
 - **期權實質入口**：已正式綁定 `RICH_MENU_ACTIONS` 實體按鈕指令 `期權`。直接呈現整合雙邊報價查詢與 4 種標準期權教學範例卡片（Covered Call、Cash-Secured Put、Bull Call Spread、Protective Put）之輪播／文字介面。
 - **裸報價與損益指標分離（Finding A）**：單合約裸報價（OptionContractQuote）未綁定具體策略、部位股數與持倉成本，**嚴格禁止調用端傳入非 null 之損益指標**（`breakeven`、`maxprofit`、`maxloss`、`annualized_yield` 必須為 null，傳入非空數值直接拋出 `BARE_QUOTE_STRATEGY_METRICS_PROHIBITED` 拒絕）。所有損益與回報率僅限於包含明確假設（合約乘數 100、現股成本、保證金、摩擦成本）之獨立教學策略卡片中呈現。
@@ -95,12 +95,6 @@
 
 ---
 
-## 5. 已知阻礙點與未解決邊界 / Known Blockers & Project Boundaries
+## Release and acceptance boundary
 
-本工程切片嚴格區分「可用教學範例／預設 UI 通過」與「真實宏觀／期權資料延後准入」：
-1. **真實資料短缺阻礙 (Real-data Shortfall: DEFERRED)**：IEA 403 與 IFR 無公認成長率，真實合格產業未滿 5 個，TOP5 正式發布維持短缺阻礙狀態（DEFER）。
-2. **真實期權報價准入阻礙 (Real Options Quote: DEFERRED)**：免費公開期權提供者尚未通過審查，封存快照契約 SNAPSHOT_OBJECT_KEYS 不含期權鍵，生產調用維持 fail-closed UNAVAILABLE（DEFER）。
-3. **教學範例與介面合約 (Educational & Default UI: PASS)**：四大教學策略卡片、結構化損益驗證、短缺通報、LINE Carousel 限制完全合格通過（PASS）。
-4. **封存契約邊界 (Seal Migration Blocker)**：現行生產快照契約 `v213-stored-snapshot-v1` 不含宏觀與期權物件；升級封存契約需獨立版本遷移審查。
-5. **歷史報酬與排序缺口 (Ranking & 2Y Total Return Gap)**：2Y CAGR 歷史報酬與排序機制之歷史遺留缺口仍列為專案整體阻礙點。
-6. **生產環境零更動**：本 Slice 嚴格限定於原始碼與本地驗證，無生產部署、無 KV 寫入、無真實 LINE 推播、無憑證變更。
+This document defines product behavior, not current data qualification or production status. Current source rights and admission are governed by the relevant provider contracts; current acceptance lives in [STATUS](../state/STATUS.md). Production deployment, KV writes, LINE delivery and credential changes require separate authorization.

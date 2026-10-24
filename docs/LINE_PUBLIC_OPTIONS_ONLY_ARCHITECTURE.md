@@ -127,7 +127,7 @@ Optional conversation memory is:
 
 This memory contains only what that LINE user sent to the bot. No owner portfolio or broker data is preloaded into any tenant.
 
-First-person financial disclosures are rejected before model use or memory storage. Messages that disclose a user's holdings, portfolio, account, quantity, cost basis, P&L, margin, buying power or completed trades receive a fixed refusal and are not sent to Qwen or persisted as conversation memory. Users must rephrase educational questions as non-personal hypotheticals.
+First-person financial disclosures are rejected before model use or memory storage. Messages that disclose a user's holdings, portfolio, account, quantity, cost basis, P&L, margin, buying power or completed trades receive a fixed refusal and are not sent to the local model or persisted as conversation memory. Users must rephrase educational questions as non-personal hypotheticals.
 
 ## Local-model egress
 
