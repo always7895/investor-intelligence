@@ -141,8 +141,9 @@ NASDAQ_US_RIGHTS_LABEL = "operator_accepted_unlicensed"
 # unparsable, future-dated or older than this many calendar days (weekend plus a holiday) against the run date is not shown.
 NASDAQ_US_MAX_ASOF_AGE_DAYS = 4
 NASDAQ_US_STALE_TEXT = "Nasdaq 報價日期過舊或無法確認"
-# A month is a whole English month name or abbreviation and a year exactly four digits: "OCTOPUS" or "20260" is unparsable, never Oct or 2026.
-_ASOF_RE = re.compile(r"\bAS OF\s+([A-Za-z]{3,9})\.?\s+(\d{1,2}),?\s+(\d{4})(?!\d)", re.IGNORECASE)
+# A month is a whole English month name or abbreviation and a year exactly four digits that end the date (then ")", whitespace or the end
+# of the text): "OCTOPUS", "20260", "2026JUNK" or "2026-10" is unparsable, never Oct or 2026.
+_ASOF_RE = re.compile(r"\bAS OF\s+([A-Za-z]{3,9})\.?\s+(\d{1,2}),?\s+(\d{4})(?=[\s)]|$)", re.IGNORECASE)
 _ASOF_MONTHS = {name: number for number, names in enumerate((
     ("JAN", "JANUARY"), ("FEB", "FEBRUARY"), ("MAR", "MARCH"), ("APR", "APRIL"), ("MAY",), ("JUN", "JUNE"), ("JUL", "JULY"),
     ("AUG", "AUGUST"), ("SEP", "SEPT", "SEPTEMBER"), ("OCT", "OCTOBER"), ("NOV", "NOVEMBER"), ("DEC", "DECEMBER")), start=1) for name in names}

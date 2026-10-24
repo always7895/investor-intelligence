@@ -421,7 +421,9 @@ class NasdaqFreshnessAndTransportTests(unittest.TestCase):
         for text in (None, "", "LAST TRADE: $343.46", "LAST TRADE: $343.46 (AS OF)", "LAST TRADE: $343.46 (AS OF FOO 15, 2026)",
                      "LAST TRADE: $343.46 (AS OF OCT 32, 2026)", "LAST TRADE: $343.46 (AS OF 2026-10-19)", 12345, ["AS OF OCT 19, 2026"],
                      "LAST TRADE: $343.46 (AS OF OCTOPUS 19, 2026)", "LAST TRADE: $343.46 (AS OF OCT 19, 20260)",
-                     "LAST TRADE: $343.46 (AS OF OCTO 19, 2026)", "LAST TRADE: $343.46 (AS OF FEB 30, 2026)"):
+                     "LAST TRADE: $343.46 (AS OF OCTO 19, 2026)", "LAST TRADE: $343.46 (AS OF FEB 30, 2026)",
+                     "LAST TRADE: $343.46 (AS OF OCT 19, 2026JUNK)", "LAST TRADE: $343.46 (AS OF OCT 19, 2026_0)",
+                     "LAST TRADE: $343.46 (AS OF OCT 19, 2026-10)", "LAST TRADE: $343.46 (AS OF OCT 19, 2026.5)"):
             with self.subTest(text=text):
                 self.assert_stale(self.run_with(text))
 
@@ -449,10 +451,15 @@ class NasdaqFreshnessAndTransportTests(unittest.TestCase):
     def test_actual_producer_and_publisher_refuse_malformed_month_and_year_tokens(self) -> None:
         # R/ASTRA-V23-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt M1: a month is a whole month name or abbreviation and a year exactly four digits;
         # a garbled token is "date unconfirmed" through the real producer and compact publisher, never the date its first letters spell.
+        # R2 (R/ASTRA-V23-INDEPENDENT-ACCEPT-R2-CLAUDECODE-a43bef58.txt M1-R2): the year token ends at ")" or whitespace, so a letter,
+        # underscore or other continuation after four digits is garbled too.
         day = self.RUN_DATE
         abbr, full = day.strftime("%b").upper(), day.strftime("%B").upper()
-        refused = (f"{abbr}OPUS {day.day}, {day.year}", f"{abbr} {day.day}, {day.year}0", f"{abbr} {day.day}, {day.year}1", f"{abbr}X {day.day}, {day.year}")
-        admitted = (f"{full} {day.day}, {day.year}", f"{abbr}. {day.day}, {day.year}", f"{abbr.title()} {day.day} {day.year}")
+        refused = (f"{abbr}OPUS {day.day}, {day.year}", f"{abbr} {day.day}, {day.year}0", f"{abbr} {day.day}, {day.year}1", f"{abbr}X {day.day}, {day.year}",
+                   f"{abbr} {day.day}, {day.year}JUNK", f"{abbr} {day.day}, {day.year}_0", f"{abbr} {day.day}, {day.year}-10",
+                   f"{abbr} {day.day}, {day.year}.5")
+        admitted = (f"{full} {day.day}, {day.year}", f"{abbr}. {day.day}, {day.year}", f"{abbr.title()} {day.day} {day.year}",
+                    f"{abbr} {day.day}, {day.year} 16:00 ET")
         for token in refused + admitted:
             with self.subTest(token=token):
                 document = cases.produce_and_seal(support.all_policy(), cases.specs({
