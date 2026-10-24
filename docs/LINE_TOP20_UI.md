@@ -4,9 +4,9 @@
 
 Actual observations and open acceptance are maintained only in [STATUS](../state/STATUS.md); historical local-render checks do not override later operator-reported LINE observations. Source edits here are not a fresh device/deployment acceptance. [Screenshot and research-execution audit](RESEARCH_EXECUTION_AUDIT.md).
 
-The implementation uses the same renderer for authenticated interactive Top20 and the two scheduled broadcasts. Twenty stocks appear as four Flex carousels, five complete seven-field cards each, in one outbound request. `Top20 文字` returns complete text grouped by company; it does not silently drop later stocks.
+Current source routes plain `Top20` and `Top20 文字` to Bottleneck Top20 V3 when its sealed document is fresh (`cloud/src/v213/rich-menu.ts`). `七欄Top20` explicitly selects the legacy seven-field product; plain ranking commands can fall back to it when V3 is unavailable. Installed behavior requires a matching accepted deployment; this source description is not live proof.
 
-目前的互動 Top20 與兩個排程廣播共用呈現器：20 檔分成四組 Flex carousel，每組五張完整七欄卡片，同一請求送出。輸入 `Top20 文字` 可取得按公司分組的完整文字，不會悄悄刪除後面的股票。
+目前來源的 `Top20`／`Top20 文字` 優先開啟有效的瓶頸爆發 V3；`七欄Top20` 明確選擇舊版，V3不可用時一般排行指令可退回舊榜。以下七欄呈現器適用於舊版互動路徑與兩個排程廣播：20 檔分四組 carousel，每組五張完整七欄卡片。來源路由不代表已驗收安裝版本。
 
 - Prominent rank/ticker and accepted public company name, bilingual labels, separated historical returns, industry, profitability, current orders and future outlook. No unverified Chinese-name/product dictionary.
 - Mobile Flex presentation features three readable return boxes: 2Y total return (2Y 總報酬), 2Y annualized (2Y 年化), and 6M return (6M 報酬). Labels are concise to prevent column squeezing on mobile devices.

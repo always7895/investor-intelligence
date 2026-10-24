@@ -6,8 +6,8 @@ Privacy-first public-market research and evidence-grounded conditional recommend
 
 ## Use and limits
 
-- `Top20`: 20 complete seven-field bilingual cards, four carousels of five. Historical 2Y annualized / 6M returns are **not future price forecasts**.
-- `Top20 文字`: all companies in full seven-field text. Candidate cards also offer **本公司七欄文字** and **證據詳情**, bound to the card's ticker, timestamp, snapshot and report SHA. Neither is a complete valuation report.
+- In current source, `Top20` opens Bottleneck Top20 V3 when its sealed data is fresh. `Top20 文字` opens its text edition; `七欄Top20` selects the legacy seven-field report. Plain `Top20` can fall back to that report when V3 is unavailable. Installed behavior depends on the accepted deployed snapshot.
+- Legacy seven-field cards offer one `<ticker> 深度化分析` button, bound to the card's ticker, timestamp, snapshot and report SHA. The older `證據詳情` and `公司文字` commands remain compatible; the detail view is not a complete valuation report. Historical 2Y annualized / 6M returns are **not future price forecasts**.
 - Order summaries keep disclosed amounts and recognition windows. RPO, backlog, prepayments, pipeline and revenue are not interchangeable or additive. A filing date is not a delivery date; undisclosed dates stay unknown.
 - Future 6/12/24-month price scenarios need sourced operating inputs, financing/dilution and a reproducible valuation bridge; removed hard-coded bull/bear percentages are not restored as evidence ([requirements and audit](docs/RESEARCH_EXECUTION_AUDIT.md)).
 - Missing, stale, conflicting or LIMITED evidence stays explicit. Direct public facts and independent thesis support are different evidence levels.
@@ -32,10 +32,10 @@ The archive was independently downloaded and verified, and its release-asset att
 LINE -> privacy/admission -> pinned public snapshot -> deterministic Top20
                          -> bounded compact public Q&A
 workers.dev -> signed short-lived lease -> TryCloudflare -> Gateway
-            -> existing localhost:8080 Router -> exact approved model
+            -> auto-detected existing loopback model endpoint -> verified served model
 ```
 
-Serenity is the primary public-method lens; Leopold Aschenbrenner is CONTEXT_ONLY, not an extra score or permanent AI-sector filter. Public reconstruction is not either author's official formula, private process or current endorsement. The Pi research skill is on-demand; Top20 and compact Q&A do not execute it ([execution audit](docs/RESEARCH_EXECUTION_AUDIT.md)).
+Serenity is the primary public-method lens. Aschenbrenner's scaling thesis informs V3 industry ranking; his fund's effective 13F weight contributes to industry weight and company lead points. These are ranking inputs, not independent company proof or a permanent AI-sector filter ([V3 formula](docs/BOTTLENECK_TOP20_V3.md)). Public reconstruction is not either author's official formula, private process or current endorsement. The Pi research skill is on-demand; Top20 and compact Q&A do not execute it ([execution audit](docs/RESEARCH_EXECUTION_AUDIT.md)).
 
 Preserve scoring, claim independence, LINE/IBKR separation, freshness and provenance. Publication needs sealed digest-bound objects, readback and pointer-last commit, with replay rejection, durable failure journals, rollback and finalize. Certified `cloud/src/qa.ts` blob: `94184bc8937b413eb327b3d773926db00e22b3b9`. No second model/server or preset change.
 
