@@ -110,6 +110,8 @@ ALWAYS_FIXTURES = (
     "tests/fixtures/revenue-guidance-machine-nbis-auto-functional.json",
     "tests/fixtures/revenue-guidance-machine-nbis-reaffirm-functional.json",
     "tests/fixtures/v11-consensus-sealed.json", "tests/fixtures/v11-guidance-v3-outlooks.json",
+    "tests/fixtures/partial-analyst-outlook.json",
+    "tests/fixtures/tsm-guidance-channel-v1.json",
 )
 
 
