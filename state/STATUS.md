@@ -1,6 +1,6 @@
 # Current state / 目前狀態
 
-2026-10-24: INCREMENTAL_VERIFICATION. R = `_workspace/audit-runtime/claude-bridge-repair-20261004`. Done = the writer and an independent reviewer accept the SAME snapshot; anything else is IMPLEMENTED_UNVERIFIED. Previous state: `git show 147d616:state/STATUS.md` (lanes to V20/V21, rollout v10/v11 detail); older: `bd5848b`, `46b2e8f`; baseline: `git show 38860e7:state/STATUS.md`.
+2026-10-25: INCREMENTAL_VERIFICATION. R = `_workspace/audit-runtime/claude-bridge-repair-20261004`. Done = the writer and an independent reviewer accept the SAME snapshot; anything else is IMPLEMENTED_UNVERIFIED. Previous state: `git show 147d616:state/STATUS.md` (lanes to V20/V21, rollout v10/v11 detail); older: `bd5848b`, `46b2e8f`; baseline: `git show 38860e7:state/STATUS.md`.
 
 ## Roles and operator decisions
 
@@ -13,23 +13,28 @@ DEVELOPMENT_COMPLETE=false; FUNCTIONAL_PROJECT_COMPLETE=false; FINAL_RELEASE_COM
 
 ## Lanes DUAL-ACCEPTED (complete H5 each; detail in `git show 147d616:state/STATUS.md`)
 
-FIXGATE + next1 (8d98136, PR 37 open); V11 LINE data gaps (dbf63cf, PR 41 open); V13 (1c05eae); V14 + V15 (bd5848b); V12 (5cb69f0); V16 (a12405b); V17 (3968196); V18 (02d4fbd); V18b (8ed3698); V19 (f5ccc58); V20/V21 bulleted cards and three conservative strategies (9b71a1c). Ruled BLOCKED: 20 native/sandbox modules (BLOCKED is never PASS).
+FIXGATE + next1 (8d98136, PR 37 open); V11 LINE data gaps (dbf63cf, PR 41 open); V13 (1c05eae); V14 + V15 (bd5848b); V12 (5cb69f0); V16 (a12405b); V17 (3968196); V18 (02d4fbd); V18b (8ed3698); V19 (f5ccc58); V20/V21 bulleted cards and three conservative strategies (9b71a1c); V22, V23 (with ba40730) and V24 (1e64823, below). Ruled BLOCKED: 20 native/sandbox modules (BLOCKED is never PASS).
 
-## Current lanes (IMPLEMENTED_UNVERIFIED), branch `feat/v23-audit-cpu-docs` from 147d616
+## Lanes V22-V24 (DUAL-ACCEPTED at 1e64823), branch `feat/v23-audit-cpu-docs` from 147d616
 
 - V22 source-policy and cleanup docs consolidated (4411ace); four current rules restored after the semantic review; `sol` notes D1 (source count 103) and D2 (historical `git show` locators) fixed.
 - V24 Worker CPU on Workers Free (ea2c524): one-ticker options reads, one-encode body verification, per-isolate verified-body memory; warm friend question 2.5-2.7 ms (was 15-18 ms). Review fixes (`sol` F1, F2): the member index answers only after JSON.parse accepts the whole document (once per digest and isolate, so the first question costs what every question cost before), and a remembered body is reused only for the same sealed (sha256, byte length).
 - V23 project audit findings A-G (Sol and ChatGPT staged work, adopted by `R/MASTER-RECONCILE-PARALLEL-WRITERS-CLAUDECODE-a43bef58-20261024.md`): portable Python destinations (A), Node outputs (B), SEC latest-filing quarter and RPO facts (C, D), non-standard option contracts (E), Worker read-time admission (F), README and LINE_TOP20_UI (G); TSMC guidance channel, partial analyst fields, dated APLD/NBIS orders; regression fixes, regenerated fixtures (lossless proof), setUp-failure cleanup; review fixes (`astra` M1, M2, M1-R2): Nasdaq as-of month and year tokens are whole tokens (the four-digit year ends at ")", whitespace or the end of the text), and the TSMC incomplete-coverage test recomputes the receipt digest. Finding H (qa.ts memory epoch) DEFERRED_WITH_REASON: certified file, needs recertification; memory stays disabled.
 - Integrated tree: four gates exit 0; tsc 0; Vitest 2000 passed, 2 skipped. Python full suite in a scratch checkout fails only where the real workspace path is required.
-- Gates: complete H5 `R/final-a43bef58-v23-g1` on da80192 and `R/final-a43bef58-v23-g2` on 429586f, both PASS_AS_RULED (338 modules, PASS 318, ruled BLOCKED 20), harness `R/pygate4-repin-a43bef58-20261024` (pwsh 7.6.7 re-pin). Reviews of da80192: `sol` REJECT (V24 F1, F2; V22 notes), `astra` REJECT (V23 M1, M2). Reviews of 429586f: `sol` ACCEPT-WITH-NOTES for V24 and V22 (N1: the cold-path cost is stated as operation counts; no fresh Worker CPU measurement), `astra` REJECT (M1-R2: a year followed by letters or an underscore still passed; M2 and the g16 fixtures confirmed). The M1-R2 fix is committed on top; complete H5 `R/final-a43bef58-v23-g3` on that head, then `astra` re-reviews V23 and `sol` confirms V24 and V22 are unchanged on the same snapshot.
+- Gate: complete H5 `R/final-a43bef58-v23-g3r` on 1e64823 PASS_AS_RULED (338 modules, PASS 318, ruled BLOCKED 20; the first run `R/final-a43bef58-v23-g3` stays FINDINGS for one observation race), harness `R/pygate4-repin-a43bef58-20261024` (pwsh 7.6.7 re-pin). Two review rounds rejected and were fixed (`sol` F1, F2; `astra` M1, M2, M1-R2).
+- Acceptance on 1e64823: `astra` ACCEPT-WITH-NOTES for V23, covering ba40730 (`R/ASTRA-V23-INDEPENDENT-ACCEPT-R3-CLAUDECODE-a43bef58.txt`); `sol` ACCEPT-WITH-NOTES for V24 and V22 (`R/SOL-V24V22-INDEPENDENT-ACCEPT-R3-CLAUDECODE-a43bef58.txt`; N1: the V24 cold-path cost is stated as operation counts, no fresh Worker CPU measurement). Receipt: `R/EXECUTOR-V23-RESULT-CLAUDECODE-a43bef58.txt`.
+
+## Current lane (IMPLEMENTED_UNVERIFIED)
+
+- V25 LINE UI/UX designer pass (`R/OPERATOR-DECISION-V25-UIUX-DESIGNER-CONCISE-20261025.txt`): one decision per card (verdict line, hero figure, at most three bullets, one disclosure line), the three conservative strategies as one comparison, fewer characters on the text-heavy options and bottleneck cards; disclosures, figures and the palette unchanged. In development in an isolated worktree.
 
 ## Rollout v11 (authorized 2026-10-17; log `R/ROLLOUT11-EXEC-NOTES-CLAUDECODE-a43bef58.md`)
 
-Stages 1 and 2 done (Worker 5159441e; runtime bd5848b, H1 accepted). Stage 3 P6b under addendum V5 (F 100, N_a 30). Timed read-only watch 2026-10-24 hourly to 23:50Z, `R/rollout11-watch-20261024-a43bef58/timed/`: PASS each hour (E_M 865-881 <= 950) except PASS_WITH_FAILURE at 15:50Z (the 15:12Z sync failed at OBJECT_PUT with TRANSIENT_HTTP, pointer not attempted; the watch rule says continue). Then `astra` reviews the disposition (`R/ROLLOUT11-REVALIDATION-DISPOSITION-CLAUDECODE-a43bef58.md`); after DUAL-ACCEPTED (Q2): fast-forward feat/v11-line-data-gaps to the accepted head, merge PR 37 then PR 41, no tag or release; a refused merge goes to the operator on GitHub.
+Stages 1 and 2 done (Worker 5159441e; runtime bd5848b, H1 accepted). Stage 3 P6b under addendum V5 (F 100, N_a 30). Timed read-only watch 2026-10-24 hourly to 23:50Z, `R/rollout11-watch-20261024-a43bef58/timed/`: PASS each hour (E_M 860-881 <= 950) except PASS_WITH_FAILURE at 15:50Z (the 15:12Z sync failed at OBJECT_PUT with TRANSIENT_HTTP, pointer not attempted; the watch rule says continue). Then `astra` reviews the disposition (`R/ROLLOUT11-REVALIDATION-DISPOSITION-CLAUDECODE-a43bef58.md`); after DUAL-ACCEPTED (Q2): fast-forward feat/v11-line-data-gaps to the accepted head, merge PR 37 then PR 41, no tag or release; a refused merge goes to the operator on GitHub.
 
 ## Rollout 12 (V16-V24 install and Worker deploy)
 
-Package r3 `R/rollout12-r3-a43bef58/` (r2 fixes M1-M7 kept, retargeted to da80192; no CPU signal in the existing tools, so the CPU watch is a manual operator check) is retargeted again to the accepted head; `astra` GO, then operator authorization; deploy only in the timing windows; watch CPU p99 and exceeded-CPU counts.
+Package r4 `R/rollout12-r4-a43bef58/` (r2 fixes M1-M7 kept, target 429586f; no CPU signal in the existing tools, so the CPU watch is a manual operator check) is retargeted once more after V25, to the head that includes it; `astra` GO, then operator authorization; deploy only in the timing windows; watch CPU p99 and exceeded-CPU counts.
 
 ## Open work
 
@@ -44,4 +49,4 @@ History: `git show 147d616:state/STATUS.md`. Since: 2026-10-23/24 parallel write
 
 ## Next
 
-H5 v23-g3 on the M1-R2 fix head, then `astra` (V23) re-review and `sol` (V24, V22) same-snapshot confirmation, receipts and DUAL-ACCEPTED; rollout v11 disposition after 23:50Z, then the Q2 merges; rollout 12 GO and authorization. Boundaries: credentials, billing, broker, trades, Production without current-session authorization. No trades.
+V25 integration, complete H5 and `sol` acceptance; rollout v11 disposition after 23:50Z, then the Q2 merges; rollout 12 retarget, `astra` GO and authorization. Boundaries: credentials, billing, broker, trades, Production without current-session authorization. No trades.
