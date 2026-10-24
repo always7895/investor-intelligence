@@ -17,11 +17,11 @@ FIXGATE + next1 (8d98136, PR 37 open); V11 LINE data gaps (dbf63cf, PR 41 open);
 
 ## Current lanes (IMPLEMENTED_UNVERIFIED), branch `feat/v23-audit-cpu-docs` from 147d616
 
-- V22 source-policy and cleanup docs consolidated (4411ace); four current rules restored after the semantic review.
-- V24 Worker CPU on Workers Free (ea2c524): one-ticker options reads, one-encode body verification, per-isolate verified-body memory; warm friend question 2.5-2.7 ms (was 15-18 ms).
-- V23 project audit findings A-G (Sol and ChatGPT staged work, adopted by `R/MASTER-RECONCILE-PARALLEL-WRITERS-CLAUDECODE-a43bef58-20261024.md`): portable Python destinations (A), Node outputs (B), SEC latest-filing quarter and RPO facts (C, D), non-standard option contracts (E), Worker read-time admission (F), README and LINE_TOP20_UI (G); TSMC guidance channel, partial analyst fields, dated APLD/NBIS orders; regression fixes, regenerated fixtures (lossless proof), setUp-failure cleanup. Finding H (qa.ts memory epoch) DEFERRED_WITH_REASON: certified file, needs recertification; memory stays disabled.
-- Integrated tree: four gates exit 0; tsc 0; Vitest 1993 passed, 2 skipped. Python full suite in a scratch checkout fails only where the real workspace path is required.
-- Gate: complete H5 `R/final-a43bef58-v23-g1` on the pushed head, harness `R/pygate4-repin-a43bef58-20261024` (pwsh 7.6.7 re-pin, `R/v23-evidence-a43bef58/harness-repin.json`), ruling `rule-v23-g1.py` with a native-shell proof. Reviewers: `astra` (V23 and the re-pin), `sol` (V24 and V22).
+- V22 source-policy and cleanup docs consolidated (4411ace); four current rules restored after the semantic review; `sol` notes D1 (source count 103) and D2 (historical `git show` locators) fixed.
+- V24 Worker CPU on Workers Free (ea2c524): one-ticker options reads, one-encode body verification, per-isolate verified-body memory; warm friend question 2.5-2.7 ms (was 15-18 ms). Review fixes (`sol` F1, F2): the member index answers only after JSON.parse accepts the whole document (once per digest and isolate, so the first question costs what every question cost before), and a remembered body is reused only for the same sealed (sha256, byte length).
+- V23 project audit findings A-G (Sol and ChatGPT staged work, adopted by `R/MASTER-RECONCILE-PARALLEL-WRITERS-CLAUDECODE-a43bef58-20261024.md`): portable Python destinations (A), Node outputs (B), SEC latest-filing quarter and RPO facts (C, D), non-standard option contracts (E), Worker read-time admission (F), README and LINE_TOP20_UI (G); TSMC guidance channel, partial analyst fields, dated APLD/NBIS orders; regression fixes, regenerated fixtures (lossless proof), setUp-failure cleanup; review fixes (`astra` M1, M2): Nasdaq as-of month and year tokens are whole tokens, and the TSMC incomplete-coverage test recomputes the receipt digest. Finding H (qa.ts memory epoch) DEFERRED_WITH_REASON: certified file, needs recertification; memory stays disabled.
+- Integrated tree: four gates exit 0; tsc 0; Vitest 2000 passed, 2 skipped. Python full suite in a scratch checkout fails only where the real workspace path is required.
+- Gate: complete H5 `R/final-a43bef58-v23-g1` on da80192 PASS_AS_RULED (338 modules, PASS 318, ruled BLOCKED 20), harness `R/pygate4-repin-a43bef58-20261024` (pwsh 7.6.7 re-pin). First reviews of that head: `sol` REJECT (V24 F1, F2; V22 accepted with notes), `astra` REJECT (V23 M1, M2; no BLOCKER or MAJOR). The fixes are committed on top; complete H5 `R/final-a43bef58-v23-g2` on the fixed head, then the same reviewers re-review that snapshot.
 
 ## Rollout v11 (authorized 2026-10-17; log `R/ROLLOUT11-EXEC-NOTES-CLAUDECODE-a43bef58.md`)
 
@@ -29,7 +29,7 @@ Stages 1 and 2 done (Worker 5159441e; runtime bd5848b, H1 accepted). Stage 3 P6b
 
 ## Rollout 12 (V16-V24 install and Worker deploy)
 
-Package r2 `R/rollout12-r2-a43bef58/` (M1-M7 fixed) is retargeted to the V23 head after its acceptance; `astra` GO, then operator authorization; deploy only in the timing windows; watch CPU p99 and exceeded-CPU counts.
+Package r3 `R/rollout12-r3-a43bef58/` (r2 fixes M1-M7 kept, retargeted to da80192; no CPU signal in the existing tools, so the CPU watch is a manual operator check) is retargeted again to the accepted head; `astra` GO, then operator authorization; deploy only in the timing windows; watch CPU p99 and exceeded-CPU counts.
 
 ## Open work
 
@@ -44,4 +44,4 @@ History: `git show 147d616:state/STATUS.md`. Since: 2026-10-23/24 parallel write
 
 ## Next
 
-H5 on the V23 head, then `astra` and `sol` acceptance and receipts; rollout v11 disposition after 23:50Z, then the Q2 merges; rollout 12 GO and authorization. Boundaries: credentials, billing, broker, trades, Production without current-session authorization. No trades.
+H5 v23-g2 on the fixed head, then `sol` (V24, V22) and `astra` (V23) re-review and receipts; rollout v11 disposition after 23:50Z, then the Q2 merges; rollout 12 GO and authorization. Boundaries: credentials, billing, broker, trades, Production without current-session authorization. No trades.
