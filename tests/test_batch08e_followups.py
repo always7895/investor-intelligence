@@ -94,6 +94,77 @@ class DilutionPenaltyBucketTests(unittest.TestCase):
         self.assertEqual(penalty, 4)
 
 
+class RpoPrecedenceTests(unittest.TestCase):
+    RPO = "RevenueRemainingPerformanceObligation"
+
+    def fundamentals(self, rows):
+        facts = f.share_facts()
+        facts["facts"]["us-gaap"][self.RPO] = {"units": {"USD": rows}}
+        fund = f.engine.sec_fundamentals("SYN", 1, facts)
+        self.assertEqual(f.rank(facts)["top"][0]["fundamentals"], fund)
+        return fund
+
+    def test_newest_valid_filed_wins_without_requiring_filing_metadata(self):
+        rows = [
+            {"end": "2025-06-28", "val": 50},
+            {"end": "2025-06-28", "val": 90, "filed": "2025-08-01"},
+            {"end": "2025-06-28", "val": 100, "filed": "2025-08-15"},
+            {"end": "2026-06-27", "val": 999},
+            {"end": "2026-06-27", "val": 200, "filed": "2026-08-01"},
+            {"end": "2026-06-27", "val": 150, "filed": "2026-08-15"},
+        ]
+        for filed in (None, 17, ["2026-09-01"], {"day": "2026-09-01"}, "invalid", "2026-13-01",
+                      "20260901", "2026-W36-2", "2026-06-26"):
+            for reverse in (False, True):
+                with self.subTest(filed=filed, reverse=reverse):
+                    ordered = [*rows, {"end": "2026-06-27", "val": 999, "filed": filed}]
+                    fund = self.fundamentals(ordered[::-1] if reverse else ordered)
+                    self.assertEqual((fund["rpo"], fund["rpo_prior"]), (150, 100))
+                    self.assertEqual((fund["rpo_filed"], fund["rpo_prior_filed"]),
+                                     ("2026-08-15", "2025-08-15"))
+                    self.assertAlmostEqual(fund["rpo_yoy"], 0.5)
+
+    def test_conflicting_latest_filing_cannot_revive_undated_or_older_rows(self):
+        rows = [
+            {"end": "2025-06-28", "val": 100, "filed": "2025-08-15"},
+            {"end": "2026-06-27", "val": 140, "filed": "2026-08-15"},
+            {"end": "2026-06-27", "val": 150, "filed": "2026-09-15"},
+            {"end": "2026-06-27", "val": 160, "filed": "2026-09-15"},
+            {"end": "2026-06-27", "val": 999},
+        ]
+        for ordered in (rows, rows[::-1]):
+            fund = self.fundamentals(ordered)
+            self.assertEqual((fund["rpo"], fund["rpo_end"]), (100, "2025-06-28"))
+            self.assertIsNone(fund["rpo_yoy"])
+
+    def test_missing_filed_retains_values_without_inventing_lineage(self):
+        fund = self.fundamentals([
+            {"end": "2025-06-28", "val": 100}, {"end": "2026-06-27", "val": 150},
+        ])
+        self.assertEqual((fund["rpo"], fund["rpo_prior"]), (150, 100))
+        self.assertAlmostEqual(fund["rpo_yoy"], 0.5)
+        self.assertIsNone(fund["rpo_filed"])
+        self.assertIsNone(fund["rpo_prior_filed"])
+
+    def test_explicit_bad_filing_metadata_is_not_downgraded_to_absence(self):
+        for filed in ("invalid", "2026-13-01", "20260901", "2026-06-26", ["2026-09-01"]):
+            with self.subTest(filed=filed):
+                fund = self.fundamentals([{"end": "2026-06-27", "val": 999, "filed": filed}])
+                self.assertIsNone(fund["rpo"])
+                self.assertIsNone(fund["rpo_end"])
+
+    def test_newest_filing_with_malformed_value_cannot_hide_valid_rpo(self):
+        rows = [
+            {"end": "2025-06-28", "val": 100, "filed": "2025-08-15"},
+            {"end": "2026-06-27", "val": 150, "filed": "2026-08-15"},
+        ]
+        expected = self.fundamentals(rows)
+        for index, value in enumerate((None, True, "999", float("inf"), float("nan"), 10**5000)):
+            with self.subTest(value_case=index):
+                fund = self.fundamentals([*rows, {"end": "2026-06-27", "val": value, "filed": "2026-10-01"}])
+                self.assertEqual(fund, expected)
+
+
 class NonStringFactEndTests(unittest.TestCase):
     def with_rpo(self, facts, extra=()):
         facts["facts"]["us-gaap"]["RevenueRemainingPerformanceObligation"] = {"units": {"USD": [
@@ -105,7 +176,7 @@ class NonStringFactEndTests(unittest.TestCase):
         self.assertAlmostEqual(expected["rpo_yoy"], 0.5)
         for end in (17, None, ["2026-06-27"], {"end": "2026-06-27"}, "2026-13-01"):
             with self.subTest(end=end):
-                facts = self.with_rpo(f.share_facts(), [{"end": end, "val": 5}])
+                facts = self.with_rpo(f.share_facts(), [{"end": end, "val": 5, "filed": "2026-10-01"}])
                 revenue = facts["facts"]["us-gaap"]["RevenueFromContractWithCustomerIncludingAssessedTax"]
                 revenue["units"]["USD"].append({"start": "2026-03-29", "end": end, "val": 999,
                                                 "filed": "2026-09-01", "form": "10-Q", "fp": "Q"})
@@ -199,7 +270,7 @@ class CanonicalIsoSpellingTests(unittest.TestCase):
         self.assertEqual(expected["rpo_end"], "2026-06-27")
         for text in self.spellings(date(2026, 9, 30)) + self.spellings(date(2026, 6, 27)):
             with self.subTest(spelling=text):
-                self.assert_same(self.with_rpo([{"end": text, "val": 999}]), expected)
+                self.assert_same(self.with_rpo([{"end": text, "val": 999, "filed": "2026-10-01"}]), expected)
 
     def test_dei_rows_with_non_canonical_end_are_skipped(self):
         facts = f.share_facts()

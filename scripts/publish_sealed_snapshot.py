@@ -31,7 +31,7 @@ import math
 import os
 import re
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -642,6 +642,63 @@ def _with_order_forecast(issuer: str, outlook: "dict | None", stock_orders: "obj
     return {**sealed, "order_forecast": v2, "order_forecast_v3": v3}
 
 
+def _sealed_sec_lineage(fund: dict, generated: datetime) -> dict:
+    """Closed, bounded financial operands; a malformed claimed lineage refuses publication."""
+    def day(value):
+        if not isinstance(value, str) or date.fromisoformat(value).isoformat() != value:
+            raise ValueError("SEC_LINEAGE_DATE_INVALID")
+        return date.fromisoformat(value)
+
+    def finite(value):
+        try:
+            return not isinstance(value, bool) and isinstance(value, (int, float)) and math.isfinite(value)
+        except OverflowError:
+            return False
+
+    result = {}
+    for key in ("rpo_filed", "rpo_prior_filed"):
+        if key in fund:
+            value = fund[key]
+            if value is not None and day(value) > generated.date():
+                raise ValueError("SEC_LINEAGE_FUTURE_FILED")
+            result[key] = value
+    if "revenue_operands" not in fund:
+        return result
+    raw = fund["revenue_operands"]
+    if not isinstance(raw, list) or not 1 <= len(raw) <= 2:
+        raise ValueError("SEC_LINEAGE_OPERANDS_INVALID")
+    operands = []
+    for row in raw:
+        if not isinstance(row, dict):
+            raise ValueError("SEC_LINEAGE_OPERAND_INVALID")
+        start, end, filed = day(row.get("start")), day(row.get("end")), day(row.get("filed"))
+        value, unit = row.get("val"), row.get("unit")
+        if (start > end or filed < end or filed > generated.date() or not finite(value)
+                or not isinstance(unit, str) or len(unit) != 3 or not unit.isascii() or not unit.isupper() or not unit.isalpha()):
+            raise ValueError("SEC_LINEAGE_OPERAND_INVALID")
+        operands.append({"start": row["start"], "end": row["end"], "filed": row["filed"], "val": value, "unit": unit})
+    annual = operands[0]
+    if len(operands) == 2:
+        ytd = operands[1]
+        if (annual["start"] != ytd["start"] or annual["unit"] != ytd["unit"]
+                or not 350 <= (day(annual["end"]) - day(annual["start"])).days <= 380
+                or not 260 <= (day(ytd["end"]) - day(ytd["start"])).days <= 285
+                or not 80 <= (day(annual["end"]) - day(ytd["end"])).days <= 100):
+            raise ValueError("SEC_LINEAGE_Q4_INVALID")
+        computed = annual["val"] - ytd["val"]
+    else:
+        if not 80 <= (day(annual["end"]) - day(annual["start"])).days <= 100:
+            raise ValueError("SEC_LINEAGE_QUARTER_INVALID")
+        computed = annual["val"]
+    if (annual["end"] != fund.get("quarter_end") or not finite(computed)
+            or ("revenue" in fund and fund["revenue"] != computed)
+            or ("revenue_unit" in fund and fund["revenue_unit"] != annual["unit"])
+            or ("filed" in fund and fund["filed"] != max(row["filed"] for row in operands))):
+        raise ValueError("SEC_LINEAGE_FUNDAMENTALS_CONFLICT")
+    result["revenue_operands"] = operands
+    return result
+
+
 def lazy_bottleneck_v3_body(path: Path, now: datetime, effective_inputs: "object | None" = None,
                             state_root: "Path | None" = None,
                             *, guidance_wire_enabled: bool = False,
@@ -762,6 +819,7 @@ def captured_bottleneck_v3_body(raw: bytes, now: datetime, effective_inputs=None
                 sealed_fund = {
                     **pick(fund, ("source", "source_url", "quarter_end", "revenue_yoy", "revenue_yoy_prev", "gross_margin",
                                   "gross_margin_change", "rpo_yoy", "shares_yoy")),
+                    **_sealed_sec_lineage(fund, generated),
                     # What the share-count change measures; a figure without a known basis is not sealed.
                     "shares_basis": fund.get("shares_basis") if fund.get("shares_basis") in SHARES_BASES else None,
                     **({"shares_yoy": None} if fund.get("shares_basis") not in SHARES_BASES and "shares_basis" in fund else {}),

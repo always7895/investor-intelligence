@@ -51,6 +51,113 @@ FACTS = {"facts": {"us-gaap": {
 
 
 class QuarterSeriesTests(unittest.TestCase):
+    def test_malformed_rows_do_not_hide_other_valid_fundamentals(self):
+        import copy
+        facts = copy.deepcopy(FACTS)
+        rows = facts["facts"]["us-gaap"]["RevenueFromContractWithCustomerIncludingAssessedTax"]["units"]["USD"]
+        expected = engine.sec_fundamentals("X", 1, facts)
+        rows += [None, [], 3, "junk", fact("2025-06-29", "2026-06-27", float("inf"), "2026-09-15"),
+                 fact("2025-06-29", "2026-06-27", 10**5000, "2026-09-15")]
+        self.assertEqual(engine.sec_fundamentals("X", 1, facts), expected)
+        instant = {"facts": {"us-gaap": {"R": {"units": {"USD": [None, [], 3, "junk",
+            {"end": "2026-06-27", "filed": "2026-08-15", "val": 150},
+            {"end": "2026-06-27", "filed": "2026-09-15", "val": 10**5000}]}}}}}
+        self.assertEqual(engine._instant_series(instant, [("us-gaap", "R")])[1][0]["val"], 150)
+    def test_amended_annual_ytd_and_rpo_are_order_independent_through_compact_publisher(self):
+        import copy
+        for kind, value in (("annual", 130), ("ytd", 180)):
+            facts = copy.deepcopy(FACTS)
+            rows = facts["facts"]["us-gaap"]["RevenueFromContractWithCustomerIncludingAssessedTax"]["units"]["USD"]
+            rows.append(fact("2025-06-29", "2026-06-27" if kind == "annual" else "2026-03-28",
+                             680 if kind == "annual" else 650, "2026-09-15"))
+            rpo = [{"end": "2025-06-28", "val": 100, "filed": "2025-08-15"},
+                   {"end": "2026-06-27", "val": 200, "filed": "2026-08-15"},
+                   {"end": "2026-06-27", "val": 150, "filed": "2026-09-15"}]
+            facts["facts"]["us-gaap"]["RevenueRemainingPerformanceObligation"] = {"units": {"USD": rpo}}
+            results = []
+            for shift in range(3):
+                rows[:] = rows[shift:] + rows[:shift]
+                if shift % 2: rows.reverse()
+                rpo.reverse()
+                fund = engine.sec_fundamentals("X", 1, facts)
+                self.assertEqual(fund["revenue"], value)
+                self.assertEqual((fund["filed"], fund["rpo"], fund["rpo_yoy"]), ("2026-09-15", 150, .5))
+                self.assertEqual(len(fund["revenue_operands"]), 2)
+                sealed = OfficialPreviousQuarterTests()._seal(fund)
+                self.assertEqual(sealed["revenue_operands"], fund["revenue_operands"])
+                self.assertEqual(sealed["rpo_filed"], "2026-09-15")
+                results.append((fund, engine.capture_score(fund), sealed))
+            self.assertEqual(results[0], results[1])
+            self.assertEqual(results[0], results[2])
+
+    def test_same_filed_value_conflict_and_invalid_dates_are_not_arbitrarily_admitted(self):
+        import copy
+        facts = copy.deepcopy(FACTS)
+        rows = facts["facts"]["us-gaap"]["RevenueFromContractWithCustomerIncludingAssessedTax"]["units"]["USD"]
+        rows += [fact("2025-06-29", "2026-06-27", 680, "2026-09-15"),
+                 fact("2025-06-29", "2026-06-27", 690, "2026-09-15"),
+                 fact("2025-06-29", "2026-06-27", 999, "invalid")]
+        for reverse in (False, True):
+            if reverse: rows.reverse()
+            self.assertNotIn("2026-06-27", engine._quarter_series(facts, engine.REVENUE_TAGS)[1])
+        instants = {"facts": {"us-gaap": {"R": {"units": {"USD": [
+            {"end": "2026-06-27", "val": 10, "filed": "2026-09-15"},
+            {"end": "2026-06-27", "val": 11, "filed": "2026-09-15"}]}}}}}
+        self.assertEqual(engine._instant_series(instants, [("us-gaap", "R")]), (None, []))
+
+    def test_conflicted_direct_quarter_cannot_reappear_from_older_annual_minus_ytd(self):
+        import copy
+        facts = copy.deepcopy(FACTS)
+        rows = facts["facts"]["us-gaap"]["RevenueFromContractWithCustomerIncludingAssessedTax"]["units"]["USD"]
+        rows += [fact("2026-03-29", "2026-06-27", 999, "2026-09-15"),
+                 fact("2026-03-29", "2026-06-27", 1000, "2026-09-15")]
+        results = []
+        for reverse in (False, True):
+            if reverse: rows.reverse()
+            self.assertNotIn("2026-06-27", engine._quarter_series(facts, engine.REVENUE_TAGS)[1])
+            fund = engine.sec_fundamentals("X", 1, facts)
+            self.assertEqual(fund["quarter_end"], "2026-03-28")
+            sealed = OfficialPreviousQuarterTests()._seal(fund)
+            self.assertEqual(sealed["quarter_end"], "2026-03-28")
+            self.assertEqual(sealed["revenue_operands"][0]["end"], "2026-03-28")
+            results.append((fund, sealed))
+        self.assertEqual(results[0], results[1])
+
+    def test_direct_quarter_precedes_derived_and_incoherent_q4_is_refused(self):
+        import copy
+        facts = copy.deepcopy(FACTS)
+        rows = facts["facts"]["us-gaap"]["RevenueFromContractWithCustomerIncludingAssessedTax"]["units"]["USD"]
+        rows.append(fact("2026-03-29", "2026-06-27", 999, "2026-08-15"))
+        self.assertEqual(engine.sec_fundamentals("X", 1, facts)["revenue"], 999)
+        rows.pop()
+        for row in rows:
+            if row["end"] == "2026-03-28" and row["start"] == "2025-06-29": row["start"] = "2025-07-01"
+        self.assertNotIn("2026-06-27", engine._quarter_series(facts, engine.REVENUE_TAGS)[1])
+
+    def test_compact_publisher_projects_only_typed_bounded_financial_lineage(self):
+        import copy
+        fund = engine.sec_fundamentals("X", 1, FACTS)
+        noisy = copy.deepcopy(fund)
+        noisy["revenue_operands"][0]["raw_unknown"] = {"sentinel": "MUST_NOT_PUBLISH"}
+        sealed = OfficialPreviousQuarterTests()._seal(noisy)
+        self.assertNotIn("MUST_NOT_PUBLISH", json.dumps(sealed))
+        for row in sealed["revenue_operands"]:
+            self.assertEqual(set(row), {"start", "end", "filed", "val", "unit"})
+        mutations = [lambda f: f.update(revenue_operands=[]),
+                     lambda f: f.update(revenue_operands=[{}, {}, {}]),
+                     lambda f: f.update(revenue_operands={"val": 1}),
+                     lambda f: f["revenue_operands"][0].update(val="830"),
+                     lambda f: f["revenue_operands"][0].update(unit=["USD"]),
+                     lambda f: f["revenue_operands"][1].update(start="2025-07-01"),
+                     lambda f: f["revenue_operands"][0].update(filed="20260915"),
+                     lambda f: f["revenue_operands"][0].update(val=831),
+                     lambda f: f["revenue_operands"][0].update(val=10**400),
+                     lambda f: f.update(rpo_filed={"untrusted": "raw"}),
+                     lambda f: f.update(rpo_prior_filed="2026-99-99")]
+        for mutation in mutations:
+            bad = copy.deepcopy(fund)
+            mutation(bad)
+            self.assertIsNone(OfficialPreviousQuarterTests()._seal(bad))
     def test_fiscal_quarters_and_derived_fourth_quarter(self):
         tag, series = engine._quarter_series(FACTS, engine.REVENUE_TAGS)
         self.assertEqual(tag, "us-gaap:RevenueFromContractWithCustomerIncludingAssessedTax")
@@ -262,7 +369,8 @@ class OutlookTests(unittest.TestCase):
     def test_sec_fundamentals_carry_the_latest_rpo_amount(self):
         facts = json.loads(json.dumps(FACTS))
         facts["facts"]["us-gaap"]["RevenueRemainingPerformanceObligation"] = {"units": {"USD": [
-            {"end": "2025-06-28", "val": 100}, {"end": "2026-06-27", "val": 150}]}}
+            {"end": "2025-06-28", "val": 100, "filed": "2025-08-15"},
+            {"end": "2026-06-27", "val": 150, "filed": "2026-08-15"}]}}
         fundamentals = engine.sec_fundamentals("X", 1, facts)
         self.assertEqual((fundamentals["rpo"], fundamentals["rpo_end"], fundamentals["rpo_unit"]), (150, "2026-06-27", "USD"))
         self.assertAlmostEqual(fundamentals["rpo_yoy"], 0.5)

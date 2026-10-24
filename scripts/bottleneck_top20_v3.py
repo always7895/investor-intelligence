@@ -127,6 +127,47 @@ def companyfacts(cik: int, fetch: Callable[[str], bytes] | None, max_age_hours: 
     return json.loads(raw.decode("utf-8"))
 
 
+def _fact_revision_key(row: dict[str, Any]) -> tuple[str, str]:
+    """Filed date then canonical content: stable even when SEC arrays are reordered."""
+    return row["filed"], json.dumps(row, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+
+
+def _fact_operand(row: dict[str, Any], unit: str) -> dict[str, Any]:
+    return {key: row[key] for key in ("start", "end", "filed", "val")} | {"unit": unit}
+
+
+def _valid_filed_fact(row: dict[str, Any]) -> bool:
+    if not isinstance(row, dict):
+        return False
+    try:
+        return (_canonical_day(row.get("end")) and _canonical_day(row.get("filed"))
+                and row["filed"] >= row["end"] and isinstance(row.get("val"), (int, float))
+                and not isinstance(row.get("val"), bool) and math.isfinite(row["val"]))
+    except OverflowError:
+        return False
+
+
+def _latest_facts(rows: list[dict[str, Any]], *, duration: bool,
+                  conflicted_ends: set[str] | None = None) -> list[dict[str, Any]]:
+    groups: dict[tuple[str, ...], list[dict[str, Any]]] = {}
+    for row in rows:
+        if not _valid_filed_fact(row) or (duration and not _canonical_day(row.get("start"))):
+            continue
+        key = (row["start"], row["end"]) if duration else (row["end"],)
+        groups.setdefault(key, []).append(row)
+    result = []
+    for group in groups.values():
+        filed = max(row["filed"] for row in group)
+        latest = [row for row in group if row["filed"] == filed]
+        # Ordering cannot resolve two different financial values in the same latest filing.
+        if any(row["val"] != latest[0]["val"] for row in latest):
+            if conflicted_ends is not None:
+                conflicted_ends.add(latest[0]["end"])
+            continue
+        result.append(max(latest, key=_fact_revision_key))
+    return sorted(result, key=_fact_revision_key)
+
+
 def _quarter_series(facts: dict[str, Any], tags: list[tuple[str, str]]) -> tuple[str | None, dict[str, dict[str, Any]]]:
     """Quarter-length duration facts (80-100 days, any fiscal calendar) of the tag with the most recent quarter,
     keyed by period end date; the latest filing wins for a restated period. SEC frames are not used because many
@@ -136,9 +177,10 @@ def _quarter_series(facts: dict[str, Any], tags: list[tuple[str, str]]) -> tuple
         units = facts.get("facts", {}).get(taxonomy, {}).get(tag, {}).get("units", {})
         for unit, rows in units.items():
             series: dict[str, dict[str, Any]] = {}
-            nine_month: dict[str, dict[str, Any]] = {}
+            nine_month: dict[tuple[str, str], dict[str, Any]] = {}
             annual: list[dict[str, Any]] = []
-            for row in rows:
+            conflicted_ends: set[str] = set()
+            for row in _latest_facts(rows, duration=True, conflicted_ends=conflicted_ends):
                 try:
                     end, start = row["end"], row["start"]
                     if not (_canonical_day(end) and _canonical_day(start)):
@@ -150,18 +192,24 @@ def _quarter_series(facts: dict[str, Any], tags: list[tuple[str, str]]) -> tuple
                     continue
                 if 80 <= days <= 100:
                     previous = series.get(row["end"])
-                    if previous is None or str(row.get("filed", "")) >= str(previous.get("filed", "")):
+                    if previous is None or _fact_revision_key(row) > _fact_revision_key(previous):
                         series[row["end"]] = {**row, "unit": unit}
                 elif 260 <= days <= 285:
-                    nine_month[row["start"]] = row
+                    nine_month[(row["start"], row["end"])] = row
                 elif 350 <= days <= 380:
                     annual.append(row)
             # Fourth fiscal quarters are often filed only inside the annual figure: annual minus nine-month YTD.
-            for year in annual:
-                ytd = nine_month.get(year["start"])
-                if ytd and year["end"] not in series:
+            for year in sorted(annual, key=_fact_revision_key):
+                candidates = [row for row in nine_month.values() if row["start"] == year["start"]
+                              and 80 <= (date.fromisoformat(year["end"]) - date.fromisoformat(row["end"])).days <= 100]
+                ytd = max(candidates, key=_fact_revision_key) if candidates else None
+                if (ytd and year["end"] not in conflicted_ends
+                        and (year["end"] not in series or series[year["end"]].get("derived") == "annual_minus_9m")):
+                    if not _valid_filed_fact({**year, "val": year["val"] - ytd["val"]}):
+                        continue
                     series[year["end"]] = {**year, "val": year["val"] - ytd["val"], "unit": unit, "derived": "annual_minus_9m",
-                                           "start": ytd["end"]}
+                                           "start": (date.fromisoformat(ytd["end"]) + timedelta(days=1)).isoformat(),
+                                           "filed": max(year["filed"], ytd["filed"]), "operands": [_fact_operand(year, unit), _fact_operand(ytd, unit)]}
             if len(series) >= 5 and max(series) > best[0]:
                 best = (max(series), f"{taxonomy}:{tag}", series)
     return best[1], best[2]
@@ -192,12 +240,35 @@ def _iso_end(row: dict[str, Any]) -> bool:
 
 
 def _instant_series(facts: dict[str, Any], tags: list[tuple[str, str]]) -> tuple[str | None, list[dict[str, Any]]]:
+    """Newest valid filings with conflict refusal and undated legacy compatibility."""
     for taxonomy, tag in tags:
         units = facts.get("facts", {}).get(taxonomy, {}).get(tag, {}).get("units", {})
         for unit, rows in units.items():
-            dated = sorted((row for row in rows if _iso_end(row) and row.get("val") is not None), key=lambda row: row["end"])
-            if dated:
-                return f"{taxonomy}:{tag}", [{**row, "unit": unit} for row in dated]
+            conflicted: set[str] = set()
+            dated = _latest_facts(rows, duration=False, conflicted_ends=conflicted)
+            by_end = {row["end"]: row for row in dated}
+            for row in rows:
+                if not isinstance(row, dict) or not _iso_end(row) or row.get("filed") is not None:
+                    continue  # explicit malformed filing metadata cannot become an undated fallback
+                if row["end"] in conflicted:
+                    continue  # no undated/older resurrection of a conflicting latest filing
+                value = row.get("val")
+                try:
+                    if not isinstance(value, (int, float)) or isinstance(value, bool) or not math.isfinite(value):
+                        continue
+                except OverflowError:
+                    continue
+                previous = by_end.get(row["end"])
+                if previous is not None and previous["filed"] is not None:
+                    continue
+                undated = {**row, "filed": None}
+                if previous is not None and previous["val"] != value:
+                    del by_end[row["end"]]
+                    conflicted.add(row["end"])
+                else:
+                    by_end[row["end"]] = max(previous, undated, key=_fact_revision_key) if previous else undated
+            if by_end:
+                return f"{taxonomy}:{tag}", [{**by_end[end], "unit": unit} for end in sorted(by_end)]
     return None, []
 
 
@@ -309,10 +380,13 @@ def sec_fundamentals(ticker: str, cik: int, facts: dict[str, Any]) -> dict[str, 
     return {"source": "SEC EDGAR XBRL companyfacts", "source_url": COMPANYFACTS.format(cik=cik), "revenue_tag": tag,
             "quarter": current.get("fp"), "quarter_end": current.get("end"), "filed": current.get("filed"), "form": current.get("form"),
             "revenue": current["val"], "revenue_unit": current["unit"], "revenue_yoy": yoy, "revenue_yoy_prev": yoy_prev,
+            "revenue_operands": current.get("operands", [_fact_operand(current, current["unit"])]),
             "gross_margin": gm, "gross_margin_change": (gm - gm_prior) if gm is not None and gm_prior is not None else None,
             "rpo_yoy": rpo_yoy, "shares_yoy": shares_yoy, "shares_basis": shares_basis,
             "rpo": rpo[-1]["val"] if rpo else None, "rpo_unit": rpo[-1]["unit"] if rpo else None,
             "rpo_end": rpo[-1]["end"] if rpo else None,
+            "rpo_filed": rpo[-1]["filed"] if rpo else None,
+            "rpo_prior_filed": rpo_prior["filed"] if rpo_prior else None,
             "rpo_prior": rpo_prior["val"] if rpo_prior else None, "rpo_prior_end": rpo_prior["end"] if rpo_prior else None}
 
 
