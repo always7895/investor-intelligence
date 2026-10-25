@@ -7,6 +7,15 @@ import { doc, forecastCase, HOUR, OUTLOOKS } from "./bottleneck-v3-fixture";
 import lineageContract from "../../tests/fixtures/v213-lineage-sealed-markets.json";
 import urlTable from "../../tests/fixtures/v213-order-forecast-urls.json";
 import officialRevenueFixture from "../../tests/fixtures/v213-official-quarterly-revenue.json";
+import type { LineOutboundMessage } from "../src/line-messages";
+function flexBubbleStrings(messages: readonly LineOutboundMessage[]): string[] {
+  return messages.flatMap(message => {
+    if (message.type !== "flex") return [];
+    const carousel = message.contents as unknown as { contents?: unknown[] };
+    return (carousel.contents ?? []).map(bubble => JSON.stringify(bubble));
+  });
+}
+
 
 describe("bottleneck-explosion Top20 v3", () => {
   it("parses a fresh document and refuses stale, malformed or mis-ranked ones", () => {
@@ -37,47 +46,41 @@ describe("bottleneck-explosion Top20 v3", () => {
     expect(serialized).toContain("S1｜合成一號");
     expect(serialized).toContain("中文名來源：中文維基百科");
     expect(serialized).toContain("SIVE.ST｜無公認中文名");
-    // One long-term standard on every card: 6-month return and 2-year CAGR; younger listings say so.
-    expect(serialized.match(/"2年年化"/g)).toHaveLength(20);
+    // V25-D4 keeps both horizons in one row and uses a compact six-month label for all twenty entries.
+    expect(serialized.match(/"text":"半年 [^"]*｜2年年化 /g)).toHaveLength(20);
     expect(serialized).not.toContain("1年報酬");
-    // Operator 2026-09-27: a spin-off is not a new company; its figure starts at the first regular-way session, never at
-    // when-issued trading, and says it is not a 2-year figure; the verified event shows even when two years exist.
+    // V25: the compact card retains visible lineage status; long explanations live in the text edition.
     expect(serialized).not.toContain("上市未滿2年");
     expect(serialized).not.toContain("2025-02-13起年化");
     expect(serialized).toContain("獨立交易價格未滿2年");
-    expect(serialized).toContain("2025-02-24–2026-09-25 正常交易以來年化 +64%（非2年）");
-    expect(serialized).toContain("上市沿革：2025-02-21 自 Synthetic Parent（SPAR）分拆；2025-02-24 起正常交易");
-    expect(serialized).toContain("上市沿革：2024-03-19 IPO；2024-03-20 起交易");
-    // An unverified since-listing figure from an older document is never shown; the card says the data are insufficient.
     expect(serialized).toContain("2年價格資料不足");
-    expect(serialized).toContain("可得價格自 2025-01-06；上市沿革未核實");
     expect(serialized).not.toContain("+777%");
-    // Lead scores are not shown; signed-order floors from the sealed SEC report are.
+    // Lead scores stay hidden on both surfaces; signed-order detail is available on demand.
     expect(serialized).not.toMatch(/Serenity|Leopold 基金|"線索"/);
-    expect(serialized).not.toContain("已簽約訂單可支撐的營收成長");  // revenue coverage are on the detail card only
-    // Operator 2026-09-26: current orders, the future estimate and the price scenario if realized, on every card.
-    expect(serialized.match(/"訂單與成長情境"/g)).toHaveLength(20);
-    // One layout on every card (Astra ORDERS-V2-01): the current-orders tile, both realization rows and both price rows.
-    for (const label of ["現有訂單", "未來訂單預估", "訂單實現後股價情境"]) expect(serialized.match(new RegExp(`"${label}"`, "g"))).toHaveLength(20);
-    for (const row of ["半年內預計認列：", "1年內預計認列：", "若半年內實現訂單 → ", "若1年內實現訂單 → "]) expect(serialized.match(new RegExp(`"${row}`, "g"))).toHaveLength(20);
-    expect(serialized).toContain("RPO 2026-07-26 年增+68%");
-    expect(serialized).toContain("17.51兆 KRW");
-    expect(serialized).toContain("在手 2026-06-30 年增+63%");
-    expect(serialized).toContain("半年內預計認列：US$12.0B（起算日 2026-06-30（非今日起），至 2026-12-30）");  // S2: the filing's own 6-month schedule
-    expect(serialized).toContain("半年後訂單餘額外推：25.13兆 KRW（至 2027-03-27）");  // S8: a book extrapolation is a labelled sensitivity
-    expect(serialized).toContain("模型推估，非公司揭露、非期間認列");
-    expect(serialized).toContain("公司未公布");
-    expect(serialized).not.toContain("分析師12個月平均目標價");  // analyst targets never fill an order tile
-    expect(serialized).not.toContain("1年 +46%");  // the analyst target (+46%) never appears as the order-linked price
+    // V25-FIX1 restores both forecast horizons and their conditional scenarios without leaving the compact card.
+    // V25-D4 shortens the current-orders label but still renders one row per Top20 entry.
+    expect(serialized.match(/"訂單：/g)).toHaveLength(20);
+    expect(serialized).toContain("半年內預計認列：");
+    expect(serialized).toContain("若半年內實現訂單 →");
+    // V25-D4 shortens disclosure labels while retaining each RPO, scenario, long-horizon and listing qualifier.
+    expect(serialized).toContain("訂單：RPO 2026-07-26 年增+68%");
+    expect(serialized).toContain("情境：營收達認列額，P/S股數不變");
+    expect(serialized).toContain("預計認列非保證");
+    expect(serialized).toContain("長期：2025-02-24–2026-09-25 正常交易以來年化 +64%（非2年）");
+    expect(serialized).toContain("沿革：2025-02-21 自 Synthetic Parent（SPAR）分拆");
+    expect(serialized).toContain("財報：SEC EDGAR XBRL 財報資料");
+    expect(serialized).toContain("股價 Yahoo Finance 還原收盤價（非官方）");
+    expect(serialized).toContain("合成稀缺層角色");
+    expect(serialized).not.toContain("原文：");  // the English original is available in the detail text
+    expect(serialized).not.toContain("1年 +46%");
     expect(serialized).not.toContain("+2860%");
     expect(serialized).not.toContain("目標價樣本不足");
-    expect(serialized).toContain("非目標價、非投資建議");
-    // Chinese first, the original kept; source labels in Chinese.
-    expect(serialized).toContain("合成稀缺層角色");
-    expect(serialized).not.toContain("原文：");  // the English original is on the detail card
-    expect(serialized).toContain("財報：SEC EDGAR XBRL 財報資料");
-    expect(serialized).toContain("股價：Yahoo Finance 還原收盤價（非官方）");
-    expect(serialized).toContain("交易所收盤交叉比對：Nasdaq Nordic 斯德哥爾摩（延遲） 32.78 SEK（2026-09-25），與 Yahoo 差 +0.12%");
+    const topText = (buildBottleneckTop20Messages(parsed, "text") as { text: string }[]).map(page => page.text).join("\n");
+    expect(topText).toContain("為負者排除");
+    expect(topText).toContain("S1 合成一號（Synthetic 1）");
+    expect(topText).toContain("US$12.0B");
+    expect(topText).toContain("17.51兆 KRW");
+    expect(topText).toContain("2025-02-21 自 Synthetic Parent（SPAR）分拆");
     expect(flex.length).toBeLessThanOrEqual(5);  // one LINE reply
     const text = buildBottleneckTop20Messages(parsed, "text") as { text: string }[];
     expect(text[0]!.text).toContain("為負者排除");
@@ -96,40 +99,98 @@ describe("bottleneck-explosion Top20 v3", () => {
     expect(withReport[0]!.altText).toContain("S1 合成一號 瓶頸詳情");  // the detail card first, then the company report
     const s1 = JSON.stringify(withReport);
     expect(s1).toContain("Synthetic One");
-    expect(s1).toContain("已簽約訂單可支撐的營收成長（RPO 認列時程）");
     expect(s1).toContain("僅指營收，不是股價下限");
     expect(s1).not.toContain("訂單實現下限");
     expect(s1).toContain("≥+33%");
-    for (const label of ["財報數據", "前一季年增", "加速度", "股數年增", "市場數據", "訂單與成長情境", "EPS實現·本益比不變",
-      "50 位", "預估來源：https://finance.yahoo.com/quote/S1/analysis", "訂單來源：SEC EDGAR XBRL 財報資料"]) expect(s1).toContain(label);
-    expect(s1).toContain("目前訂單：剩餘履約義務（RPO，已簽約未認列） US$3.2B（2026-07-26，年增 +68%）");
-    expect(s1).toContain("下一財年營收 +70.0%（58 位）");
-    expect(s1).toContain("第二來源（Nasdaq.com 分析師預估）：平均目標價 250（+11%，33 位）；Jan 2028 EPS 13.5（+45.9%，15 位）");
-    expect(s1).toContain("兩家來源目標價差距大（Yahoo +46%／Nasdaq +11%）");
+    expect(s1).not.toContain("目前訂單：剩餘履約義務（RPO，已簽約未認列） US$3.2B");
+    const s1Text = (buildBottleneckDetail(parsed, "S1", "text") as { text: string }[]).map(message => message.text).join("\n");
+    // V25: synthetic S1 has no curated previous-quarter source; the dedicated 5351 case below verifies that attribution.
+    expect(s1Text).toContain("財報（SEC EDGAR XBRL 財報資料，季末 2026-06-30）");
+    for (const detail of [
+      "加速度", "股數年增", "50 位",
+      "https://finance.yahoo.com/quote/S1/analysis", "目前訂單：剩餘履約義務（RPO，已簽約未認列） US$3.2B（2026-07-26，年增 +68%）",
+      "下一財年營收 +70.0%（58 位）",
+      "第二來源（Nasdaq.com 分析師預估）：平均目標價 250（+11%，33 位）；Jan 2028 EPS 13.5（+45.9%，15 位）",
+      "兩家來源目標價差距大（Yahoo +46%／Nasdaq +11%）",
+    ]) expect(s1Text).toContain(detail);
     const korea = JSON.stringify(buildBottleneckDetail(parsed, "S4", "flex"));
-    expect(korea).toContain("目前訂單：在手訂單（重工業部門（連結）） 17.51兆 KRW（2026-06-30，年增 +63%）");
-    expect(korea).toContain("最新一季新接訂單 3.32兆 KRW（年增 +51%）");
-    expect(korea).toContain("公司指引：2026 年新接訂單 12.00兆 KRW（原 8.40兆 KRW）");
-    expect(JSON.stringify(buildBottleneckDetail(parsed, "S5", "flex"))).toContain("目前訂單：未揭露（SK海力士未揭露在手訂單）");
-    const sive = buildBottleneckDetail(parsed, "SIVE.ST", "flex") as { contents: unknown }[];
-    expect(sive).toHaveLength(1);  // no sealed report: the detail card only
+    expect(korea).not.toContain("最新一季新接訂單 3.32兆 KRW");
+    const koreaText = (buildBottleneckDetail(parsed, "S4", "text") as { text: string }[]).map(message => message.text).join("\n");
+    expect(koreaText).toContain("目前訂單：在手訂單（重工業部門（連結）） 17.51兆 KRW（2026-06-30，年增 +63%）");
+    expect(koreaText).toContain("最新一季新接訂單 3.32兆 KRW（年增 +51%）");
+    expect(koreaText).toContain("公司指引：2026 年新接訂單 12.00兆 KRW（原 8.40兆 KRW）");
+    const s5Text = (buildBottleneckDetail(parsed, "S5", "text") as { text: string }[]).map(message => message.text).join("\n");
+    expect(s5Text).toContain("目前訂單：未揭露（SK海力士未揭露在手訂單）");
+    const sive = buildBottleneckDetail(parsed, "SIVE.ST", "flex") as unknown as { contents: { contents: unknown[] } }[];
+    // V25 packs the four decision pages into one Flex carousel message instead of separate messages.
+    expect(sive.length).toBeLessThanOrEqual(5);
+    expect(sive.flatMap(message => message.contents.contents)).toHaveLength(4);
     const sivePayload = JSON.stringify(sive);
-    expect(sivePayload).toContain("+2860%");  // the detail shows the thin estimate, marked as such
-    expect(sivePayload).toContain("僅 1 位分析師，參考性低");
-    expect(sivePayload).toContain("原文：synthetic scarce layer role");
+    expect(sivePayload).not.toContain("+2860%");
+    expect(sivePayload).not.toContain("synthetic scarce layer role");
     expect(sivePayload).not.toMatch(/Serenity|Leopold/);
     expect(sivePayload).toContain("回瓶頸 TOP20");
-    expect(sivePayload).toContain("市場若已反映部分成長，實際漲幅較小");  // the scenario states its basis
+    const siveText = (buildBottleneckDetail(parsed, "SIVE.ST", "text") as { text: string }[]).map(message => message.text).join("\n");
+    expect(siveText).toContain("+2860%");
+    expect(siveText).toContain("僅 1 位分析師，參考性低");
+    expect(siveText).toContain("原文：synthetic scarce layer role");
+    expect(siveText).toContain("市場若已反映部分成長，實際漲幅較小");
+    expect(siveText).not.toMatch(/Serenity|Leopold/);
     const textWithReport = buildBottleneckDetail(parsed, "S1", "text") as { type: string; text: string }[];
     expect(textWithReport.length).toBeLessThanOrEqual(5);
     expect(textWithReport[0]!.text).toContain("分析師共識情境（非訂單）：營收實現·市銷率不變 +70%");  // the analyst scenario is labelled as such
     expect(textWithReport.every(message => message.type === "text" && message.text.length <= 4900)).toBe(true);
     const industries = JSON.stringify(buildIndustryExplosionMessages(parsed, "flex"));
-    expect(industries).toContain("Leopold 邏輯");
-    expect(industries).toContain("HBM 與 CoWoS 是近期限制。");
-    expect(industries).toContain("原文：HBM and CoWoS are near-term constraints.");
-    expect(industries).toContain("3.00x");
+    // V25: the compact card names the chain; the full text route retains the detailed Leopold logic label.
+    expect(industries).toContain("Leopold 因果鏈");
+    expect(industries).toContain("產業爆發榜 文字");
+    expect(industries).not.toContain("HBM 與 CoWoS 是近期限制。");
+    expect(industries).not.toContain("3.00x");
     expect(industries).not.toMatch(/Serenity 熱度|基金13F占比/);
+    const industryText = (buildIndustryExplosionMessages(parsed, "text") as { text: string }[]).map(message => message.text).join("\n");
+    expect(industryText).toContain("HBM 與 CoWoS 是近期限制。");
+    // V25: the text edition preserves the publisher content under the explicit Leopold attribution.
+    expect(industryText).toContain("Leopold 綁定限制：HBM and CoWoS are near-term constraints.");
+    expect(industryText).toContain("3.00x");
+  });
+
+  it("keeps order estimates, scenarios and figure qualifiers on each Top20 bubble", () => {
+    const raw = doc(REPORT);
+    (raw.top as any[])[2].fundamentals.cross_check = {
+      source_id: "TPEX", source_url: "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap05_O",
+      period: "2026-08", revenue_yoy: 0.525, cumulative_yoy: 4.89, currency: "TWD",
+    };
+    const parsed = parseBottleneckV3(raw, REPORT + HOUR)!;
+    const cards = flexBubbleStrings(buildBottleneckTop20Messages(parsed, "flex"));
+    const s2 = cards.find(card => card.includes("S2｜無公認中文名"))!;
+    // V25-FIX2 keeps each start date and moves the non-today caveat to the single closing clause.
+    expect(s2).toContain("未來訂單｜半年內預計認列：US$12.0B");
+    expect(s2).toContain("起算日 2026-06-30，至 2026-12-30");
+    expect(s2).toContain("1年內預計認列：US$22.0B");
+    expect(s2).toContain("起算日 2026-06-30，至 2027-06-30");
+    // V25-D2 moves score composition to the existing detail command when it does not fit the compact Top20 card.
+    expect(s2).not.toContain("分數構成：");
+    expect(s2).toContain("若半年內實現訂單 → 股價預估 +50%");
+    expect(s2).toContain("若1年內實現訂單 → 股價預估 +38%");
+    // V25-D4 keeps the condition and basis while removing redundant connective wording.
+    expect(s2).toContain("情境：營收達認列額，P/S股數不變");
+    expect(s2).toContain("非今日起");
+    expect(s2).toContain("非目標價、非投資建議、不自動下單");
+    expect(s2).toContain("預計認列非保證");
+    // V25-D4 shortens the current-order and revenue-proxy labels without dropping their values or qualifiers.
+    expect(s2).toContain("訂單：未申報 RPO");
+    expect(s2).toContain("訂單：未揭露｜synthetic scarce layer role");
+    expect(s2).toContain("營收代理：年增 +109%");
+    // V25-D2 keeps the proxy label/value in the body; the disclosure carries only its qualifier.
+    expect(s2).toContain("非訂單");
+    // V25-D4 keeps the two-year basis and listing history with shorter labels.
+    expect(s2).toContain("長期：2025-02-24–2026-09-25 正常交易以來年化 +64%（非2年）");
+    expect(s2).toContain("沿革：2025-02-21 自 Synthetic Parent（SPAR）分拆；2025-02-24 起正常交易");
+    expect(s2).toContain("官方月營收：櫃買中心 2026-08 單月年增 +53%，1–8 月累計年增 +489%");
+
+    const sive = cards.find(card => card.includes("SIVE.ST｜無公認中文名"))!;
+    expect(sive).toContain("交易所收盤交叉比對：");
+    expect(sive).toContain("與 Yahoo 差 +0.12%");
   });
 
   it("shows the verified listing event and its sources in every form and closes malformed lineage metadata", () => {
@@ -142,6 +203,9 @@ describe("bottleneck-explosion Top20 v3", () => {
     for (const style of ["flex", "text"] as const) {
       const detail = JSON.stringify(buildBottleneckDetail(parsed, "S2", style));
       expect(detail, style).toContain("上市沿革：2025-02-21 自 Synthetic Parent（SPAR）分拆；2025-02-24 起正常交易");
+      // V25-D2 keeps score composition on the full text detail route; the Flex detail page stays within the unchanged V20 ceiling.
+      if (style === "text") expect(detail, style).toContain("分數構成：層級熱度 20｜公司捕獲 20｜市場確認 12｜爆發性 8");
+      else expect(detail, style).not.toContain("分數構成：");
       expect(detail, style).toContain("2025-02-24 https://www.sec.gov/Archives/edgar/data/1/000000000000000001/synthetic8k.htm");
       expect(detail, style).toContain("正常交易以來年化 +64%（非2年）");
     }
@@ -224,7 +288,10 @@ describe("bottleneck-explosion Top20 v3", () => {
     const expected = "官方月營收：櫃買中心 2026-08 單月年增 +525%，1–8 月累計年增 +489%";
     expect(JSON.stringify(buildBottleneckDetail(parsed, "S1", "text"))).toContain(expected);
     expect(JSON.stringify(buildBottleneckDetail(parsed, "S1", "flex"))).toContain(expected);
-    expect(JSON.stringify(buildBottleneckTop20Messages(parsed, "flex"))).toContain(expected);
+    const topFlex = flexBubbleStrings(buildBottleneckTop20Messages(parsed, "flex"));
+    const s1 = topFlex.find(card => card.includes("S1｜"))!;
+    expect(s1).toContain(expected);
+    expect(s1).toContain("瓶頸詳情 S1");
     for (const bad of [{ ...monthly, period: "2026-13" }, { ...monthly, source_url: "http://x" },
       { ...monthly, revenue_yoy: null, cumulative_yoy: null }, { ...monthly, revenue_yoy: "525%" },
       // ChatGPT review: the Worker enforces the seal's source -> period -> currency contract
@@ -280,7 +347,7 @@ describe("bottleneck-explosion Top20 v3", () => {
     expect(detail).toContain("未取得可比較差異");  // a missing diff is not a currency mismatch
   });
 
-  it("falls back to lean cards instead of a failed reply when twenty full cards exceed five carousels", () => {
+  it("keeps twenty long-metadata cards within five carousels without losing required summaries", () => {
     const heavy = doc(REPORT);
     for (const entry of heavy.top as any[]) {
       entry.role_source.url = `https://example.com/${"r".repeat(170)}`;
@@ -290,20 +357,37 @@ describe("bottleneck-explosion Top20 v3", () => {
       entry.role_zh = "角".repeat(200);
     }
     const parsed = parseBottleneckV3(heavy, REPORT + HOUR)!;
-    const bubbles = buildBottleneckTop20Messages(parsed, "flex") as unknown as { contents: { contents: unknown[] } }[];
-    expect(bubbles.length).toBeLessThanOrEqual(5);
-    expect(bubbles.reduce((total, message) => total + message.contents.contents.length, 0)).toBe(20);
-    const serialized = JSON.stringify(bubbles);
-    expect(serialized.match(/"訂單與成長情境"/g)).toHaveLength(20);
-    expect(serialized).toContain("上市沿革：2025-02-21 自 Synthetic Parent（SPAR）分拆；2025-02-24 起正常交易");  // lean cards keep the event
+    const messages = buildBottleneckTop20Messages(parsed, "flex");
+    const bubbles = flexBubbleStrings(messages);
+    expect(messages.length).toBeLessThanOrEqual(5);
+    expect(bubbles).toHaveLength(20);
+    for (const message of messages) {
+      expect(new TextEncoder().encode(JSON.stringify(message)).length).toBeLessThanOrEqual(46_000);
+    }
+    for (const bubble of bubbles) {
+      expect(bubble).toContain("未來訂單｜");
+      expect(bubble).toContain("股價情境｜");
+      // V25-D4 shortens the qualifier label but keeps the ordersTile basis adjacent.
+      expect(bubble).toContain("訂單：");
+      expect(bubble).toMatch(/預計認列非保證|RPO 為剩餘履約義務，非全部訂單；預計認列非保證/);
+      // V25-D4 preserves the scenario condition in a shorter label.
+      expect(bubble).toContain("情境：");
+    }
+    const serialized = JSON.stringify(messages);
+    // V25-D4 uses a compact Chinese half-year label without changing the return horizon.
+    expect(serialized.match(/"半年 [^"]*｜2年年化/g)).toHaveLength(20);
+    // V25-D4 keeps listing history on the bubble with a concise label.
+    expect(serialized).toContain("沿革：");
+    const topText = JSON.stringify(buildBottleneckTop20Messages(parsed, "text"));
+    expect(topText).toContain("2025-02-21 自 Synthetic Parent（SPAR）分拆");
     const s1 = parsed.top.find(entry => entry.symbol === "S1")!;
-    // Operator 2026-09-27: the future ORDER estimate and the price scenario are different figures, each with 6-month and 1-year horizons.
-    const [orders] = outlookTiles(parsed, s1);  // full and lean cards are both built from the tile and the order block
+    // Operator 2026-09-27: the future ORDER estimate and price scenario are separate figures, each with both horizons.
+    const [orders] = outlookTiles(parsed, s1);
     expect(orders).toEqual(["現有訂單", "US$3.2B", "RPO 2026-07-26 年增+68%"]);
     expect(outlookForecast(parsed, s1).map(([text]) => text)).toEqual(["未來訂單預估", "半年內預計認列：未揭露", "1年內預計認列：US$1.2B（起算日 2026-07-26（非今日起），至 2027-07-26）", "訂單實現後股價情境",
       "若半年內實現訂單 → 無法估價（缺認列時程）", "若1年內實現訂單 → 無法估價（訂單僅覆蓋同期營收 0.3%）", "RPO 為剩餘履約義務，非全部訂單；預計認列非保證",
       "訂單資料截至 2026-07-26｜來源公布 2026-08-26"]);
-    expect(serialized).toContain("若1年內實現訂單 → 無法估價（訂單僅覆蓋同期營收 0.3%）");  // the lean card keeps both horizons
+    expect(topText).toContain("若1年內實現訂單 → 無法估價（訂單僅覆蓋同期營收 0.3%）");
   });
 
   // The report time is fixed so the horizon arithmetic is exact.
@@ -625,13 +709,19 @@ describe("revenue-momentum proxy tile (V13 phase A)", () => {
     }
   });
 
-  it("proxy_hidden_when_orders_available", () => {
+  it("keeps the revenue-momentum proxy and its qualifier on Top20 and detail when current orders are absent", () => {
     const parsed = base();
-    for (const symbol of ["S1", "S4"]) expect(outlookTiles(parsed, sym(parsed, symbol)), symbol).toHaveLength(1);
-    const serialized = JSON.stringify(buildBottleneckTop20Messages(parsed, "flex"));
-    expect(serialized.match(/營收動能（代理）/g)?.length).toBeGreaterThan(0);
-    // The two entries with real orders never show it in their card text.
+    const cards = flexBubbleStrings(buildBottleneckTop20Messages(parsed, "flex"));
+    for (const symbol of ["S3", "S5", "SIVE.ST"]) {
+      const card = cards.find(item => item.includes(`${symbol}｜`))!;
+      expect(outlookTiles(parsed, sym(parsed, symbol))).toHaveLength(2);
+      // V25-D3 keeps proxy values in the body and the non-order qualifier once in the closing disclosure.
+      expect(card).toContain("營收代理：年增 +109%｜加速 +19pp");
+      expect(card).toContain("非訂單");
+      expect(JSON.stringify(buildBottleneckDetail(parsed, symbol, "text"))).toContain("營收動能（代理）");
+    }
     for (const symbol of ["S1", "S4"]) {
+      expect(outlookTiles(parsed, sym(parsed, symbol))).toHaveLength(1);
       expect(outlookForecast(parsed, sym(parsed, symbol)).map(([text]) => text).join(" ")).not.toContain("動能");
     }
   });
@@ -661,13 +751,15 @@ describe("revenue-momentum proxy tile (V13 phase A)", () => {
     expect(outlookTiles(parsed, sym(parsed, "S7"))[1]).toEqual([PROXY, "年增 +109%", "非訂單｜季末 2026-06-30"]);
   });
 
-  it("proxy_footnote_rides_the_detail_and_the_lean_card_but_changes_no_existing_text", () => {
+  it("proxy_footnote_stays_in_detail_and_compact_card_keeps_non_order_qualifier", () => {
     const parsed = base();
     const detail = JSON.stringify(buildBottleneckDetail(parsed, "S3", "text"));
     expect(detail).toContain(PROXY_FOOTNOTE);
     expect(detail).toContain("營收動能（代理）：年增 +109%（非訂單｜加速 +19pp｜季末 2026-06-30）");
     expect(JSON.stringify(buildBottleneckDetail(parsed, "S1", "text"))).not.toContain(PROXY_FOOTNOTE);
-    // The compact flex card carries the tile only (twenty full cards sit at the carousel size limit).
-    expect(JSON.stringify(buildBottleneckTop20Messages(parsed, "flex"))).not.toContain("不是在手訂單");
+    const s3 = flexBubbleStrings(buildBottleneckTop20Messages(parsed, "flex")).find(card => card.includes("S3｜"))!;
+    // V25-D3 keeps proxy values in the body and the non-order qualifier once in the closing disclosure.
+    expect(s3).toContain("營收代理：年增 +109%｜加速 +19pp");
+    expect(s3).toContain("非訂單");
   });
 });
