@@ -330,7 +330,6 @@ class SyncRetryTests(unittest.TestCase):
             self.assertEqual(sleep.call_count, 2)
             self.assertTrue(all("--remote" in call and "--local" not in call for call in calls))
             for diagnostic, category in (("SYNTHETIC_PRIVATE_DIAGNOSTIC", "UNKNOWN"),
-                                         ("AuthenticationError: SYNTHETIC_PRIVATE_DIAGNOSTIC", "AUTHENTICATION_ERROR"),
                                          ("[ERROR] free usage limit SYNTHETIC_PRIVATE_DIAGNOSTIC", "DAILY_KV_LIMIT")):
                 with self.subTest(category=category):
                     calls.clear()
@@ -345,6 +344,22 @@ class SyncRetryTests(unittest.TestCase):
                     self.assertNotIn("SYNTHETIC_PRIVATE_DIAGNOSTIC", json.dumps(sync.LAST_CALL))
                     self.assertIn("--remote", calls[0])
                     self.assertNotIn("--local", calls[0])
+            # A rejected credential (the invocation that refreshed the OAuth token, 2026-10-16/17) is retried with the same
+            # credential under the same bound and the longer wait; it stays AUTHENTICATION_ERROR when every attempt is rejected.
+            diagnostic = "AuthenticationError: SYNTHETIC_PRIVATE_DIAGNOSTIC"
+            for codes, accepted in (([1, 0], True), ([1, 1, 1], False)):
+                with self.subTest(credential_rejections=codes):
+                    calls.clear()
+                    sleep.reset_mock()
+                    outcomes[:] = list(codes)
+                    self.assertEqual(sync.client_put("snapshot:current", source), accepted)
+                    self.assertEqual((len(calls), outcomes), (len(codes), []))
+                    self.assertEqual([call.args[0] for call in sleep.call_args_list],
+                                     [sync.AUTH_RETRY_SECONDS * attempt for attempt in range(1, len(codes))])
+                    expected = dict(attempts=len(codes), exit_code=0, error_category="NONE") if accepted else \
+                        dict(attempts=3, exit_code=1, error_category="AUTHENTICATION_ERROR")
+                    self.assertEqual(sync.LAST_CALL, expected)
+                    self.assertNotIn("SYNTHETIC_PRIVATE_DIAGNOSTIC", json.dumps(sync.LAST_CALL))
 
 
 if __name__ == "__main__":

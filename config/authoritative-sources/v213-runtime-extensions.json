@@ -60,6 +60,35 @@
       null,
       null,
       "Optional independent T3 market observation. It never becomes issuer or bottleneck authority and absence does not permit a Yahoo-only high-confidence market claim."
+    ],
+    [
+      "nasdaq_us_stock_screener",
+      "Nasdaq US Stock Screener",
+      "Nasdaq",
+      "T3",
+      "public_market_observation",
+      ["AMERICAS"],
+      ["US"],
+      ["market", "quotes", "listings"],
+      ["public_market_observation"],
+      "https://www.nasdaq.com/market-activity/stocks/screener",
+      ["https://api.nasdaq.com/api/screener/stocks"],
+      "rest_json",
+      "none",
+      null,
+      null,
+      "metadata_only",
+      "api.nasdaq.com",
+      "intraday",
+      3600,
+      2,
+      1,
+      3000000,
+      30.0,
+      "official_unspecified",
+      null,
+      null,
+      "T3 public market observation. Seeds Top20 candidate discovery only when every Yahoo screen gives no candidates; never issuer, listing or bottleneck authority, and the raw payload is not redistributed."
     ]
   ]
 }

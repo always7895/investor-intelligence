@@ -276,6 +276,9 @@ class ReplayChainTests(unittest.TestCase):
     def test_last_links_equal_the_curated_production_records(self):
         """The curated records of config/revenue-guidance-v1.json are the oracle for the last link of each chain."""
         registry = {r["symbol"]: r for r in json.loads((ROOT / "config" / "revenue-guidance-v1.json").read_text(encoding="utf-8"))["issuers"]}
+        # The MU chain ends at the 2026-06-24 release (FQ3-26); the tracked registry has since moved on to the 2026-09-30 release
+        # (lane V11), so the curated MU record of 2026-06-24 is pinned as a fixture.
+        registry["MU"] = json.loads((FIXTURES / "curated-mu-20260624.json").read_text(encoding="utf-8"))["record"]
         for sym in ("NVDA", "MU"):
             auto, curated = self.results[sym][-1][1]["record"], registry[sym]
             keys = ("stated_point", "low", "high", "fiscal_label", "period_start", "period_end", "currency", "accounting_basis", "scope")

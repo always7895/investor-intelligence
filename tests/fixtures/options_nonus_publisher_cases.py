@@ -271,7 +271,7 @@ def run_main(specs: list[dict[str, Any]], now: datetime, directory: Path, *, pri
         output.write_bytes(prior)
     captured = io.StringIO()
     with _sealed_world(specs, now, requests), contextlib.redirect_stdout(captured):
-        rc = builder.main(["--output", str(output)])
+        rc = builder.main(["--output", str(output), "--no-carry"])  # the fixture pins live behaviour: the previous-session carry is off here
     status = json.loads(captured.getvalue().strip().splitlines()[-1])
     doc = json.loads(output.read_text(encoding="utf-8")) if rc == 0 else None
     return _Result(rc, status, doc, output, requests)
@@ -353,15 +353,17 @@ def case_retained_sive_sept30() -> tuple[str, str, list[dict[str, Any]], Any]:
         assert result.rc == 0, result.status
         expect_unavailable(case, bodies, "SIVE.ST", "monthly", "本次回應有上市買權；所列到期不在21–45天策略範圍", "2026-10-16（16天）", "2026-11-20（51天）")
         expect_unavailable(case, bodies, "SIVE.ST", "weekly", "本次回應有上市買權；所列到期不在本週或下週策略範圍", "2026-10-16（16天）")
-        # The retained weekly VOLVB row (2026-10-02, this calendar week as of Wed 2026-09-30) IS the weekly now; its contract currency is not
-        # provided, so it is refused for unconfirmed terms instead of being skipped for next week's expiry.
-        expect_unavailable(case, bodies, "VOLV-B.ST", "weekly", "2026-10-02（2天）週選上市買權", "合約單位或幣別來源未確認", forbid=("無法解析", "所列到期不在"))  # the real weekly shape is a proven listing
+        # The retained weekly VOLVB row (2026-10-02, this calendar week as of Wed 2026-09-30) IS the weekly now; its blank contract currency
+        # follows the confirmed SEK underlying (V13, Nasdaq contract specification), and its retained bid/ask are empty, so it is refused for
+        # the missing two-sided quote instead of being skipped for next week's expiry or refused for its terms.
+        expect_unavailable(case, bodies, "VOLV-B.ST", "weekly", "2026-10-02（2天）", "無有效雙邊報價",
+                           forbid=("無法解析", "所列到期不在", TERMS_UNCONFIRMED))  # the real weekly shape is a proven listing
         for symbol in ("VOLV-B.ST", "AZN.ST"):
             expect_available(case, bodies, symbol, "monthly", currency="SEK")
         expect_available(case, bodies, "AZN", "monthly", currency="USD")
         expect_available(case, bodies, "SYNTHUS00", "monthly", currency="USD")
         assert any("/nordic/search?searchText=SIVE" in url for url in result.requests), "the search fallback must resolve the SHARES fixture"
-        expect_health(case, result, "STOCKHOLM", 2, 2)
+        expect_health(case, result, "STOCKHOLM", 3, 2)  # V13: the blank-currency VOLVB weekly chain is now read (no two-sided quote)
     return ("retained_sive_sept30", "RETAINED-shape SIVE rows (16 and 51 DTE) beside healthy SYNTHETIC SEK/USD siblings, admitted through real main", specs, check)
 
 
@@ -384,7 +386,10 @@ def case_currency_evidence_matrix() -> tuple[str, str, list[dict[str, Any]], Any
     def check(case: str, result: _Result, bodies: dict[str, str]) -> None:
         assert result.rc == 0, result.status
         expect_available(case, bodies, "CURSEK.ST", "monthly", currency="SEK")
-        for root in ("CURNULL", "CUREMPTY", "CURWS", "CURFALSE", "CURZERO", "CURLIST", "CURDICT", "CURNAN", "CURINT", "CURLOWER", "CURMISSING"):
+        # V13: a blank contract currency (exactly "" or an absent key) follows the confirmed SEK underlying; every other unconfirmed form stays refused.
+        for root in ("CUREMPTY", "CURMISSING"):
+            expect_available(case, bodies, f"{root}.ST", "monthly", currency="SEK")
+        for root in ("CURNULL", "CURWS", "CURFALSE", "CURZERO", "CURLIST", "CURDICT", "CURNAN", "CURINT", "CURLOWER"):
             expect_unavailable(case, bodies, f"{root}.ST", "monthly", TERMS_UNCONFIRMED, forbid=("不在",))
         expect_unavailable(case, bodies, "CURUSD.ST", "monthly", "合約幣別與 SEK 不符")
         expect_unavailable(case, bodies, "SPOTUSD.ST", "monthly", "標的報價或上市幣別與 SEK 不符")
@@ -393,8 +398,8 @@ def case_currency_evidence_matrix() -> tuple[str, str, list[dict[str, Any]], Any
         expect_unavailable(case, bodies, "SEARCHNONE.ST", "monthly", "標的報價或上市幣別未確認為 SEK")
         expect_available(case, bodies, "VOLV-B.ST", "monthly", currency="SEK")
         expect_available(case, bodies, "SYNTHUS00", "monthly", currency="USD")
-        expect_health(case, result, "STOCKHOLM", 2, 2)  # only the proven SEK control and the sibling enter R
-    return ("currency_evidence_matrix", "SYNTHETIC: contract/spot/search currency evidence matrix through real main; only explicit agreeing SEK is a strategy", specs, check)
+        expect_health(case, result, "STOCKHOLM", 4, 4)  # the proven SEK control, the two blank-currency rows (V13) and the sibling enter R
+    return ("currency_evidence_matrix", "SYNTHETIC: contract/spot/search currency evidence matrix through real main; only explicit agreeing SEK or a blank contract currency under a confirmed SEK underlying is a strategy", specs, check)
 
 
 def case_native_symbol_identity_matrix() -> tuple[str, str, list[dict[str, Any]], Any]:

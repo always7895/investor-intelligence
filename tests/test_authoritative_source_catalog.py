@@ -44,11 +44,11 @@ class AuthoritativeSourceCatalogTests(unittest.TestCase):
 
     def test_catalog_is_large_diverse_unbounded_and_disabled(self) -> None:
         values = inventory(self.sources)
-        self.assertEqual(values["source_count"], 102)
+        self.assertEqual(values["source_count"], 103)
         self.assertEqual(values["runtime_enabled_count"], 0)
         self.assertTrue(self.manifest["catalog_policy"]["no_fixed_source_count_limit"])
         self.assertTrue(self.manifest["catalog_source_count_snapshot_is_not_a_limit"])
-        self.assertEqual(self.manifest["catalog_source_count_snapshot"], 102)
+        self.assertEqual(self.manifest["catalog_source_count_snapshot"], 103)
         self.assertEqual(self.warnings, [])
         self.assertGreaterEqual(values["region_counts"]["ASIA_PACIFIC"], 30)
         self.assertGreaterEqual(values["region_counts"]["AMERICAS"], 25)
@@ -89,6 +89,7 @@ class AuthoritativeSourceCatalogTests(unittest.TestCase):
             "yahoo_finance_public_unofficial",
             "cboe_public_market_data",
             "nasdaq_public_options",
+            "nasdaq_us_stock_screener",
         ):
             source = next(item for item in self.sources if item.id == source_id)
             self.assertFalse(source.runtime_enabled)
@@ -97,8 +98,8 @@ class AuthoritativeSourceCatalogTests(unittest.TestCase):
 
     def test_public_broker_and_media_candidates_remain_discovery_only(self) -> None:
         manifest, expanded, warnings = load_catalog(ROOT / 'config/authoritative-source-catalog.research-candidate.json')
-        self.assertEqual(len(expanded), 117)
-        self.assertEqual(manifest['catalog_source_count_snapshot'], 117)
+        self.assertEqual(len(expanded), 118)
+        self.assertEqual(manifest['catalog_source_count_snapshot'], 118)
         self.assertEqual(warnings, [])
         # The candidate uses the SAME loader, gates and original source rows;
         # it must not alter the reviewed plan or shadow existing definitions.

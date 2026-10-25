@@ -120,11 +120,35 @@ class CatalogDerivedSectionsTests(unittest.TestCase):
 
     def test_no_provider_is_admitted_and_no_observation_is_manufactured(self):
         document = self.document
+        # V11 (operator 2026-10-13): the only provider the catalog may enable is the pinned operator-accepted Yahoo one. At NOW (2026-09-30,
+        # before that decision and its rights_reviewed_at) the gate admits nobody, so every row is NOT_ADMITTED even when the entry is
+        # enabled; the root selection mirrors the catalog.
+        enabled = {p["id"] for p in self.catalog["providers"] if p["runtime_enabled"] is True and p["line_quote_eligible"] is True}
+        self.assertTrue(enabled <= {"yahoo_finance_option_chain", "nasdaq_nordic_option_chain"}, enabled)
         self.assertEqual({row["public_admission"] for row in document["providers"]}, {"NOT_ADMITTED"})
         self.assertEqual(document["catalog_summary"], {"catalog_provider_count": len(self.catalog["providers"]),
-                                                       "public_admitted_provider_count": 0, "production_provider_selected": False})
+                                                       "public_admitted_provider_count": 0,
+                                                       "production_provider_selected": self.catalog["production_quote_provider_selected"]})
         self.assertIsNone(document["options_link"])
         self.assertEqual(document["observed"], [])  # no options body: unknown, never a zero row
+
+    def test_the_operator_accepted_provider_is_admitted_only_from_its_decision_day(self):
+        enabled = {p["id"] for p in self.catalog["providers"] if p["runtime_enabled"] is True and p["line_quote_eligible"] is True}
+        if not enabled:
+            self.skipTest("the catalog does not carry the operator-accepted entry")
+        day_before = build(None, datetime(2026, 10, 12, 23, 59, 59, tzinfo=timezone.utc))
+        self.assertEqual({row["public_admission"] for row in day_before["providers"]}, {"NOT_ADMITTED"})
+        self.assertEqual(day_before["catalog_summary"]["public_admitted_provider_count"], 0)
+        # V13: each operator-accepted provider is admitted from ITS OWN decision day (Yahoo 2026-10-13, Nasdaq Nordic 2026-10-17).
+        decided = build(None, datetime(2026, 10, 13, 17, 0, 0, tzinfo=timezone.utc))
+        yahoo = {"yahoo_finance_option_chain"} & enabled
+        self.assertEqual({row["provider_id"] for row in decided["providers"] if row["public_admission"] == "ADMITTED"}, yahoo)
+        self.assertEqual({row["public_admission"] for row in decided["providers"] if row["provider_id"] not in yahoo}, {"NOT_ADMITTED"})
+        self.assertEqual(decided["catalog_summary"]["public_admitted_provider_count"], len(yahoo))
+        nordic_day = build(None, datetime(2026, 10, 17, 17, 0, 0, tzinfo=timezone.utc))
+        self.assertEqual({row["provider_id"] for row in nordic_day["providers"] if row["public_admission"] == "ADMITTED"}, enabled)
+        self.assertEqual({row["public_admission"] for row in nordic_day["providers"] if row["provider_id"] not in enabled}, {"NOT_ADMITTED"})
+        self.assertEqual(nordic_day["catalog_summary"]["public_admitted_provider_count"], len(enabled))
 
     def test_the_object_validates_stays_bounded_is_byte_stable_and_holds_no_quote_field(self):
         produced = publisher.lazy_options_coverage_body(None, NOW)[publisher.COVERAGE_KEY]
@@ -143,8 +167,8 @@ class ObservedRowsTests(unittest.TestCase):
         text = body_of(admitted_options_document())
         document = build(text)
         self.assertEqual(document["options_link"], {"key": "v213:options:v2", "sha256": sha(text), "utf8_bytes": len(text.encode("utf-8"))})
-        self.assertEqual(document["observed"], [])  # the real catalog admits nobody, so no cycle counts
-        self.assertEqual(document["catalog_summary"]["public_admitted_provider_count"], 0)
+        self.assertEqual(document["observed"], [])  # the real catalog admits no SYNTHETIC identity, so no cycle of this body counts
+        self.assertEqual(document["catalog_summary"]["public_admitted_provider_count"], 0)  # NOW precedes the V11 operator decision
 
     def test_an_admitted_provider_gives_one_aggregated_row_per_identity(self):
         base = admitted_options_document()["options"]

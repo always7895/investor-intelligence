@@ -4,6 +4,12 @@
  * normalized name over UTF-16 code units) as lazy content-addressed objects. A lookup reads only the shards its
  * query needs and builds the small catalog the existing resolver works on, so suffix handling, ambiguity and the
  * closed resolution union stay in global-identity.ts. A missing or malformed shard gives no catalog (UNAVAILABLE).
+ *
+ * Eight token shards (`v213:identity:v2:tok:0`..`7`, kind "token") add a leading-word lookup for Latin-script company
+ * names ("Sivers" finds Sivers Semiconductors). A row is [tokenized name, symbol bucket, symbol, venue]; the name is the
+ * folded name's words joined by single spaces and the shard is chosen by FNV-1a of the first word. It is opt-in per call
+ * (`leadingToken`), runs only when the symbol and exact-name channels found nothing, and an absent, malformed or
+ * inconsistent token shard leaves the exact-name result untouched (never an error, never a guess).
  */
 import type { PublicSnapshotView } from "./public-snapshot";
 import {
@@ -16,6 +22,10 @@ import {
 
 const SCHEMA = "v213-identity-shard-v2";
 const NAME_BUCKETS = 16;
+const TOKEN_BUCKETS = 8;
+/** Shortest Latin-script query (letters only) that may match a name by its leading words, and the longest candidate list. */
+const LEADING_TOKEN_MIN_LETTERS = 4;
+const LEADING_TOKEN_CANDIDATES_MAX = 5;
 const MARKETS = new Set<SupportedMarket>(["US", "UK", "SWEDEN", "EUROPE", "JAPAN", "KOREA", "CHINA_SHANGHAI",
   "CHINA_SHENZHEN", "CHINA_BEIJING", "HK", "TAIWAN", "UNKNOWN"]);
 const CLASSES = new Set(["COMMON_STOCK", "ETF", "PREFERRED_STOCK", "WARRANT", "UNIT", "RIGHTS", "ADR", "REVIEW_REQUIRED"]);
@@ -28,15 +38,42 @@ interface SymbolShard { readonly generated_at: string; readonly feeds: readonly 
 
 export const identitySymbolKey = (bucket: string) => `v213:identity:v2:sym:${bucket}`;
 export const identityNameKey = (bucket: number) => `v213:identity:v2:name:${bucket}`;
+export const identityTokenKey = (bucket: number) => `v213:identity:v2:tok:${bucket}`;
 
 /** FNV-1a 32-bit over UTF-16 code units; mirrors build_identity_shards.fnv1a_utf16. */
-export function identityNameBucket(normalized: string): number {
+function fnv1a(text: string): number {
   let hash = 0x811c9dc5;
-  for (let index = 0; index < normalized.length; index += 1) {
-    hash ^= normalized.charCodeAt(index);
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
     hash = Math.imul(hash, 0x01000193) >>> 0;
   }
-  return hash % NAME_BUCKETS;
+  return hash;
+}
+
+export function identityNameBucket(normalized: string): number {
+  return fnv1a(normalized) % NAME_BUCKETS;
+}
+
+/** Token shard of a name's first word (mirrors build_identity_shards.token_bucket). */
+export function identityTokenBucket(word: string): number {
+  return fnv1a(word) % TOKEN_BUCKETS;
+}
+
+/** Words of a name: NFKC-folded, lower-cased, split on every run of non-letter/non-digit characters (mirrors
+ * build_identity_shards.name_tokens). */
+export function nameTokens(name: string): string[] {
+  return name.normalize("NFKC").toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(word => word.length > 0);
+}
+
+/** A query that may match company names by their leading words: Latin-script only (Common and Inherited characters such as
+ * digits and punctuation allowed), at least LEADING_TOKEN_MIN_LETTERS Latin letters. CJK and other scripts keep exact-name
+ * lookups. Returns the words and the tokenized name the token shards store, or null. */
+export function leadingTokenQuery(input: string): { words: string[]; name: string } | null {
+  const folded = input.normalize("NFKC").toLowerCase();
+  if (/[^\p{Script=Latin}\p{Script=Common}\p{Script=Inherited}]/u.test(folded)) return null;
+  if ((folded.match(/\p{Script=Latin}/gu) ?? []).length < LEADING_TOKEN_MIN_LETTERS) return null;
+  const words = nameTokens(folded);
+  return words.length > 0 ? { words, name: words.join(" ") } : null;
 }
 
 export function identitySymbolBucket(symbol: string): string {
@@ -95,13 +132,65 @@ function parseNameShard(raw: unknown, bucket: number): [string, string, string, 
   return rows;
 }
 
+interface TokenRef { readonly name: string; readonly symbolBucket: string; readonly symbol: string; readonly venue: string; }
+
+/** A token shard row has the shape of a name row; the symbol bucket must be the symbol's own, so an inconsistent shard is refused whole. */
+function parseTokenShard(raw: unknown, bucket: number): TokenRef[] | null {
+  if (!raw || typeof raw !== "object") return null;
+  const shard = raw as Record<string, unknown>;
+  if (shard.schema !== SCHEMA || shard.kind !== "token" || shard.bucket !== String(bucket) || !Array.isArray(shard.rows)
+    || shard.rows.length > 50_000) return null;
+  const rows: TokenRef[] = [];
+  for (const row of shard.rows) {
+    if (!Array.isArray(row) || row.length !== 4) return null;
+    const [name, symbolBucket, symbol, venue] = row;
+    if (!text(name, 300) || !text(symbol, 15) || !SYMBOL.test(symbol) || symbolBucket !== identitySymbolBucket(symbol)
+      || !text(venue, 40)) return null;
+    rows.push({ name, symbolBucket, symbol, venue });
+  }
+  return rows;
+}
+
+const compare = (left: string, right: string) => (left < right ? -1 : left > right ? 1 : 0);
+
+/** Listings whose tokenized name starts with the query's words at a word boundary, one per venue:symbol, in a fixed order (name,
+ * venue, symbol), with the total count; null when the token shard is absent or malformed (exact-name behaviour only). */
+async function leadingTokenRefs(view: PublicSnapshotView, query: { words: string[]; name: string }): Promise<{ total: number; refs: TokenRef[] } | null> {
+  const bucket = identityTokenBucket(query.words[0]!);
+  const rows = parseTokenShard(await view.json<unknown>([identityTokenKey(bucket)]), bucket);
+  if (!rows) return null;
+  const matches = new Map<string, TokenRef>();
+  for (const row of rows) {
+    if (row.name !== query.name && !row.name.startsWith(`${query.name} `)) continue;
+    const key = `${row.venue}:${row.symbol}`;
+    if (!matches.has(key)) matches.set(key, row);
+  }
+  const refs = [...matches.values()].sort((a, b) => compare(a.name, b.name) || compare(a.venue, b.venue) || compare(a.symbol, b.symbol));
+  return { total: refs.length, refs: refs.slice(0, LEADING_TOKEN_CANDIDATES_MAX) };
+}
+
+/** Whether a sealed identity row really carries a name that starts with these words (the token shard is an index, not evidence). */
+function leadsWithWords(record: GlobalIdentityRecord, query: { name: string }): boolean {
+  return [record.security_name, record.native_name ?? ""].some(value => {
+    const name = nameTokens(value).join(" ");
+    return name === query.name || name.startsWith(`${query.name} `);
+  });
+}
+
 /** Symbol spellings a user may type for one listed symbol ("VOLV B" is also "VOLV-B" and "VOLV.B"). */
 function spellings(symbol: string): string[] {
   return symbol.includes(" ") ? [symbol, symbol.replace(/ /g, "-"), symbol.replace(/ /g, ".")] : [symbol];
 }
 
-/** The small catalog this query needs, built from sealed shards; null when no identity shard is sealed. */
-export async function loadIdentityCatalogForQuery(view: PublicSnapshotView, rawQuery: string): Promise<GlobalIdentityCatalog | null> {
+/** The small catalog this query needs, built from sealed shards; null when no identity shard is sealed.
+ *
+ * `leadingToken` (opt-in, the stock quick lookup only): when the symbol and exact-name channels found nothing, a Latin-script query
+ * of at least four letters is looked up as the leading word(s) of a company name in the sealed token shards. Every matched listing
+ * (at most five, read in full from its symbol shard) is indexed under the typed name, so the resolver's own rules decide: one
+ * listing resolves, several give the candidate list, contradictory variants never resolve. `leading_token.total` is the number
+ * of matching listings, which can exceed the five that are loaded. Any unreadable or inconsistent object drops the whole step. */
+export async function loadIdentityCatalogForQuery(view: PublicSnapshotView, rawQuery: string,
+  options: { readonly leadingToken?: boolean } = {}): Promise<GlobalIdentityCatalog | null> {
   if (view.integrity !== "sealed") return null;
   const { parsed } = parseIdentityRequest(rawQuery);
   if (!parsed) return null;
@@ -144,6 +233,25 @@ export async function loadIdentityCatalogForQuery(view: PublicSnapshotView, rawQ
       if (shard) take(shard, record => record.symbol === symbol && record.venue === venue);
     }
   }
+  // Leading words of a Latin-script company name, only when today's two channels found nothing (a symbol that is also a word wins).
+  let leading: { total: number } | null = null;
+  if (options.leadingToken && selected.size === 0 && !parsed.isTickerPrefix && !parsed.suffixHint) {
+    const query = leadingTokenQuery(parsed.cleanInput);
+    const found = query ? await leadingTokenRefs(view, query) : null;
+    if (query && found && found.refs.length > 0) {
+      const listings: [SymbolShard, TokenRef][] = [];
+      for (const ref of found.refs) {
+        const shard = await shardFor(ref.symbolBucket);
+        const own = shard?.rows.filter(record => record.symbol === ref.symbol && record.venue === ref.venue) ?? [];
+        if (!shard || own.length === 0 || !own.some(record => leadsWithWords(record, query))) { listings.length = 0; break; }
+        listings.push([shard, ref]);
+      }
+      if (listings.length === found.refs.length) {
+        for (const [shard, ref] of listings) take(shard, record => record.symbol === ref.symbol && record.venue === ref.venue);
+        leading = { total: found.total };
+      }
+    }
+  }
   // Bare numeric codes are Taiwan-first (4-digit Tokyo codes overlap Taiwan's); `.T` or another suffix selects others.
   // Whole keys are classified (ICON1): a key with ANY Taiwan variant stays with all its variants, contradictory siblings included.
   if (parsed.isNumericTicker && !parsed.suffixHint && [...selected.values()].some(group => group.some(record => record.market === "TAIWAN"))) {
@@ -167,6 +275,10 @@ export async function loadIdentityCatalogForQuery(view: PublicSnapshotView, rawQ
       (byName[name] ??= []).push(index);
     }
   });
+  if (leading) {
+    // Every loaded row of every matched key is reachable under the typed name; nothing else is added to the name index.
+    byName[normalizeCompanyName(parsed.cleanInput)] = records.map((_, index) => index);
+  }
   // Sourced Chinese names come second: a name an exchange directory states for its own listing (台積電 on TWSE) wins
   // over the same Chinese name attached to another venue's listing (the TSM ADR); depositary receipts never take it.
   const official = new Set(Object.keys(byName));
@@ -177,5 +289,6 @@ export async function loadIdentityCatalogForQuery(view: PublicSnapshotView, rawQ
   return {
     schema_version: 1, contract_id: "v213-global-identity-v1", generated_at: generatedAt, collection_receipts_sha256: feedDigest!,
     records_count: records.length, records, indexes: { by_venue_and_symbol: byVenue, by_symbol: bySymbol, by_name: byName },
+    ...(leading ? { leading_token: leading } : {}),
   };
 }

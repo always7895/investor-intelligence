@@ -117,11 +117,17 @@ afterEach(() => vi.unstubAllGlobals());
 beforeEach(() => { vi.setSystemTime(FIXED_NOW); });
 
 describe("OPTIONS_TEST_POLICY1 real catalog: public options rights NONE", () => {
-  it("uses the real, unmocked predicate and a catalog that selects and enables no provider", () => {
+  it("uses the real, unmocked predicate and a catalog whose only enabled provider is the pinned operator-accepted one", () => {
     expect(vi.isMockFunction(admitPublicOption)).toBe(false);
-    expect((catalog as unknown as { production_quote_provider_selected: unknown }).production_quote_provider_selected).toBe(false);
+    // V11 (operator 2026-10-13): no rights-reviewed provider is live; the one provider that may be enabled is the pinned operator-accepted
+    // Yahoo entry, and the root selection follows the enabled set. The rows below claim no Yahoo identity, so they are denied either way.
+    const enabled = providers.filter(provider => provider.runtime_enabled === true || provider.line_quote_eligible === true);
+    for (const provider of enabled) {
+      expect(["yahoo_finance_option_chain", "nasdaq_nordic_option_chain"]).toContain(provider.id);  // V13: exactly the two pinned providers
+      expect(provider.rights_status).toBe("operator_accepted_unlicensed");
+    }
+    expect((catalog as unknown as { production_quote_provider_selected: unknown }).production_quote_provider_selected).toBe(enabled.length > 0);
     expect(providers.length).toBeGreaterThan(0);
-    for (const provider of providers) expect(provider.runtime_enabled === true && provider.line_quote_eligible === true).toBe(false);
   });
 
   it("denies a structurally valid cycle whatever rights label or claimed identity the payload carries", () => {

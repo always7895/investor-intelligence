@@ -14,7 +14,7 @@ const EXACT: Record<string, string> = {
   "Nasdaq.com analyst estimates": "Nasdaq.com 分析師預估",
   "Yahoo Finance (unofficial, delayed)": "Yahoo Finance（非官方，延遲）",
   "Yahoo Finance option chain (unofficial, delayed)": "Yahoo Finance 期權鏈（非官方，延遲）",
-  "Nasdaq Nordic option chain (exchange public web API, delayed)": "Nasdaq Nordic 期權鏈（交易所公開網頁 API，延遲）",
+  "Nasdaq Nordic option chain (exchange public web API, delayed)": "Nasdaq Nordic 期權鏈（交易所公開網頁 API，非官方授權，延遲）",
   "Nasdaq US option chain (public quote page API, delayed; Yahoo fallback)": "Nasdaq 美股期權鏈（公開報價頁 API，延遲；Yahoo 備援）",
 };
 
@@ -38,7 +38,7 @@ export function sourceZh(source: string | null | undefined): string {
 const QUOTE_BASIS: Record<string, string> = { realtime: "即時", delayed: "延遲", asof_close: "收盤" };
 const RIGHTS: Record<string, string> = {
   reviewed_public_access: "已審查的公開取用", candidate_local_review: "候選來源（本機審查）", unadmitted_third_party: "未納入的第三方來源",
-  review_before_enable: "啟用前待審查", automated_access_prohibited: "禁止自動擷取",
+  review_before_enable: "啟用前待審查", automated_access_prohibited: "禁止自動擷取", operator_accepted_unlicensed: "營運者決定顯示（無再散布授權）",
 };
 export const quoteBasisZh = (value: string) => QUOTE_BASIS[value] ?? value;
 export const rightsZh = (value: string) => RIGHTS[value] ?? value;

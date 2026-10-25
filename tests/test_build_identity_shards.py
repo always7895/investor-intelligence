@@ -150,7 +150,7 @@ class IdentityShardTests(unittest.TestCase):
             path.write_bytes(shards.dumps(document).encode("utf-8"))
             lazy = publisher.lazy_identity_bodies(path, datetime.now(timezone.utc))
             self.assertIn("v213:identity:v2:sym:S", lazy)
-            self.assertEqual(len(lazy), len(document["symbol_shards"]) + len(document["name_shards"]))
+            self.assertEqual(len(lazy), len(document["symbol_shards"]) + len(document["name_shards"]) + len(document["token_shards"]))
             stale = publisher.lazy_identity_bodies(path, datetime(2027, 1, 1, tzinfo=timezone.utc))
             self.assertEqual(stale, {})
 

@@ -50,6 +50,9 @@ async function sha(text: string): Promise<string> {
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 const bytes = (text: string) => new TextEncoder().encode(text).byteLength;
 
+/** A provider the (audited) catalog enables for LINE display; the catalog audit already ties this to a rights review or the pinned decision. */
+const admittedByCatalog = (provider: Json) => provider.runtime_enabled === true && provider.line_quote_eligible === true;
+
 /** The catalog-derived sections, built the way scripts/publish_sealed_snapshot.py builds them. */
 function derivedBody(generatedAt = "2026-09-30T17:00:00Z", link: Json | null = null, observed: Json[] = []): Json {
   const providers = (catalogJson as unknown as { providers: Json[] }).providers;
@@ -58,11 +61,13 @@ function derivedBody(generatedAt = "2026-09-30T17:00:00Z", link: Json | null = n
   const codes = [...byCode.keys()].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
   return {
     schema: "v213-options-coverage-v1", generated_at: generatedAt, purpose: "SOURCE_COVERAGE_METADATA_ONLY", options_link: link,
-    catalog_summary: { catalog_provider_count: providers.length, public_admitted_provider_count: 0, production_provider_selected: false },
+    // V11: the catalog may enable the pinned operator-accepted provider, so the admitted count and the root selection follow the catalog.
+    catalog_summary: { catalog_provider_count: providers.length, public_admitted_provider_count: providers.filter(admittedByCatalog).length,
+      production_provider_selected: (catalogJson as unknown as { production_quote_provider_selected: boolean }).production_quote_provider_selected },
     providers: providers.map(provider => ({ provider_id: provider.id, name: provider.name, authority: provider.authority, jurisdictions: provider.jurisdictions,
       data_roles: provider.data_roles, rights_status: provider.rights_status, rights_reviewed_at: provider.rights_reviewed_at,
       adapter_status: provider.adapter_status, runtime_enabled: provider.runtime_enabled, line_quote_eligible: provider.line_quote_eligible,
-      public_admission: "NOT_ADMITTED", declared: "CATALOG_DECLARED_UNVERIFIED" })),
+      public_admission: admittedByCatalog(provider) ? "ADMITTED" : "NOT_ADMITTED", declared: "CATALOG_DECLARED_UNVERIFIED" })),
     jurisdictions: codes.map(code => ({ code, provider_ids: byCode.get(code)!, catalog_provider_count: byCode.get(code)!.length })),
     local_capabilities: Object.keys((adrMap as unknown as { covered_markets: Json }).covered_markets).sort().map(market => ({
       market, capability: "COVERED_CALL_DELAYED_LOCAL_CANDIDATE", status: "LOCAL_UNADMITTED_NO_CATALOG_IDENTITY" })),
@@ -182,7 +187,8 @@ describe("G1A loader states", () => {
       ["jurisdiction expanded", body => { body.jurisdictions.push({ code: "ZZ", provider_ids: [body.providers[0].provider_id], catalog_provider_count: 1 }); }],
       ["jurisdiction relation", body => { body.jurisdictions[0].provider_ids = [body.providers[0].provider_id]; body.jurisdictions[0].catalog_provider_count = 1; }],
       ["local market added", body => { body.local_capabilities.push({ market: "JAPAN", capability: "COVERED_CALL_DELAYED_LOCAL_CANDIDATE", status: "LOCAL_UNADMITTED_NO_CATALOG_IDENTITY" }); }],
-      ["production provider selected", body => { body.catalog_summary.production_provider_selected = true; }],
+      // V11: the catalog may now select a provider, so the forgery flips the derived value instead of forcing true
+      ["production provider selected", body => { body.catalog_summary.production_provider_selected = !body.catalog_summary.production_provider_selected; }],
       ["extra top-level strike", body => { body.strike = 1; }],
       ["extra provider field", body => { body.providers[0].bid = 1; }],
       ["unknown note", body => { body.notes.push("INVENTED_NOTE"); }],

@@ -335,6 +335,18 @@ def selected_metadata(binding, profile, min_context, *, budget=15, max_response_
                                   'meta': {'n_ctx': row['meta']['n_ctx']}}]}
 
 
+def _compact_gateway():
+    """POLICY and complete_compact_response of the sibling compact gateway. An embedded interpreter (python312._pth) does
+    not put the script directory on sys.path, so it is added before the import."""
+    import sys
+    from pathlib import Path
+    here = str(Path(__file__).resolve().parent)
+    if here not in sys.path:
+        sys.path.insert(0, here)
+    from v213_compact_qa_gateway import POLICY, complete_compact_response
+    return POLICY, complete_compact_response
+
+
 def selected_route_check(request):
     """Future explicit GENERATING action, separate from metadata-only checks."""
     resolved = resolve_binding(**request)
@@ -344,7 +356,7 @@ def selected_route_check(request):
     metadata = selected_metadata(binding, profile, context_minimum(request['root']))
     # Real readonly shared contract: finish=stop, one content choice, catalog
     # identity and literal marker. Exact equality additionally bans aliases.
-    from v213_compact_qa_gateway import POLICY, complete_compact_response
+    POLICY, complete_compact_response = _compact_gateway()
     payload = {'model': binding['model'], 'messages': [{'role': 'user', 'content': POLICY['smoke_prompt']}],
                'temperature': 0, 'max_tokens': profile['smoke_output_tokens'], 'stream': False,
                'chat_template_kwargs': {'enable_thinking': profile['enable_thinking']},

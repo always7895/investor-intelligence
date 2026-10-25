@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { validateMachineEnvelope, machineContextIsValid, machineEffectiveReceipt,
   type MachineBindings, type MachineAdmissionContext } from "./revenue-guidance-machine";
+import { HISTORY_ELIGIBLE_REASONS, historyBlockLines, type HistoryInputs, type HistoryView } from "./revenue-history-model";
 
 /** The Top20 card's 6-month and 1-year ORDER figures and the price change if those orders are realized (operator
  * 2026-09-27; Astra contract "order horizons and order-linked price scenarios"). The sealer computes them with
@@ -55,6 +56,14 @@ export interface OrderForecast {
    * state. Independent order recognition is never suppressed by any of them. "MACHINE_INPUTS_UNAVAILABLE" marks the
    * machine route's fail-closed fallback (missing or invalid sealed machine inputs); it adds no display line. */
   revenueDiagnostic?: "IR_COVERAGE_MISSING" | "UNREVIEWED_INPUTS" | "CONSENSUS_DEFERRED" | "MACHINE_INPUTS_UNAVAILABLE" | null;
+  /** v3 (operator 2026-10-13, analyst consensus on): the words for an unavailable enabled consensus route (no capture, an
+   * expired capture, a period mismatch, an unreadable cache), derived only from validated sealed evidence beside the
+   * sealed reason; null for every other state. It is not a sealed diagnostic and adds no producer code. */
+  consensusNote?: string | null;
+  /** V13 HISTORY_YOY_V1: the validated reported quarters and forward intervals, attached (derived, unsealed) only to an
+   * unavailable revenue state that passes the fail-closed eligibility list (revenue-history-model.ts). It changes no
+   * status, tile or rank; revenue-history-model.ts turns it into the model block rendered beside the failed rows. */
+  historyInputs?: HistoryInputs | null;
   anchorDate?: string | null; baselineB?: number | null; reportedQuarters?: any[];
   forwardQuarters?: any[]; contractedRecognition?: any | null; assumptions?: string | null;
   latestReleaseCheck?: any; warning?: any | null;
@@ -1127,6 +1136,36 @@ const V3_ACTUAL_REQUIRED = ["start", "end", "revenue", "currency", "scope", "acc
 const V3_ACTUAL_OPTIONAL = ["fiscal_label", "derivation"];
 const V3_FAULT_MARKERS = new Set(["CONSENSUS_CACHE_LOAD_FAILED", "RELEASE_CHECK_CACHE_LOAD_FAILED"]);
 
+/** The analyst-consensus revenue route (operator 2026-10-13: on, labelled unofficial). A sealed capture is a bounded,
+ * allowlisted block that names its provider by its own source URL; scripts/order_forecast.py CONSENSUS_SOURCE_HOSTS is the
+ * same table. An unknown or missing source is no known source: the capture is refused (fail closed). */
+const CONSENSUS_SOURCES: Record<string, string> = { "query1.finance.yahoo.com": "Yahoo Finance", "query2.finance.yahoo.com": "Yahoo Finance",
+  "finance.yahoo.com": "Yahoo Finance" };
+function consensusSourceName(url: unknown): string | null {
+  if (!https(url)) return null;
+  const host = new URL(url).hostname.toLowerCase();
+  return Object.hasOwn(CONSENSUS_SOURCES, host) ? CONSENSUS_SOURCES[host]! : null;
+}
+const V3_CONSENSUS_REQUIRED = ["symbol", "currency", "quarters"];
+const V3_CONSENSUS_OPTIONAL = ["scope", "captured_at", "retrieved_at", "source_url"];
+const V3_CONSENSUS_Q_KEYS = ["period", "scope", "currency", "start", "end", "revenue", "avg", "analysts"];
+const CONSENSUS_LABEL = "分析師共識（非公司財測、非官方）";
+/** Operator 2026-10-14 (R/OPERATOR-DECISION-CONSENSUS-BRIDGE-AND-NAME-MATCH-20261014.txt): an ended consensus quarter keeps the
+ * projection for the same 70 days as the guidance bridge, but only while the capture was taken after that quarter end.
+ * scripts/revenue_guidance.py build_consensus_forward_quarters is the same rule; expired = the state is STALE. */
+const CONSENSUS_BRIDGE_DAYS = 70;
+function consensusEndedQuarters(intervals: any[], reportDay: string, capMs: number): { ends: string[]; expired: boolean } {
+  const capDay = new Date(capMs).toISOString().slice(0, 10);
+  const ends = intervals.filter(i => reportDay > i.end).map(i => String(i.end));
+  return { ends, expired: ends.some(e => days(e, reportDay) > CONSENSUS_BRIDGE_DAYS || capDay <= e) };
+}
+/** The price scenarios' label of the consensus basis. */
+export const CONSENSUS_PRICE_LABEL = "分析師共識（非官方）";
+/** 分析師共識（非公司財測、非官方）｜<來源>，<n> 位分析師，截至 <YYYY-MM-DD>: n is the smallest analyst count among the consensus
+ * quarters the model uses (scripts/order_forecast.py consensus_basis_label). */
+const consensusBasisLabel = (source: string, analysts: number, capturedAt: string) =>
+  `${CONSENSUS_LABEL}｜${source}，${analysts} 位分析師，截至 ${capturedAt.slice(0, 10)}`;
+
 /** The scoped evidence-limit result (items 5 and 20): a small, consistent unavailable object. The oversized
  * originals never travel sealed, so one limited issuer can no longer wipe the whole Top20 document. */
 function v3EvidenceLimitResult(issuer: string): OrderForecast {
@@ -1154,7 +1193,11 @@ interface V3EvidenceCheck {
   currency: string | null;
   lowSample: boolean;
   staleEvidence: boolean;
+  /** The sealed consensus capture is for another quarter than the record's forward intervals (the PERIOD_MISMATCH state). */
   periodMismatch: boolean;
+  /** The sealed consensus capture is older than 24 hours at the cutoff, or its first quarter has already ended. */
+  consensusAgeStale: boolean;
+  consensusQuarterEnded: boolean;
   // A4 r7: the scoped evidence-limit envelope (the revenue originals cleared, the bounded v2 order view kept so the
   // independently validated recognition re-derives), and the A1 reviewed profile sealed beside the record evidence.
   scopedLimit: boolean;
@@ -1432,34 +1475,41 @@ function checkV3Evidence(value: any, ev: any, issuer: string, reportDay: string,
       : (receipt === null || receipt.coverage !== "SEC_WIRE_IR"))
     : false;
 
-  // The consensus capture (whenever sealed): full metadata validation (item 15).
+  // The consensus capture (whenever sealed): full metadata validation (item 15). Operator 2026-10-13: a capture is an
+  // allowlisted block that names a known provider; one refused as expired or for a period mismatch seals beside that
+  // reason (scripts/order_forecast.py) and is re-derived here, never accepted as a usable capture.
   let consensus: any = null;
   let lowSample = false;
-  let consensusStale = false;
+  let consensusAgeStale = false;
+  let consensusQuarterEnded = false;
+  let consensusPeriodMismatch = false;
   if (ev.consensus !== undefined && ev.consensus !== null) {
     consensus = ev.consensus;
-    need(isObject(consensus) && consensus.symbol === issuer, "V3_CONSENSUS_SYMBOL");
+    need(isObject(consensus) && onlyKeys(consensus, V3_CONSENSUS_REQUIRED, V3_CONSENSUS_OPTIONAL), "V3_CONSENSUS_KEYS");
+    need(consensus.symbol === issuer, "V3_CONSENSUS_SYMBOL");
     need(typeof consensus.currency === "string" && CURRENCIES.has(consensus.currency), "V3_CONSENSUS_CURRENCY");
     if (currency !== null) need(consensus.currency === currency, "V3_CONSENSUS_CURRENCY_MIX");
     need(consensus.scope === undefined || consensus.scope === null || consensus.scope === "CONSOLIDATED" || consensus.scope === "COMPANY",
       "V3_CONSENSUS_SCOPE");
-    if (consensus.source_url !== undefined && consensus.source_url !== null) {
-      need(typeof consensus.source_url === "string" && /^https:\/\//.test(consensus.source_url) && consensus.source_url.length <= 400, "V3_CONSENSUS_URL");
-    }
+    need(consensusSourceName(consensus.source_url) !== null, "V3_CONSENSUS_SOURCE");
     const capTime = consensus.captured_at ?? consensus.retrieved_at;
     const capMs = instantMs(capTime);
     need(capMs !== null && capMs <= cutoffMs, "V3_CONSENSUS_TIME");
-    consensusStale = (cutoffMs - capMs!) / (3600 * 1000) > 24;
+    consensusAgeStale = (cutoffMs - capMs!) / (3600 * 1000) > 24;
+    // An ended first quarter is expired unless the 70-day bridge holds (ended within 70 days, capture taken after the end).
+    consensusQuarterEnded = reportDay > intervals[0].end && consensusEndedQuarters(intervals, reportDay, capMs!).expired;
     need(Array.isArray(consensus.quarters) && consensus.quarters.length >= 1 && consensus.quarters.length <= 2, "V3_CONSENSUS_QUARTERS");
     const q1 = consensus.quarters[0];
     // An explicit null first quarter is malformed evidence, never an absence (item 15).
-    need(isObject(q1), "V3_CONSENSUS_Q1_MALFORMED");
-    need(q1.end === intervals[0].end, "V3_CONSENSUS_Q1_END");
-    need(q1.period === "0q" || q1.period === "Q1" || q1.period === "QUARTER", "V3_CONSENSUS_Q1_PERIOD");
+    need(isObject(q1) && onlyKeys(q1, [], V3_CONSENSUS_Q_KEYS), "V3_CONSENSUS_Q1_MALFORMED");
+    // The quarters must be the record's first two forward intervals (an explicit resolved start must be the interval's
+    // start: a 2020 start beside a 2026 interval is a mismatch). Another quarter is the PERIOD_MISMATCH state, accepted
+    // only beside exactly that sealed reason (below).
+    if (q1.end !== intervals[0].end) consensusPeriodMismatch = true;
+    if (!(q1.period === "0q" || q1.period === "Q1" || q1.period === "QUARTER")) consensusPeriodMismatch = true;
     need(q1.scope === undefined || q1.scope === "CONSOLIDATED" || q1.scope === "COMPANY", "V3_CONSENSUS_Q1_SCOPE");
     if (q1.currency !== undefined && q1.currency !== null) need(q1.currency === consensus.currency, "V3_CONSENSUS_Q1_CURRENCY");
-    // An explicit resolved start must be the interval's start (a 2020 start beside a 2026 interval is a mismatch).
-    if (q1.start !== undefined && q1.start !== null) need(q1.start === intervals[0].start, "V3_CONSENSUS_Q1_START");
+    if (q1.start !== undefined && q1.start !== null && q1.start !== intervals[0].start) consensusPeriodMismatch = true;
     need(typeof q1.analysts === "number" && Number.isInteger(q1.analysts) && q1.analysts >= 3, "V3_CONSENSUS_Q1_ANALYSTS");
     const q1Rev = typeof q1.revenue === "number" ? q1.revenue : q1.avg;
     need(typeof q1Rev === "number" && Number.isFinite(q1Rev) && q1Rev >= 0, "V3_CONSENSUS_Q1_REV");
@@ -1467,17 +1517,18 @@ function checkV3Evidence(value: any, ev: any, issuer: string, reportDay: string,
       const q2 = consensus.quarters[1];
       // An explicit null second quarter is malformed evidence, never an absence (item 15).
       need(q2 !== null, "V3_CONSENSUS_Q2_NULL");
-      need(isObject(q2), "V3_CONSENSUS_Q2_MALFORMED");
-      need(q2.end === intervals[1].end, "V3_CONSENSUS_Q2_END");
-      need(q2.period === undefined || q2.period === "+1q" || q2.period === "Q2" || q2.period === "QUARTER", "V3_CONSENSUS_Q2_PERIOD");
+      need(isObject(q2) && onlyKeys(q2, [], V3_CONSENSUS_Q_KEYS), "V3_CONSENSUS_Q2_MALFORMED");
+      if (q2.end !== intervals[1].end) consensusPeriodMismatch = true;
+      if (!(q2.period === undefined || q2.period === "+1q" || q2.period === "Q2" || q2.period === "QUARTER")) consensusPeriodMismatch = true;
       need(q2.scope === undefined || q2.scope === "CONSOLIDATED" || q2.scope === "COMPANY", "V3_CONSENSUS_Q2_SCOPE");
       if (q2.currency !== undefined && q2.currency !== null) need(q2.currency === consensus.currency, "V3_CONSENSUS_Q2_CURRENCY");
-      if (q2.start !== undefined && q2.start !== null) need(q2.start === intervals[1].start, "V3_CONSENSUS_Q2_START");
+      if (q2.start !== undefined && q2.start !== null && q2.start !== intervals[1].start) consensusPeriodMismatch = true;
       const q2Rev = typeof q2.revenue === "number" ? q2.revenue : q2.avg;
       need(typeof q2Rev === "number" && Number.isFinite(q2Rev) && q2Rev >= 0, "V3_CONSENSUS_Q2_REV");
       need(typeof q2.analysts === "number" && Number.isInteger(q2.analysts) && q2.analysts >= 0, "V3_CONSENSUS_Q2_ANALYSTS");
       lowSample = q2.analysts < 3;
     }
+    if (consensusPeriodMismatch) need(value.revenue_status === "UNAVAILABLE" && value.revenue_reason === "PERIOD_MISMATCH", "V3_CONSENSUS_PERIOD_MISMATCH");
   }
 
   // FY reconciliation (whenever sealed): the zero current-FY year-to-date is the degenerate zero-day span with zero
@@ -1512,7 +1563,7 @@ function checkV3Evidence(value: any, ev: any, issuer: string, reportDay: string,
     const age = days(doc.published_date, reportDay);
     return age > 200;
   });
-  const staleEvidence = (recStatus === "RESULTS_PUBLISHED" || recStatus === "REVIEW_REQUIRED" || consensusStale || guidanceStale
+  const staleEvidence = (recStatus === "RESULTS_PUBLISHED" || recStatus === "REVIEW_REQUIRED" || consensusAgeStale || consensusQuarterEnded || guidanceStale
     || (machine?.kind === "BARRIER" && machine.barrierReason === "STALE"));
 
   // A3/A6 (Astra acceptance r7): the registry's explicit consensus gate travels sealed. While it is false the
@@ -1555,8 +1606,31 @@ function checkV3Evidence(value: any, ev: any, issuer: string, reportDay: string,
 
   return {
     limit: false, docMap, claims, eligibleActive, activeQuarter, activeFy, hasWithdrawn, conflict,
-    actuals, intervals, receipt, recStatus, irCoverageMissing, consensus, currency, lowSample, staleEvidence, periodMismatch: false,
+    actuals, intervals, receipt, recStatus, irCoverageMissing, consensus, currency, lowSample, staleEvidence,
+    periodMismatch: consensusPeriodMismatch, consensusAgeStale, consensusQuarterEnded,
     scopedLimit, hasRecordEvidence, approvalSealed, machineAdmitted,
+  };
+}
+
+/** V13 eligibility (fail closed): the validated reported quarters and intervals for the history model, or null. Only the
+ * listed unavailable reasons qualify; a withdrawn / conflicting / invalid / unreviewed / evidence-limit / machine-barrier
+ * state, a channel fault, or an actual that is not one positive single-currency company-scope figure never does. */
+export function historyInputsOf(reason: string | null | undefined, ev: any, evc: V3EvidenceCheck, machine?: MachineAdmissionContext): HistoryInputs | null {
+  if (!reason || !HISTORY_ELIGIBLE_REASONS.has(reason)) return null;
+  if (machine?.kind === "BARRIER" || evc.limit || evc.scopedLimit || evc.conflict || evc.hasWithdrawn) return null;
+  if (!evc.hasRecordEvidence || !(evc.approvalSealed || evc.machineAdmitted)) return null;
+  if ((ev.consensus_fault ?? null) !== null || (ev.release_check_fault ?? null) !== null) return null;
+  if (evc.actuals.length < 4 || evc.intervals.length !== 4) return null;
+  const latest = evc.actuals.slice(-4);
+  const currency = latest[0]?.currency;
+  if (typeof currency !== "string" || (evc.currency !== null && evc.currency !== currency)) return null;
+  for (const q of latest) {
+    if (q.currency !== currency || !(q.scope === "COMPANY" || q.scope === "CONSOLIDATED") || !finite(q.revenue) || !(q.revenue > 0)) return null;
+  }
+  return {
+    actuals: latest.map((q: any) => ({ start: q.start, end: q.end, revenue: q.revenue, currency: q.currency })),
+    intervals: evc.intervals.map((q: any) => ({ start: q.start, end: q.end })),
+    currency,
   };
 }
 
@@ -1564,7 +1638,24 @@ function checkV3Evidence(value: any, ev: any, issuer: string, reportDay: string,
 function v3EvidenceLimitShape(): Omit<V3EvidenceCheck, "limit"> {
   return { docMap: new Map(), claims: [], eligibleActive: [], activeQuarter: [], activeFy: [], hasWithdrawn: false,
     conflict: false, actuals: [], intervals: [], receipt: null, recStatus: null, irCoverageMissing: false, consensus: null, currency: null,
-    lowSample: false, staleEvidence: false, periodMismatch: false, scopedLimit: false, hasRecordEvidence: true, approvalSealed: false, machineAdmitted: false };
+    lowSample: false, staleEvidence: false, periodMismatch: false, consensusAgeStale: false, consensusQuarterEnded: false, scopedLimit: false, hasRecordEvidence: true, approvalSealed: false, machineAdmitted: false };
+}
+
+/** The enabled consensus route's unavailable state in words (operator 2026-10-13). Only for a record with no guidance claim
+ * (the route serves NOT_DISCLOSED records) beside a sealed gate that is on, and only when the validated sealed evidence backs
+ * the reason; every other state keeps the generic wording. */
+function consensusUnavailableNote(ev: any, evc: V3EvidenceCheck, reason: string | null, diagnostic: string | null): string | null {
+  if (ev.consensus_enabled !== true || !evc.hasRecordEvidence || evc.activeQuarter.length > 0 || evc.activeFy.length > 0
+    || diagnostic !== null) return null;
+  const head = "公司未提供營收財測；";
+  if (reason === "NOT_DISCLOSED" && evc.consensus === null) return `${head}分析師共識尚無有效資料`;
+  if (reason === "STALE" && evc.consensus !== null) {
+    if (evc.consensusQuarterEnded) return `${head}分析師共識所估財季已結束，待公司公布財報並更新審核紀錄後再推估`;
+    if (evc.consensusAgeStale) return `${head}分析師共識資料已逾24小時，暫不推估`;
+  }
+  if (reason === "PERIOD_MISMATCH" && evc.periodMismatch) return `${head}分析師共識所估財季與已審核財季不一致，暫不推估`;
+  if (reason === "INVALID" && ev.consensus_fault) return `${head}分析師共識快取無法讀取，暫不推估`;
+  return null;
 }
 
 function parseV3(value: any, reportDay: string, issuer: string, generatedAt: string | undefined, outerV2?: unknown,
@@ -1751,8 +1842,8 @@ function parseV3(value: any, reportDay: string, issuer: string, generatedAt: str
         need(evc.conflict, "V3_CONFLICT_UNBACKED");
       } else if (expectedReason === "PERIOD_MISMATCH") {
         const qc = evc.activeQuarter[0];
-        need(qc !== undefined && ((qc.period_start ?? qc.start) !== evc.intervals[0]!.start
-          || (qc.period_end ?? qc.end) !== evc.intervals[0]!.end), "V3_PERIOD_MISMATCH_UNBACKED");
+        need(evc.periodMismatch || (qc !== undefined && ((qc.period_start ?? qc.start) !== evc.intervals[0]!.start
+          || (qc.period_end ?? qc.end) !== evc.intervals[0]!.end)), "V3_PERIOD_MISMATCH_UNBACKED");
       } else if (expectedReason === "EVIDENCE_LIMIT") {
         // A4 r7: the scoped limit state stands on its own (the cleared revenue envelope plus the kept order view).
         need(evc.scopedLimit, "V3_EVIDENCE_LIMIT_UNBACKED");
@@ -1822,6 +1913,7 @@ function parseV3(value: any, reportDay: string, issuer: string, generatedAt: str
         revenueBasis: null,
         revenueReason: revReason ?? expectedReason,
         revenueDiagnostic: revDiag,
+        consensusNote: consensusUnavailableNote(ev, evc, expectedReason, revDiag),
         cutoff: ev.cutoff,
         sensitivity: validatedOrder.sensitivity,
         references: validatedOrder.references,
@@ -1832,6 +1924,7 @@ function parseV3(value: any, reportDay: string, issuer: string, generatedAt: str
         currentStock: validatedOrder.currentStock,
         schedule: validatedOrder.schedule,
         revenueSources: unavailSources,
+        historyInputs: historyInputsOf(expectedReason, ev, evc, machine),
       };
     }
 
@@ -1937,8 +2030,10 @@ function parseV3(value: any, reportDay: string, issuer: string, generatedAt: str
         revenueBasis: null,
         revenueReason: revReason,
         revenueDiagnostic: revDiag,
+        consensusNote: consensusUnavailableNote(ev, evc, revReason, revDiag),
         contractedRecognition: rec ?? null,
         assumptions: value.assumptions ?? null,
+        historyInputs: historyInputsOf(revReason, ev, evc, machine),
       };
     }
 
@@ -1991,6 +2086,7 @@ function parseV3(value: any, reportDay: string, issuer: string, generatedAt: str
 
     let fAmounts = [0, 0, 0, 0];
     let derivations = ["", "", "", ""];
+    let consensusLabel = "";
     let warning: any = null;
     let isFy = false;
     let amountsRecomputed = false;
@@ -2192,13 +2288,26 @@ function parseV3(value: any, reportDay: string, issuer: string, generatedAt: str
       need(typeof q1.analysts === "number" && Number.isInteger(q1.analysts) && q1.analysts >= 3, "V3_CONSENSUS_Q1_ANALYSTS");
       const q1Rev = typeof q1.revenue === "number" ? q1.revenue : q1.avg;
       need(typeof q1Rev === "number" && Number.isFinite(q1Rev) && q1Rev >= 0, "V3_CONSENSUS_Q1_REV");
-      // Consensus has NO +70d bridge
-      need(reportDay <= intervalObjs[0].end, "V3_CONSENSUS_EXPIRED");
+      // Post-quarter-end bridge for consensus (operator 2026-10-14): ended within 70 days and the capture taken after the end.
+      const cBridge = consensusEndedQuarters(intervalObjs, reportDay, capMs!);
+      need(!cBridge.expired, "V3_CONSENSUS_EXPIRED");
+      if (cBridge.ends.length > 0) {
+        const capStr = String(capTime);
+        warning = {
+          quarter_index: intervalObjs.findIndex(i => i.end === cBridge.ends[0]),
+          quarter_end: cBridge.ends[0],
+          checked_at: capStr,
+          text: `所估季度已於${cBridge.ends.join("、")}結束，實際營收尚未公布；截至${capStr}分析師共識；仍為分析師共識（非官方），非實績`,
+          is_fy: false,
+          affected_ends: cBridge.ends,
+        };
+      }
 
       const c1 = q1Rev;
       let q2Valid = false;
       let c2 = 0;
       let q2LowSample = false;
+      let usedAnalysts: number = q1.analysts;
       if (cEv.quarters.length > 1) {
         const q2 = cEv.quarters[1];
         need(isObject(q2), "V3_CONSENSUS_Q2_MALFORMED");
@@ -2212,6 +2321,7 @@ function parseV3(value: any, reportDay: string, issuer: string, generatedAt: str
         if (q2.analysts >= 3 && reportDay <= intervalObjs[1].end) {
           q2Valid = true;
           c2 = q2Rev;
+          usedAnalysts = Math.min(usedAnalysts, q2.analysts);
         } else if (q2.analysts < 3) {
           q2LowSample = true;
         }
@@ -2220,6 +2330,8 @@ function parseV3(value: any, reportDay: string, issuer: string, generatedAt: str
       if (typeof cEv.currency === "string") {
         for (const q of actualObjs) if (typeof q.currency === "string") need(cEv.currency === q.currency, "V3_CONSENSUS_CURRENCY_MIX");
       }
+      // The labelled basis names the provider, the smallest analyst count of the quarters used and the capture day.
+      consensusLabel = consensusBasisLabel(consensusSourceName(cEv.source_url)!, usedAnalysts, String(capTime));
       if (q2Valid) {
         fAmounts = [c1, c2, c2, c2];
         derivations = ["分析師共識", "分析師共識", "模型：持平於次季分析師共識", "模型：持平於次季分析師共識"];
@@ -2322,7 +2434,7 @@ function parseV3(value: any, reportDay: string, issuer: string, generatedAt: str
       status: "AVAILABLE",
       reason: undefined,
       basis: value.revenue_basis,
-      basis_label: value.revenue_basis === "COMPANY_GUIDANCE" ? "公司營收財測＋模型（非訂單）" : "非公司揭露、非訂單：分析師季度營收共識＋模型",
+      basis_label: value.revenue_basis === "COMPANY_GUIDANCE" ? "公司營收財測＋模型（非訂單）" : consensusLabel,
       amount: amount6,
       currency: validatedCurrency,
       start: intervalObjs[0].start,
@@ -2339,7 +2451,7 @@ function parseV3(value: any, reportDay: string, issuer: string, generatedAt: str
       status: "AVAILABLE",
       reason: undefined,
       basis: value.revenue_basis,
-      basis_label: value.revenue_basis === "COMPANY_GUIDANCE" ? "公司營收財測＋模型（非訂單）" : "非公司揭露、非訂單：分析師季度營收共識＋模型",
+      basis_label: value.revenue_basis === "COMPANY_GUIDANCE" ? "公司營收財測＋模型（非訂單）" : consensusLabel,
       amount: amount12,
       currency: validatedCurrency,
       start: intervalObjs[0].start,
@@ -2728,9 +2840,11 @@ function sensitivityLines(forecast: OrderForecast, money: Money, detail: boolean
   return lines;
 }
 
-function orderStateV3(h: ForecastHorizon, diag: string | null): string {
+function orderStateV3(h: ForecastHorizon, diag: string | null, forecast?: OrderForecast): string {
   if (h.status === "AVAILABLE") return "有效";
   const r = h.reason;
+  // The enabled consensus route's own words (operator 2026-10-13) for the state its validated evidence backs.
+  if (forecast?.consensusNote && r === forecast.revenueReason) return forecast.consensusNote;
   if (r === "NOT_DISCLOSED" || r === "NOT_DISCLOSED_HORIZON") return diag === "CONSENSUS_DEFERRED" ? "公司未提供營收財測；分析師共識路線本次未啟用" : "未揭露";
   if (r === "INPUTS_MISSING") return "未收錄經審核的營收財測（公司未提供或尚待審核）";
   if (r === "STALE") return "資料逾期未更新";
@@ -2753,12 +2867,15 @@ function orderRowV3(forecast: OrderForecast, key: Key, money: Money): string {
   const hLabel = h.horizon_label ?? (key === "m6" ? "約6個月（2財季）" : "約1年（4財季）");
   const diag = forecast.revenueDiagnostic ?? null;
   if (h.status !== "AVAILABLE") {
-    return `${hLabel}：${orderStateV3(h, diag)}`;
+    return `${hLabel}：${orderStateV3(h, diag, forecast)}`;
   }
   if (h.basis === "RECOGNITION") {
     return `${hLabel}內預計認列：${money(h.amount!, h.currency!)}（已簽約預計認列；自${h.start}起，非今日起，至${h.end}）`;
   }
-  return `${hLabel}：${money(h.amount!, h.currency!)}（${h.basis_label ?? "公司營收財測＋模型（非訂單）"}；自${h.start}起，非今日起，至${h.end}）`;
+  // The analyst-consensus basis always carries its label (not company guidance, unofficial, source, analysts, date) and
+  // stays distinct from orders (operator 2026-10-13).
+  const basisText = h.basis === "CONSENSUS" ? `${h.basis_label ?? CONSENSUS_LABEL}；非訂單` : (h.basis_label ?? "公司營收財測＋模型（非訂單）");
+  return `${hLabel}：${money(h.amount!, h.currency!)}（${basisText}；自${h.start}起，非今日起，至${h.end}）`;
 }
 
 function priceRowV3(forecast: OrderForecast, key: Key): string {
@@ -2766,16 +2883,18 @@ function priceRowV3(forecast: OrderForecast, key: Key): string {
   const hLabel = h.horizon_label ?? (key === "m6" ? "約6個月（2財季）" : "約1年（4財季）");
   const diag = forecast.revenueDiagnostic ?? null;
   if (h.status !== "AVAILABLE") {
-    return `若${hLabel}達成營收推估 → 無法估算（${orderStateV3(h, diag)}）`;
+    return `若${hLabel}達成營收推估 → 無法估算（${orderStateV3(h, diag, forecast)}）`;
   }
   if (h.basis === "RECOGNITION") {
     return `若${hLabel}內實現訂單 → 無法估算（缺完整營收推估，無法估算股價情境）`;
   }
+  // The price scenarios of the consensus basis carry its short label (operator 2026-10-13).
+  const subject = h.basis === "CONSENSUS" ? `${hLabel}達成${CONSENSUS_PRICE_LABEL}營收推估` : `${hLabel}達成營收推估`;
   const s = h.scenario;
   if (s.status === "AVAILABLE" && s.change !== undefined) {
-    return `若${hLabel}達成營收推估 → 股價情境 ${signedPct(s.change)}`;
+    return `若${subject} → 股價情境 ${signedPct(s.change)}`;
   }
-  return `若${hLabel}達成營收推估 → 無法估算（缺完整四季營收基準，無法估算）`;
+  return `若${subject} → 無法估算（缺完整四季營收基準，無法估算）`;
 }
 
 /** Bounded revenue-source lines (Astra r5 item 19; acceptance r7 A5), rendered only from the validated sources
@@ -2794,7 +2913,7 @@ function revenueSourceLinesV3(forecast: OrderForecast, detail = false): string[]
       lines.push(`營收財測來源：${g.publisher ?? ""}（${g.source_kind ?? ""}，發布${g.published_date ?? ""}）；${stated}${g.url ? `：${g.url}` : ""}`.slice(0, 240));
     }
     const c = sources.find(s => s.role === "CONSENSUS");
-    if (c) lines.push(`分析師共識（${c.period ?? "0q"}，至${c.quarter_end ?? "?"}）：${c.analysts ?? 0}位分析師${c.url ? `：${c.url}` : ""}`.slice(0, 240));
+    if (c) lines.push(`分析師共識（非官方，${c.period ?? "0q"}，至${c.quarter_end ?? "?"}）：${c.analysts ?? 0}位分析師，截至${(c.captured_at ?? "").slice(0, 10)}${c.url ? `：${c.url}` : ""}`.slice(0, 240));
     return lines;
   }
   const lines: string[] = [];
@@ -2819,7 +2938,7 @@ function revenueSourceLinesV3(forecast: OrderForecast, detail = false): string[]
         lines.push(`財季日曆來源：${s.publisher ?? ""}（${s.source_kind ?? ""}，發布${s.published_date ?? ""}）${s.locator ? `；${s.locator}` : ""}${s.url ? ` ${s.url}` : ""}`.slice(0, 300));
         break;
       case "CONSENSUS":
-        lines.push(`分析師共識（${s.period ?? "0q"}，至${s.quarter_end ?? "?"}）：${s.analysts ?? 0}位分析師${s.url ? `：${s.url}` : ""}`.slice(0, 300));
+        lines.push(`分析師共識（非官方，${s.period ?? "0q"}，至${s.quarter_end ?? "?"}）：${s.analysts ?? 0}位分析師，截至${(s.captured_at ?? "").slice(0, 10)}${s.url ? `：${s.url}` : ""}`.slice(0, 300));
         break;
     }
   }
@@ -2838,7 +2957,8 @@ function revenueSuspensionLineV3(forecast: OrderForecast): string | null {
     case "CONSENSUS_DEFERRED":
       return "營收推估：公司未提供營收財測；分析師共識路線本次未啟用（已簽約認列另列，不受影響）";
     default:
-      return null;
+      // The enabled consensus route's own unavailable state (no capture, expired, period mismatch, unreadable cache).
+      return forecast.consensusNote ? `營收推估：${forecast.consensusNote}（已簽約認列另列，不受影響）` : null;
   }
 }
 
@@ -2867,7 +2987,7 @@ function getModelAssumptionText(forecast: OrderForecast): string | null {
   return null;
 }
 
-function forecastCardV3(forecast: OrderForecast, money: Money): [string, boolean][] {
+function forecastCardV3(forecast: OrderForecast, money: Money, history: HistoryView | null = null): [string, boolean][] {
   const lines: [string, boolean][] = [
     ["訂單認列／營收推估", true],
     [orderRowV3(forecast, "m6", money), false],
@@ -2876,6 +2996,7 @@ function forecastCardV3(forecast: OrderForecast, money: Money): [string, boolean
 
   const irLine = revenueSuspensionLineV3(forecast);
   if (irLine) lines.push([irLine, false]);
+  for (const [i, text] of historyBlockLines(history, money).entries()) lines.push([text, i === 0 && history?.status === "ESTIMATE"]);
   const modelAssumption = getModelAssumptionText(forecast);
   if (modelAssumption) {
     lines.push([modelAssumption, false]);
@@ -2893,7 +3014,7 @@ function forecastCardV3(forecast: OrderForecast, money: Money): [string, boolean
 
   const warning = forecast.m6.warning ?? forecast.m12.warning;
   if (warning) {
-    lines.push([`財測時效警示：${warning.text}`, false]);
+    lines.push([`${warningLabelV3(forecast)}：${warning.text}`, false]);
   }
 
   const rec = forecast.contractedRecognition;
@@ -2913,7 +3034,10 @@ function forecastCardV3(forecast: OrderForecast, money: Money): [string, boolean
   return lines;
 }
 
-function forecastTextV3(forecast: OrderForecast, money: Money): string {
+/** The warning's heading: the guidance bridge says 財測, the consensus bridge says 共識 (never calls consensus a company forecast). */
+const warningLabelV3 = (forecast: OrderForecast) => forecast.revenueBasis === "CONSENSUS" ? "共識時效警示" : "財測時效警示";
+
+function forecastTextV3(forecast: OrderForecast, money: Money, history: HistoryView | null = null): string {
   const parts = [
     `訂單認列／營收推估：${orderRowV3(forecast, "m6", money)}／${orderRowV3(forecast, "m12", money)}`,
   ];
@@ -2921,6 +3045,7 @@ function forecastTextV3(forecast: OrderForecast, money: Money): string {
   if (modelAssumption) parts.push(modelAssumption);
   const irText = revenueSuspensionLineV3(forecast);
   if (irText) parts.push(irText);
+  parts.push(...historyBlockLines(history, money));
   parts.push(...revenueSourceLinesV3(forecast));
   parts.push(`營收實現後股價情境：${priceRowV3(forecast, "m6")}／${priceRowV3(forecast, "m12")}（${CONDITION_TEXT_V3}）`);
   const warning = forecast.m6.warning ?? forecast.m12.warning;
@@ -2941,12 +3066,13 @@ function forecastTextV3(forecast: OrderForecast, money: Money): string {
   return parts.join("｜");
 }
 
-function forecastLinesV3(forecast: OrderForecast, money: Money): string[] {
+function forecastLinesV3(forecast: OrderForecast, money: Money, history: HistoryView | null = null): string[] {
   const lines: string[] = ["訂單認列／營收推估"];
   lines.push(orderRowV3(forecast, "m6", money));
   lines.push(orderRowV3(forecast, "m12", money));
   const irDetail = revenueSuspensionLineV3(forecast);
   if (irDetail) lines.push(irDetail);
+  lines.push(...historyBlockLines(history, money, true));
 
   const modelAssumption = getModelAssumptionText(forecast);
   if (modelAssumption) {
@@ -2963,7 +3089,7 @@ function forecastLinesV3(forecast: OrderForecast, money: Money): string[] {
 
   const warning = forecast.m6.warning ?? forecast.m12.warning;
   if (warning) {
-    lines.push(`財測時效警示：${warning.text}`);
+    lines.push(`${warningLabelV3(forecast)}：${warning.text}`);
   }
 
   const curr = forecast.reportedQuarters?.[0]?.currency ?? forecast.m6.currency ?? "USD";
@@ -3040,8 +3166,8 @@ function forecastLinesV3(forecast: OrderForecast, money: Money): string[] {
 
 /** The card's order block, one entry per line: [text, heading]. Both horizons, their windows, the conditional price rows
  * and the dates of the data always appear together. */
-export function forecastCard(forecast: OrderForecast, money: Money): [string, boolean][] {
-  if (forecast.version === 3) return forecastCardV3(forecast, money);
+export function forecastCard(forecast: OrderForecast, money: Money, history: HistoryView | null = null): [string, boolean][] {
+  if (forecast.version === 3) return forecastCardV3(forecast, money, history);
   const lines: [string, boolean][] = [["未來訂單預估", true], [orderRow(forecast, "m6", money), false], [orderRow(forecast, "m12", money), false],
     ["訂單實現後股價情境", true], [priceRow(forecast, "m6"), false], [priceRow(forecast, "m12"), false]];
   if (priced(forecast)) lines.push([CONDITION_TEXT, false]);
@@ -3054,8 +3180,8 @@ export function forecastCard(forecast: OrderForecast, money: Money): [string, bo
 }
 
 /** The same block in one line for the text form of the Top20. */
-export function forecastText(forecast: OrderForecast, money: Money): string {
-  if (forecast.version === 3) return forecastTextV3(forecast, money);
+export function forecastText(forecast: OrderForecast, money: Money, history: HistoryView | null = null): string {
+  if (forecast.version === 3) return forecastTextV3(forecast, money, history);
   const parts = [`未來訂單預估：${orderRow(forecast, "m6", money)}／${orderRow(forecast, "m12", money)}`,
     `訂單實現後股價情境：${priceRow(forecast, "m6")}／${priceRow(forecast, "m12")}${priced(forecast) ? `（${CONDITION_TEXT}）` : ""}`];
   if (basisOf(forecast)) parts.push(RPO_TEXT);
@@ -3068,8 +3194,8 @@ export function forecastText(forecast: OrderForecast, money: Money): string {
 
 /** The detail lines: each horizon with its window, inputs, assumptions and source, then later disclosures with their
  * revision reasons, the model sensitivity and the fixed-period references. */
-export function forecastLines(forecast: OrderForecast, money: Money): string[] {
-  if (forecast.version === 3) return forecastLinesV3(forecast, money);
+export function forecastLines(forecast: OrderForecast, money: Money, history: HistoryView | null = null): string[] {
+  if (forecast.version === 3) return forecastLinesV3(forecast, money, history);
   const lines: string[] = ["未來訂單預估"];
   const sources = new Set<string>();
   for (const key of ["m6", "m12"] as const) {

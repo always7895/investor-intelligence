@@ -5,7 +5,7 @@
   "owner_watchlist_inheritance": false,
   "ibkr_or_broker_account_fallback": false,
   "paid_fallback": false,
-  "production_quote_provider_selected": false,
+  "production_quote_provider_selected": true,
   "providers": [
     {
       "id": "cboe_public_options_market_data",
@@ -198,6 +198,49 @@
       "adapter_status": "not_implemented",
       "runtime_enabled": false,
       "line_quote_eligible": false
+    },
+    {
+      "id": "yahoo_finance_option_chain",
+      "name": "Yahoo Finance US option chains (unofficial, delayed; operator-accepted display)",
+      "authority": "Yahoo Finance",
+      "jurisdictions": ["US"],
+      "data_roles": ["delayed_option_quotes"],
+      "official_url": "https://finance.yahoo.com/",
+      "rights_evidence_url": "https://legal.yahoo.com/us/en/yahoo/terms/otos/index.html",
+      "rights_status": "operator_accepted_unlicensed",
+      "automated_access_allowed": null,
+      "rights_reviewed_at": "2026-10-13",
+      "review_notes": "NOT a rights review and NOT a licence: no redistribution grant for Yahoo option-chain data exists and none was obtained. The operator decided on 2026-10-13 (OPERATOR-DECISION-OPTIONS-DISPLAY-ALL-20261013, quoted in docs/PUBLIC_OPTIONS_PROVIDER_RIGHTS_REVIEW.md) to restore delayed covered-call suggestions for every user of this bot, the owner and the friends, accepting that exposure. The status is pinned to this provider id, this decision and these scopes in scripts/public_options_provider_gate.py and cloud/src/v213/public-options-admission.ts; the LINE answer discloses the source as unofficial and delayed and that it is shown on the operator's decision without a redistribution licence. review_valid_through is the operator acceptance window; it is not a licence expiry. Revert: set runtime_enabled and line_quote_eligible to false together (and production_quote_provider_selected to false), see the revert steps in the rights review document.",
+      "adapter_status": "candidate_implemented",
+      "runtime_enabled": true,
+      "line_quote_eligible": true,
+      "review_valid_through": "2027-10-13",
+      "admitted_scopes": [
+        {"jurisdiction": "US", "venue": "US_LISTED_OPTIONS", "instrument_kind": "equity_option", "quote_basis": "delayed", "publication_scope": "public_line_quote"},
+        {"jurisdiction": "US", "venue": "US_LISTED_OPTIONS", "instrument_kind": "equity_option", "quote_basis": "previous_session_last", "publication_scope": "public_line_quote"}
+      ],
+      "operator_decision": {"decision_id": "OPERATOR-DECISION-OPTIONS-DISPLAY-ALL-20261013", "decided_at": "2026-10-13", "record": "docs/PUBLIC_OPTIONS_PROVIDER_RIGHTS_REVIEW.md"}
+    },
+    {
+      "id": "nasdaq_nordic_option_chain",
+      "name": "Nasdaq Nordic Stockholm option chains (exchange public web data, delayed; operator-accepted display)",
+      "authority": "Nasdaq Nordic",
+      "jurisdictions": ["SE"],
+      "data_roles": ["delayed_option_quotes"],
+      "official_url": "https://www.nasdaq.com/european-market-activity",
+      "rights_evidence_url": "https://www.nasdaq.com/legal",
+      "rights_status": "operator_accepted_unlicensed",
+      "automated_access_allowed": null,
+      "rights_reviewed_at": "2026-10-17",
+      "review_notes": "NOT a rights review and NOT a licence: the Nasdaq terms (retained 2026-10-17) grant only personal, non-commercial use and forbid distribution, no redistribution grant for Nasdaq Nordic option-chain data exists and none was obtained. The operator decided on 2026-10-17 (OPERATOR-DECISION-OPTIONS-NORDIC-DISPLAY-20261017, quoted in docs/PUBLIC_OPTIONS_PROVIDER_RIGHTS_REVIEW.md) to show delayed Nasdaq Nordic (Stockholm) covered-call suggestions to every user of this bot on the same terms as the Yahoo decision, accepting that exposure. The status is pinned to this provider id, this decision and this scope in scripts/public_options_provider_gate.py and cloud/src/v213/public-options-admission.ts; the LINE answer discloses the source as Nasdaq Nordic exchange public web data, delayed, and that it is shown on the operator's decision without a redistribution licence. review_valid_through is the operator acceptance window; it is not a licence expiry. Revert: set runtime_enabled and line_quote_eligible to false together, see the revert steps in the rights review document.",
+      "adapter_status": "candidate_implemented",
+      "runtime_enabled": true,
+      "line_quote_eligible": true,
+      "review_valid_through": "2027-10-17",
+      "admitted_scopes": [
+        {"jurisdiction": "SE", "venue": "NASDAQ_STOCKHOLM_OPTIONS", "instrument_kind": "equity_option", "quote_basis": "delayed", "publication_scope": "public_line_quote"}
+      ],
+      "operator_decision": {"decision_id": "OPERATOR-DECISION-OPTIONS-NORDIC-DISPLAY-20261017", "decided_at": "2026-10-17", "record": "docs/PUBLIC_OPTIONS_PROVIDER_RIGHTS_REVIEW.md"}
     }
   ]
 }

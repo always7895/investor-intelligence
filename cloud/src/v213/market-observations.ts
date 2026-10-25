@@ -182,7 +182,9 @@ export async function loadDetailedOptionObservation(
     // The period key is present but its value is malformed: distinct from a producer-declared unavailable/missing period.
     return { status: "QUOTE_INVALID_OR_STALE", ticker: matchedKey, docGeneratedAt, period };
   }
-  const cycle = validateCoveredCallCycle(entry, now, docGeneratedAt, period);
+  // The only caller that opts into the previous-session carry-forward basis (its own age, session and expiry rules live in the
+  // validator); the coverage page and every format-only caller keep refusing it.
+  const cycle = validateCoveredCallCycle(entry, now, docGeneratedAt, period, { allowPreviousSession: true });
   // OPTIONBIND1: the cycle must belong to the key it was selected under (exact string equality; no trim, case folding or alias
   // repair). A foreign cycle under this key is an invalid row, decided before rights admission, with no fallback to another key.
   if (!cycle || cycle.ticker !== matchedKey) {

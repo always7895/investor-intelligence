@@ -2,7 +2,8 @@
 
 Every ScheduledTasks cmdlet is a PowerShell function over an in-memory XML store (functions shadow cmdlets), so no real
 task is read or changed. The fake parses the registered XML the way the scheduler would (action, trigger, enabled flags),
-so a placeholder, a disabled trigger or a wrong path in the rendered definition fails the real readback code."""
+so a placeholder, a disabled trigger or a wrong path in the rendered definition fails the real readback code. Like the
+real scheduler it refuses a definition string whose XML declaration names an encoding other than UTF-16."""
 import json
 import shlex
 import shutil
@@ -64,6 +65,8 @@ function Register-ScheduledTask {
     $isRestore = ($existingNames -contains $TaskName) -and ($Xml -eq [string]$case.existing.$TaskName)
     $kind = if ($isRestore) { 'RESTORE' } else { 'REGISTER' }
     $global:Calls.Add("$kind $TaskName")
+    # the real scheduler takes the string as UTF-16 and refuses a declaration naming another encoding
+    if ($Xml -match '^\s*<\?xml[^>]*encoding\s*=\s*"(?!utf-16")[^"]*"') { throw '(1,40)::ERROR: unable to switch the encoding' }
     if ($kind -eq 'REGISTER' -and $case.register_fail) { throw 'SYNTHETIC_REGISTER_FAILURE' }
     $stored = $Xml
     if ($kind -eq 'REGISTER' -and $case.readback_tamper -eq 'disable_trigger') { $stored = $Xml.Replace('<Enabled>true</Enabled>', '<Enabled>false</Enabled>') }
@@ -143,6 +146,7 @@ class TaifexTaskRegistrationTests(unittest.TestCase):
         self.assertEqual(root.findtext("t:Settings/t:StartWhenAvailable", namespaces=NS), "false")
         self.assertEqual(principal.findtext("t:LogonType", namespaces=NS), "InteractiveToken")
         self.assertNotIn("<!--", text)
+        self.assertFalse(text.lstrip().startswith("<?xml"), "the scheduler takes the string as UTF-16: no utf-8 declaration")
         action = root.find("t:Actions/t:Exec", NS)
         self.assertEqual(Path(action.findtext("t:Command", namespaces=NS)), self.python)
         self.assertEqual(Path(action.findtext("t:WorkingDirectory", namespaces=NS)), self.source)

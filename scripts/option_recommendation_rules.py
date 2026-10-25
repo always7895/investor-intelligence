@@ -40,6 +40,8 @@ WEEK_CURRENT = "CURRENT"
 WEEK_NEXT = "NEXT"
 # Regular-session close in exchange-local minutes after midnight (expiry-day cut-off; no holiday calendar is inferred).
 EXPIRY_DAY_CLOSE_LOCAL_MINUTES = {"US": 16 * 60, "STOCKHOLM": 17 * 60 + 30, "TAIFEX": 13 * 60 + 30}
+# Regular US session: Monday-Friday from this local minute up to the US close above (the previous-session carry-forward rule).
+US_SESSION_OPEN_LOCAL_MINUTES = 9 * 60 + 30
 
 
 def effective_days(dte: int) -> int:
@@ -91,6 +93,15 @@ def expiry_day_open(now_utc: datetime, venue: str) -> bool:
     """True while an option expiring TODAY (exchange local) is still tradable: before the regular-session close."""
     local = exchange_local(now_utc, venue)
     return local.hour * 60 + local.minute < EXPIRY_DAY_CLOSE_LOCAL_MINUTES[venue]
+
+
+def us_regular_session_open(now_utc: datetime) -> bool:
+    """True when the instant lies inside a regular US equity-options session: a New York weekday from 09:30 up to, not
+    including, 16:00. Early closes and exchange holidays are NOT inferred (a closed weekday has no two-sided quotes, so no capture
+    qualifies there; callers bound the age of whatever they keep)."""
+    local = exchange_local(now_utc, "US")
+    minutes = local.hour * 60 + local.minute
+    return local.weekday() < 5 and US_SESSION_OPEN_LOCAL_MINUTES <= minutes < EXPIRY_DAY_CLOSE_LOCAL_MINUTES["US"]
 
 
 def week_end(day: date) -> date:

@@ -564,7 +564,9 @@ describe("B2 integrated caller (D1-D5 synthetic seam scope)", () => {
       it("B2-12: " + style + " real catalog NONE denies " + key + " without opt-in", async () => {
         const f = await sealed({ key, style, rows: pair(us(key)) });
         const reply = await answer(f, key === "TSM" ? "TSMC 每月期權" : "ACME 每月期權");
-        expect(catalog.production_quote_provider_selected).toBe(false);
+        // V11 (operator 2026-10-13): the root selection follows the enabled set (the pinned operator-accepted Yahoo provider may be enabled);
+        // these rows claim no Yahoo identity, so the real catalog denies them either way.
+        expect(catalog.production_quote_provider_selected).toBe(catalog.providers.some(provider => provider.runtime_enabled === true && provider.line_quote_eligible === true));
         expect(reply).toContain(admission.OPTION_RIGHTS_NOT_ADMITTED);
         noQuote(reply);
         expect(reply).not.toContain("IDENTITY_CONFLICT");

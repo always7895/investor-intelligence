@@ -7,6 +7,12 @@
       "raw_payload_redistribution": false,
       "runtime_enabled": true
     },
+    "nasdaq_us_stock_screener": {
+      "authoritative": false,
+      "purpose": "local_candidate_seed_fallback_and_market_observation_only",
+      "raw_payload_redistribution": false,
+      "runtime_enabled": true
+    },
     "alpha_vantage": {
       "authoritative": false,
       "credential_env": "ALPHA_VANTAGE_API_KEY",

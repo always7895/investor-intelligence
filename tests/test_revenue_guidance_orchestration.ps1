@@ -223,6 +223,7 @@ $expectedSteps = @(
     'zh_names|scripts\build_zh_names.py --if-older-than-hours 168',
     'identity_shards|scripts\build_identity_shards.py --if-older-than-hours 20',
     'serenity_signals|scripts\serenity_signals.py --refresh --if-older-than-hours 6',
+    'revenue_consensus|scripts\revenue_consensus_quarterly.py --if-older-than-hours 6',
     'industry_rotation|scripts\industry_rotation.py --refresh --if-older-than-hours 20',
     'company_reports|scripts\company_deep_report.py --refresh --if-older-than-hours 20',
     'leopold_13f|scripts\leopold_positions.py --if-older-than-hours 24',

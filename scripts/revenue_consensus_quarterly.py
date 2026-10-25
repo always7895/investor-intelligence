@@ -353,11 +353,28 @@ def registry_symbols(registry_path: Path | None = None) -> list[str]:
             if isinstance(record, dict) and record.get("status") == "NOT_DISCLOSED" and isinstance(record.get("symbol"), str)]
 
 
+def registry_consensus_enabled(registry_path: Path | None = None) -> bool:
+    """The registry root's explicit consensus gate, read as build_v3 reads it: only a JSON true turns the route on; a
+    missing, malformed or non-boolean flag (or an unreadable registry) is off."""
+    path = registry_path or (ROOT / "config" / "revenue-guidance-v1.json")
+    try:
+        registry = json.loads(path.read_bytes().decode("utf-8"))
+    except (OSError, ValueError):
+        return False
+    return isinstance(registry, dict) and registry.get("consensus_enabled") is True
+
+
 def main() -> int:
+    """The refresh step (scripts/run_daily_data_refresh.ps1 'revenue_consensus'). Exit 0: every symbol was read, a symbol
+    without a usable capture (fewer than MIN_ANALYSTS analysts, an unsupported response) is reported and keeps no capture
+    (its card then states that no consensus is available); exit 1: a read or the cache failed (the last good captures
+    stay and age out after MAX_AGE_HOURS). With the default registry-driven symbols the step does nothing while the
+    registry's consensus_enabled gate is not true, so the gate-off rollout makes no provider requests."""
     parser = argparse.ArgumentParser(description="Refresh quarterly revenue consensus cache")
     parser.add_argument("--symbols", nargs="*", default=None, help="Symbols to refresh (default: the registry's NOT_DISCLOSED issuers)")
     parser.add_argument("--if-older-than-hours", type=float, default=MAX_AGE_HOURS)
     parser.add_argument("--cache-path", type=Path, default=DEFAULT_CACHE_PATH)
+    parser.add_argument("--registry-path", type=Path, default=None, help="Registry for the default symbols and the gate (default: config/revenue-guidance-v1.json)")
     args = parser.parse_args()
 
     if args.if_older_than_hours < 0 or not math.isfinite(args.if_older_than_hours):
@@ -365,8 +382,12 @@ def main() -> int:
 
     now = datetime.now(timezone.utc).replace(microsecond=0)
     if args.symbols is None:
-        args.symbols = registry_symbols()
+        if not registry_consensus_enabled(args.registry_path):
+            print("CONSENSUS_COLLECTION_SKIPPED: consensus_enabled is not true in the registry")
+            return 0
+        args.symbols = registry_symbols(args.registry_path)
     success_count = 0
+    unusable_count = 0
     failure_count = 0
 
     for sym in args.symbols:
@@ -376,12 +397,13 @@ def main() -> int:
                 print(f"Refreshed {sym}: {len(res.get('quarters', []))} quarters")
                 success_count += 1
             else:
-                print(f"Failed or insufficient analysts for {sym}")
-                failure_count += 1
+                print(f"No usable consensus for {sym} (fewer than {MIN_ANALYSTS} analysts or an unsupported response); no capture kept")
+                unusable_count += 1
         except Exception as exc:
             print(f"Error refreshing {sym}: {exc}")
             failure_count += 1
 
+    print(f"CONSENSUS_REFRESH symbols={len(args.symbols)} refreshed={success_count} unusable={unusable_count} failed={failure_count}")
     return 0 if failure_count == 0 else 1
 
 

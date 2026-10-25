@@ -431,6 +431,9 @@ class TestReaffirmedGuidanceReference(unittest.TestCase):
 
     def test_nbis_builds_from_a_receipt_anchored_at_the_reaffirmation_only(self):
         rec = json.loads(json.dumps(revenue_guidance.load_registry()["issuers"]["NBIS"]))
+        # The registry also carries reviews made after this historical cutoff (lane V11, 2026-10-13); only reviews at or
+        # before the cutoff are inputs of a build at the cutoff.
+        rec["reviewed_later_documents"] = [r for r in rec["reviewed_later_documents"] if r["reviewed_at"] <= "2026-09-28T20:00:00Z"]
         result = revenue_guidance.build_forward_quarters("NBIS", rec, self.CUTOFF, release_checks_cache=self.receipt_cache(rec))
         self.assertEqual(result["status"], "AVAILABLE", result.get("reason"))
         self.assertAlmostEqual(result["f1"], (3.2e9 - 981.3e6) / 2)
@@ -1437,6 +1440,7 @@ class TestReviewedProfile(unittest.TestCase):
     def test_gate_on_still_routes_to_the_consensus(self):
         reg = self._reg("000660.KS", consensus_enabled=True)
         consensus = {"000660.KS": {"symbol": "000660.KS", "captured_at": "2026-09-28T08:00:00Z", "currency": "KRW",
+                                   "source_url": "https://query2.finance.yahoo.com/v10/finance/quoteSummary/000660.KS?modules=earningsTrend,financialData",
                                    "quarters": [{"period": "0q", "end": "2026-09-30", "revenue": 15e12, "analysts": 25},
                                                 {"period": "+1q", "end": "2026-12-31", "revenue": 16e12, "analysts": 24}]}}
         v3 = self.ofc.build_v3("000660.KS", None, None, self.report_day, self.cutoff, self.claims, revenue_registry=reg,

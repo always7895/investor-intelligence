@@ -1,0 +1,234 @@
+{
+ "note": "The curated MU record of config/revenue-guidance-v1.json as rolled out on 2026-09-28 (FQ3-26 release of 2026-06-24, forward quarter FQ4-26): the oracle for the last link of the MU replay chain in tests/test_revenue_guidance_autoupdate.py. The tracked registry has since moved on to the FQ4-26 release (lane V11).",
+ "record": {
+  "symbol": "MU",
+  "company_name": "Micron Technology, Inc.",
+  "status": "GUIDANCE",
+  "reason": null,
+  "url_prefixes": [
+   "https://www.sec.gov/Archives/edgar/data/"
+  ],
+  "documents": [
+   {
+    "id": "MU-GUIDANCE",
+    "issuer": "MU",
+    "publisher": "Micron Technology, Inc.",
+    "title": "Micron Technology, Inc. earnings release with outlook",
+    "source_kind": "SEC_8K_EXHIBIT",
+    "url": "https://www.sec.gov/Archives/edgar/data/723125/000072312526000013/a2026q3ex991-pressrelease.htm",
+    "published_date": "2026-06-24",
+    "retrieved_at": "2026-09-28T14:23:22Z",
+    "sha256": "6c03d927cbe1f8e6a89f683963854ee6b4cdffdb7f9b061107366ac6b21657ee",
+    "byte_size": 292002,
+    "lineage_id": "MU-GUIDANCE"
+   },
+   {
+    "id": "MU-10K",
+    "issuer": "MU",
+    "publisher": "Micron Technology, Inc.",
+    "title": "Micron Technology, Inc. Form 10-K",
+    "source_kind": "OFFICIAL_FISCAL_CALENDAR",
+    "url": "https://www.sec.gov/Archives/edgar/data/723125/000072312525000028/mu-20250828.htm",
+    "published_date": "2025-10-03",
+    "retrieved_at": "2026-09-28T14:23:23Z",
+    "sha256": "0faf0bc798049e5c5454a4ab6e6565aa9581178ea300f752e1c80756f6bd2459",
+    "byte_size": 2439584,
+    "lineage_id": "MU-10K"
+   },
+   {
+    "id": "MU-0000723125-25-000028",
+    "issuer": "MU",
+    "publisher": "Micron Technology, Inc.",
+    "title": "Micron Technology, Inc. Form 10-K (0000723125-25-000028)",
+    "source_kind": "SEC_PERIODIC",
+    "url": "https://www.sec.gov/Archives/edgar/data/723125/000072312525000028/mu-20250828.htm",
+    "published_date": "2025-10-03",
+    "retrieved_at": "2026-09-28T14:23:24Z",
+    "sha256": "0faf0bc798049e5c5454a4ab6e6565aa9581178ea300f752e1c80756f6bd2459",
+    "byte_size": 2439584,
+    "lineage_id": "MU-0000723125-25-000028"
+   },
+   {
+    "id": "MU-0000723125-26-000015",
+    "issuer": "MU",
+    "publisher": "Micron Technology, Inc.",
+    "title": "Micron Technology, Inc. Form 10-Q (0000723125-26-000015)",
+    "source_kind": "SEC_PERIODIC",
+    "url": "https://www.sec.gov/Archives/edgar/data/723125/000072312526000015/mu-20260528.htm",
+    "published_date": "2026-06-25",
+    "retrieved_at": "2026-09-28T14:23:26Z",
+    "sha256": "1931e2d558b8960accd709d6ec15975f02fb25b67c01b742fd712f6fe0e32276",
+    "byte_size": 1532182,
+    "lineage_id": "MU-0000723125-26-000015"
+   },
+   {
+    "id": "MU-0000723125-25-000046",
+    "issuer": "MU",
+    "publisher": "Micron Technology, Inc.",
+    "title": "Micron Technology, Inc. Form 10-Q (0000723125-25-000046)",
+    "source_kind": "SEC_PERIODIC",
+    "url": "https://www.sec.gov/Archives/edgar/data/723125/000072312525000046/mu-20251127.htm",
+    "published_date": "2025-12-18",
+    "retrieved_at": "2026-09-28T14:23:27Z",
+    "sha256": "ccec5d6ab5cfc357fe4bcfc12f49f8d20a26605637bd0637a3c4ea05c32732b7",
+    "byte_size": 1327630,
+    "lineage_id": "MU-0000723125-25-000046"
+   },
+   {
+    "id": "MU-0000723125-26-000006",
+    "issuer": "MU",
+    "publisher": "Micron Technology, Inc.",
+    "title": "Micron Technology, Inc. Form 10-Q (0000723125-26-000006)",
+    "source_kind": "SEC_PERIODIC",
+    "url": "https://www.sec.gov/Archives/edgar/data/723125/000072312526000006/mu-20260226.htm",
+    "published_date": "2026-03-19",
+    "retrieved_at": "2026-09-28T14:23:29Z",
+    "sha256": "e2f60672775d423133be75790cf54bf7fb7bf3233bca47e5e4b2316d83e222b4",
+    "byte_size": 1517513,
+    "lineage_id": "MU-0000723125-26-000006"
+   }
+  ],
+  "claims": [
+   {
+    "id": "MU-Q-GUIDANCE",
+    "document_id": "MU-GUIDANCE",
+    "locator": "Outlook",
+    "passage": "FQ4-26 GAAP (1) Outlook Non-GAAP (2) Outlook Revenue $50.0 billion ± $1.0 billion $50.0 billion ± $1.0 billion",
+    "metric": "REVENUE",
+    "assertion_kind": "COMPANY_GUIDANCE",
+    "currency": "USD",
+    "unit_multiplier": 1,
+    "amount": null,
+    "low": 49000000000.0,
+    "high": 51000000000.0,
+    "stated_point": 50000000000.0,
+    "original_representation": "$50.0 billion ± $1.0 billion",
+    "scope": "COMPANY",
+    "scope_label": "全公司",
+    "accounting_basis": "GAAP",
+    "fiscal_label": "FQ4-26",
+    "period_kind": "QUARTER",
+    "period_start": "2026-05-29",
+    "period_end": "2026-09-03"
+   }
+  ],
+  "reported_quarters": [
+   {
+    "fiscal_label": "FQ4-25",
+    "start": "2025-05-30",
+    "end": "2025-08-28",
+    "revenue": 11315000000.0,
+    "currency": "USD",
+    "scope": "COMPANY",
+    "accounting_basis": "GAAP",
+    "document_id": "MU-0000723125-25-000028",
+    "locator": "XBRL us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax 2024-08-30..2025-08-28 minus ..2025-05-29",
+    "derivation": {
+     "kind": "YTD_DIFFERENCE",
+     "longer_document_id": "MU-0000723125-25-000028",
+     "longer_value": 37378000000.0,
+     "longer_start": "2024-08-30",
+     "shorter_document_id": "MU-0000723125-26-000015",
+     "shorter_value": 26063000000.0,
+     "shorter_end": "2025-05-29"
+    }
+   },
+   {
+    "fiscal_label": "FQ1-26",
+    "start": "2025-08-29",
+    "end": "2025-11-27",
+    "revenue": 13643000000.0,
+    "currency": "USD",
+    "scope": "COMPANY",
+    "accounting_basis": "GAAP",
+    "document_id": "MU-0000723125-25-000046",
+    "locator": "XBRL us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax 2025-08-29..2025-11-27"
+   },
+   {
+    "fiscal_label": "FQ2-26",
+    "start": "2025-11-28",
+    "end": "2026-02-26",
+    "revenue": 23860000000.0,
+    "currency": "USD",
+    "scope": "COMPANY",
+    "accounting_basis": "GAAP",
+    "document_id": "MU-0000723125-26-000006",
+    "locator": "XBRL us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax 2025-11-28..2026-02-26"
+   },
+   {
+    "fiscal_label": "FQ3-26",
+    "start": "2026-02-27",
+    "end": "2026-05-28",
+    "revenue": 41456000000.0,
+    "currency": "USD",
+    "scope": "COMPANY",
+    "accounting_basis": "GAAP",
+    "document_id": "MU-0000723125-26-000015",
+    "locator": "XBRL us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax 2026-02-27..2026-05-28"
+   }
+  ],
+  "forward_intervals": [
+   {
+    "fiscal_label": "FQ4-26",
+    "start": "2026-05-29",
+    "end": "2026-09-03",
+    "calendar_document_id": "MU-10K",
+    "calendar_locator": "Our fiscal year is the 52- or 53-week period ending on the Thursday closest to August 31."
+   },
+   {
+    "fiscal_label": null,
+    "start": "2026-09-04",
+    "end": "2026-12-03",
+    "calendar_document_id": "MU-10K",
+    "calendar_locator": "Our fiscal year is the 52- or 53-week period ending on the Thursday closest to August 31."
+   },
+   {
+    "fiscal_label": null,
+    "start": "2026-12-04",
+    "end": "2027-03-04",
+    "calendar_document_id": "MU-10K",
+    "calendar_locator": "Our fiscal year is the 52- or 53-week period ending on the Thursday closest to August 31."
+   },
+   {
+    "fiscal_label": null,
+    "start": "2027-03-05",
+    "end": "2027-06-03",
+    "calendar_document_id": "MU-10K",
+    "calendar_locator": "Our fiscal year is the 52- or 53-week period ending on the Thursday closest to August 31."
+   }
+  ],
+  "fy_reconciliation": null,
+  "release_channels": {
+   "sec_cik": 723125,
+   "wire_symbol": "MU",
+   "wire_names": [
+    "Micron"
+   ],
+   "ir": {
+    "kind": "Q4_PRESS_RELEASES",
+    "url": "https://investors.micron.com/feed/PressRelease.svc/GetPressReleaseList"
+   },
+   "ir_guidance_release_title": "Micron Technology, Inc. Reports Record Results for the Third Quarter of Fiscal 2026"
+  },
+  "reviewed_later_documents": [
+   {
+    "id": "0000723125-26-000013",
+    "disposition": "REVIEWED_IRRELEVANT",
+    "reviewed_at": "2026-09-28T15:32:15Z",
+    "note": "8-K items 2.02,9.01: the filing that furnishes the reviewed guidance document itself (MU-GUIDANCE)"
+   },
+   {
+    "id": "https://www.nasdaq.com/press-release/micron-technology-inc-reports-record-results-third-quarter-fiscal-2026-2026-06-24",
+    "disposition": "REVIEWED_IRRELEVANT",
+    "reviewed_at": "2026-09-28T15:32:15Z",
+    "note": "wire distribution of the guidance-day results release itself (same event as the reviewed guidance document)"
+   },
+   {
+    "id": "https://investors.micron.com/news/press-release/2026/Micron-Technology-to-Report-Fiscal-Fourth-Quarter-Results-on-September-30-2026/default.aspx",
+    "disposition": "REVIEWED_IRRELEVANT",
+    "reviewed_at": "2026-09-28T15:32:15Z",
+    "note": "scheduling notice of the next results date (2026-09-30); carries no results or guidance"
+   }
+  ]
+ }
+}

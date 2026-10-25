@@ -29,8 +29,10 @@ export class OptionRightsNotAdmittedError extends Error {
   }
 }
 
+/** `operator_accepted` is present only when the provider is shown on the pinned operator decision (no redistribution licence); the
+ * renderer then adds its short disclosure line. Absent for every rights-reviewed provider. */
 export type PublicOptionAdmission =
-  | { readonly ok: true; readonly provider_id: string }
+  | { readonly ok: true; readonly provider_id: string; readonly operator_accepted?: true }
   | { readonly ok: false; readonly reason: typeof OPTION_RIGHTS_NOT_ADMITTED };
 
 const DENIED: PublicOptionAdmission = { ok: false, reason: OPTION_RIGHTS_NOT_ADMITTED };
@@ -43,15 +45,38 @@ const ROOT_FALSE_FLAGS = ["automatic_activation", "owner_watchlist_inheritance",
 const REQUIRED_FIELDS = ["id", "name", "authority", "jurisdictions", "data_roles", "official_url", "rights_evidence_url",
   "rights_status", "automated_access_allowed", "rights_reviewed_at", "review_notes", "adapter_status", "runtime_enabled",
   "line_quote_eligible"];
-const ALL_FIELDS = new Set([...REQUIRED_FIELDS, "admitted_scopes", "review_valid_through"]);
-const RIGHTS_STATUSES = new Set(["review_before_enable", "reviewed_public_access", "automated_access_prohibited"]);
+const ALL_FIELDS = new Set([...REQUIRED_FIELDS, "admitted_scopes", "review_valid_through", "operator_decision"]);
+const OPERATOR_ACCEPTED_STATUS = "operator_accepted_unlicensed";
+const RIGHTS_STATUSES = new Set(["review_before_enable", "reviewed_public_access", "automated_access_prohibited", OPERATOR_ACCEPTED_STATUS]);
 const ADAPTER_STATUSES = new Set(["not_implemented", "candidate_implemented", "adapter_reviewed", "not_permitted"]);
 const PROHIBITED_IDS = ["cboe_public_options_market_data", "marketdata_app_free_forever", "occ_public_market_data",
   "tradier_broker_market_data_api"];
-// Reviewed scope vocabulary (mirrors the Python gate): only real delayed equity-option quotes for public LINE display.
-// EOD, theoretical and settlement observations are not upgraded and have no value here.
+// Operator-accepted display WITHOUT a redistribution licence (operator 2026-10-13, R/OPERATOR-DECISION-OPTIONS-DISPLAY-ALL-20261013.txt;
+// operator 2026-10-17, R/OPERATOR-DECISION-OPTIONS-NORDIC-DISPLAY-20261017.txt,
+// docs/PUBLIC_OPTIONS_PROVIDER_RIGHTS_REVIEW.md). Not a rights review and never a licence. Safety-invariant constants mirrored from
+// scripts/public_options_provider_gate.py (OPERATOR_ACCEPTED_PROVIDERS), not a second approval catalog: only these provider ids, each with
+// exactly its own decision and a subset of these scopes, can carry the status; any other provider claiming it invalidates the catalog.
+const OPERATOR_ACCEPTED_ADAPTERS = new Set(["candidate_implemented", "adapter_reviewed"]);
+const OPERATOR_ACCEPTED: Readonly<Record<string, { readonly decision: Readonly<Record<string, string>>; readonly scopes: ReadonlySet<string> }>> = {
+  yahoo_finance_option_chain: {
+    decision: { decision_id: "OPERATOR-DECISION-OPTIONS-DISPLAY-ALL-20261013", decided_at: "2026-10-13", record: "docs/PUBLIC_OPTIONS_PROVIDER_RIGHTS_REVIEW.md" },
+    scopes: new Set([
+      JSON.stringify(["US", "US_LISTED_OPTIONS", "equity_option", "delayed", "public_line_quote"]),
+      JSON.stringify(["US", "US_LISTED_OPTIONS", "equity_option", "previous_session_last", "public_line_quote"]),
+    ]),
+  },
+  nasdaq_nordic_option_chain: {
+    decision: { decision_id: "OPERATOR-DECISION-OPTIONS-NORDIC-DISPLAY-20261017", decided_at: "2026-10-17", record: "docs/PUBLIC_OPTIONS_PROVIDER_RIGHTS_REVIEW.md" },
+    scopes: new Set([
+      JSON.stringify(["SE", "NASDAQ_STOCKHOLM_OPTIONS", "equity_option", "delayed", "public_line_quote"]),
+    ]),
+  },
+};
+// Reviewed scope vocabulary (mirrors the Python gate): only real delayed equity-option quotes for public LINE display, and the
+// last two-sided quote of the previous regular US session (carry-forward). EOD, theoretical and settlement observations are not
+// upgraded and have no value here.
 const INSTRUMENT_KINDS = new Set(["equity_option"]);
-const QUOTE_BASES = new Set(["delayed"]);
+const QUOTE_BASES = new Set(["delayed", "previous_session_last"]);
 const PUBLICATION_SCOPES = new Set(["public_line_quote"]);
 const SCOPE_KEYS = ["instrument_kind", "jurisdiction", "publication_scope", "quote_basis", "venue"];
 
@@ -83,6 +108,29 @@ function safeHttps(raw: unknown): boolean {
 const rightsReviewed = (provider: Record<string, unknown>): boolean =>
   provider.rights_status === "reviewed_public_access" && provider.automated_access_allowed === true
   && provider.adapter_status === "adapter_reviewed";
+
+const scopeKey = (entry: unknown): string | null =>
+  isRecord(entry) && SCOPE_KEYS.every(key => typeof entry[key] === "string") && Object.keys(entry).length === SCOPE_KEYS.length
+    ? JSON.stringify([entry.jurisdiction, entry.venue, entry.instrument_kind, entry.quote_basis, entry.publication_scope]) : null;
+
+const sameDecision = (value: unknown, decision: Readonly<Record<string, string>>): boolean =>
+  isRecord(value) && Object.keys(value).length === Object.keys(decision).length && Object.keys(decision).every(key => value[key] === decision[key]);
+
+function pinnedOperatorDecision(id: unknown) {
+  return typeof id === "string" && Object.hasOwn(OPERATOR_ACCEPTED, id) ? OPERATOR_ACCEPTED[id] : undefined;
+}
+
+/** Mirror of _operator_accepted: the pinned id, the exact pinned decision, no rights review (automated_access_allowed null), a local or
+ * reviewed adapter, and admitted scopes that are a non-empty subset of the pinned ones. */
+function operatorAccepted(provider: Record<string, unknown>): boolean {
+  const pinned = pinnedOperatorDecision(provider.id);
+  const scopes = provider.admitted_scopes;
+  if (!pinned || !Array.isArray(scopes) || scopes.length === 0) return false;
+  return provider.rights_status === OPERATOR_ACCEPTED_STATUS && provider.automated_access_allowed === null
+    && typeof provider.adapter_status === "string" && OPERATOR_ACCEPTED_ADAPTERS.has(provider.adapter_status)
+    && provider.rights_reviewed_at === pinned.decision.decided_at && sameDecision(provider.operator_decision, pinned.decision)
+    && scopes.every(entry => { const key = scopeKey(entry); return key !== null && pinned.scopes.has(key); });
+}
 
 /** Mirror of _scope_findings: true when the optional review_valid_through / admitted_scopes fields are valid for this provider. */
 function scopeFieldsOk(provider: Record<string, unknown>, enabled: boolean, today: number): boolean {
@@ -145,21 +193,34 @@ function checkProvider(provider: Record<string, unknown>, today: number): Provid
     if (automation !== null || reviewedAt !== null || adapter === "not_permitted") return null;
   } else if (status === "automated_access_prohibited") {
     if (automation !== false || reviewedDay === null || reviewedDay > today || adapter !== "not_permitted") return null;
+  } else if (status === OPERATOR_ACCEPTED_STATUS) {
+    // Operator decision, not a rights review (mirror of the Python audit): only the pinned id, the exact pinned decision and a subset of
+    // the pinned scopes; no review claim (automated_access_allowed null); a dated, non-future decision.
+    const pinned = pinnedOperatorDecision(id);
+    if (!pinned || automation !== null || !OPERATOR_ACCEPTED_ADAPTERS.has(adapter) || reviewedDay === null || reviewedDay > today
+      || reviewedAt !== pinned.decision.decided_at || !sameDecision(provider.operator_decision, pinned.decision)) return null;
+    const declared = provider.admitted_scopes;
+    if (Array.isArray(declared) && !declared.every(entry => { const key = scopeKey(entry); return key !== null && pinned.scopes.has(key); })) return null;
   } else if (automation !== true || reviewedDay === null || reviewedDay > today || adapter === "not_permitted") {
     return null;  // reviewed_public_access
   }
+  if (has(provider, "operator_decision") && status !== OPERATOR_ACCEPTED_STATUS) return null;
   if (PROHIBITED_IDS.includes(id) && (status !== "automated_access_prohibited" || automation !== false || adapter !== "not_permitted")) return null;
   if (typeof provider.runtime_enabled !== "boolean" || typeof provider.line_quote_eligible !== "boolean") return null;
   const enabled = provider.runtime_enabled;
   const lineEligible = provider.line_quote_eligible;
-  if ((enabled || lineEligible) && (status !== "reviewed_public_access" || automation !== true || adapter !== "adapter_reviewed")) return null;
+  if (enabled || lineEligible) {
+    if (status === OPERATOR_ACCEPTED_STATUS) {
+      if (!operatorAccepted(provider)) return null;
+    } else if (status !== "reviewed_public_access" || automation !== true || adapter !== "adapter_reviewed") return null;
+  }
   if (enabled !== lineEligible) return null;  // atomic pairing
   if (!scopeFieldsOk(provider, enabled || lineEligible, today)) return null;
   return {
     id, authority,
     jurisdictions: jurisdictions.map(item => String(item).trim()).filter(item => item !== ""),
     roles: roles.map(item => String(item).trim()).filter(item => item !== ""),
-    fullyEligible: enabled && lineEligible && rightsReviewed(provider),
+    fullyEligible: enabled && lineEligible && (rightsReviewed(provider) || operatorAccepted(provider)),
   };
 }
 
@@ -214,7 +275,8 @@ export function admitPublicOption(subject: unknown, nowMs: number = Date.now()):
     const matches = providers.filter(item => item.id === claimed.provider_id);
     if (matches.length !== 1) return DENIED;  // unknown identity (duplicates were already refused)
     const provider = matches[0] as Record<string, unknown>;
-    if (provider.runtime_enabled !== true || provider.line_quote_eligible !== true || !rightsReviewed(provider)) return DENIED;
+    const accepted = operatorAccepted(provider);
+    if (provider.runtime_enabled !== true || provider.line_quote_eligible !== true || !(rightsReviewed(provider) || accepted)) return DENIED;
     const reviewed = dayStart(provider.rights_reviewed_at);
     const validThrough = dayStart(provider.review_valid_through);  // review freshness window, not a license expiry
     if (reviewed === null || validThrough === null || reviewed > today || validThrough < today || validThrough < reviewed) return DENIED;
@@ -223,7 +285,8 @@ export function admitPublicOption(subject: unknown, nowMs: number = Date.now()):
     const matched = scopes.some(entry => isRecord(entry) && entry.instrument_kind === claimed.instrument_kind
       && entry.jurisdiction === claimed.jurisdiction && entry.publication_scope === claimed.publication_scope
       && entry.quote_basis === claimed.quote_basis && entry.venue === claimed.venue);
-    return matched ? { ok: true, provider_id: claimed.provider_id as string } : DENIED;
+    if (!matched) return DENIED;
+    return accepted ? { ok: true, provider_id: claimed.provider_id as string, operator_accepted: true } : { ok: true, provider_id: claimed.provider_id as string };
   } catch {
     return DENIED;
   }

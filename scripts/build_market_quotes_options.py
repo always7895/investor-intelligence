@@ -32,6 +32,16 @@ and spread. Delta is Black-Scholes from the quoted implied volatility (a labelle
 (delta_basis QUOTE_IMPLIED), so every high strike carries the same assignment cap. Prices are never modelled. A cycle
 without two-sided quotes stays unavailable with its reason.
 
+Public admission (operator 2026-10-13): the Yahoo option-chain cycles claim the catalog identity YAHOO_OPTION_IDENTITY (provider_id,
+jurisdiction, venue, instrument_kind, publication_scope; quote_basis is the cycle's own). Only the audited catalog admits it
+(config/public-options-provider-candidates.json, scripts/public_options_provider_gate.py); the Nasdaq US fallback claims
+no identity and stays unadmitted. Outside the regular US session Yahoo returns zero bid and ask: a chain READ without any valid two-sided
+quote then takes the last valid in-session cycle of the same ticker, period and expiry (quote_basis previous_session_last, the capture's
+own timestamp, spot and dte) from the carry-forward state (scripts/options_carry_forward.py; --carry-state or V213_OPTIONS_CARRY_STATE,
+by default next to --output). A live valid cycle always wins.
+Nasdaq Nordic (Stockholm, operator 2026-10-17, same terms): the cycles claim NORDIC_OPTION_IDENTITY with their own quote_basis "delayed"
+and the rights label operator_accepted_unlicensed; they are never carried forward.
+
 Raw two-sided quote health is measured before strategy filtering per venue (US and STOCKHOLM). When coverage is depleted
 (R > 0 and 10*H < R for any venue), the candidate is rejected with OPTION_TWO_SIDED_COVERAGE_LOW and exit code 1 to
 preserve the previous observation file without modification.
@@ -56,6 +66,7 @@ from pathlib import Path
 from typing import Any, Callable, Iterable
 
 import option_recommendation_rules as rules
+import options_carry_forward as carry_forward
 
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "data" / "cache" / "market_quotes_options.json"
@@ -87,6 +98,7 @@ DISCOVERY_SHARE = 0.25
 REQUEST_TIMEOUT_SECONDS = 20
 _DEADLINE = [math.inf]  # the run's deadline (monotonic), for threads that carry none of their own
 _LOCAL = threading.local()  # .deadline: the deadline of the work this thread does
+_CARRY: list[Any] = [None]  # the run's previous-session carry-forward state (options_carry_forward.CarryForward), set by main
 # A run that finished fewer underlyings than this is not published: the previous file stays (the sealer bounds its age).
 MIN_COMPLETED_SHARE = 0.5
 # weekly: the current-week rule of option_recommendation_rules (the window is only the fetch/validator outer bound, 0-14 DTE);
@@ -102,6 +114,16 @@ MIDDLE_MONEYNESS = rules.MIDDLE_MONEYNESS  # when the candidates between have no
 TICK = 0.01
 MAX_SPREAD_PCT = 1.0          # a spread wider than the mid is not a tradeable quote
 WIDE_SPREAD_PCT = 0.25        # beyond this the limit moves from the mid towards the bid
+# The identity a Yahoo US option-chain cycle CLAIMS for public admission (never authority: only the audited catalog admits it; a test pins
+# this equal to the catalog's admitted scope). The rights label is the honest one for a provider shown on the operator's decision.
+YAHOO_OPTION_IDENTITY = {"provider_id": "yahoo_finance_option_chain", "jurisdiction": "US", "venue": "US_LISTED_OPTIONS",
+                         "instrument_kind": "equity_option", "publication_scope": "public_line_quote"}
+YAHOO_RIGHTS_LABEL = "operator_accepted_unlicensed"
+# The identity a Nasdaq Nordic (Stockholm) option-chain cycle CLAIMS (operator 2026-10-17, same terms as Yahoo; never authority, a test pins
+# this equal to the catalog's admitted scope). The cycle keeps its own quote_basis "delayed": Nordic cycles are never carried forward.
+NORDIC_OPTION_IDENTITY = {"provider_id": "nasdaq_nordic_option_chain", "jurisdiction": "SE", "venue": "NASDAQ_STOCKHOLM_OPTIONS",
+                          "instrument_kind": "equity_option", "publication_scope": "public_line_quote"}
+NORDIC_RIGHTS_LABEL = "operator_accepted_unlicensed"
 OPTION_TWO_SIDED_COVERAGE_RATIO_NUMERATOR = 1
 OPTION_TWO_SIDED_COVERAGE_RATIO_DENOMINATOR = 10
 # Policy threshold: strictly below 1/10 (10%) two-sided coverage across read chains triggers guard
@@ -418,7 +440,8 @@ def covered_call_suggestions(rows: list[dict[str, Any]], spot: float, dte: int, 
 
 
 def cycle_result(ticker: str, expiry: str, dte: int, spot: float, rows: list[dict[str, Any]], *, currency: str, source: str,
-                 provenance: str, rights: str, stamp: str, asof: str | None = None, week: str | None = None) -> dict[str, Any]:
+                 provenance: str, rights: str, stamp: str, asof: str | None = None, week: str | None = None,
+                 identity: dict[str, str] | None = None) -> dict[str, Any]:
     suggestions, middle = covered_call_tiers(rows, spot, dte)
     if not suggestions:
         if covered_call_suggestions(rows, spot, dte, cent_exact_only=False):  # the unchanged filters accept it; only the display precision cannot
@@ -427,6 +450,8 @@ def cycle_result(ticker: str, expiry: str, dte: int, spot: float, rows: list[dic
     result = {"ticker": ticker, "strategy": "COVERED_CALL", "expiry": expiry, "dte": dte, "spot": spot, "currency": currency,
               "multiplier": 100, "quote_basis": "delayed", "timestamp": stamp, "source": source, "provenance": provenance,
               "rights_status": rights, "suggestions": suggestions}
+    if identity is not None:  # the CLAIMED catalog join identity (additive; an older reader ignores it and its catalog does not admit it)
+        result.update(identity)
     if middle is not None:  # additive and optional: older readers ignore it and still render the two original tiers
         result["middle_suggestion"] = middle
     if asof is not None:  # the exchange-local as-of date the expiry rule was applied on (YYYY-MM-DD)
@@ -460,7 +485,8 @@ def _cycles_from_calls(calls: list[dict[str, Any]], ticker: str, spot: float, st
                        provenance: str, rights: str, missing: str, venue: str = "US",
                        underlying: str | None = None,
                        no_window: Callable[[str, int, int], tuple[str, str]] | None = None,
-                       today: date | None = None, week_expiries: Iterable[str] | None = None) -> CyclesResult:
+                       today: date | None = None, week_expiries: Iterable[str] | None = None,
+                       identity: dict[str, str] | None = None) -> CyclesResult:
     """Weekly: the current calendar week's earliest listed expiry (the next week's only when this week has none left; see
     option_recommendation_rules); monthly: the expiry nearest 30 days within 21-45 DTE. Standard 100-share contracts only.
     today is the exchange-local as-of date (derived from the rows' expiry and dte when absent); week_expiries lets the caller
@@ -504,7 +530,7 @@ def _cycles_from_calls(calls: list[dict[str, Any]], ticker: str, spot: float, st
         else:
             out[cycle] = cycle_result(ticker, chosen_expiry, target, spot, chosen, currency=currency, source=source,
                                       provenance=provenance, rights=rights, stamp=stamp,
-                                      asof=today.isoformat() if today else None, week=week)
+                                      asof=today.isoformat() if today else None, week=week, identity=identity)
     return CyclesResult(out, health=health_records)
 
 
@@ -725,12 +751,12 @@ def us_options(symbol: str, spot: float, today: date, stamp: str) -> CyclesResul
             health_records.append({"venue": "US", "underlying": symbol, "expiry": expiry, "cycle": cycle,
                                    "status": "READ", "read": True, "two_sided": two_sided, "eligible_rows": len(eligible_rows)})
         if eligible_rows and not two_sided:  # read chain, no usable quote: say so, not a strategy-yield failure
-            out[cycle] = {"unavailable": _diag(f"本次回應有 {expiry}（{dte}天）買權，但所選到期無有效雙邊報價（買賣價須為正且不倒掛）")}
+            out[cycle] = {"unavailable": _diag(f"本次回應有 {expiry}（{dte}天）買權，但{carry_forward.NO_TWO_SIDED_REASON}（買賣價須為正且不倒掛）")}
             continue
         out[cycle] = cycle_result(symbol, expiry, dte, spot, rows, currency="USD",
                                   source="Yahoo Finance option chain (unofficial, delayed)",
                                   provenance=f"https://finance.yahoo.com/quote/{symbol}/options?date={expiry}; delta=Black-Scholes(quoted IV)",
-                                  rights="unadmitted_third_party", stamp=stamp, asof=today.isoformat(), week=week)
+                                  rights=YAHOO_RIGHTS_LABEL, stamp=stamp, asof=today.isoformat(), week=week, identity=YAHOO_OPTION_IDENTITY)
     return CyclesResult(out, health=health_records)
 
 
@@ -739,6 +765,12 @@ _NO_SEARCH = object()
 _NORDIC_CALL_NAME = re.compile(r"^([A-Z0-9]{1,12}) ([0-3][0-9])([A-Z]{3})([0-9]{2}) ([0-9]{1,6}(?:\.[0-9]{1,4})?)C$")
 _MONTH_NUMBER = {name: number for number, name in enumerate(("JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"), 1)}
 NORDIC_SOURCE = "Nasdaq Nordic option chain (exchange public web API, delayed)"
+# V13: the chain sends every option row with currency "" (retained 2026-10-17, R/v13-evidence-a43bef58). Nasdaq's contract
+# specification for options on Swedish shares: the premium "Shall be expressed in Swedish Kronor or Euro depending on the
+# underlying shares". A blank (exactly "" or an absent key) contract currency therefore follows the underlying, which
+# nordic_options confirms as SEK before any row is read; every other unconfirmed form stays UNKNOWN.
+NORDIC_BLANK_CURRENCY = "BLANK_FOLLOWS_UNDERLYING"
+_ABSENT = object()
 
 
 def _diag(text: str) -> str:
@@ -844,9 +876,17 @@ def _nordic_row_evidence(row: Any, root: str, today: date) -> tuple[str, dict[st
         return "MALFORMED", None  # a missing, unsupported or contradictory native identity proves nothing
     strike = float(strike_exact)
     return "CALL", {"expiry": expiry_text, "dte": (expiry - today).days, "strike": strike,
-                    "ccy": _typed_currency(row.get("currency")), "size": _typed_size(row.get("contractSize")),
+                    "ccy": _nordic_contract_currency(row.get("currency", _ABSENT)), "size": _typed_size(row.get("contractSize")),
                     "bid": _float(row.get("bidPrice")), "ask": _float(row.get("askPrice")),
                     "oi": _int(row.get("openInterest")), "volume": _int(row.get("volume"))}
+
+
+def _nordic_contract_currency(value: Any) -> str:
+    """A contract's own currency: the typed SEK states, or NORDIC_BLANK_CURRENCY for exactly "" or an absent key (the
+    exchange rule ties the premium currency to the underlying share). None, whitespace and every other form stay UNKNOWN."""
+    if value is _ABSENT or (isinstance(value, str) and value == ""):
+        return NORDIC_BLANK_CURRENCY
+    return _typed_currency(value)
 
 
 def _nordic_unavailable(symbol: str, status: str, message: str) -> CyclesResult:
@@ -926,11 +966,11 @@ def nordic_options(symbol: str, base: str, spot: float, today: date, stamp: str,
 
     usable = [{"expiry": call["expiry"], "dte": call["dte"], "strike": call["strike"], "bid": call["bid"], "ask": call["ask"],
                "oi": call["oi"], "volume": call["volume"], "size": 100}
-              for call in listed if call["ccy"] == "OK" and call["size"] == "OK"]
+              for call in listed if call["ccy"] in ("OK", NORDIC_BLANK_CURRENCY) and call["size"] == "OK"]  # underlying SEK confirmed above
     return _cycles_from_calls(usable, symbol, spot, stamp, currency=SEK, source=NORDIC_SOURCE,
-                              provenance=NORDIC_CHAIN.format(orderbook=orderbook), rights="candidate_local_review",
+                              provenance=NORDIC_CHAIN.format(orderbook=orderbook), rights=NORDIC_RIGHTS_LABEL,
                               missing="", venue="STOCKHOLM", underlying=symbol, no_window=no_window, today=today,
-                              week_expiries=[call["expiry"] for call in listed])
+                              week_expiries=[call["expiry"] for call in listed], identity=NORDIC_OPTION_IDENTITY)
 
 
 def observe(symbol: str, today: date, stamp: str, orderbook: str | None = None) -> Observation | None:
@@ -1015,6 +1055,7 @@ def build(now: datetime, deadline_seconds: float | None = None) -> dict[str, Any
 
 
 def _build(now: datetime, deadline_seconds: float) -> dict[str, Any]:
+    carry = _CARRY[0]  # set by main for the run (None for a direct call: nothing is carried and nothing is written)
     started = time.monotonic()
     deadline = started + deadline_seconds
     _DEADLINE[0] = deadline
@@ -1076,6 +1117,13 @@ def _build(now: datetime, deadline_seconds: float) -> dict[str, Any]:
         if two_sided:
             chain_health[venue]["healthy"] += 1
 
+    # Raw chain health above is measured on the LIVE chains only; carried cycles never count as healthy chains or hide a depleted run.
+    if carry is not None:
+        try:
+            carry.update(options, all_health, now)
+        except Exception:  # a carry-forward fault must never break the live observations
+            pass
+
     return {"schema": "v213-market-observations-v2", "generated_at": stamp, "quotes": quotes, "options": options,
             "note": "Delayed public observations; not an order, not a recommendation to trade.",
             "collection": {"underlyings": len(symbols), "unfinished": unfinished, "deadline_seconds": deadline_seconds,
@@ -1086,8 +1134,13 @@ def main(argv: Iterable[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--output", type=Path, default=OUTPUT)
     parser.add_argument("--if-older-than-hours", type=float, default=0.0)
+    parser.add_argument("--carry-state", type=Path, default=None,
+                        help="previous-session carry-forward state file (default: V213_OPTIONS_CARRY_STATE, else next to --output)")
+    parser.add_argument("--no-carry", action="store_true", help="disable the previous-session carry-forward (nothing is carried or written)")
     args = parser.parse_args(list(argv) if argv is not None else None)
     output_path = Path(args.output)
+    carry = None if args.no_carry else carry_forward.CarryForward(
+        args.carry_state if args.carry_state is not None else carry_forward.default_state_path(output_path))
     now = utc_now()
     if args.if_older_than_hours > 0 and output_path.exists():
         try:
@@ -1099,10 +1152,13 @@ def main(argv: Iterable[str] | None = None) -> int:
         except (OSError, ValueError, KeyError):
             pass
     try:
+        _CARRY[0] = carry
         document = build(now)
     except Exception as error:
         print(json.dumps({"status": "FAILED", "error": type(error).__name__}))
         return 1
+    finally:
+        _CARRY[0] = None  # the next run (or a direct call) never inherits this run's state
     collection = document["collection"]
     if collection["underlyings"] and collection["unfinished"] > collection["underlyings"] * (1 - MIN_COMPLETED_SHARE):
         print(json.dumps({"status": "FAILED", "error": "DEADLINE_INCOMPLETE", **collection}))
@@ -1135,9 +1191,14 @@ def main(argv: Iterable[str] | None = None) -> int:
     temp = output_path.with_name(output_path.name + ".tmp")
     temp.write_bytes(json.dumps(document, ensure_ascii=False, allow_nan=False).encode("utf-8"))
     temp.replace(output_path)
+    if carry is not None:
+        carry.save(now)  # only a run that was accepted and published updates the carry-forward state
     available = sum(1 for cycles in document["options"].values() for value in cycles.values() if "unavailable" not in value)
     print(json.dumps({"status": "OK", **collection, "quotes": len(document["quotes"]), "option_underlyings": len(document["options"]),
-                      "option_observations": available, "sive": document["options"].get("SIVE.ST")}, ensure_ascii=False)[:1500])
+                      "option_observations": available, **({"carry_forward": carry.summary} if carry is not None else {}),
+                      "sive": {cycle: ("AVAILABLE" if "unavailable" not in value else str(value["unavailable"])[:160])
+                               for cycle, value in (document["options"].get("SIVE.ST") or {}).items() if isinstance(value, dict)}},
+                     ensure_ascii=False)[:1500])
     return 0
 
 

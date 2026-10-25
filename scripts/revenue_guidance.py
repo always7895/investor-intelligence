@@ -2159,10 +2159,27 @@ def build_consensus_forward_quarters(
         return {"status": "UNAVAILABLE", "reason": "PERIOD_MISMATCH", "warning": None,
                 "forward_quarters": [], "f1": 0, "f2": 0, "f3": 0, "f4": 0, "basis_type": None, "consensus": None}
 
-    # Consensus does NOT use +70d bridge: if guided quarter ended, EXPIRED/STALE
+    # Operator 2026-10-14 (R/OPERATOR-DECISION-CONSENSUS-BRIDGE-AND-NAME-MATCH-20261014.txt): like the guidance route, an ended
+    # first quarter keeps the projection for QUARTER_END_BRIDGE_DAYS with a warning, but only while the capture itself was taken
+    # after that end (the provider then still lists the quarter as the current, unreported one). Otherwise STALE.
+    consensus_warning = None
     if cutoff.date() > q1_end:
-        return {"status": "UNAVAILABLE", "reason": "STALE", "warning": None,
-                "forward_quarters": [], "f1": 0, "f2": 0, "f3": 0, "f4": 0, "basis_type": None, "consensus": None}
+        ended = [(i, d) for i, d in ((i, parse_day(intv.get("end"))) for i, intv in enumerate(intervals))
+                 if d is not None and cutoff.date() > d]
+        for _i, _end in ended:
+            if (cutoff.date() - _end).days > QUARTER_END_BRIDGE_DAYS or captured_at.date() <= _end:
+                return {"status": "UNAVAILABLE", "reason": "STALE", "warning": None,
+                        "forward_quarters": [], "f1": 0, "f2": 0, "f3": 0, "f4": 0, "basis_type": None, "consensus": None}
+        affected_ends = [str(_end) for _i, _end in ended]
+        captured_str = consensus_entry.get("captured_at") or consensus_entry.get("retrieved_at")
+        consensus_warning = {
+            "quarter_index": ended[0][0],
+            "quarter_end": affected_ends[0],
+            "checked_at": captured_str,
+            "text": f"所估季度已於{'、'.join(affected_ends)}結束，實際營收尚未公布；截至{captured_str}分析師共識；仍為分析師共識（非官方），非實績",
+            "is_fy": False,
+            "affected_ends": affected_ends,
+        }
 
     q1_analysts = q1_est.get("analysts")
     if type(q1_analysts) is not int or q1_analysts < 3:
@@ -2256,7 +2273,7 @@ def build_consensus_forward_quarters(
     return {
         "status": "AVAILABLE",
         "reason": None,
-        "warning": None,
+        "warning": consensus_warning,
         "forward_quarters": forward_list,
         "f1": f_amounts[0], "f2": f_amounts[1], "f3": f_amounts[2], "f4": f_amounts[3],
         "basis_type": "CONSENSUS",

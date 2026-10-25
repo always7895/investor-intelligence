@@ -292,5 +292,28 @@ class ModelProfileTests(unittest.TestCase):
             self.assertNotEqual(profile_sha256(PROFILE), profile_sha256({**PROFILE, key: value}))
 
 
+class EmbeddedInterpreterImportTests(unittest.TestCase):
+    """The explicit bridge path runs --routing-check-stdin on the portable embedded interpreter, whose python312._pth leaves
+    the script directory off sys.path; `python -I` implies -P and reproduces that (rollout v10, 2026-10-13)."""
+
+    def test_compact_gateway_imports_without_the_script_directory_on_sys_path(self):
+        script = ROOT / 'scripts' / 'v213_model_profile.py'
+        code = ("import runpy, sys; assert sys.flags.safe_path; "
+                "ns = runpy.run_path(sys.argv[1], run_name='embedded_probe'); policy, complete = ns['_compact_gateway'](); "
+                "print(callable(complete), isinstance(policy, dict) and 'smoke_prompt' in policy)")
+        done = subprocess.run([sys.executable, '-I', '-c', code, str(script)], capture_output=True, text=True, timeout=120,
+                              cwd=str(ROOT.parent))
+        self.assertEqual(done.returncode, 0, done.stderr[-600:])
+        self.assertEqual(done.stdout.strip().splitlines()[-1], 'True True')
+
+    def test_routing_check_takes_the_gateway_through_the_path_safe_seam(self):
+        import inspect
+        import v213_model_profile as shared
+        source = inspect.getsource(shared.selected_route_check)
+        self.assertIn('_compact_gateway()', source)
+        self.assertNotIn('import v213_compact_qa_gateway', source)
+        self.assertNotIn('from v213_compact_qa_gateway', source)
+
+
 if __name__ == '__main__':
     unittest.main()

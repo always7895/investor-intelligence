@@ -26,6 +26,13 @@ mod 16 (the Worker computes the same hash over UTF-16 code units). Every shard n
 time and the SHA-256 of the raw download. A feed that fails keeps its previous rows out entirely (never partial); the
 build fails when a required feed is missing, so the last good shards keep serving.
 
+Token shards (kind "token", sealed as v213:identity:v2:tok:<0-7>) let the Worker find a listing from the leading
+word(s) of its Latin-script name ("Sivers" -> Sivers Semiconductors). Each row [tokenized name, symbol bucket, symbol,
+venue] has the shape of a name row; the name is the folded name's words joined by single spaces (fold_name, name_tokens),
+and the shard is keyed by FNV-1a(first word) mod TOKEN_BUCKETS, so one query reads one shard. Only security_name and
+native_name whose first word is Latin-script are indexed (never the sourced Chinese names). Consumers that do not know
+the token shards ignore them; a Worker without them keeps exact-name lookups only.
+
 Usage: build_identity_shards.py [--output data/cache/identity_shards_latest.json]
 Exit status: 0 OK or skipped fresh; 1 failed (the last good shards keep serving); 2 DEGRADED_US_FALLBACK written.
 """
@@ -39,6 +46,7 @@ import io
 import json
 import re
 import sys
+import unicodedata
 import urllib.request
 import xml.etree.ElementTree as ET
 import zipfile
@@ -58,6 +66,7 @@ ZH_NAMES = ROOT / "data" / "cache" / "zh_names_latest.json"
 ZH_SOURCES = {"OFFICIAL", "ZHWIKI", "WIKIDATA_LABEL"}
 SCHEMA = "v213-identity-shard-v2"
 NAME_BUCKETS = 16
+TOKEN_BUCKETS = 8  # lazy-object budget: the seal admits 80 lazy keys and the identity shards already use 52
 USER_AGENT = "Mozilla/5.0 (InvestorIntelligence public identity directory)"  # Euronext refuses clients without a browser agent
 FEEDS = {
     "nasdaq-listed": "https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt",
@@ -147,6 +156,45 @@ def fnv1a_utf16(text: str) -> int:
         value ^= code
         value = (value * 0x01000193) & 0xFFFFFFFF
     return value
+
+
+def name_tokens(name: str) -> list[str]:
+    """Words of a name for leading-word lookups: NFKC-folded (width and compatibility forms), lower-cased, split on every
+    run of non-letter/non-digit characters. Mirror of identity-shards.ts nameTokens."""
+    return [word for word in re.split(r"[\W_]+", unicodedata.normalize("NFKC", name).lower()) if word]
+
+
+def latin_word(word: str) -> bool:
+    """A word whose letters all belong to the Latin script (digits are allowed); the Worker only matches Latin-script input."""
+    return all("LATIN" in unicodedata.name(char, "") for char in word if char.isalpha())
+
+
+def leading_name(name: str) -> str:
+    """The tokenized name the token shards store (words joined by one space), or "" when the first word is not Latin-script."""
+    words = name_tokens(name)
+    return " ".join(words) if words and latin_word(words[0]) else ""
+
+
+def token_bucket(word: str) -> int:
+    return fnv1a_utf16(word) % TOKEN_BUCKETS
+
+
+def build_token_shards(records: list[list[Any]], stamp: str) -> dict[str, dict[str, Any]]:
+    """Token shards from the retained identity rows: one row per (tokenized name, listing) for the security name and the native
+    name (a name shared by contradictory variants of one key gives one row; the loader reads every variant of the key)."""
+    shards: dict[str, dict[str, Any]] = {}
+    seen: set[tuple[str, str, str]] = set()
+    for row in sorted(records, key=lambda item: (item[0], item[1])):
+        for name in {leading_name(row[4]), leading_name(row[5] or "")} - {""}:
+            if (name, row[1], row[0]) in seen:
+                continue
+            seen.add((name, row[1], row[0]))
+            bucket = str(token_bucket(name.split(" ", 1)[0]))
+            shards.setdefault(bucket, {"schema": SCHEMA, "kind": "token", "bucket": bucket, "generated_at": stamp,
+                                       "rows": []})["rows"].append([name, symbol_bucket(row[0]), row[0], row[1]])
+    for shard in shards.values():
+        shard["rows"].sort()
+    return shards
 
 
 def symbol_bucket(symbol: str) -> str:
@@ -483,7 +531,7 @@ def build(fetch: Fetch = http_get, now: datetime | None = None, zh: tuple[dict[s
                 [name, bucket, row[0], row[1]])
     return {"schema": SCHEMA, "generated_at": stamp, "feeds": feeds, "records": len(records),
             "zh_names": zh_feed, "zh_named_records": sum(1 for row in records if row[9]), "skipped_optional_feeds": skipped,
-            "symbol_shards": symbol_shards, "name_shards": name_shards}
+            "symbol_shards": symbol_shards, "name_shards": name_shards, "token_shards": build_token_shards(records, stamp)}
 
 
 def dumps(value: Any) -> str:
@@ -505,7 +553,8 @@ def main(argv: list[str] | None = None) -> int:
             previous_feeds = previous.get("feeds") if isinstance(previous.get("feeds"), list) else []
             degraded = any(isinstance(feed, dict) and feed.get("id") == SEC_FEED and feed.get("fallback_for") == list(US_FEEDS)
                            for feed in previous_feeds)  # a degraded file is never fresh: the next run retries the primary feeds
-            if age < args.if_older_than_hours and not zh_changed and not degraded:
+            no_tokens = not isinstance(previous.get("token_shards"), dict)  # built before the leading-word shards existed
+            if age < args.if_older_than_hours and not zh_changed and not degraded and not no_tokens:
                 print(json.dumps({"status": "SKIPPED_FRESH", "age_hours": round(age, 1)}))
                 return 0
         except (OSError, ValueError, KeyError):
@@ -516,7 +565,7 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps({"status": "FAILED", "error": str(error)}))
         return 1
     largest = max(len(dumps(shard).encode("utf-8")) for shard in
-                  [*document["symbol_shards"].values(), *document["name_shards"].values()])
+                  [*document["symbol_shards"].values(), *document["name_shards"].values(), *document.get("token_shards", {}).values()])
     if largest > 1_900_000:
         print(json.dumps({"status": "FAILED", "error": f"IDENTITY_SHARD_TOO_LARGE {largest}"}))
         return 1
@@ -527,7 +576,7 @@ def main(argv: list[str] | None = None) -> int:
     fallback = [feed for feed in document["feeds"] if feed.get("fallback_for")]
     summary = {"status": "DEGRADED_US_FALLBACK" if fallback else "OK", "records": document["records"],
                "symbol_shards": len(document["symbol_shards"]), "name_shards": len(document["name_shards"]),
-               "largest_shard_bytes": largest, "feeds": {feed["id"]: feed["rows"] for feed in document["feeds"]}}
+               "token_shards": len(document.get("token_shards", {})), "largest_shard_bytes": largest, "feeds": {feed["id"]: feed["rows"] for feed in document["feeds"]}}
     if fallback:  # partial NASDAQ/NYSE REVIEW_REQUIRED rows from the local SEC cache, written like a normal build
         summary["fallback"] = {"feed": fallback[0]["id"], "retrieved_at": fallback[0]["retrieved_at"],
                                "retrieval_basis": fallback[0]["retrieval_basis"], "reason": fallback[0]["fallback_reason"]}

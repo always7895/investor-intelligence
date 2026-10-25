@@ -19,6 +19,7 @@ met by a cached last good value, an age limit and an explicit unavailability rea
 | Price shards | one official feed per market (Yahoo for Japan/Korea) | previous shard within its age limit | **single per market**: OPEN |
 | Identity shards | one official directory per market | previous shard; US: local SEC raw-cache rows when a Nasdaq Trader directory fails (2026-10-04 note below) | **single per market**: OPEN; US availability fallback IMPLEMENTED_UNVERIFIED (partial, REVIEW_REQUIRED metadata only, RESOLVED-card warning IDIV2 IMPLEMENTED_UNVERIFIED, not a second live source) |
 | Broad options universe | Nasdaq stock screener, Stockholm screener | daily cache, 7-day stale fallback | cache only: OPEN (low) |
+| Top20 candidate discovery | three Yahoo screeners (T3 seed only) | Nasdaq US stock screener (T3 seed only; largest market cap, most active and day-gainer slices above the policy floors) when every Yahoo screen gives no candidates, then the newest seed list of either source for 7 days (`candidate_cache_hours` 168, logged); V15 after every Yahoo screen answered zero quotes from 2026-10-16 evening (operator 2026-10-18) | two sources: IMPLEMENTED_UNVERIFIED |
 | SEC company reports, 13F, bottleneck filings | SEC EDGAR | last good file | statutory authority; DEFERRED_WITH_REASON |
 | Serenity signals | third-party GitHub archive | local archive cache | **single**: OPEN |
 | Chinese names | TWSE/TPEx short names, Chinese Wikipedia, Wikidata, `config/company-zh-names-v1.json` | cache | multiple |

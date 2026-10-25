@@ -123,11 +123,14 @@ class BridgeFixtureTests(unittest.TestCase):
         self.assertEqual(self.doc["provenance"]["retained_source_samples"]["sive_option_chain"]["url"],
                          builder.NORDIC_CHAIN.format(orderbook="TX2540138"))
 
-    def test_currency_evidence_matrix_admits_only_the_agreeing_sek_control(self):
+    def test_currency_evidence_matrix_admits_only_agreeing_sek_or_a_blank_contract_currency(self):
         options = self.options("currency_evidence_matrix")
         strategies = sorted(k for k, cycles in options.items() if k.endswith(".ST") and "unavailable" not in cycles["monthly"])
-        self.assertEqual(strategies, ["CURSEK.ST", "VOLV-B.ST"])
-        for key in ("CURNULL.ST", "CURUSD.ST", "CURMISSING.ST", "SPOTUSD.ST", "SPOTNONE.ST", "SEARCHEUR.ST", "SEARCHNONE.ST"):
+        # V13: a blank contract currency ("" or an absent key) follows the confirmed SEK underlying (Nasdaq contract specification).
+        self.assertEqual(strategies, ["CUREMPTY.ST", "CURMISSING.ST", "CURSEK.ST", "VOLV-B.ST"])
+        for key in ("CUREMPTY.ST", "CURMISSING.ST"):
+            self.assertEqual((options[key]["monthly"]["currency"], options[key]["monthly"]["multiplier"]), ("SEK", 100), key)
+        for key in ("CURNULL.ST", "CURWS.ST", "CURLOWER.ST", "CURUSD.ST", "SPOTUSD.ST", "SPOTNONE.ST", "SEARCHEUR.ST", "SEARCHNONE.ST"):
             self.assertIn("unavailable", options[key]["monthly"], key)
 
     def test_native_symbol_identity_matrix_admits_only_the_proven_source_forms_through_main_and_sealer(self):
@@ -161,8 +164,10 @@ class BridgeFixtureTests(unittest.TestCase):
 
     def test_the_retained_weekly_volvb_shape_is_a_proven_listing_in_the_real_pipeline(self):
         weekly = self.options("retained_sive_sept30")["VOLV-B.ST"]["weekly"]["unavailable"]
-        self.assertIn("2026-10-02（2天）週選上市買權", weekly)  # this calendar week's weekly, refused for unconfirmed contract terms
-        self.assertIn("合約單位或幣別來源未確認", weekly)
+        # this calendar week's weekly; V13: its blank contract currency follows the SEK underlying, its retained bid/ask are empty
+        self.assertIn("2026-10-02（2天）", weekly)
+        self.assertIn("無有效雙邊報價", weekly)
+        self.assertNotIn("合約單位或幣別來源未確認", weekly)
         self.assertNotIn("無法解析", weekly)
         self.assertIn("volvb_option_chain", self.doc["provenance"]["retained_source_samples"])
 

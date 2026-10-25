@@ -1,0 +1,2031 @@
+{
+ "now": "2026-10-13T15:00:00Z",
+ "issuers": {
+  "SNDK": {
+   "since": "2026-08-05",
+   "sec": {
+    "cik": 2023554,
+    "rows": [
+     {
+      "form": "8-K",
+      "filingDate": "2026-09-16",
+      "items": "5.02",
+      "accessionNumber": "0001628280-26-062267",
+      "reportDate": "2026-09-10"
+     },
+     {
+      "form": "8-K",
+      "filingDate": "2026-09-11",
+      "items": "1.01,9.01",
+      "accessionNumber": "0001193125-26-389293",
+      "reportDate": "2026-09-09"
+     },
+     {
+      "form": "10-K",
+      "filingDate": "2026-08-17",
+      "items": "",
+      "accessionNumber": "0001628280-26-057406",
+      "reportDate": "2026-07-03"
+     },
+     {
+      "form": "8-K",
+      "filingDate": "2026-08-05",
+      "items": "2.02,8.01,9.01",
+      "accessionNumber": "0001628280-26-053346",
+      "reportDate": "2026-08-05"
+     },
+     {
+      "form": "4",
+      "filingDate": "2026-08-04",
+      "items": "",
+      "accessionNumber": "0001363249-26-000058",
+      "reportDate": "2026-08-03"
+     }
+    ]
+   },
+   "wire": {
+    "symbol": "SNDK",
+    "rows": [
+     {
+      "created": "Sep 29, 2026",
+      "title": "Sandisk to Report First Quarter Fiscal Year 2027 Results on October 29, 2026",
+      "url": "/press-release/sandisk-report-first-quarter-fiscal-year-2027-results-october-29-2026-2026-09-29"
+     },
+     {
+      "created": "Sep 4, 2026",
+      "title": "Bloom Energy, Illumina, and Everpure Set to Join S&P 500; Others to Join S&P 100, S&P MidCap 400, and S&P SmallCap 600",
+      "url": "/press-release/bloom-energy-illumina-and-everpure-set-join-sp-500-others-join-sp-100-sp-midcap-400"
+     },
+     {
+      "created": "Sep 3, 2026",
+      "title": "Sandisk Announces Participation in Investor Conferences",
+      "url": "/press-release/sandisk-announces-participation-investor-conferences-2026-09-03"
+     },
+     {
+      "created": "Aug 27, 2026",
+      "title": "Kioxia and Sandisk to Invest Over $31 Billion in Japan, Extending Leadership in Memory Industry",
+      "url": "/press-release/kioxia-and-sandisk-invest-over-31-billion-japan-extending-leadership-memory-industry"
+     },
+     {
+      "created": "Aug 13, 2026",
+      "title": "Sandisk Details Growth Strategy and Long-Term Financial Model at 2026 Investor Day",
+      "url": "/press-release/sandisk-details-growth-strategy-and-long-term-financial-model-2026-investor-day-2026"
+     },
+     {
+      "created": "Aug 12, 2026",
+      "title": "Kioxia and Sandisk Unveil New High-Performance QLC 3D Flash Memory Technology Designed for AI and Data-Intensive Applications",
+      "url": "/press-release/kioxia-and-sandisk-unveil-new-high-performance-qlc-3d-flash-memory-technology"
+     },
+     {
+      "created": "Aug 5, 2026",
+      "title": "Sandisk Reports Fiscal Fourth Quarter 2026 Financial Results",
+      "url": "/press-release/sandisk-reports-fiscal-fourth-quarter-2026-financial-results-2026-08-05"
+     },
+     {
+      "created": "Aug 4, 2026",
+      "title": "New 3D Flash Memory Technology from Kioxia and Sandisk Achieves Industry’s Highest Bit Density for QLC NAND",
+      "url": "/press-release/new-3d-flash-memory-technology-kioxia-and-sandisk-achieves-industrys-highest-bit"
+     }
+    ]
+   },
+   "ir": {
+    "kind": "RSS",
+    "url": "https://investor.sandisk.com/rss.xml",
+    "rows": [
+     {
+      "title": "Sandisk to Report First Quarter Fiscal Year 2027 Results on October 29, 2026",
+      "link": "https://investor.sandisk.com/news-releases/news-release-details/sandisk-report-first-quarter-fiscal-year-2027-results-october-29",
+      "pubDate": "Tue, 29 Sep 2026 21:30:32 +0000"
+     },
+     {
+      "title": "Sandisk Announces Participation in Investor Conferences",
+      "link": "https://investor.sandisk.com/news-releases/news-release-details/sandisk-announces-participation-investor-conferences-2",
+      "pubDate": "Thu, 03 Sep 2026 19:30:28 +0000"
+     },
+     {
+      "title": "Sandisk Details Growth Strategy and Long-Term Financial Model at 2026 Investor Day",
+      "link": "https://investor.sandisk.com/news-releases/news-release-details/sandisk-details-growth-strategy-and-long-term-financial-model",
+      "pubDate": "Thu, 13 Aug 2026 14:59:27 +0000"
+     },
+     {
+      "title": "Kioxia and Sandisk Unveil New High-Performance QLC 3D Flash Memory Technology Designed for AI and Data-Intensive Applications",
+      "link": "https://investor.sandisk.com/news-releases/news-release-details/kioxia-and-sandisk-unveil-new-high-performance-qlc-3d-flash",
+      "pubDate": "Wed, 12 Aug 2026 12:30:23 +0000"
+     },
+     {
+      "title": "Sandisk Reports Fiscal Fourth Quarter 2026 Financial Results",
+      "link": "https://investor.sandisk.com/news-releases/news-release-details/sandisk-reports-fiscal-fourth-quarter-2026-financial-results",
+      "pubDate": "Wed, 05 Aug 2026 20:06:47 +0000"
+     },
+     {
+      "title": "Sandisk and SK hynix Advance Global Standardization of High Bandwidth Flash with Release of First OCP Technical Specification",
+      "link": "https://investor.sandisk.com/news-releases/news-release-details/sandisk-and-sk-hynix-advance-global-standardization-high",
+      "pubDate": "Mon, 03 Aug 2026 23:35:19 +0000"
+     },
+     {
+      "title": "Sandisk to Report Fiscal Fourth Quarter and Fiscal Year 2026 Results on August 5, 2026; Announces Investor Day on August 13, 2026",
+      "link": "https://investor.sandisk.com/news-releases/news-release-details/sandisk-report-fiscal-fourth-quarter-and-fiscal-year-2026",
+      "pubDate": "Thu, 09 Jul 2026 16:05:38 +0000"
+     },
+     {
+      "title": "Sandisk Announces Sampling of BiCS10 1Tb TLC 3D NAND Flash Memory Pushing Density, Power Efficiency and Performance to Support Data-Intensive Workloads",
+      "link": "https://investor.sandisk.com/news-releases/news-release-details/sandisk-announces-sampling-bics10-1tb-tlc-3d-nand-flash-memory",
+      "pubDate": "Thu, 02 Jul 2026 23:00:32 +0000"
+     },
+     {
+      "title": "Sandisk Announces Participation in Investor Conferences",
+      "link": "https://investor.sandisk.com/news-releases/news-release-details/sandisk-announces-participation-investor-conferences-1",
+      "pubDate": "Mon, 18 May 2026 18:20:30 +0000"
+     },
+     {
+      "title": "Sandisk Recommends Stockholders Reject “Mini-Tender” Offer by Tutanota LLC",
+      "link": "https://investor.sandisk.com/news-releases/news-release-details/sandisk-recommends-stockholders-reject-mini-tender-offer",
+      "pubDate": "Fri, 15 May 2026 00:00:23 +0000"
+     }
+    ]
+   }
+  },
+  "NVDA": {
+   "since": "2026-08-26",
+   "sec": {
+    "cik": 1045810,
+    "rows": [
+     {
+      "form": "8-K",
+      "filingDate": "2026-09-03",
+      "items": "8.01",
+      "accessionNumber": "0001045810-26-000078",
+      "reportDate": "2026-09-02"
+     },
+     {
+      "form": "10-Q",
+      "filingDate": "2026-08-26",
+      "items": "",
+      "accessionNumber": "0001045810-26-000075",
+      "reportDate": "2026-07-26"
+     },
+     {
+      "form": "8-K",
+      "filingDate": "2026-08-26",
+      "items": "2.02,9.01",
+      "accessionNumber": "0001045810-26-000073",
+      "reportDate": "2026-08-26"
+     },
+     {
+      "form": "4",
+      "filingDate": "2026-08-24",
+      "items": "",
+      "accessionNumber": "0001347842-26-000015",
+      "reportDate": "2026-08-24"
+     }
+    ]
+   },
+   "wire": {
+    "symbol": "NVDA",
+    "rows": [
+     {
+      "created": "Oct 12, 2026",
+      "title": "NVIDIA and Cisco Introduce New Pluggable Optics Form Factor to Scale AI Factories",
+      "url": "/press-release/nvidia-and-cisco-introduce-new-pluggable-optics-form-factor-scale-ai-factories-2026"
+     },
+     {
+      "created": "Oct 10, 2026",
+      "title": "AI Revenue Questions Pull Semiconductor Stocks Off October Highs",
+      "url": "/press-release/ai-revenue-questions-pull-semiconductor-stocks-october-highs-2026-10-10"
+     },
+     {
+      "created": "Oct 8, 2026",
+      "title": "NVIDIA Commits $1 Billion to Advance US Science Over the Next Five Years",
+      "url": "/press-release/nvidia-commits-1-billion-advance-us-science-over-next-five-years-2026-10-08"
+     },
+     {
+      "created": "Oct 8, 2026",
+      "title": "The Unconventional Route to Fusion Power Just Hit a World First",
+      "url": "/press-release/unconventional-route-fusion-power-just-hit-world-first-2026-10-08"
+     },
+     {
+      "created": "Sep 28, 2026",
+      "title": "NVIDIA Announces a $150 Billion Share Repurchase Authorization Increase",
+      "url": "/press-release/nvidia-announces-150-billion-share-repurchase-authorization-increase-2026-09-28"
+     },
+     {
+      "created": "Sep 28, 2026",
+      "title": "NVIDIA Launches Open Agent Safety Platform to Secure Agents From Testing to Deployment",
+      "url": "/press-release/nvidia-launches-open-agent-safety-platform-secure-agents-testing-deployment-2026-09"
+     },
+     {
+      "created": "Sep 14, 2026",
+      "title": "NVIDIA Expands Open Source CUDA-Q Platform for Fault-Tolerant Quantum Computing",
+      "url": "/press-release/nvidia-expands-open-source-cuda-q-platform-fault-tolerant-quantum-computing-2026-09"
+     },
+     {
+      "created": "Sep 10, 2026",
+      "title": "Eco Wave Power to Present at H.C. Wainwright's 28th Annual Global Investment Conference",
+      "url": "/press-release/eco-wave-power-present-hc-wainwrights-28th-annual-global-investment-conference-2026"
+     },
+     {
+      "created": "Sep 10, 2026",
+      "title": "NVIDIA and Palantir Bring Sovereign Intelligence to Critical Supply Chains",
+      "url": "/press-release/nvidia-and-palantir-bring-sovereign-intelligence-critical-supply-chains-2026-09-10"
+     },
+     {
+      "created": "Sep 9, 2026",
+      "title": "NVIDIA Expands AI Infrastructure Capacity in Partnership With Australia’s Data Center Ecosystem",
+      "url": "/press-release/nvidia-expands-ai-infrastructure-capacity-partnership-australias-data-center"
+     },
+     {
+      "created": "Sep 8, 2026",
+      "title": "Eco Wave Power to Present at the Moody Capital Solutions 2026 Disruptive Growth & Life Sciences Conference",
+      "url": "/press-release/eco-wave-power-present-moody-capital-solutions-2026-disruptive-growth-life-sciences"
+     },
+     {
+      "created": "Sep 2, 2026",
+      "title": "Eco Wave Power Signs Agreement with AI engineering GmbH to Advance AI-Powered Digital Twin Platform for Wave Energy",
+      "url": "/press-release/eco-wave-power-signs-agreement-ai-engineering-gmbh-advance-ai-powered-digital-twin"
+     },
+     {
+      "created": "Aug 31, 2026",
+      "title": "NVIDIA and MediaTek Deepen Long-Standing Partnership to Build AI Edge to Cloud Computing Platforms",
+      "url": "/press-release/nvidia-and-mediatek-deepen-long-standing-partnership-build-ai-edge-cloud-computing"
+     },
+     {
+      "created": "Aug 28, 2026",
+      "title": "China's Robot Boom Is Raising Security Fears as the US Robotics Race Accelerates",
+      "url": "/press-release/chinas-robot-boom-raising-security-fears-us-robotics-race-accelerates-2026-08-28"
+     },
+     {
+      "created": "Aug 27, 2026",
+      "title": "NVIDIA Announces Upcoming Event for Financial Community",
+      "url": "/press-release/nvidia-announces-upcoming-event-financial-community-2026-08-27"
+     },
+     {
+      "created": "Aug 26, 2026",
+      "title": "AWS and NVIDIA to Deliver 2 Million Additional GPUs and Next-Generation Infrastructure for Agentic and Physical AI",
+      "url": "/press-release/aws-and-nvidia-deliver-2-million-additional-gpus-and-next-generation-infrastructure"
+     },
+     {
+      "created": "Aug 26, 2026",
+      "title": "NVIDIA Announces Financial Results for Second Quarter Fiscal 2027",
+      "url": "/press-release/nvidia-announces-financial-results-second-quarter-fiscal-2027-2026-08-26"
+     },
+     {
+      "created": "Aug 25, 2026",
+      "title": "NVIDIA Announces Jetson Orin Nano 2 Robotics Computer to Redefine Entry-Level Edge AI",
+      "url": "/press-release/nvidia-announces-jetson-orin-nano-2-robotics-computer-redefine-entry-level-edge-ai"
+     }
+    ]
+   },
+   "ir": {
+    "kind": "Q4_PRESS_RELEASES",
+    "url": "https://investor.nvidia.com/feed/PressRelease.svc/GetPressReleaseList",
+    "rows": [
+     {
+      "PressReleaseDate": "10/12/2026 11:00:00",
+      "Headline": "NVIDIA and Cisco Introduce New Pluggable Optics Form Factor to Scale AI Factories",
+      "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-and-Cisco-Introduce-New-Pluggable-Optics-Form-Factor-to-Scale-AI-Factories/default.aspx"
+     },
+     {
+      "PressReleaseDate": "10/08/2026 10:31:00",
+      "Headline": "NVIDIA Commits $1 Billion to Advance US Science Over the Next Five Years",
+      "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-Commits-1-Billion-to-Advance-US-Science-Over-the-Next-Five-Years/default.aspx"
+     },
+     {
+      "PressReleaseDate": "09/28/2026 07:00:00",
+      "Headline": "NVIDIA Announces a $150 Billion Share Repurchase Authorization Increase",
+      "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-Announces-a-150-Billion-Share-Repurchase-Authorization-Increase/default.aspx"
+     },
+     {
+      "PressReleaseDate": "09/28/2026 05:00:00",
+      "Headline": "NVIDIA Launches Open Agent Safety Platform to Secure Agents From Testing to Deployment",
+      "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-Launches-Open-Agent-Safety-Platform-to-Secure-Agents-From-Testing-to-Deployment/default.aspx"
+     },
+     {
+      "PressReleaseDate": "09/14/2026 09:00:00",
+      "Headline": "NVIDIA Expands Open Source CUDA-Q Platform for Fault-Tolerant Quantum Computing",
+      "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-Expands-Open-Source-CUDA-Q-Platform-for-Fault-Tolerant-Quantum-Computing/default.aspx"
+     },
+     {
+      "PressReleaseDate": "09/09/2026 20:00:00",
+      "Headline": "NVIDIA Expands AI Infrastructure Capacity in Partnership With Australia’s Data Center Ecosystem",
+      "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-Expands-AI-Infrastructure-Capacity-in-Partnership-With-Australias-Data-Center-Ecosystem/default.aspx"
+     },
+     {
+      "PressReleaseDate": "08/31/2026 08:30:00",
+      "Headline": "NVIDIA and MediaTek Deepen Long-Standing Partnership to Build AI Edge to Cloud Computing Platforms",
+      "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-and-MediaTek-Deepen-Long-Standing-Partnership-to-Build-AI-Edge-to-Cloud-Computing-Platforms/default.aspx"
+     },
+     {
+      "PressReleaseDate": "08/27/2026 17:00:00",
+      "Headline": "NVIDIA Announces Upcoming Event for Financial Community",
+      "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-Announces-Upcoming-Event-for-Financial-Community/default.aspx"
+     },
+     {
+      "PressReleaseDate": "08/26/2026 17:05:00",
+      "Headline": "AWS and NVIDIA to Deliver 2 Million Additional GPUs and Next-Generation Infrastructure for Agentic and Physical AI",
+      "LinkToDetailPage": "/news/press-release-details/2026/AWS-and-NVIDIA-to-Deliver-2-Million-Additional-GPUs-and-Next-Generation-Infrastructure-for-Agentic-and-Physical-AI/default.aspx"
+     },
+     {
+      "PressReleaseDate": "08/26/2026 16:20:00",
+      "Headline": "NVIDIA Announces Financial Results for Second Quarter Fiscal 2027",
+      "LinkToDetailPage": "/news/press-release-details/2026/NVIDIA-Announces-Financial-Results-for-Second-Quarter-Fiscal-2027/default.aspx"
+     }
+    ]
+   }
+  },
+  "MU": {
+   "since": "2026-09-30",
+   "sec": {
+    "cik": 723125,
+    "rows": [
+     {
+      "form": "10-K",
+      "filingDate": "2026-10-09",
+      "items": "",
+      "accessionNumber": "0000723125-26-000023",
+      "reportDate": "2026-09-03"
+     },
+     {
+      "form": "8-K",
+      "filingDate": "2026-09-30",
+      "items": "2.02,9.01",
+      "accessionNumber": "0000723125-26-000018",
+      "reportDate": "2026-09-30"
+     },
+     {
+      "form": "4",
+      "filingDate": "2026-08-28",
+      "items": "",
+      "accessionNumber": "0001798757-26-000007",
+      "reportDate": "2026-06-26"
+     }
+    ]
+   },
+   "wire": {
+    "symbol": "MU",
+    "rows": [
+     {
+      "created": "Oct 10, 2026",
+      "title": "AI Revenue Questions Pull Semiconductor Stocks Off October Highs",
+      "url": "/press-release/ai-revenue-questions-pull-semiconductor-stocks-october-highs-2026-10-10"
+     },
+     {
+      "created": "Oct 1, 2026",
+      "title": "AI Drug Discovery Forecasts Vary Widely as Sector Shifts to Deployment",
+      "url": "/press-release/ai-drug-discovery-forecasts-vary-widely-sector-shifts-deployment-2026-10-01"
+     },
+     {
+      "created": "Sep 30, 2026",
+      "title": "Micron Technology, Inc. Reports Record Fiscal Fourth-Quarter and Full-Year 2026 Results",
+      "url": "/press-release/micron-technology-inc-reports-record-fiscal-fourth-quarter-and-full-year-2026-results"
+     },
+     {
+      "created": "Sep 15, 2026",
+      "title": "Micron Appoints Deirdre Hanford to Lead Micron Research Labs",
+      "url": "/press-release/micron-appoints-deirdre-hanford-lead-micron-research-labs-2026-09-15"
+     }
+    ]
+   },
+   "ir": {
+    "kind": "Q4_PRESS_RELEASES",
+    "url": "https://investors.micron.com/feed/PressRelease.svc/GetPressReleaseList",
+    "rows": [
+     {
+      "PressReleaseDate": "09/30/2026 16:01:00",
+      "Headline": "Micron Technology, Inc. Reports Record Fiscal Fourth-Quarter and Full-Year 2026 Results",
+      "LinkToDetailPage": "/news/press-release/2026/Micron-Technology-Inc--Reports-Record-Fiscal-Fourth-Quarter-and-Full-Year-2026-Results/default.aspx"
+     }
+    ]
+   }
+  },
+  "LITE": {
+   "since": "2026-08-11",
+   "sec": {
+    "cik": 1633978,
+    "rows": [
+     {
+      "form": "10-K",
+      "filingDate": "2026-08-17",
+      "items": "",
+      "accessionNumber": "0001628280-26-057358",
+      "reportDate": "2026-06-27"
+     },
+     {
+      "form": "8-K",
+      "filingDate": "2026-08-11",
+      "items": "2.02,9.01",
+      "accessionNumber": "0001628280-26-055726",
+      "reportDate": "2026-08-11"
+     },
+     {
+      "form": "8-K",
+      "filingDate": "2026-07-30",
+      "items": "5.02",
+      "accessionNumber": "0001628280-26-051078",
+      "reportDate": "2026-07-27"
+     }
+    ]
+   },
+   "wire": {
+    "symbol": "LITE",
+    "rows": [
+     {
+      "created": "Oct 12, 2026",
+      "title": "Lumentum, Astera Labs, and Corning to Demonstrate 1060 nm VCSEL-Based PCIe over Optics for AI Rack-Scale Connectivity at the 2026 OCP Global Summit",
+      "url": "/press-release/lumentum-astera-labs-and-corning-demonstrate-1060-nm-vcsel-based-pcie-over-optics-ai"
+     },
+     {
+      "created": "Oct 5, 2026",
+      "title": "Lumentum Announces Reporting Date for Fiscal First Quarter 2027 Financial Results",
+      "url": "/press-release/lumentum-announces-reporting-date-fiscal-first-quarter-2027-financial-results-2026-10"
+     },
+     {
+      "created": "Oct 1, 2026",
+      "title": "Lumentum Announces Speaker Lineup at 2026 OCP Global Summit",
+      "url": "/press-release/lumentum-announces-speaker-lineup-2026-ocp-global-summit-2026-10-01"
+     },
+     {
+      "created": "Sep 21, 2026",
+      "title": "Lumentum, Qualcomm, and Corning to Demonstrate High-Density 1060 nm VCSEL Optical D2D Connectivity for AI Scale-Up at ECOC 2026",
+      "url": "/press-release/lumentum-qualcomm-and-corning-demonstrate-high-density-1060-nm-vcsel-optical-d2d"
+     },
+     {
+      "created": "Sep 21, 2026",
+      "title": "Lumentum to Demonstrate DWDM ELSFP Laser Module for OCI MSA Applications at ECOC 2026",
+      "url": "/press-release/lumentum-demonstrate-dwdm-elsfp-laser-module-oci-msa-applications-ecoc-2026-2026-09"
+     },
+     {
+      "created": "Sep 15, 2026",
+      "title": "Lumentum Experts to Share Insights at ECOC 2026",
+      "url": "/press-release/lumentum-experts-share-insights-ecoc-2026-2026-09-15"
+     },
+     {
+      "created": "Aug 14, 2026",
+      "title": "Lumentum Announces Upcoming Investor Events",
+      "url": "/press-release/lumentum-announces-upcoming-investor-events-2026-08-14"
+     },
+     {
+      "created": "Aug 11, 2026",
+      "title": "Lumentum Announces Fourth Quarter and Full Fiscal Year 2026 Results",
+      "url": "/press-release/lumentum-announces-fourth-quarter-and-full-fiscal-year-2026-results-2026-08-11"
+     },
+     {
+      "created": "Aug 6, 2026",
+      "title": "Roundhill Investments Launches First-Ever Neocloud ETF (NCLD) and Photonics & Optics ETF (LYTE)",
+      "url": "/press-release/roundhill-investments-launches-first-ever-neocloud-etf-ncld-and-photonics-optics-etf"
+     }
+    ]
+   },
+   "ir": {
+    "kind": "Q4_PRESS_RELEASES",
+    "url": "https://investor.lumentum.com/feed/PressRelease.svc/GetPressReleaseList",
+    "rows": [
+     {
+      "PressReleaseDate": "10/12/2026 06:00:00",
+      "Headline": "Lumentum, Astera Labs, and Corning to Demonstrate 1060 nm VCSEL-Based PCIe over Optics for AI Rack-Scale Connectivity at the 2026 OCP Global Summit",
+      "LinkToDetailPage": "/financial-news-releases/news-details/2026/Lumentum-Astera-Labs-and-Corning-to-Demonstrate-1060-nm-VCSEL-Based-PCIe-over-Optics-for-AI-Rack-Scale-Connectivity-at-the-2026-OCP-Global-Summit/default.aspx"
+     },
+     {
+      "PressReleaseDate": "10/05/2026 08:00:00",
+      "Headline": "Lumentum Announces Reporting Date for Fiscal First Quarter 2027 Financial Results",
+      "LinkToDetailPage": "/financial-news-releases/news-details/2026/Lumentum-Announces-Reporting-Date-for-Fiscal-First-Quarter-2027-Financial-Results/default.aspx"
+     },
+     {
+      "PressReleaseDate": "10/01/2026 06:00:00",
+      "Headline": "Lumentum Announces Speaker Lineup at 2026 OCP Global Summit",
+      "LinkToDetailPage": "/financial-news-releases/news-details/2026/Lumentum-Announces-Speaker-Lineup-at-2026-OCP-Global-Summit/default.aspx"
+     },
+     {
+      "PressReleaseDate": "09/21/2026 05:07:00",
+      "Headline": "Lumentum, Qualcomm, and Corning to Demonstrate High-Density 1060 nm VCSEL Optical D2D Connectivity for AI Scale-Up at ECOC 2026",
+      "LinkToDetailPage": "/financial-news-releases/news-details/2026/Lumentum-Qualcomm-and-Corning-to-Demonstrate-High-Density-1060-nm-VCSEL-Optical-D2D-Connectivity-for-AI-Scale-Up-at-ECOC-2026/default.aspx"
+     },
+     {
+      "PressReleaseDate": "09/21/2026 04:41:00",
+      "Headline": "Lumentum to Demonstrate DWDM ELSFP Laser Module for OCI MSA Applications at ECOC 2026",
+      "LinkToDetailPage": "/financial-news-releases/news-details/2026/Lumentum-to-Demonstrate-DWDM-ELSFP-Laser-Module-for-OCI-MSA-Applications-at-ECOC-2026/default.aspx"
+     },
+     {
+      "PressReleaseDate": "09/15/2026 09:00:00",
+      "Headline": "Lumentum Experts to Share Insights at ECOC 2026",
+      "LinkToDetailPage": "/financial-news-releases/news-details/2026/Lumentum-Experts-to-Share-Insights-at-ECOC-2026/default.aspx"
+     },
+     {
+      "PressReleaseDate": "08/14/2026 08:00:00",
+      "Headline": "Lumentum Announces Upcoming Investor Events",
+      "LinkToDetailPage": "/financial-news-releases/news-details/2026/Lumentum-Announces-Upcoming-Investor-Events-d0a26e82d/default.aspx"
+     },
+     {
+      "PressReleaseDate": "08/11/2026 16:03:00",
+      "Headline": "Lumentum Announces Fourth Quarter and Full Fiscal Year 2026 Results",
+      "LinkToDetailPage": "/financial-news-releases/news-details/2026/Lumentum-Announces-Fourth-Quarter-and-Full-Fiscal-Year-2026-Results/default.aspx"
+     }
+    ]
+   }
+  },
+  "MRVL": {
+   "since": "2026-08-27",
+   "sec": {
+    "cik": 1835632,
+    "rows": [
+     {
+      "form": "8-K",
+      "filingDate": "2026-09-25",
+      "items": "8.01,9.01",
+      "accessionNumber": "0001628280-26-063592",
+      "reportDate": "2026-09-25"
+     },
+     {
+      "form": "10-Q",
+      "filingDate": "2026-08-28",
+      "items": "",
+      "accessionNumber": "0001835632-26-000025",
+      "reportDate": "2026-08-01"
+     },
+     {
+      "form": "8-K",
+      "filingDate": "2026-08-27",
+      "items": "2.02,9.01",
+      "accessionNumber": "0001835632-26-000022",
+      "reportDate": "2026-08-27"
+     },
+     {
+      "form": "8-K",
+      "filingDate": "2026-08-19",
+      "items": "1.01,3.02,9.01",
+      "accessionNumber": "0001193125-26-356217",
+      "reportDate": "2026-08-18"
+     }
+    ]
+   },
+   "wire": {
+    "symbol": "MRVL",
+    "rows": [
+     {
+      "created": "Oct 13, 2026",
+      "title": "Marvell Bolsters Connectivity Portfolio with New 3.2T Protocol-aware Retimer and Second-generation 1.6T AEC DSP",
+      "url": "/press-release/marvell-bolsters-connectivity-portfolio-new-32t-protocol-aware-retimer-and-second"
+     },
+     {
+      "created": "Oct 13, 2026",
+      "title": "Marvell, Microsoft and Oracle Establish OCP Working Group to Standardize Data Center Hardware Security",
+      "url": "/press-release/marvell-microsoft-and-oracle-establish-ocp-working-group-standardize-data-center"
+     },
+     {
+      "created": "Oct 12, 2026",
+      "title": "Marvell Unveils Second-generation Structera X, Industry-first Six-channel CXL 3.2 Memory Expanders for AI Inference",
+      "url": "/press-release/marvell-unveils-second-generation-structera-x-industry-first-six-channel-cxl-32"
+     },
+     {
+      "created": "Oct 8, 2026",
+      "title": "Marvell to Showcase Open AI Infrastructure Solutions at OCP Global Summit 2026",
+      "url": "/press-release/marvell-showcase-open-ai-infrastructure-solutions-ocp-global-summit-2026-2026-10-08"
+     },
+     {
+      "created": "Sep 25, 2026",
+      "title": "Marvell Technology, Inc. Declares Quarterly Dividend Payment",
+      "url": "/press-release/marvell-technology-inc-declares-quarterly-dividend-payment-2026-09-25"
+     },
+     {
+      "created": "Sep 21, 2026",
+      "title": "Marvell to Showcase Industry-First 2nm Optical Technology Demos for AI Data Center Infrastructure at ECOC 2026",
+      "url": "/press-release/marvell-showcase-industry-first-2nm-optical-technology-demos-ai-data-center"
+     },
+     {
+      "created": "Sep 17, 2026",
+      "title": "Microsoft, Marvell and Utimaco to Deliver Industry-first Secure, Cloud-scale Payments Solution",
+      "url": "/press-release/microsoft-marvell-and-utimaco-deliver-industry-first-secure-cloud-scale-payments"
+     },
+     {
+      "created": "Sep 17, 2026",
+      "title": "GlobalFoundries and Marvell expand collaboration for next-generation optical connectivity",
+      "url": "/press-release/globalfoundries-and-marvell-expand-collaboration-next-generation-optical-connectivity"
+     },
+     {
+      "created": "Sep 9, 2026",
+      "title": "Marvell to Showcase End-to-End AI Data Center Connectivity Portfolio at AI Infra Summit 2026",
+      "url": "/press-release/marvell-showcase-end-end-ai-data-center-connectivity-portfolio-ai-infra-summit-2026"
+     },
+     {
+      "created": "Aug 27, 2026",
+      "title": "Marvell Technology, Inc. Reports Second Quarter of Fiscal Year 2027 Financial Results",
+      "url": "/press-release/marvell-technology-inc-reports-second-quarter-fiscal-year-2027-financial-results-2026"
+     },
+     {
+      "created": "Aug 4, 2026",
+      "title": "Marvell Advances AI Memory Infrastructure Portfolio to Accelerate Agentic AI Inference",
+      "url": "/press-release/marvell-advances-ai-memory-infrastructure-portfolio-accelerate-agentic-ai-inference"
+     }
+    ]
+   },
+   "ir": {
+    "kind": "RSS",
+    "url": "https://investor.marvell.com/news-events/press-releases/rss",
+    "rows": [
+     {
+      "title": "<![CDATA[Marvell Bolsters Connectivity Portfolio with New 3.2T Protocol-aware Retimer and Second-generation 1.6T AEC DSP]]>",
+      "link": "https://investor.marvell.com/news-events/press-releases/detail/1039/marvell-bolsters-connectivity-portfolio-with-new-3-2t-protocol-aware-retimer-and-second-generation-1-6t-aec-dsp",
+      "pubDate": "Tue, 13 Oct 26 09:05:00 -0400"
+     },
+     {
+      "title": "<![CDATA[Marvell, Microsoft and Oracle Establish OCP Working Group to Standardize Data Center Hardware Security]]>",
+      "link": "https://investor.marvell.com/news-events/press-releases/detail/1038/marvell-microsoft-and-oracle-establish-ocp-working-group-to-standardize-data-center-hardware-security",
+      "pubDate": "Tue, 13 Oct 26 09:00:00 -0400"
+     },
+     {
+      "title": "<![CDATA[ADDING and REPLACING Marvell Unveils Second-generation Structera X, Industry-first Six-channel CXL 3.2 Memory Expanders for AI Inference]]>",
+      "link": "https://investor.marvell.com/news-events/press-releases/detail/1037/adding-and-replacing-marvell-unveils-second-generation-structera-x-industry-first-six-channel-cxl-3-2-memory-expanders-for-ai-inference",
+      "pubDate": "Mon, 12 Oct 26 09:05:00 -0400"
+     },
+     {
+      "title": "<![CDATA[Marvell to Showcase Open AI Infrastructure Solutions at OCP Global Summit 2026]]>",
+      "link": "https://investor.marvell.com/news-events/press-releases/detail/1036/marvell-to-showcase-open-ai-infrastructure-solutions-at-ocp-global-summit-2026",
+      "pubDate": "Thu, 08 Oct 26 09:00:00 -0400"
+     },
+     {
+      "title": "<![CDATA[Marvell Technology, Inc. Declares Quarterly Dividend Payment]]>",
+      "link": "https://investor.marvell.com/news-events/press-releases/detail/1035/marvell-technology-inc-declares-quarterly-dividend-payment",
+      "pubDate": "Fri, 25 Sep 26 16:05:00 -0400"
+     },
+     {
+      "title": "<![CDATA[Marvell to Showcase Industry-First 2nm Optical Technology Demos for AI Data Center Infrastructure at ECOC 2026]]>",
+      "link": "https://investor.marvell.com/news-events/press-releases/detail/1034/marvell-to-showcase-industry-first-2nm-optical-technology-demos-for-ai-data-center-infrastructure-at-ecoc-2026",
+      "pubDate": "Mon, 21 Sep 26 01:00:00 -0400"
+     },
+     {
+      "title": "<![CDATA[Microsoft, Marvell and Utimaco to Deliver Industry-first Secure, Cloud-scale Payments Solution]]>",
+      "link": "https://investor.marvell.com/news-events/press-releases/detail/1033/microsoft-marvell-and-utimaco-to-deliver-industry-first-secure-cloud-scale-payments-solution",
+      "pubDate": "Thu, 17 Sep 26 09:00:00 -0400"
+     },
+     {
+      "title": "<![CDATA[Marvell to Showcase End-to-End AI Data Center Connectivity Portfolio at AI Infra Summit 2026]]>",
+      "link": "https://investor.marvell.com/news-events/press-releases/detail/1032/marvell-to-showcase-end-to-end-ai-data-center-connectivity-portfolio-at-ai-infra-summit-2026",
+      "pubDate": "Wed, 09 Sep 26 09:00:00 -0400"
+     },
+     {
+      "title": "<![CDATA[Marvell Technology, Inc. Reports Second Quarter of Fiscal Year 2027 Financial Results]]>",
+      "link": "https://investor.marvell.com/news-events/press-releases/detail/1031/marvell-technology-inc-reports-second-quarter-of-fiscal-year-2027-financial-results",
+      "pubDate": "Thu, 27 Aug 26 16:05:00 -0400"
+     },
+     {
+      "title": "<![CDATA[Marvell Advances AI Memory Infrastructure Portfolio to Accelerate Agentic AI Inference]]>",
+      "link": "https://investor.marvell.com/news-events/press-releases/detail/1030/marvell-advances-ai-memory-infrastructure-portfolio-to-accelerate-agentic-ai-inference",
+      "pubDate": "Tue, 04 Aug 26 09:00:00 -0400"
+     }
+    ]
+   }
+  },
+  "AMD": {
+   "since": "2026-08-04",
+   "sec": {
+    "cik": 2488,
+    "rows": [
+     {
+      "form": "8-K",
+      "filingDate": "2026-09-28",
+      "items": "3.02",
+      "accessionNumber": "0000002488-26-000182",
+      "reportDate": "2026-09-26"
+     },
+     {
+      "form": "8-K",
+      "filingDate": "2026-08-19",
+      "items": "5.02,9.01",
+      "accessionNumber": "0000002488-26-000163",
+      "reportDate": "2026-08-17"
+     },
+     {
+      "form": "8-K",
+      "filingDate": "2026-08-17",
+      "items": "1.01,2.03,9.01",
+      "accessionNumber": "0001193125-26-354029",
+      "reportDate": "2026-08-13"
+     },
+     {
+      "form": "10-Q",
+      "filingDate": "2026-08-05",
+      "items": "",
+      "accessionNumber": "0000002488-26-000123",
+      "reportDate": "2026-06-27"
+     },
+     {
+      "form": "8-K",
+      "filingDate": "2026-08-04",
+      "items": "2.02,7.01,9.01",
+      "accessionNumber": "0000002488-26-000121",
+      "reportDate": "2026-08-04"
+     },
+     {
+      "form": "4",
+      "filingDate": "2026-07-17",
+      "items": "",
+      "accessionNumber": "0000002488-26-000117",
+      "reportDate": "2026-07-15"
+     }
+    ]
+   },
+   "wire": {
+    "symbol": "AMD",
+    "rows": [
+     {
+      "created": "Oct 12, 2026",
+      "title": "Introducing AMD Helion, Agentic AI Compute at Rack Scale",
+      "url": "/press-release/introducing-amd-helion-agentic-ai-compute-rack-scale-2026-10-12"
+     },
+     {
+      "created": "Oct 8, 2026",
+      "title": "$2.6 Trillion and Climbing: Where the AI Spending Is Going",
+      "url": "/press-release/26-trillion-and-climbing-where-ai-spending-going-2026-10-08"
+     },
+     {
+      "created": "Oct 6, 2026",
+      "title": "AMD to Report Fiscal Third Quarter 2026 Financial Results",
+      "url": "/press-release/amd-report-fiscal-third-quarter-2026-financial-results-2026-10-06"
+     },
+     {
+      "created": "Sep 28, 2026",
+      "title": "AMD to Acquire World Labs to Advance the Future of AI Compute",
+      "url": "/press-release/amd-acquire-world-labs-advance-future-ai-compute-2026-09-28"
+     },
+     {
+      "created": "Aug 31, 2026",
+      "title": "AMD, Cisco and HUMAIN Expand Saudi Arabia’s AI Infrastructure as AMD Instinct Systems Go Live",
+      "url": "/press-release/amd-cisco-and-humain-expand-saudi-arabias-ai-infrastructure-amd-instinct-systems-go"
+     },
+     {
+      "created": "Aug 19, 2026",
+      "title": "AMD Appoints Tim Ryan to Board of Directors",
+      "url": "/press-release/amd-appoints-tim-ryan-board-directors-2026-08-19"
+     },
+     {
+      "created": "Aug 6, 2026",
+      "title": "AMD Acquires Taalas to Advance Compute Solutions for Rapidly Growing AI Inference Market",
+      "url": "/press-release/amd-acquires-taalas-advance-compute-solutions-rapidly-growing-ai-inference-market"
+     },
+     {
+      "created": "Aug 4, 2026",
+      "title": "AMD Reports Second Quarter 2026 Financial Results",
+      "url": "/press-release/amd-reports-second-quarter-2026-financial-results-2026-08-04"
+     },
+     {
+      "created": "Jul 28, 2026",
+      "title": "Core Scientific and AMD Announce Infrastructure Partnership",
+      "url": "/press-release/core-scientific-and-amd-announce-infrastructure-partnership-2026-07-28"
+     }
+    ]
+   },
+   "ir": {
+    "kind": "RSS",
+    "url": "https://ir.amd.com/news-events/press-releases/rss",
+    "rows": [
+     {
+      "title": "<![CDATA[Introducing AMD Helion, Agentic AI Compute at Rack Scale]]>",
+      "link": "https://ir.amd.com/news-events/press-releases/detail/1301/introducing-amd-helion-agentic-ai-compute-at-rack-scale",
+      "pubDate": "Mon, 12 Oct 26 09:00:00 -0400"
+     },
+     {
+      "title": "<![CDATA[AMD to Report Fiscal Third Quarter 2026 Financial Results]]>",
+      "link": "https://ir.amd.com/news-events/press-releases/detail/1300/amd-to-report-fiscal-third-quarter-2026-financial-results",
+      "pubDate": "Tue, 06 Oct 26 16:15:00 -0400"
+     },
+     {
+      "title": "<![CDATA[AMD to Acquire World Labs to Advance the Future of AI Compute]]>",
+      "link": "https://ir.amd.com/news-events/press-releases/detail/1299/amd-to-acquire-world-labs-to-advance-the-future-of-ai-compute",
+      "pubDate": "Mon, 28 Sep 26 16:05:00 -0400"
+     },
+     {
+      "title": "<![CDATA[AMD, Cisco and HUMAIN Expand Saudi Arabia’s AI Infrastructure as AMD Instinct Systems Go Live]]>",
+      "link": "https://ir.amd.com/news-events/press-releases/detail/1298/amd-cisco-and-humain-expand-saudi-arabias-ai-infrastructure-as-amd-instinct-systems-go-live",
+      "pubDate": "Mon, 31 Aug 26 07:15:00 -0400"
+     },
+     {
+      "title": "<![CDATA[AMD Appoints Tim Ryan to Board of Directors]]>",
+      "link": "https://ir.amd.com/news-events/press-releases/detail/1297/amd-appoints-tim-ryan-to-board-of-directors",
+      "pubDate": "Wed, 19 Aug 26 16:15:00 -0400"
+     },
+     {
+      "title": "<![CDATA[AMD Acquires Taalas to Advance Compute Solutions for Rapidly Growing AI Inference Market]]>",
+      "link": "https://ir.amd.com/news-events/press-releases/detail/1296/amd-acquires-taalas-to-advance-compute-solutions-for-rapidly-growing-ai-inference-market",
+      "pubDate": "Thu, 06 Aug 26 16:05:00 -0400"
+     },
+     {
+      "title": "<![CDATA[AMD Reports Second Quarter 2026 Financial Results]]>",
+      "link": "https://ir.amd.com/news-events/press-releases/detail/1295/amd-reports-second-quarter-2026-financial-results",
+      "pubDate": "Tue, 04 Aug 26 16:15:00 -0400"
+     },
+     {
+      "title": "<![CDATA[AAI 2026: AMD Delivers Full-Stack Compute for the Agentic AI Era]]>",
+      "link": "https://ir.amd.com/news-events/press-releases/detail/1294/aai-2026-amd-delivers-full-stack-compute-for-the-agentic-ai-era",
+      "pubDate": "Thu, 23 Jul 26 14:30:00 -0400"
+     },
+     {
+      "title": "<![CDATA[AMD and Cerebras Announce Industry-Leading Ultra-Low-Latency and High Throughput AI Inference Solution]]>",
+      "link": "https://ir.amd.com/news-events/press-releases/detail/1293/amd-and-cerebras-announce-industry-leading-ultra-low-latency-and-high-throughput-ai-inference-solution",
+      "pubDate": "Thu, 23 Jul 26 13:45:00 -0400"
+     },
+     {
+      "title": "<![CDATA[AMD and Anthropic Announce Strategic Partnership to Deploy Up to 2 Gigawatts of AMD Instinct MI450 Series GPUs]]>",
+      "link": "https://ir.amd.com/news-events/press-releases/detail/1292/amd-and-anthropic-announce-strategic-partnership-to-deploy-up-to-2-gigawatts-of-amd-instinct-mi450-series-gpus",
+      "pubDate": "Wed, 22 Jul 26 09:00:00 -0400"
+     }
+    ]
+   }
+  },
+  "AVGO": {
+   "since": "2026-09-02",
+   "sec": {
+    "cik": 1730168,
+    "rows": [
+     {
+      "form": "10-Q",
+      "filingDate": "2026-09-10",
+      "items": "",
+      "accessionNumber": "0001730168-26-000080",
+      "reportDate": "2026-08-02"
+     },
+     {
+      "form": "8-K",
+      "filingDate": "2026-09-02",
+      "items": "2.02,8.01,9.01",
+      "accessionNumber": "0001730168-26-000076",
+      "reportDate": "2026-09-02"
+     },
+     {
+      "form": "4",
+      "filingDate": "2026-07-14",
+      "items": "",
+      "accessionNumber": "0001730168-26-000072",
+      "reportDate": "2026-07-10"
+     }
+    ]
+   },
+   "wire": {
+    "symbol": "AVGO",
+    "rows": [
+     {
+      "created": "Oct 13, 2026",
+      "title": "Broadcom Introduces VMware HyperArmor, Expanding Hypervisor Security and Protections for VMware Cloud Foundation",
+      "url": "/press-release/broadcom-introduces-vmware-hyperarmor-expanding-hypervisor-security-and-protections"
+     },
+     {
+      "created": "Oct 8, 2026",
+      "title": "Broadcom Redefines AI Infrastructure with Industry-Leading Networking Innovations at 2026 OCP Global Summit",
+      "url": "/press-release/broadcom-redefines-ai-infrastructure-industry-leading-networking-innovations-2026-ocp"
+     },
+     {
+      "created": "Oct 8, 2026",
+      "title": "$2.6 Trillion and Climbing: Where the AI Spending Is Going",
+      "url": "/press-release/26-trillion-and-climbing-where-ai-spending-going-2026-10-08"
+     },
+     {
+      "created": "Sep 10, 2026",
+      "title": "IPEC Successfully Holds NPO Standards Industry Summit, Aiming to Build a Robust International Standards Ecosystem",
+      "url": "/press-release/ipec-successfully-holds-npo-standards-industry-summit-aiming-build-robust"
+     },
+     {
+      "created": "Sep 2, 2026",
+      "title": "Broadcom Inc. Announces Third Quarter Fiscal Year 2026 Financial Results and Quarterly Dividend",
+      "url": "/press-release/broadcom-inc-announces-third-quarter-fiscal-year-2026-financial-results-and-quarterly"
+     },
+     {
+      "created": "Aug 31, 2026",
+      "title": "Broadcom Introduces VMware Private AI Cloud, Enabling Enterprises to Scale AI Cost-Effectively, Operate More Securely, and Innovate Rapidly",
+      "url": "/press-release/broadcom-introduces-vmware-private-ai-cloud-enabling-enterprises-scale-ai-cost"
+     }
+    ]
+   },
+   "ir": {
+    "kind": "RSS",
+    "url": "https://investors.broadcom.com/rss.xml",
+    "rows": [
+     {
+      "title": "Broadcom Introduces VMware HyperArmor, Expanding Hypervisor Security and Protections for VMware Cloud Foundation",
+      "link": "https://investors.broadcom.com/news-releases/news-release-details/broadcom-introduces-vmware-hyperarmor-expanding-hypervisor",
+      "pubDate": "Tue, 13 Oct 2026 07:00:35 +0000"
+     },
+     {
+      "title": "Broadcom Redefines AI Infrastructure with Industry-Leading Networking Innovations at 2026 OCP Global Summit",
+      "link": "https://investors.broadcom.com/news-releases/news-release-details/broadcom-redefines-ai-infrastructure-industry-leading-networking",
+      "pubDate": "Thu, 08 Oct 2026 16:00:16 +0000"
+     },
+     {
+      "title": "AST Completes Singapore's First High-End FC-BGA Substrate Facility to Meet Growing AI Chip Demand",
+      "link": "https://investors.broadcom.com/news-releases/news-release-details/ast-completes-singapores-first-high-end-fc-bga-substrate",
+      "pubDate": "Wed, 30 Sep 2026 16:10:13 +0000"
+     },
+     {
+      "title": "Broadcom Inc. Announces Third Quarter Fiscal Year 2026 Financial Results and Quarterly Dividend",
+      "link": "https://investors.broadcom.com/news-releases/news-release-details/broadcom-inc-announces-third-quarter-fiscal-year-2026-financial",
+      "pubDate": "Wed, 02 Sep 2026 20:15:47 +0000"
+     },
+     {
+      "title": "Broadcom Introduces VMware Private AI Cloud, Enabling Enterprises to Scale AI Cost-Effectively, Operate More Securely, and Innovate Rapidly",
+      "link": "https://investors.broadcom.com/news-releases/news-release-details/broadcom-introduces-vmware-private-ai-cloud-enabling-enterprises",
+      "pubDate": "Mon, 31 Aug 2026 13:29:49 +0000"
+     },
+     {
+      "title": "Broadcom Announces VMware AI Factory, Enabling Faster Time to Production AI and Greater Control Over AI Tokenomics",
+      "link": "https://investors.broadcom.com/news-releases/news-release-details/broadcom-announces-vmware-ai-factory-enabling-faster-time",
+      "pubDate": "Mon, 31 Aug 2026 13:05:32 +0000"
+     },
+     {
+      "title": "VMware Cloud Foundation Brings Leading AI Models to the Private AI Cloud",
+      "link": "https://investors.broadcom.com/news-releases/news-release-details/vmware-cloud-foundation-brings-leading-ai-models-private-ai",
+      "pubDate": "Mon, 31 Aug 2026 13:04:37 +0000"
+     },
+     {
+      "title": "Broadcom Strengthens Spring Security and Adds Coverage of Java, Python, and Node.js Ecosystems with TrueSource",
+      "link": "https://investors.broadcom.com/news-releases/news-release-details/broadcom-strengthens-spring-security-and-adds-coverage-java",
+      "pubDate": "Mon, 31 Aug 2026 13:03:56 +0000"
+     },
+     {
+      "title": "Broadcom Unveils AI-Ready Data Foundations in VMware Tanzu Platform to Power Secure Enterprise AI Cloud",
+      "link": "https://investors.broadcom.com/news-releases/news-release-details/broadcom-unveils-ai-ready-data-foundations-vmware-tanzu-platform",
+      "pubDate": "Mon, 31 Aug 2026 13:02:52 +0000"
+     },
+     {
+      "title": "Broadcom Delivers End-to-End Security, Identity, and Observability for Agentic AI",
+      "link": "https://investors.broadcom.com/news-releases/news-release-details/broadcom-delivers-end-end-security-identity-and-observability",
+      "pubDate": "Mon, 31 Aug 2026 13:01:42 +0000"
+     }
+    ]
+   }
+  },
+  "MTSI": {
+   "since": "2026-08-06",
+   "sec": {
+    "cik": 1493594,
+    "rows": [
+     {
+      "form": "10-Q",
+      "filingDate": "2026-08-06",
+      "items": "",
+      "accessionNumber": "0001493594-26-000038",
+      "reportDate": "2026-07-03"
+     },
+     {
+      "form": "8-K",
+      "filingDate": "2026-08-06",
+      "items": "2.02,9.01",
+      "accessionNumber": "0001493594-26-000036",
+      "reportDate": "2026-08-06"
+     },
+     {
+      "form": "SCHEDULE 13G/A",
+      "filingDate": "2026-07-08",
+      "items": "",
+      "accessionNumber": "0002012383-26-001945",
+      "reportDate": ""
+     }
+    ]
+   },
+   "wire": {
+    "symbol": "MTSI",
+    "rows": [
+     {
+      "created": "Sep 29, 2026",
+      "title": "MACOM to Showcase RF and Microwave Products and Technologies at European Microwave Week",
+      "url": "/press-release/macom-showcase-rf-and-microwave-products-and-technologies-european-microwave-week"
+     },
+     {
+      "created": "Sep 17, 2026",
+      "title": "MACOM Introduces 3.2T Chipset Solution for High Speed Optical Connectivity",
+      "url": "/press-release/macom-introduces-32t-chipset-solution-high-speed-optical-connectivity-2026-09-17"
+     },
+     {
+      "created": "Sep 15, 2026",
+      "title": "MACOM Demonstrates Technologies Enabling the Future of High Speed Connectivity at ECOC 2026",
+      "url": "/press-release/macom-demonstrates-technologies-enabling-future-high-speed-connectivity-ecoc-2026"
+     },
+     {
+      "created": "Aug 6, 2026",
+      "title": "MACOM Reports Fiscal Third Quarter 2026 Financial Results",
+      "url": "/press-release/macom-reports-fiscal-third-quarter-2026-financial-results-2026-08-06"
+     },
+     {
+      "created": "Jul 23, 2026",
+      "title": "MACOM to Report Third Quarter 2026 Financial Results on August 6, 2026",
+      "url": "/press-release/macom-report-third-quarter-2026-financial-results-august-6-2026-2026-07-23"
+     }
+    ]
+   },
+   "ir": {
+    "kind": "RSS",
+    "url": "https://ir.macom.com/rss.xml",
+    "rows": [
+     {
+      "title": "MACOM to Showcase RF and Microwave Products and Technologies at European Microwave Week",
+      "link": "https://ir.macom.com/news-releases/news-release-details/macom-showcase-rf-and-microwave-products-and-technologies",
+      "pubDate": "Tue, 29 Sep 2026 12:15:28 +0000"
+     },
+     {
+      "title": "MACOM Introduces 3.2T Chipset Solution for High Speed Optical Connectivity",
+      "link": "https://ir.macom.com/news-releases/news-release-details/macom-introduces-32t-chipset-solution-high-speed-optical",
+      "pubDate": "Thu, 17 Sep 2026 12:15:30 +0000"
+     },
+     {
+      "title": "MACOM Demonstrates Technologies Enabling the Future of High Speed Connectivity at ECOC 2026",
+      "link": "https://ir.macom.com/news-releases/news-release-details/macom-demonstrates-technologies-enabling-future-high-speed",
+      "pubDate": "Tue, 15 Sep 2026 12:15:19 +0000"
+     },
+     {
+      "title": "MACOM Reports Fiscal Third Quarter 2026 Financial Results",
+      "link": "https://ir.macom.com/news-releases/news-release-details/macom-reports-fiscal-third-quarter-2026-financial-results",
+      "pubDate": "Thu, 06 Aug 2026 11:31:09 +0000"
+     },
+     {
+      "title": "MACOM to Report Third Quarter 2026 Financial Results on August 6, 2026",
+      "link": "https://ir.macom.com/news-releases/news-release-details/macom-report-third-quarter-2026-financial-results-august-6-2026",
+      "pubDate": "Thu, 23 Jul 2026 12:30:40 +0000"
+     },
+     {
+      "title": "MACOM and Elve to Demonstrate a V-Band Linearized TWTA for Satellite Communications and Defense Applications at IMS 2026",
+      "link": "https://ir.macom.com/news-releases/news-release-details/macom-and-elve-demonstrate-v-band-linearized-twta-satellite",
+      "pubDate": "Tue, 09 Jun 2026 12:15:35 +0000"
+     },
+     {
+      "title": "MACOM Introduces its Hot Via Chip Scale Technology to Eliminate Wire Bonds",
+      "link": "https://ir.macom.com/news-releases/news-release-details/macom-introduces-its-hot-chip-scale-technology-eliminate-wire",
+      "pubDate": "Mon, 08 Jun 2026 12:15:25 +0000"
+     },
+     {
+      "title": "MACOM IMS 2026 Product Announcements for Satellite Communications",
+      "link": "https://ir.macom.com/news-releases/news-release-details/macom-ims-2026-product-announcements-satellite-communications",
+      "pubDate": "Fri, 05 Jun 2026 12:15:46 +0000"
+     },
+     {
+      "title": "MACOM IMS 2026 Product Announcements for Aerospace and Defense",
+      "link": "https://ir.macom.com/news-releases/news-release-details/macom-ims-2026-product-announcements-aerospace-and-defense",
+      "pubDate": "Thu, 04 Jun 2026 12:15:24 +0000"
+     },
+     {
+      "title": "MACOM Reports Fiscal Second Quarter 2026 Financial Results",
+      "link": "https://ir.macom.com/news-releases/news-release-details/macom-reports-fiscal-second-quarter-2026-financial-results",
+      "pubDate": "Thu, 07 May 2026 11:30:48 +0000"
+     }
+    ]
+   }
+  },
+  "CRDO": {
+   "since": "2026-09-01",
+   "sec": {
+    "cik": 1807794,
+    "rows": [
+     {
+      "form": "10-Q",
+      "filingDate": "2026-09-02",
+      "items": "",
+      "accessionNumber": "0001628280-26-060111",
+      "reportDate": "2026-08-01"
+     },
+     {
+      "form": "8-K",
+      "filingDate": "2026-09-01",
+      "items": "2.02,9.01",
+      "accessionNumber": "0001628280-26-059795",
+      "reportDate": "2026-09-01"
+     },
+     {
+      "form": "ARS",
+      "filingDate": "2026-08-25",
+      "items": "",
+      "accessionNumber": "0001628280-26-058938",
+      "reportDate": "2026-08-25"
+     }
+    ]
+   },
+   "wire": {
+    "symbol": "CRDO",
+    "rows": [
+     {
+      "created": "Oct 13, 2026",
+      "title": "Credo Breaks the Memory Wall Using AMD Programmable Logic-Based AI Accelerators",
+      "url": "/press-release/credo-breaks-memory-wall-using-amd-programmable-logic-based-ai-accelerators-2026-10"
+     },
+     {
+      "created": "Oct 12, 2026",
+      "title": "Credo Launches Short-Reach Micro-Emitter Optics (SRMO) Standardization for AI Data Center Scale-Up and Scale-Out Applications",
+      "url": "/press-release/credo-launches-short-reach-micro-emitter-optics-srmo-standardization-ai-data-center"
+     },
+     {
+      "created": "Oct 12, 2026",
+      "title": "Credo Unveils 1.6T ZeroFlap Active Light Cable, Industry’s First Row-Scale, Wide-Parallel Optical Interconnect for AI Data Centers",
+      "url": "/press-release/credo-unveils-16t-zeroflap-active-light-cable-industrys-first-row-scale-wide-parallel"
+     },
+     {
+      "created": "Oct 9, 2026",
+      "title": "Credo to Showcase Broad Portfolio of Connectivity Solutions for AI Scale-Out and Scale-Up Fabrics at 2026 OCP Global Summit",
+      "url": "/press-release/credo-showcase-broad-portfolio-connectivity-solutions-ai-scale-out-and-scale-fabrics"
+     },
+     {
+      "created": "Sep 18, 2026",
+      "title": "Credo to Showcase 1.6T Optical Connectivity Solutions for AI Scale-Out Fabrics at ECOC 2026",
+      "url": "/press-release/credo-showcase-16t-optical-connectivity-solutions-ai-scale-out-fabrics-ecoc-2026-2026"
+     },
+     {
+      "created": "Sep 15, 2026",
+      "title": "Credo Expands ZeroFlap Portfolio with 224G-Based 1.6T Optical Transceivers, Addressing the Growing Demand for AI Network Infrastructure",
+      "url": "/press-release/credo-expands-zeroflap-portfolio-224g-based-16t-optical-transceivers-addressing"
+     },
+     {
+      "created": "Sep 14, 2026",
+      "title": "Credo to Showcase High-Speed Connectivity Innovations Driving Next-Generation AI Infrastructure at AI Infra 2026",
+      "url": "/press-release/credo-showcase-high-speed-connectivity-innovations-driving-next-generation-ai"
+     },
+     {
+      "created": "Sep 1, 2026",
+      "title": "Credo Technology Group Holding Ltd Reports First Quarter of Fiscal Year 2027 Financial Results",
+      "url": "/press-release/credo-technology-group-holding-ltd-reports-first-quarter-fiscal-year-2027-financial"
+     },
+     {
+      "created": "Aug 31, 2026",
+      "title": "Credo Joins Open CPX MSA Organization",
+      "url": "/press-release/credo-joins-open-cpx-msa-organization-2026-08-31"
+     }
+    ]
+   },
+   "ir": {
+    "kind": "Q4_PRESS_RELEASES",
+    "url": "https://investors.credosemi.com/feed/PressRelease.svc/GetPressReleaseList",
+    "rows": [
+     {
+      "PressReleaseDate": "10/13/2026 09:00:00",
+      "Headline": "Credo Breaks the Memory Wall Using AMD Programmable Logic-Based AI Accelerators",
+      "LinkToDetailPage": "/news-events/news/news-details/2026/Credo-Breaks-the-Memory-Wall-Using-AMD-Programmable-Logic-Based-AI-Accelerators/default.aspx"
+     },
+     {
+      "PressReleaseDate": "10/12/2026 18:20:00",
+      "Headline": "Credo Launches Short-Reach Micro-Emitter Optics (SRMO) Standardization for AI Data Center Scale-Up and Scale-Out Applications",
+      "LinkToDetailPage": "/news-events/news/news-details/2026/Credo-Launches-Short-Reach-Micro-Emitter-Optics-SRMO-Standardization-for-AI-Data-Center-Scale-Up-and-Scale-Out-Applications/default.aspx"
+     },
+     {
+      "PressReleaseDate": "10/12/2026 09:00:00",
+      "Headline": "Credo Unveils 1.6T ZeroFlap Active Light Cable, Industry’s First Row-Scale, Wide-Parallel Optical Interconnect for AI Data Centers",
+      "LinkToDetailPage": "/news-events/news/news-details/2026/Credo-Unveils-1-6T-ZeroFlap-Active-Light-Cable-Industrys-First-Row-Scale-Wide-Parallel-Optical-Interconnect-for-AI-Data-Centers/default.aspx"
+     },
+     {
+      "PressReleaseDate": "10/09/2026 09:00:00",
+      "Headline": "Credo to Showcase Broad Portfolio of Connectivity Solutions for AI Scale-Out and Scale-Up Fabrics at 2026 OCP Global Summit",
+      "LinkToDetailPage": "/news-events/news/news-details/2026/Credo-to-Showcase-Broad-Portfolio-of-Connectivity-Solutions-for-AI-Scale-Out-and-Scale-Up-Fabrics-at-2026-OCP-Global-Summit/default.aspx"
+     },
+     {
+      "PressReleaseDate": "09/18/2026 09:00:00",
+      "Headline": "Credo to Showcase 1.6T Optical Connectivity Solutions for AI Scale-Out Fabrics at ECOC 2026",
+      "LinkToDetailPage": "/news-events/news/news-details/2026/Credo-to-Showcase-1-6T-Optical-Connectivity-Solutions-for-AI-Scale-Out-Fabrics-at-ECOC-2026/default.aspx"
+     },
+     {
+      "PressReleaseDate": "09/15/2026 09:00:00",
+      "Headline": "Credo Expands ZeroFlap Portfolio with 224G-Based 1.6T Optical Transceivers, Addressing the Growing Demand for AI Network Infrastructure",
+      "LinkToDetailPage": "/news-events/news/news-details/2026/Credo-Expands-ZeroFlap-Portfolio-with-224G-Based-1-6T-Optical-Transceivers-Addressing-the-Growing-Demand-for-AI-Network-Infrastructure/default.aspx"
+     },
+     {
+      "PressReleaseDate": "09/14/2026 09:00:00",
+      "Headline": "Credo to Showcase High-Speed Connectivity Innovations Driving Next-Generation AI Infrastructure at AI Infra 2026",
+      "LinkToDetailPage": "/news-events/news/news-details/2026/Credo-to-Showcase-High-Speed-Connectivity-Innovations-Driving-Next-Generation-AI-Infrastructure-at-AI-Infra-2026/default.aspx"
+     },
+     {
+      "PressReleaseDate": "09/01/2026 16:05:00",
+      "Headline": "Credo Technology Group Holding Ltd Reports First Quarter of Fiscal Year 2027 Financial Results",
+      "LinkToDetailPage": "/news-events/news/news-details/2026/Credo-Technology-Group-Holding-Ltd-Reports-First-Quarter-of-Fiscal-Year-2027-Financial-Results/default.aspx"
+     }
+    ]
+   }
+  },
+  "AAOI": {
+   "since": "2026-08-06",
+   "sec": {
+    "cik": 1158114,
+    "rows": [
+     {
+      "form": "8-K",
+      "filingDate": "2026-09-15",
+      "items": "1.01,2.03,9.01",
+      "accessionNumber": "0001683168-26-007160",
+      "reportDate": "2026-09-10"
+     },
+     {
+      "form": "8-K",
+      "filingDate": "2026-09-10",
+      "items": "1.01,9.01",
+      "accessionNumber": "0001683168-26-007057",
+      "reportDate": "2026-09-04"
+     },
+     {
+      "form": "8-K",
+      "filingDate": "2026-09-01",
+      "items": "1.01,2.03,9.01",
+      "accessionNumber": "0001683168-26-006862",
+      "reportDate": "2026-08-31"
+     },
+     {
+      "form": "8-K",
+      "filingDate": "2026-08-24",
+      "items": "1.01,5.02,9.01",
+      "accessionNumber": "0001683168-26-006693",
+      "reportDate": "2026-08-18"
+     },
+     {
+      "form": "8-K",
+      "filingDate": "2026-08-21",
+      "items": "1.01,9.01",
+      "accessionNumber": "0001104659-26-099688",
+      "reportDate": "2026-08-21"
+     },
+     {
+      "form": "10-Q",
+      "filingDate": "2026-08-06",
+      "items": "",
+      "accessionNumber": "0001437749-26-026278",
+      "reportDate": "2026-06-30"
+     },
+     {
+      "form": "8-K",
+      "filingDate": "2026-08-06",
+      "items": "2.02,9.01",
+      "accessionNumber": "0001683168-26-006055",
+      "reportDate": "2026-08-06"
+     },
+     {
+      "form": "4",
+      "filingDate": "2026-08-04",
+      "items": "",
+      "accessionNumber": "0001683168-26-005948",
+      "reportDate": "2026-07-31"
+     }
+    ]
+   },
+   "wire": {
+    "symbol": "AAOI",
+    "rows": [
+     {
+      "created": "Oct 5, 2026",
+      "title": "Applied Optoelectronics Announces Completion of Previously Announced At the Market Offering",
+      "url": "/press-release/applied-optoelectronics-announces-completion-previously-announced-market-offering"
+     },
+     {
+      "created": "Sep 29, 2026",
+      "title": "AOI Marks 1 Millionth 1.8GHz Amplifier Shipped, Unveils New Broadband & Optical Product Demos at SCTE TechExpo 2026",
+      "url": "/press-release/aoi-marks-1-millionth-18ghz-amplifier-shipped-unveils-new-broadband-optical-product"
+     },
+     {
+      "created": "Sep 24, 2026",
+      "title": "AOI Brings First Live Quantum30 3.0GHz Concept Demo to SCTE TechExpo in Atlanta",
+      "url": "/press-release/aoi-brings-first-live-quantum30-30ghz-concept-demo-scte-techexpo-atlanta-2026-09-24"
+     },
+     {
+      "created": "Aug 7, 2026",
+      "title": "Applied Optoelectronics Announces Equity Grants To Employees Under Inducement Plan",
+      "url": "/press-release/applied-optoelectronics-announces-equity-grants-employees-under-inducement-plan-2026"
+     },
+     {
+      "created": "Aug 6, 2026",
+      "title": "Applied Optoelectronics Reports Second Quarter 2026 Results",
+      "url": "/press-release/applied-optoelectronics-reports-second-quarter-2026-results-2026-08-06"
+     },
+     {
+      "created": "Aug 6, 2026",
+      "title": "Roundhill Investments Launches First-Ever Neocloud ETF (NCLD) and Photonics & Optics ETF (LYTE)",
+      "url": "/press-release/roundhill-investments-launches-first-ever-neocloud-etf-ncld-and-photonics-optics-etf"
+     },
+     {
+      "created": "Aug 4, 2026",
+      "title": "Applied Optoelectronics to Present at Rosenblatt's 6th Annual Technology Summit",
+      "url": "/press-release/applied-optoelectronics-present-rosenblatts-6th-annual-technology-summit-2026-08-04"
+     }
+    ]
+   },
+   "ir": {
+    "kind": "RSS",
+    "url": "https://investors.ao-inc.com/rss.xml",
+    "rows": [
+     {
+      "title": "Applied Optoelectronics Announces Completion of Previously Announced At the Market Offering",
+      "link": "https://investors.ao-inc.com/news-releases/news-release-details/applied-optoelectronics-announces-completion-previously",
+      "pubDate": "Mon, 05 Oct 2026 11:00:47 +0000"
+     },
+     {
+      "title": "AOI Marks 1 Millionth 1.8GHz Amplifier Shipped, Unveils New Broadband &amp; Optical Product Demos at SCTE TechExpo 2026",
+      "link": "https://investors.ao-inc.com/news-releases/news-release-details/aoi-marks-1-millionth-18ghz-amplifier-shipped-unveils-new",
+      "pubDate": "Mon, 28 Sep 2026 21:52:30 +0000"
+     },
+     {
+      "title": "AOI Brings First Live Quantum30 3.0 GHz Concept Demo  to SCTE TechExpo in Atlanta",
+      "link": "https://investors.ao-inc.com/news-releases/news-release-details/aoi-brings-first-live-quantum30-30-ghz-concept-demo-scte",
+      "pubDate": "Thu, 24 Sep 2026 01:12:11 +0000"
+     },
+     {
+      "title": "Applied Optoelectronics Announces Equity Grants To Employees Under Inducement Plan",
+      "link": "https://investors.ao-inc.com/news-releases/news-release-details/applied-optoelectronics-announces-equity-grants-employees-11",
+      "pubDate": "Fri, 07 Aug 2026 12:15:12 +0000"
+     },
+     {
+      "title": "Applied Optoelectronics Reports Second Quarter 2026 Results",
+      "link": "https://investors.ao-inc.com/news-releases/news-release-details/applied-optoelectronics-reports-second-quarter-2026-results",
+      "pubDate": "Thu, 06 Aug 2026 20:12:55 +0000"
+     },
+     {
+      "title": "Applied Optoelectronics to Present at Rosenblatt's 6th Annual Technology Summit",
+      "link": "https://investors.ao-inc.com/news-releases/news-release-details/applied-optoelectronics-present-rosenblatts-6th-annual",
+      "pubDate": "Tue, 04 Aug 2026 20:10:36 +0000"
+     },
+     {
+      "title": "Applied Optoelectronics Announces Date of Second Quarter 2026 Financial Results Conference Call",
+      "link": "https://investors.ao-inc.com/news-releases/news-release-details/applied-optoelectronics-announces-date-second-quarter-2026",
+      "pubDate": "Thu, 16 Jul 2026 20:10:12 +0000"
+     },
+     {
+      "title": "AOI Begins Expansion of Pearland Manufacturing Campus to Scale 800G and 1.6T Optical Transceiver Production",
+      "link": "https://investors.ao-inc.com/news-releases/news-release-details/aoi-begins-expansion-pearland-manufacturing-campus-scale-800g",
+      "pubDate": "Tue, 14 Jul 2026 11:01:00 +0000"
+     },
+     {
+      "title": "Robert (Bob) Flanagan",
+      "link": "https://investors.ao-inc.com/board-directors/robert-bob-flanagan",
+      "pubDate": "Mon, 22 Jun 2026 05:24:59 +0000"
+     },
+     {
+      "title": "Mediacom Advances Its DOCSIS 4.0 Network Upgrades Plans With AOI Quantum Bandwidth",
+      "link": "https://investors.ao-inc.com/news-releases/news-release-details/mediacom-advances-its-docsis-40-network-upgrades-plans-aoi",
+      "pubDate": "Tue, 12 May 2026 11:00:32 +0000"
+     }
+    ]
+   }
+  },
+  "ALAB": {
+   "since": "2026-08-04",
+   "sec": {
+    "cik": 1736297,
+    "rows": [
+     {
+      "form": "10-Q",
+      "filingDate": "2026-08-05",
+      "items": "",
+      "accessionNumber": "0001736297-26-000035",
+      "reportDate": "2026-06-30"
+     },
+     {
+      "form": "8-K",
+      "filingDate": "2026-08-04",
+      "items": "2.02,9.01",
+      "accessionNumber": "0001736297-26-000033",
+      "reportDate": "2026-08-04"
+     },
+     {
+      "form": "SCHEDULE 13G/A",
+      "filingDate": "2026-07-27",
+      "items": "",
+      "accessionNumber": "0002012383-26-002189",
+      "reportDate": ""
+     }
+    ]
+   },
+   "wire": {
+    "symbol": "ALAB",
+    "rows": [
+     {
+      "created": "Oct 12, 2026",
+      "title": "Astera Labs Unveils Orion: A Compute-Agnostic Rack-Scale Architecture for Token-Efficient AI Factories",
+      "url": "/press-release/astera-labs-unveils-orion-compute-agnostic-rack-scale-architecture-token-efficient-ai"
+     },
+     {
+      "created": "Oct 12, 2026",
+      "title": "Lumentum, Astera Labs, and Corning to Demonstrate 1060 nm VCSEL-Based PCIe over Optics for AI Rack-Scale Connectivity at the 2026 OCP Global Summit",
+      "url": "/press-release/lumentum-astera-labs-and-corning-demonstrate-1060-nm-vcsel-based-pcie-over-optics-ai"
+     },
+     {
+      "created": "Oct 8, 2026",
+      "title": "Astera Labs Announces Aries 7: Industry’s First PCIe 7 Signal Conditioning Portfolio Across Copper and Optical Interconnects",
+      "url": "/press-release/astera-labs-announces-aries-7-industrys-first-pcie-7-signal-conditioning-portfolio"
+     },
+     {
+      "created": "Oct 6, 2026",
+      "title": "Astera Labs Announces Conference Call to Review Third Quarter 2026 Financial Results",
+      "url": "/press-release/astera-labs-announces-conference-call-review-third-quarter-2026-financial-results"
+     },
+     {
+      "created": "Sep 15, 2026",
+      "title": "Astera Labs Bolsters Leo Smart Memory Controller Family for Agentic AI and General-Purpose Cloud Workloads",
+      "url": "/press-release/astera-labs-bolsters-leo-smart-memory-controller-family-agentic-ai-and-general"
+     },
+     {
+      "created": "Sep 1, 2026",
+      "title": "Astera Labs to Participate in the Citi 2026 Global TMT Conference",
+      "url": "/press-release/astera-labs-participate-citi-2026-global-tmt-conference-2026-09-01"
+     },
+     {
+      "created": "Aug 4, 2026",
+      "title": "Astera Labs Reports Second Quarter 2026 Financial Results",
+      "url": "/press-release/astera-labs-reports-second-quarter-2026-financial-results-2026-08-04"
+     },
+     {
+      "created": "Jul 21, 2026",
+      "title": "Astera Labs Expands Taurus Family with Industry’s First OCP-Standard Footprint Compatible 3.2T Smart Retimers and Smart Redrivers",
+      "url": "/press-release/astera-labs-expands-taurus-family-industrys-first-ocp-standard-footprint-compatible"
+     }
+    ]
+   },
+   "ir": {
+    "kind": "RSS",
+    "url": "https://ir.asteralabs.com/rss.xml",
+    "rows": [
+     {
+      "title": "Astera Labs Unveils Orion: A Compute-Agnostic Rack-Scale Architecture for Token-Efficient AI Factories",
+      "link": "https://ir.asteralabs.com/news-releases/news-release-details/astera-labs-unveils-orion-compute-agnostic-rack-scale",
+      "pubDate": "Mon, 12 Oct 2026 13:00:57 +0000"
+     },
+     {
+      "title": "Astera Labs Announces Aries 7: Industry’s First PCIe 7 Signal Conditioning Portfolio Across Copper and Optical Interconnects",
+      "link": "https://ir.asteralabs.com/news-releases/news-release-details/astera-labs-announces-aries-7-industrys-first-pcie-7-signal",
+      "pubDate": "Thu, 08 Oct 2026 13:01:20 +0000"
+     },
+     {
+      "title": "Astera Labs Announces Conference Call to Review Third Quarter 2026 Financial Results",
+      "link": "https://ir.asteralabs.com/news-releases/news-release-details/astera-labs-announces-conference-call-review-third-quarter-2026",
+      "pubDate": "Tue, 06 Oct 2026 20:05:50 +0000"
+     },
+     {
+      "title": "Astera Labs Bolsters Leo Smart Memory Controller Family for Agentic AI and General-Purpose Cloud Workloads",
+      "link": "https://ir.asteralabs.com/news-releases/news-release-details/astera-labs-bolsters-leo-smart-memory-controller-family-agentic",
+      "pubDate": "Tue, 15 Sep 2026 13:00:55 +0000"
+     },
+     {
+      "title": "Astera Labs to Participate in the Citi 2026 Global TMT Conference",
+      "link": "https://ir.asteralabs.com/news-releases/news-release-details/astera-labs-participate-citi-2026-global-tmt-conference",
+      "pubDate": "Tue, 01 Sep 2026 20:05:41 +0000"
+     },
+     {
+      "title": "Astera Labs Reports Second Quarter 2026 Financial Results",
+      "link": "https://ir.asteralabs.com/news-releases/news-release-details/astera-labs-reports-second-quarter-2026-financial-results",
+      "pubDate": "Tue, 04 Aug 2026 20:05:46 +0000"
+     },
+     {
+      "title": "Astera Labs Expands Taurus Family with Industry’s First OCP-Standard Footprint Compatible 3.2T Smart Retimers and Smart Redrivers",
+      "link": "https://ir.asteralabs.com/news-releases/news-release-details/astera-labs-expands-taurus-family-industrys-first-ocp-standard",
+      "pubDate": "Tue, 21 Jul 2026 13:01:20 +0000"
+     },
+     {
+      "title": "Astera Labs Announces Conference Call to Review Second Quarter 2026 Financial Results",
+      "link": "https://ir.asteralabs.com/news-releases/news-release-details/astera-labs-announces-conference-call-review-second-quarter-2026",
+      "pubDate": "Wed, 08 Jul 2026 20:05:28 +0000"
+     },
+     {
+      "title": "Astera Labs Expands Taiwan Operations to Accelerate Global AI Infrastructure Buildout",
+      "link": "https://ir.asteralabs.com/news-releases/news-release-details/astera-labs-expands-taiwan-operations-accelerate-global-ai",
+      "pubDate": "Wed, 03 Jun 2026 01:00:28 +0000"
+     },
+     {
+      "title": "Astera Labs to Host Press Conference, Live Demos, and Technical Talks at Computex 2026",
+      "link": "https://ir.asteralabs.com/news-releases/news-release-details/astera-labs-host-press-conference-live-demos-and-technical-talks",
+      "pubDate": "Wed, 27 May 2026 01:00:23 +0000"
+     }
+    ]
+   }
+  },
+  "BE": {
+   "since": "2026-07-28",
+   "sec": {
+    "cik": 1664703,
+    "rows": [
+     {
+      "form": "10-Q/A",
+      "filingDate": "2026-07-29",
+      "items": "",
+      "accessionNumber": "0001628280-26-050325",
+      "reportDate": "2026-06-30"
+     },
+     {
+      "form": "10-Q",
+      "filingDate": "2026-07-28",
+      "items": "",
+      "accessionNumber": "0001628280-26-050247",
+      "reportDate": "2026-06-30"
+     },
+     {
+      "form": "8-K",
+      "filingDate": "2026-07-28",
+      "items": "2.02,7.01,9.01",
+      "accessionNumber": "0001628280-26-050150",
+      "reportDate": "2026-07-28"
+     },
+     {
+      "form": "SCHEDULE 13G/A",
+      "filingDate": "2026-07-27",
+      "items": "",
+      "accessionNumber": "0002012383-26-002272",
+      "reportDate": ""
+     }
+    ]
+   },
+   "wire": {
+    "symbol": "BE",
+    "rows": [
+     {
+      "created": "Oct 12, 2026",
+      "title": "Bloom Energy to Announce Third Quarter 2026 Financial Results on October 22, 2026",
+      "url": "/press-release/bloom-energy-announce-third-quarter-2026-financial-results-october-22-2026-2026-10-12"
+     },
+     {
+      "created": "Oct 8, 2026",
+      "title": "The Unconventional Route to Fusion Power Just Hit a World First",
+      "url": "/press-release/unconventional-route-fusion-power-just-hit-world-first-2026-10-08"
+     },
+     {
+      "created": "Sep 25, 2026",
+      "title": "Powering Community Resilience, Bloom Energy Supports First Responders in State College during ESPN College Campus Tour",
+      "url": "/press-release/powering-community-resilience-bloom-energy-supports-first-responders-state-college"
+     },
+     {
+      "created": "Sep 18, 2026",
+      "title": "Bloom Energy Honors Louisville First Responders During ESPN College Football Campus Tour",
+      "url": "/press-release/bloom-energy-honors-louisville-first-responders-during-espn-college-football-campus"
+     },
+     {
+      "created": "Sep 16, 2026",
+      "title": "Bloom Energy’s 800V DC-Native Power Can Cut Billions from AI Data Center Costs, Reduce Power Use, and Eliminate Need for Transformers",
+      "url": "/press-release/bloom-energys-800v-dc-native-power-can-cut-billions-ai-data-center-costs-reduce-power"
+     },
+     {
+      "created": "Sep 11, 2026",
+      "title": "Bloom Energy Hits the Road with ESPN College Football Campus Tour to Bring the Power Conversation to Communities Nationwide",
+      "url": "/press-release/bloom-energy-hits-road-espn-college-football-campus-tour-bring-power-conversation"
+     },
+     {
+      "created": "Sep 10, 2026",
+      "title": "Newsweek Names Bloom Energy to World’s Most Trustworthy Companies List in 2026",
+      "url": "/press-release/newsweek-names-bloom-energy-worlds-most-trustworthy-companies-list-2026-2026-09-10"
+     },
+     {
+      "created": "Sep 4, 2026",
+      "title": "Bloom Energy, Illumina, and Everpure Set to Join S&P 500; Others to Join S&P 100, S&P MidCap 400, and S&P SmallCap 600",
+      "url": "/press-release/bloom-energy-illumina-and-everpure-set-join-sp-500-others-join-sp-100-sp-midcap-400"
+     },
+     {
+      "created": "Aug 19, 2026",
+      "title": "Bloom Energy Introduces Power Connect, Cutting Onsite Power Installation Time by Over 40%",
+      "url": "/press-release/bloom-energy-introduces-power-connect-cutting-onsite-power-installation-time-over-40"
+     },
+     {
+      "created": "Aug 6, 2026",
+      "title": "Bloom Energy Continues to Set the Standard for AI Onsite Power with Expanded MiTAC Partnership",
+      "url": "/press-release/bloom-energy-continues-set-standard-ai-onsite-power-expanded-mitac-partnership-2026"
+     },
+     {
+      "created": "Jul 28, 2026",
+      "title": "Bloom Energy Reports Record Second Quarter 2026 Financial Results and Raises Full Year 2026 Guidance",
+      "url": "/press-release/bloom-energy-reports-record-second-quarter-2026-financial-results-and-raises-full"
+     },
+     {
+      "created": "Jul 16, 2026",
+      "title": "Industrial Development Funding and Oaktree Announce $1.7 Billion Project Investment in Bloom Energy Fuel Cells for Nebius AI Infrastructure Build-Out",
+      "url": "/press-release/industrial-development-funding-and-oaktree-announce-17-billion-project-investment"
+     }
+    ]
+   },
+   "ir": {
+    "kind": "Q4_PRESS_RELEASES",
+    "url": "https://investor.bloomenergy.com/feed/PressRelease.svc/GetPressReleaseList",
+    "rows": [
+     {
+      "PressReleaseDate": "10/12/2026 06:00:00",
+      "Headline": "Bloom Energy to Announce Third Quarter 2026 Financial Results on October 22, 2026",
+      "LinkToDetailPage": "/press-releases/press-release-details/2026/Bloom-Energy-to-Announce-Third-Quarter-2026-Financial-Results-on-October-22-2026/default.aspx"
+     },
+     {
+      "PressReleaseDate": "09/25/2026 13:20:00",
+      "Headline": "Powering Community Resilience, Bloom Energy Supports First Responders in State College during ESPN College Campus Tour",
+      "LinkToDetailPage": "/press-releases/press-release-details/2026/Powering-Community-Resilience-Bloom-Energy-Supports-First-Responders-in-State-College-during-ESPN-College-Campus-Tour/default.aspx"
+     },
+     {
+      "PressReleaseDate": "09/18/2026 15:49:00",
+      "Headline": "Bloom Energy Honors Louisville First Responders During ESPN College Football Campus Tour",
+      "LinkToDetailPage": "/press-releases/press-release-details/2026/Bloom-Energy-Honors-Louisville-First-Responders-During-ESPN-College-Football-Campus-Tour/default.aspx"
+     },
+     {
+      "PressReleaseDate": "09/16/2026 09:00:00",
+      "Headline": "Bloom Energy’s 800V DC-Native Power Can Cut Billions from AI Data Center Costs, Reduce Power Use, and Eliminate Need for Transformers",
+      "LinkToDetailPage": "/press-releases/press-release-details/2026/Bloom-Energys-800V-DC-Native-Power-Can-Cut-Billions-from-AI-Data-Center-Costs-Reduce-Power-Use-and-Eliminate-Need-for-Transformers/default.aspx"
+     },
+     {
+      "PressReleaseDate": "09/11/2026 12:00:00",
+      "Headline": "Bloom Energy Hits the Road with ESPN College Football Campus Tour to Bring the Power Conversation to Communities Nationwide",
+      "LinkToDetailPage": "/press-releases/press-release-details/2026/Bloom-Energy-Hits-the-Road-with-ESPN-College-Football-Campus-Tour-to-Bring-the-Power-Conversation-to-Communities-Nationwide/default.aspx"
+     },
+     {
+      "PressReleaseDate": "09/10/2026 09:00:00",
+      "Headline": "Newsweek Names Bloom Energy to World’s Most Trustworthy Companies List in 2026",
+      "LinkToDetailPage": "/press-releases/press-release-details/2026/Newsweek-Names-Bloom-Energy-to-Worlds-Most-Trustworthy-Companies-List-in-2026/default.aspx"
+     },
+     {
+      "PressReleaseDate": "08/19/2026 09:00:00",
+      "Headline": "Bloom Energy Introduces Power Connect, Cutting Onsite Power Installation Time by Over 40%",
+      "LinkToDetailPage": "/press-releases/press-release-details/2026/Bloom-Energy-Introduces-Power-Connect-Cutting-Onsite-Power-Installation-Time-by-Over-40/default.aspx"
+     },
+     {
+      "PressReleaseDate": "08/06/2026 19:11:00",
+      "Headline": "Bloom Energy Continues to Set the Standard for AI Onsite Power with Expanded MiTAC Partnership",
+      "LinkToDetailPage": "/press-releases/press-release-details/2026/Bloom-Energy-Continues-to-Set-the-Standard-for-AI-Onsite-Power-with-Expanded-MiTAC-Partnership/default.aspx"
+     },
+     {
+      "PressReleaseDate": "07/28/2026 16:05:00",
+      "Headline": "Bloom Energy Reports Record Second Quarter 2026 Financial Results and Raises Full Year 2026 Guidance",
+      "LinkToDetailPage": "/press-releases/press-release-details/2026/Bloom-Energy-Reports-Record-Second-Quarter-2026-Financial-Results-and-Raises-Full-Year-2026-Guidance/default.aspx"
+     }
+    ]
+   }
+  },
+  "NBIS": {
+   "since": "2026-08-12",
+   "sec": {
+    "cik": 1513845,
+    "rows": [
+     {
+      "form": "6-K",
+      "filingDate": "2026-10-01",
+      "items": "",
+      "accessionNumber": "0001104659-26-112824",
+      "reportDate": "2026-10-01"
+     },
+     {
+      "form": "6-K",
+      "filingDate": "2026-09-08",
+      "items": "",
+      "accessionNumber": "0001104659-26-105749",
+      "reportDate": "2026-09-08"
+     },
+     {
+      "form": "6-K",
+      "filingDate": "2026-08-26",
+      "items": "",
+      "accessionNumber": "0001104659-26-101076",
+      "reportDate": "2026-08-26"
+     },
+     {
+      "form": "6-K",
+      "filingDate": "2026-08-24",
+      "items": "",
+      "accessionNumber": "0001104659-26-100347",
+      "reportDate": "2026-08-24"
+     },
+     {
+      "form": "6-K",
+      "filingDate": "2026-08-20",
+      "items": "",
+      "accessionNumber": "0001104659-26-098924",
+      "reportDate": "2026-08-20"
+     },
+     {
+      "form": "6-K",
+      "filingDate": "2026-08-19",
+      "items": "",
+      "accessionNumber": "0001104659-26-098590",
+      "reportDate": "2026-08-19"
+     },
+     {
+      "form": "6-K",
+      "filingDate": "2026-08-12",
+      "items": "",
+      "accessionNumber": "0001104659-26-094844",
+      "reportDate": "2026-08-12"
+     },
+     {
+      "form": "6-K",
+      "filingDate": "2026-08-12",
+      "items": "",
+      "accessionNumber": "0001104659-26-094568",
+      "reportDate": "2026-08-12"
+     },
+     {
+      "form": "SCHEDULE 13G/A",
+      "filingDate": "2026-08-07",
+      "items": "",
+      "accessionNumber": "0000886982-26-000308",
+      "reportDate": ""
+     }
+    ]
+   },
+   "wire": {
+    "symbol": "NBIS",
+    "rows": [
+     {
+      "created": "Oct 1, 2026",
+      "title": "Nebius acquires Inferize to strengthen Nebius Token Factory's production inference stack",
+      "url": "/press-release/nebius-acquires-inferize-strengthen-nebius-token-factorys-production-inference-stack"
+     },
+     {
+      "created": "Sep 8, 2026",
+      "title": "Palantir and Nebius Partner to Deliver a Complete Sovereign AI Stack to Palantir Customers",
+      "url": "/press-release/palantir-and-nebius-partner-deliver-complete-sovereign-ai-stack-palantir-customers"
+     },
+     {
+      "created": "Sep 2, 2026",
+      "title": "Nebius to participate in upcoming investor conferences",
+      "url": "/press-release/nebius-participate-upcoming-investor-conferences-2026-09-02"
+     },
+     {
+      "created": "Aug 26, 2026",
+      "title": "Nebius Group N.V. announces results of its Annual General Meeting",
+      "url": "/press-release/nebius-group-nv-announces-results-its-annual-general-meeting-2026-08-26"
+     },
+     {
+      "created": "Aug 24, 2026",
+      "title": "Nebius Group announces closing of private offering of convertible senior notes, with aggregate gross proceeds of approximately $5.75 billion",
+      "url": "/press-release/nebius-group-announces-closing-private-offering-convertible-senior-notes-aggregate"
+     },
+     {
+      "created": "Aug 19, 2026",
+      "title": "Nebius Group announces pricing of upsized private offering of $5.0 billion of convertible senior notes",
+      "url": "/press-release/nebius-group-announces-pricing-upsized-private-offering-50-billion-convertible-senior"
+     },
+     {
+      "created": "Aug 19, 2026",
+      "title": "Nebius Group announces proposed private offering of $4.50 billion of convertible senior notes",
+      "url": "/press-release/nebius-group-announces-proposed-private-offering-450-billion-convertible-senior-notes"
+     },
+     {
+      "created": "Aug 12, 2026",
+      "title": "Nebius reports second quarter 2026 financial results",
+      "url": "/press-release/nebius-reports-second-quarter-2026-financial-results-2026-08-12"
+     },
+     {
+      "created": "Aug 6, 2026",
+      "title": "Roundhill Investments Launches First-Ever Neocloud ETF (NCLD) and Photonics & Optics ETF (LYTE)",
+      "url": "/press-release/roundhill-investments-launches-first-ever-neocloud-etf-ncld-and-photonics-optics-etf"
+     }
+    ]
+   },
+   "ir": {
+    "kind": "NEWSROOM_HTML",
+    "url": "https://group.nebius.com/newsroom",
+    "file": "newsroom-nebius-20261013.html"
+   }
+  },
+  "CRWV": {
+   "since": "2026-08-11",
+   "sec": {
+    "cik": 1769628,
+    "rows": [
+     {
+      "form": "8-K",
+      "filingDate": "2026-09-22",
+      "items": "1.01,3.02,8.01,9.01",
+      "accessionNumber": "0001769628-26-000432",
+      "reportDate": "2026-09-17"
+     },
+     {
+      "form": "8-K",
+      "filingDate": "2026-09-17",
+      "items": "7.01,8.01,9.01",
+      "accessionNumber": "0001769628-26-000429",
+      "reportDate": "2026-09-17"
+     },
+     {
+      "form": "10-Q",
+      "filingDate": "2026-08-12",
+      "items": "",
+      "accessionNumber": "0001769628-26-000366",
+      "reportDate": "2026-06-30"
+     },
+     {
+      "form": "8-K",
+      "filingDate": "2026-08-11",
+      "items": "2.02,9.01",
+      "accessionNumber": "0001769628-26-000362",
+      "reportDate": "2026-08-11"
+     },
+     {
+      "form": "144",
+      "filingDate": "2026-08-10",
+      "items": "",
+      "accessionNumber": "0002124855-26-000008",
+      "reportDate": ""
+     }
+    ]
+   },
+   "wire": {
+    "symbol": "CRWV",
+    "rows": [
+     {
+      "created": "Oct 7, 2026",
+      "title": "CoreWeave Enters India, Expanding AI Cloud Platform With AdaniConneX",
+      "url": "/press-release/coreweave-enters-india-expanding-ai-cloud-platform-adaniconnex-2026-10-07"
+     },
+     {
+      "created": "Sep 30, 2026",
+      "title": "CoreWeave Forge Launches, Turning the AI Loop Production Run Into a Better Model and Agent",
+      "url": "/press-release/coreweave-forge-launches-turning-ai-loop-production-run-better-model-and-agent-2026"
+     },
+     {
+      "created": "Sep 30, 2026",
+      "title": "Ennoble Care Selects CoreWeave to Power AI Inference Across Its Home-Based Care Network",
+      "url": "/press-release/ennoble-care-selects-coreweave-power-ai-inference-across-its-home-based-care-network"
+     },
+     {
+      "created": "Sep 30, 2026",
+      "title": "CoreWeave Partner Network Accelerates the Path to AI Innovation",
+      "url": "/press-release/coreweave-partner-network-accelerates-path-ai-innovation-2026-09-30"
+     },
+     {
+      "created": "Sep 30, 2026",
+      "title": "CoreWeave to Offer NVIDIA Vera, the First CPU Built for AI Agents",
+      "url": "/press-release/coreweave-offer-nvidia-vera-first-cpu-built-ai-agents-2026-09-30"
+     },
+     {
+      "created": "Sep 30, 2026",
+      "title": "CoreWeave Delivers NVIDIA Vera Rubin NVL72 Performance at Production Scale, Starting With Cognition",
+      "url": "/press-release/coreweave-delivers-nvidia-vera-rubin-nvl72-performance-production-scale-starting"
+     },
+     {
+      "created": "Sep 23, 2026",
+      "title": "CoreWeave Becomes the Only Provider to Earn SemiAnalysis' Platinum ClusterMAX™ Rating Three Consecutive Times",
+      "url": "/press-release/coreweave-becomes-only-provider-earn-semianalysis-platinum-clustermaxtm-rating-three"
+     },
+     {
+      "created": "Sep 23, 2026",
+      "title": "Harell Data Selects CoreWeave to Power Its Secure Platform for AI Model Training",
+      "url": "/press-release/harell-data-selects-coreweave-power-its-secure-platform-ai-model-training-2026-09-23"
+     },
+     {
+      "created": "Sep 18, 2026",
+      "title": "CoreWeave Prices Upsized $3.7 Billion Convertible Senior Notes Offering",
+      "url": "/press-release/coreweave-prices-upsized-37-billion-convertible-senior-notes-offering-2026-09-18"
+     },
+     {
+      "created": "Sep 17, 2026",
+      "title": "CoreWeave Continues to Contract New Compute Capacity at Higher Prices",
+      "url": "/press-release/coreweave-continues-contract-new-compute-capacity-higher-prices-2026-09-17"
+     },
+     {
+      "created": "Sep 17, 2026",
+      "title": "CoreWeave Announces At-the-Market Offering Program",
+      "url": "/press-release/coreweave-announces-market-offering-program-2026-09-17"
+     },
+     {
+      "created": "Sep 17, 2026",
+      "title": "CoreWeave Announces Proposed $3.0 Billion Convertible Senior Notes Offering",
+      "url": "/press-release/coreweave-announces-proposed-30-billion-convertible-senior-notes-offering-2026-09-17"
+     },
+     {
+      "created": "Sep 16, 2026",
+      "title": "CoreWeave Brings Up Multi-Rack NVIDIA Vera Rubin NVL72 Cluster",
+      "url": "/press-release/coreweave-brings-multi-rack-nvidia-vera-rubin-nvl72-cluster-2026-09-16"
+     },
+     {
+      "created": "Sep 16, 2026",
+      "title": "Blockfusion Signs 15-Year Anchor Lease With CoreWeave at Niagara Falls AI Campus",
+      "url": "/press-release/blockfusion-signs-15-year-anchor-lease-coreweave-niagara-falls-ai-campus-2026-09-16"
+     },
+     {
+      "created": "Sep 11, 2026",
+      "title": "The $900 Billion Data Center Boom Is Just Getting Started",
+      "url": "/press-release/900-billion-data-center-boom-just-getting-started-2026-09-11"
+     },
+     {
+      "created": "Sep 10, 2026",
+      "title": "CoreWeave Launches Physical AI Field Engineering to Turn Proprietary Data Into Production AI",
+      "url": "/press-release/coreweave-launches-physical-ai-field-engineering-turn-proprietary-data-production-ai"
+     },
+     {
+      "created": "Sep 9, 2026",
+      "title": "Parallel Works and CoreWeave to Accelerate DARPA Biological Research with Fully Managed AI Cloud Environment",
+      "url": "/press-release/parallel-works-and-coreweave-accelerate-darpa-biological-research-fully-managed-ai"
+     },
+     {
+      "created": "Sep 4, 2026",
+      "title": "CoreWeave to Participate in the Goldman Sachs Communacopia + Technology Conference",
+      "url": "/press-release/coreweave-participate-goldman-sachs-communacopia-technology-conference-2026-09-04"
+     },
+     {
+      "created": "Aug 25, 2026",
+      "title": "Rescale Expands Cloud Ecosystem with CoreWeave for Engineering and AI Workloads",
+      "url": "/press-release/rescale-expands-cloud-ecosystem-coreweave-engineering-and-ai-workloads-2026-08-25"
+     },
+     {
+      "created": "Aug 20, 2026",
+      "title": "Hudson River Trading to Build Next-Gen Research Platform Powered by NVIDIA Vera Rubin NVL72 on CoreWeave Cloud",
+      "url": "/press-release/hudson-river-trading-build-next-gen-research-platform-powered-nvidia-vera-rubin-nvl72"
+     },
+     {
+      "created": "Aug 13, 2026",
+      "title": "CoreWeave AI Cloud Platform Powers MasterClass's AI Teaching Agents",
+      "url": "/press-release/coreweave-ai-cloud-platform-powers-masterclasss-ai-teaching-agents-2026-08-13"
+     },
+     {
+      "created": "Aug 11, 2026",
+      "title": "CoreWeave Reports Strong Second Quarter 2026 Results",
+      "url": "/press-release/coreweave-reports-strong-second-quarter-2026-results-2026-08-11"
+     },
+     {
+      "created": "Aug 10, 2026",
+      "title": "CoreWeave Closes $2.6 Billion Loan Facility, Expanding Financing Flexibility for AI Infrastructure",
+      "url": "/press-release/coreweave-closes-26-billion-loan-facility-expanding-financing-flexibility-ai"
+     }
+    ]
+   },
+   "ir": {
+    "kind": "Q4_PRESS_RELEASES",
+    "url": "https://investors.coreweave.com/feed/PressRelease.svc/GetPressReleaseList",
+    "rows": [
+     {
+      "PressReleaseDate": "10/07/2026 08:00:00",
+      "Headline": "CoreWeave Enters India, Expanding AI Cloud Platform With AdaniConneX",
+      "LinkToDetailPage": "/news/news-details/2026/CoreWeave-Enters-India-Expanding-AI-Cloud-Platform-With-AdaniConneX/default.aspx"
+     },
+     {
+      "PressReleaseDate": "09/30/2026 09:00:00",
+      "Headline": "CoreWeave Delivers NVIDIA Vera Rubin NVL72 Performance at Production Scale, Starting With Cognition",
+      "LinkToDetailPage": "/news/news-details/2026/CoreWeave-Delivers-NVIDIA-Vera-Rubin-NVL72-Performance-at-Production-Scale-Starting-With-Cognition/default.aspx"
+     },
+     {
+      "PressReleaseDate": "09/30/2026 09:00:00",
+      "Headline": "CoreWeave Partner Network Accelerates the Path to AI Innovation",
+      "LinkToDetailPage": "/news/news-details/2026/CoreWeave-Partner-Network-Accelerates-the-Path-to-AI-Innovation/default.aspx"
+     },
+     {
+      "PressReleaseDate": "09/30/2026 09:00:00",
+      "Headline": "CoreWeave to Offer NVIDIA Vera, the First CPU Built for AI Agents",
+      "LinkToDetailPage": "/news/news-details/2026/CoreWeave-to-Offer-NVIDIA-Vera-the-First-CPU-Built-for-AI-Agents/default.aspx"
+     },
+     {
+      "PressReleaseDate": "09/30/2026 09:00:00",
+      "Headline": "Ennoble Care Selects CoreWeave to Power AI Inference Across Its Home-Based Care Network",
+      "LinkToDetailPage": "/news/news-details/2026/Ennoble-Care-Selects-CoreWeave-to-Power-AI-Inference-Across-Its-Home-Based-Care-Network/default.aspx"
+     },
+     {
+      "PressReleaseDate": "09/30/2026 09:00:00",
+      "Headline": "CoreWeave Forge Launches, Turning the AI Loop Production Run Into a Better Model and Agent",
+      "LinkToDetailPage": "/news/news-details/2026/CoreWeave-Forge-Launches-Turning-the-AI-Loop-Production-Run-Into-a-Better-Model-and-Agent/default.aspx"
+     },
+     {
+      "PressReleaseDate": "09/23/2026 17:31:00",
+      "Headline": "CoreWeave Becomes the Only Provider to Earn SemiAnalysis' Platinum ClusterMAX™ Rating Three Consecutive Times",
+      "LinkToDetailPage": "/news/news-details/2026/CoreWeave-Becomes-the-Only-Provider-to-Earn-SemiAnalysis-Platinum-ClusterMAX-Rating-Three-Consecutive-Times/default.aspx"
+     },
+     {
+      "PressReleaseDate": "09/23/2026 08:00:00",
+      "Headline": "Harell Data Selects CoreWeave to Power Its Secure Platform for AI Model Training",
+      "LinkToDetailPage": "/news/news-details/2026/Harell-Data-Selects-CoreWeave-to-Power-Its-Secure-Platform-for-AI-Model-Training/default.aspx"
+     },
+     {
+      "PressReleaseDate": "09/18/2026 07:00:00",
+      "Headline": "CoreWeave Prices Upsized $3.7 Billion Convertible Senior Notes Offering",
+      "LinkToDetailPage": "/news/news-details/2026/CoreWeave-Prices-Upsized-3-7-Billion-Convertible-Senior-Notes-Offering/default.aspx"
+     },
+     {
+      "PressReleaseDate": "09/17/2026 07:30:00",
+      "Headline": "CoreWeave Continues to Contract New Compute Capacity at Higher Prices",
+      "LinkToDetailPage": "/news/news-details/2026/CoreWeave-Continues-to-Contract-New-Compute-Capacity-at-Higher-Prices/default.aspx"
+     },
+     {
+      "PressReleaseDate": "09/17/2026 07:29:00",
+      "Headline": "CoreWeave Announces At-the-Market Offering Program",
+      "LinkToDetailPage": "/news/news-details/2026/CoreWeave-Announces-At-the-Market-Offering-Program/default.aspx"
+     },
+     {
+      "PressReleaseDate": "09/17/2026 07:05:00",
+      "Headline": "CoreWeave Announces Proposed $3.0 Billion Convertible Senior Notes Offering",
+      "LinkToDetailPage": "/news/news-details/2026/CoreWeave-Announces-Proposed-3-0-Billion-Convertible-Senior-Notes-Offering-c9f5439b9/default.aspx"
+     },
+     {
+      "PressReleaseDate": "09/16/2026 08:00:00",
+      "Headline": "CoreWeave Brings Up Multi-Rack NVIDIA Vera Rubin NVL72 Cluster",
+      "LinkToDetailPage": "/news/news-details/2026/CoreWeave-Brings-Up-Multi-Rack-NVIDIA-Vera-Rubin-NVL72-Cluster/default.aspx"
+     },
+     {
+      "PressReleaseDate": "09/10/2026 08:00:00",
+      "Headline": "CoreWeave Launches Physical AI Field Engineering to Turn Proprietary Data Into Production AI",
+      "LinkToDetailPage": "/news/news-details/2026/CoreWeave-Launches-Physical-AI-Field-Engineering-to-Turn-Proprietary-Data-Into-Production-AI/default.aspx"
+     },
+     {
+      "PressReleaseDate": "09/09/2026 11:00:00",
+      "Headline": "Parallel Works and CoreWeave to Accelerate DARPA Biological Research with Fully Managed AI Cloud Environment",
+      "LinkToDetailPage": "/news/news-details/2026/Parallel-Works-and-CoreWeave-to-Accelerate-DARPA-Biological-Research-with-Fully-Managed-AI-Cloud-Environment/default.aspx"
+     },
+     {
+      "PressReleaseDate": "09/04/2026 13:02:00",
+      "Headline": "CoreWeave to Participate in the Goldman Sachs Communacopia + Technology Conference",
+      "LinkToDetailPage": "/news/news-details/2026/CoreWeave-to-Participate-in-the-Goldman-Sachs-Communacopia--Technology-Conference/default.aspx"
+     },
+     {
+      "PressReleaseDate": "08/25/2026 08:00:00",
+      "Headline": "Rescale Expands Cloud Ecosystem with CoreWeave for Engineering and AI Workloads",
+      "LinkToDetailPage": "/news/news-details/2026/Rescale-Expands-Cloud-Ecosystem-with-CoreWeave-for-Engineering-and-AI-Workloads/default.aspx"
+     },
+     {
+      "PressReleaseDate": "08/20/2026 08:00:00",
+      "Headline": "Hudson River Trading to Build Next-Gen Research Platform Powered by NVIDIA Vera Rubin NVL72 on CoreWeave Cloud",
+      "LinkToDetailPage": "/news/news-details/2026/Hudson-River-Trading-to-Build-Next-Gen-Research-Platform-Powered-by-NVIDIA-Vera-Rubin-NVL72-on-CoreWeave-Cloud/default.aspx"
+     },
+     {
+      "PressReleaseDate": "08/13/2026 08:00:00",
+      "Headline": "CoreWeave AI Cloud Platform Powers MasterClass's AI Teaching Agents",
+      "LinkToDetailPage": "/news/news-details/2026/CoreWeave-AI-Cloud-Platform-Powers-MasterClasss-AI-Teaching-Agents/default.aspx"
+     },
+     {
+      "PressReleaseDate": "08/11/2026 16:10:00",
+      "Headline": "CoreWeave Reports Strong Second Quarter 2026 Results",
+      "LinkToDetailPage": "/news/news-details/2026/CoreWeave-Reports-Strong-Second-Quarter-2026-Results/default.aspx"
+     }
+    ]
+   }
+  }
+ }
+}

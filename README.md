@@ -8,23 +8,23 @@ Privacy-first public-market research and evidence-grounded conditional recommend
 
 - `Top20`: 20 complete seven-field bilingual cards, four carousels of five. Historical 2Y annualized / 6M returns are **not future price forecasts**.
 - `Top20 文字`: all companies in full seven-field text. Candidate cards also offer **本公司七欄文字** and **證據詳情**, bound to the card's ticker, timestamp, snapshot and report SHA. Neither is a complete valuation report.
-- Order summaries retain disclosed amounts and recognition windows. RPO, backlog, prepayments, pipeline and revenue are not interchangeable or additive. A filing date is not a delivery date; undisclosed dates remain unknown.
-- Future 6/12/24-month price scenarios require sourced operating inputs, financing/dilution and a reproducible valuation bridge. Removed hard-coded bull/bear percentages are not restored as evidence. [Requirements and audit](docs/RESEARCH_EXECUTION_AUDIT.md).
-- Missing, stale, conflicting or LIMITED evidence stays explicit. Direct public facts and independent investment-thesis support are different evidence levels.
+- Order summaries keep disclosed amounts and recognition windows. RPO, backlog, prepayments, pipeline and revenue are not interchangeable or additive. A filing date is not a delivery date; undisclosed dates stay unknown.
+- Future 6/12/24-month price scenarios need sourced operating inputs, financing/dilution and a reproducible valuation bridge; removed hard-coded bull/bear percentages are not restored as evidence ([requirements and audit](docs/RESEARCH_EXECUTION_AUDIT.md)).
+- Missing, stale, conflicting or LIMITED evidence stays explicit. Direct public facts and independent thesis support are different evidence levels.
 
-## Current development vs released baseline
+## Development vs released baseline
 
-[STATUS](state/STATUS.md) is the only current defect/acceptance register. Historical disabled-task, no-deployment and all-zero-defect statements elsewhere must not override later recorded evidence. Prior operator-reported LINE acceptance and publication are dated observations, not new-session verification or authorization. Natural morning/evening schedule acceptance and a newly qualified whole-product release remain separate requirements.
+[STATUS](state/STATUS.md) is the only current defect/acceptance register; older disabled-task, no-deployment or all-zero-defect statements elsewhere never override later recorded evidence. Operator-reported LINE acceptance and publication are dated observations, not new-session verification or authorization. Natural morning/evening schedule acceptance and a newly qualified whole-product release are separate requirements.
 
-The local public collector supports opt-in Fed/SEC/ECB announcements and TWSE/TPEx equity EOD, plus TAIFEX/Alpaca local imports. Access, rights, provenance and LINE publication each require their own gates; daily/indicative data is not executable NBBO. See [source coverage](docs/PUBLIC_SOURCE_COVERAGE.md) and [options review](docs/OPTIONS_SOURCE_REVIEW.md).
+The local public collector supports opt-in Fed/SEC/ECB announcements and TWSE/TPEx equity EOD, plus TAIFEX/Alpaca local imports. Access, rights, provenance and LINE publication each need their own gate; daily/indicative data is not executable NBBO ([source coverage](docs/PUBLIC_SOURCE_COVERAGE.md), [options review](docs/OPTIONS_SOURCE_REVIEW.md)).
 
-The EXE candidate has manual model/THINK selection, not qualified automatic best-mode selection. A healthy Router or completed marker is not a research-quality result. [Model contract](docs/MODEL_RUNTIME_MIGRATION.md).
+The EXE candidate has manual model/THINK selection, not qualified automatic best-mode selection. A healthy Router or completed marker is not a research-quality result ([model contract](docs/MODEL_RUNTIME_MIGRATION.md)).
 
-## Released identity — historical 2026-09-06 baseline
+## Released identity (historical 2026-09-06 baseline)
 
-Published/installed source: `b5baae936dd3d422583decf9268910ed5783e4d5`; Windows CI [33992169731](https://github.com/always7895/investor-intelligence/actions/runs/33992169731). ZIP SHA256: `320dfb799b34d1220138f67780d2f3fd0004781fcdeaf93e8d543169386f2e69`.
+Published/installed source `b5baae936dd3d422583decf9268910ed5783e4d5`; Windows CI [33992169731](https://github.com/always7895/investor-intelligence/actions/runs/33992169731); ZIP SHA256 `320dfb799b34d1220138f67780d2f3fd0004781fcdeaf93e8d543169386f2e69`.
 
-The published archive was independently downloaded/verified; GitHub release-asset attestation passed `gh release verify-asset`. This is **not SLSA workflow build attestation** (unavailable for that workflow), newer-source qualification or today's live market evidence. For each ZIP, its own `HOTFIX-REFS.json`, external checksum and adjacent receipts identify the executable source and build run. Full historical observations: `git show 4ba2a606c9e459884e15354aa91798ec432df0ba:README.md` and [delivery history](state/FINAL_DELIVERY_REPORT_R75_FREE_RELAY.md).
+The archive was independently downloaded and verified, and its release-asset attestation passed `gh release verify-asset`. This is **not SLSA workflow build attestation** (unavailable for that workflow), newer-source qualification or today's live market evidence. Each ZIP's own `HOTFIX-REFS.json`, external checksum and adjacent receipts identify its executable source and build run. Full historical observations: `git show 4ba2a606c9e459884e15354aa91798ec432df0ba:README.md` and [delivery history](state/FINAL_DELIVERY_REPORT_R75_FREE_RELAY.md).
 
 ## Architecture and authority
 
@@ -35,16 +35,16 @@ workers.dev -> signed short-lived lease -> TryCloudflare -> Gateway
             -> existing localhost:8080 Router -> exact approved model
 ```
 
-Serenity is the primary public-method lens; Leopold Aschenbrenner is CONTEXT_ONLY, not an extra score or permanent AI-sector filter. Public reconstruction is not either author's official formula, private process or current endorsement. The Pi research skill is on-demand; Top20 and compact Q&A do not execute the full skill. [Execution audit](docs/RESEARCH_EXECUTION_AUDIT.md) distinguishes actual callers from file-presence checks.
+Serenity is the primary public-method lens; Leopold Aschenbrenner is CONTEXT_ONLY, not an extra score or permanent AI-sector filter. Public reconstruction is not either author's official formula, private process or current endorsement. The Pi research skill is on-demand; Top20 and compact Q&A do not execute it ([execution audit](docs/RESEARCH_EXECUTION_AUDIT.md)).
 
-Preserve scoring, claim independence, LINE/IBKR separation, freshness and provenance. Publication requires sealed digest-bound objects, readback and pointer-last commit, with replay rejection, durable failure journals, rollback and finalize. Certified `cloud/src/qa.ts` blob: `94184bc8937b413eb327b3d773926db00e22b3b9`. No second model/server or preset change.
+Preserve scoring, claim independence, LINE/IBKR separation, freshness and provenance. Publication needs sealed digest-bound objects, readback and pointer-last commit, with replay rejection, durable failure journals, rollback and finalize. Certified `cloud/src/qa.ts` blob: `94184bc8937b413eb327b3d773926db00e22b3b9`. No second model/server or preset change.
 
 ## Local runtime independence (development scope)
 
-The LOCAL v213 gateway can run 100% local AI (`$0` paid inference, no cloud fallback) from a single runtime config (`config/local-runtime-independence-v1.json`): a PRIMARY_REASONER (ninfer `Qwen3.8-27B`) with strict local-only flags (`LOCAL_AI_ONLY=true`, `PAID_INFERENCE_ALLOWED=false`, `CLOUD_AI_FALLBACK=false`); the Mapika DECISION_ROUTER is retired in the shipped config (`decision_router.retired: true`), so the decision gate uses source qualification alone and needs no decider approval. Pre-generation guards (source qualification, observed served-context, structured-JSON probe) fail closed to an explicit 503 with zero product generation; `min_decision_confidence` applies only to a non-retired router configuration. The natural-prose LINE reply is unchanged. This is a LOCAL-gateway capability, NOT a Worker change, and is NOT a whole-product release. Full roles, guards, evidence and PENDING release gates: [LOCAL_RUNTIME_INDEPENDENCE](docs/LOCAL_RUNTIME_INDEPENDENCE.md).
+The LOCAL v213 gateway can run 100% local AI (`$0` paid inference, no cloud fallback) from one runtime config (`config/local-runtime-independence-v1.json`) with strict local-only flags (`LOCAL_AI_ONLY=true`, `PAID_INFERENCE_ALLOWED=false`, `CLOUD_AI_FALLBACK=false`). The decider router is retired in the shipped config (`decision_router.retired: true`): the decision gate uses source qualification alone. Pre-generation guards (source qualification, observed served-context, structured-JSON probe) fail closed to an explicit 503 with no product generation; the natural-prose LINE reply is unchanged. This is a LOCAL-gateway capability, not a Worker change and not a whole-product release. Roles, guards, evidence and PENDING gates: [LOCAL_RUNTIME_INDEPENDENCE](docs/LOCAL_RUNTIME_INDEPENDENCE.md).
 
-## Install / develop
+## Install and develop
 
-Follow [release/install boundaries](docs/FINAL_RELEASE.md). Verify the ZIP's external SHA256 before extraction; do not overwrite the mixed workspace or replay an old activation. Runtime location is an operator/install decision, not inferred from an old shortcut. Source work is `_workspace/source`; retain `_workspace` / `_archive` outside runtime packaging and data discovery.
+Follow [release/install boundaries](docs/FINAL_RELEASE.md) and [locked dependencies and validation](docs/DEPENDENCY_LOCKING.md). Verify the ZIP's external SHA256 before extraction; do not overwrite the mixed workspace or replay an old activation. The runtime location is an operator/install decision, not inferred from an old shortcut. Source work is `_workspace/source`; keep `_workspace` / `_archive` out of runtime packaging and data discovery.
 
-Use [locked dependencies and validation](docs/DEPENDENCY_LOCKING.md). CI is `production_mutation_by_ci=false`. Installing code does not authorize deployment, publication, schedule changes or real LINE delivery. Never paste credentials, LINE identifiers, broker data or `.env` contents into logs/issues.
+CI is `production_mutation_by_ci=false`. Installing code does not authorize deployment, publication, schedule changes or real LINE delivery. Never paste credentials, LINE identifiers, broker data or `.env` contents into logs or issues.

@@ -61,6 +61,9 @@ export interface GlobalIdentityCatalog {
     by_name: Record<string, number[]>;
   };
   conflicts?: Record<string, unknown[]>;
+  /** Set only by the sealed-shard loader when the entries under the typed name were found by the leading words of company names
+   * (identity-shards.ts leadingToken); `total` counts the matching listings, which can exceed the candidates loaded. */
+  leading_token?: { total: number };
 }
 
 export type GlobalIdentityResolution =

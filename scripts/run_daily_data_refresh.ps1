@@ -80,6 +80,11 @@ function Invoke-DailyDataRefresh {
         Invoke-DailyStep 'zh_names' @('scripts\build_zh_names.py', '--if-older-than-hours', '168') | Out-Null
         Invoke-DailyStep 'identity_shards' @('scripts\build_identity_shards.py', '--if-older-than-hours', "$IfOlderThanHours") | Out-Null
         Invoke-DailyStep 'serenity_signals' @('scripts\serenity_signals.py', '--refresh', '--if-older-than-hours', '6') | Out-Null
+        # Analyst quarterly revenue consensus (Yahoo, unofficial; operator 2026-10-13) for the registry's NOT_DISCLOSED
+        # issuers; needs no SEC contact. The collector reads the registry's consensus_enabled gate itself and does
+        # nothing (exit 0, no provider request) while it is not true. The sealer binds the newest capture at or before
+        # its cutoff and refuses one older than 24 hours, so six hours keeps every build inside that bound.
+        Invoke-DailyStep 'revenue_consensus' @('scripts\revenue_consensus_quarterly.py', '--if-older-than-hours', '6') | Out-Null
         # The Work scriptblock has its own scope: its B2 result comes back via output; a $null output keeps the
         # DISABLED default.
         $b2Scope = & $WithSecContact {
@@ -187,7 +192,7 @@ else {
     $ErrorActionPreference = 'Continue'
     $env:PYTHONUTF8 = '1'
     $secContactState = [pscustomobject]@{ Issue = $null; ExceptionType = '' }
-    $ordinaryStepsLeft=[pscustomobject]@{Count=8} # enabled normal-entry independent steps, no duplicate legacy pair
+    $ordinaryStepsLeft=[pscustomobject]@{Count=9} # enabled normal-entry independent steps, no duplicate legacy pair
     $realRunStep = {
         param([string]$Name, [string[]]$Arguments)
         if ($GuidanceAutoUpdateEnabled) {

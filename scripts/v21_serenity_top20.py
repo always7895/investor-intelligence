@@ -2,10 +2,12 @@
 """Investor Intelligence v2.1.0 Serenity-first automatic public Top 20.
 
 Design boundaries:
-- Load and report the full 102-source authoritative catalog every run.
+- Load and report the full 103-source authoritative catalog every run.
 - Do not claim catalog membership is live activation.
 - v2.1 reviewed source overlay: SEC EDGAR + World Bank only.
 - yfinance is T3 local candidate discovery / public-market observation only.
+- The Nasdaq US stock screener is the T3 seed fallback when every Yahoo screen
+  gives no candidates; it is never issuer, listing or bottleneck authority.
 - Serenity-first seven-factor score is project-authored operationalization.
 - Leopold Aschenbrenner infrastructure context is a separate overlay and is
   never added to the Serenity score.
@@ -206,6 +208,12 @@ def cached(path: Path, hours: int) -> Any | None:
 PUBLIC_JSON_MAX_BYTES = 20_000_000
 SEC_REFERENCE_URL = 'https://www.sec.gov/files/company_tickers_exchange.json'
 WORLD_BANK_JSON_URL = US_REAL_GDP_URL
+YAHOO_SOURCE_ID = 'yahoo_finance_public_unofficial'
+NASDAQ_SCREENER_SOURCE_ID = 'nasdaq_us_stock_screener'
+NASDAQ_SCREENER_URL = 'https://api.nasdaq.com/api/screener/stocks?tableonly=true&download=true'
+NASDAQ_USER_AGENT = 'Mozilla/5.0 (InvestorIntelligence public observation)'
+# Seed-list market keys a Nasdaq slice may sort by (Yahoo-shaped, so validate_candidates and prelim read them unchanged).
+NASDAQ_SORT_FIELDS = {'marketCap': 'marketCap', 'volume': 'regularMarketVolume', 'pctchange': 'regularMarketChangePercent'}
 
 
 def public_json_cache_path(path: Path) -> Path:
@@ -602,8 +610,107 @@ def discovery_cache_path(policy: Mapping[str, Any]) -> Path:
     return CACHE_ROOT / f"candidate_seed.{digest}.json"
 
 
+def fallback_seed_screen(policy: Mapping[str, Any]) -> dict[str, Any] | None:
+    """The reviewed Nasdaq seed fallback, or None while its activation is off; a malformed spec fails the run."""
+    spec = policy.get("fallback_seed_screen")
+    slices = spec.get("slices") if isinstance(spec, dict) else None
+    if (not isinstance(spec, dict) or set(spec) != {"source_id", "slices"} or spec["source_id"] != NASDAQ_SCREENER_SOURCE_ID
+            or not isinstance(slices, list) or not slices
+            or any(not isinstance(row, dict) or set(row) != {"name", "sort_field", "weight"}
+                   or not isinstance(row["name"], str) or not re.fullmatch(r"nasdaq_[a-z0-9_]{1,60}", row["name"])
+                   or row["sort_field"] not in NASDAQ_SORT_FIELDS
+                   or type(row["weight"]) not in (int, float) or not math.isfinite(row["weight"]) or row["weight"] <= 0
+                   for row in slices)
+            or len({row["name"] for row in slices}) != len(slices)):
+        raise PipelineError("FALLBACK_SEED_SCREEN_POLICY_INVALID")
+    row = load_object(ACTIVATION_PATH).get("discovery_only_sources", {}).get(NASDAQ_SCREENER_SOURCE_ID)
+    if (not isinstance(row, dict) or row.get("runtime_enabled") not in {True, False}
+            or row.get("authoritative") is not False or row.get("raw_payload_redistribution") is not False):
+        raise PipelineError("The Nasdaq stock screener must remain T3 discovery-only")
+    return dict(spec) if row["runtime_enabled"] is True else None
+
+
+def fallback_cache_path(policy: Mapping[str, Any], spec: Mapping[str, Any]) -> Path:
+    # A Nasdaq-seeded list is bound to its own slices and the same seed bounds; it never overwrites the Yahoo-policy list.
+    basis = {"schema_version": 1, "fallback_seed_screen": dict(spec), "per_screener_count": policy["per_screener_count"],
+             "candidate_seed_limit": policy["candidate_seed_limit"]}
+    digest = hashlib.sha256(json.dumps(basis, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")).hexdigest()
+    return CACHE_ROOT / f"candidate_seed.{digest}.json"
+
+
+def _nasdaq_number(value: Any) -> float | None:
+    # The screener spells numbers for display ("$175.55", "49492610320.00", "-0.058%"); anything else counts as absent.
+    text = str(value if isinstance(value, (str, int, float)) and not isinstance(value, bool) else "").strip()
+    text = text.replace("$", "").replace(",", "").removesuffix("%")
+    return finite(text) if re.fullmatch(r"-?[0-9]{1,15}(?:\.[0-9]{1,8})?", text) else None
+
+
+def nasdaq_screener_rows(http: requests.Session) -> list[dict[str, Any]]:
+    """One bounded GET of the public Nasdaq US stock screener: no cookies, retries or redirects; JSON only."""
+    response = None
+    http.cookies.clear()
+    try:
+        response = http.get(NASDAQ_SCREENER_URL, headers={"User-Agent": NASDAQ_USER_AGENT, "Accept": "application/json"},
+                            timeout=(5, 30), allow_redirects=False, stream=True)
+        if response.status_code != 200:
+            raise PipelineError(f"NASDAQ_SCREENER_HTTP_{response.status_code}")
+        if response.history:
+            raise PipelineError("NASDAQ_SCREENER_REDIRECT_REJECTED")
+        if response.headers.get("Content-Type", "").split(";", 1)[0].strip().lower() != "application/json":
+            raise PipelineError("NASDAQ_SCREENER_CONTENT_TYPE_INVALID")
+        body = bytearray()
+        for chunk in response.iter_content(chunk_size=65536):
+            body.extend(chunk)
+            if len(body) > PUBLIC_JSON_MAX_BYTES:
+                raise PipelineError("NASDAQ_SCREENER_TOO_LARGE")
+        value = _strict_public_json(bytes(body))
+    finally:
+        http.cookies.clear()
+        if response is not None:
+            response.close()
+    data = value.get("data") if isinstance(value, dict) else None
+    rows = data.get("rows") if isinstance(data, dict) else None
+    if not isinstance(rows, list):
+        raise PipelineError("NASDAQ_SCREENER_SHAPE_INVALID")
+    return [row for row in rows if isinstance(row, dict)]
+
+
+def nasdaq_seed_candidates(policy: Mapping[str, Any], spec: Mapping[str, Any], rows: Sequence[Mapping[str, Any]]) -> dict[str, dict[str, Any]]:
+    # Rows already below the policy price, size or volume floors cannot fill a slice; day volume stands in for average volume,
+    # as validate_candidates reads it when no average is present. Seeds stay T3: SEC identity and evidence decide later.
+    eligible = []
+    for raw in rows:
+        symbol = ticker(str(raw.get("symbol") or "").strip().replace("/", "-"))
+        price, cap, volume = (_nasdaq_number(raw.get(name)) for name in ("lastsale", "marketCap", "volume"))
+        if (not symbol or price is None or cap is None or volume is None or price < float(policy["minimum_price"])
+                or cap < float(policy["minimum_market_cap"]) or volume < float(policy["minimum_average_volume"])):
+            continue
+        eligible.append({"symbol": symbol, "longName": str(raw.get("name") or "").strip(),
+                         "sector": str(raw.get("sector") or "").strip(), "industry": str(raw.get("industry") or "").strip(),
+                         "regularMarketPrice": price, "marketCap": cap, "regularMarketVolume": volume,
+                         "regularMarketChangePercent": _nasdaq_number(raw.get("pctchange"))})
+    merged: dict[str, dict[str, Any]] = {}
+    for row in spec["slices"]:
+        field = NASDAQ_SORT_FIELDS[row["sort_field"]]
+        ranked = sorted((item for item in eligible if item[field] is not None), key=lambda item: (-item[field], item["symbol"]))
+        for market in ranked[: int(policy["per_screener_count"])]:
+            entry = merged.setdefault(market["symbol"], {"ticker": market["symbol"], "screen_weight": 0.0, "screeners": [],
+                                                         "market": dict(market), "seed_source": NASDAQ_SCREENER_SOURCE_ID})
+            entry["screen_weight"] += float(row["weight"])
+            entry["screeners"].append(row["name"])
+    return merged
+
+
+def _written(path: Path) -> datetime | None:
+    try:
+        return datetime.fromtimestamp(path.stat().st_mtime, timezone.utc)
+    except OSError:
+        return None
+
+
 def discover_candidates(policy: Mapping[str, Any]) -> list[dict[str, Any]]:
     cache_path = discovery_cache_path(policy)
+    fallback = fallback_seed_screen(policy)
     try:
         import yfinance as yf
     except ImportError as exc:
@@ -622,6 +729,10 @@ def discover_candidates(policy: Mapping[str, Any]) -> list[dict[str, Any]]:
         except Exception as exc:
             failures.append(f"{name}:{type(exc).__name__}")
             continue
+        if not quotes:
+            # An answered screen with no rows (V15: every Yahoo screen since 2026-10-16 evening) is named, not silent.
+            failures.append(f"{name}:EMPTY")
+            continue
         for raw in quotes:
             if not isinstance(raw, dict):
                 continue
@@ -637,9 +748,41 @@ def discover_candidates(policy: Mapping[str, Any]) -> list[dict[str, Any]]:
             if len(raw) > len(entry["market"]):
                 entry["market"] = dict(raw)
 
+    write_path = cache_path
+    if not merged and fallback is None:
+        failures.append(f"{NASDAQ_SCREENER_SOURCE_ID}:DISABLED")
+    elif not merged:
+        # Second T3 seed source (V15): the Nasdaq US stock screener, tried only when every Yahoo screen gave nothing.
+        try:
+            with session() as http:
+                rows = nasdaq_screener_rows(http)
+            merged = nasdaq_seed_candidates(policy, fallback, rows)
+        except Exception as exc:
+            failures.append(f"{NASDAQ_SCREENER_SOURCE_ID}:{exc.args[0] if isinstance(exc, PipelineError) and exc.args else type(exc).__name__}")
+        else:
+            if merged:
+                LOGGER.warning("T3 Yahoo screens gave no candidates (%s); the Nasdaq US stock screener seeded %s",
+                               ", ".join(failures), len(merged))
+                write_path = fallback_cache_path(policy, fallback)
+            else:
+                failures.append(f"{NASDAQ_SCREENER_SOURCE_ID}:EMPTY")
+
     if not merged:
-        value = cached(cache_path, int(policy["candidate_cache_hours"]))
-        if isinstance(value, list) and value:
+        # candidate_cache_hours bridges an outage of both seed sources with the newest bound seed list (the screens only
+        # seed discovery; scores and record dates come from first-party evidence). Past that bound the run fails.
+        hours = int(policy["candidate_cache_hours"])
+        paths = [cache_path] + ([fallback_cache_path(policy, fallback)] if fallback is not None else [])
+        bridges = []
+        for path in paths:
+            value = cached(path, hours)
+            if isinstance(value, list) and value:
+                bridges.append((_written(path) or datetime.min.replace(tzinfo=timezone.utc), path, value))
+        if bridges:
+            written, path, value = max(bridges, key=lambda item: item[0])
+            age = (f"written {written.isoformat(timespec='seconds')}, {(utc_now() - written).total_seconds() / 3600:.1f} h old"
+                   if written.year > 1 else "write time unreadable")
+            LOGGER.warning("T3 seed sources gave no candidates (%s); reusing the %s seed list (%s, bound %s h)",
+                           ", ".join(failures), "Yahoo" if path == cache_path else "Nasdaq", age, hours)
             return [item for item in value if isinstance(item, dict)]
         raise PipelineError("All T3 candidate screeners failed: " + ", ".join(failures))
 
@@ -648,7 +791,7 @@ def discover_candidates(policy: Mapping[str, Any]) -> list[dict[str, Any]]:
         key=lambda item: (-float(item["screen_weight"]), str(item["ticker"])),
     )
     ranked = ranked[: int(policy["candidate_seed_limit"])]
-    atomic_json(cache_path, ranked)
+    atomic_json(write_path, ranked)
     return ranked
 
 
@@ -1058,7 +1201,7 @@ def score_candidate(candidate: Mapping[str, Any], official_metrics: Mapping[str,
         "aschenbrenner_overlay": overlay,
         "evidence": [asdict(x) for x in evidence],
         "evidence_count": len(evidence),
-        "source_count": len({x.source_id for x in evidence} | {"yahoo_finance_public_unofficial"}),
+        "source_count": len({x.source_id for x in evidence} | {str(candidate.get("seed_source") or YAHOO_SOURCE_ID)}),
         "scoring_version": "serenity-first-v2.1.0",
         "line_public_eligible": True,
         "provider_scope": "public_only",
@@ -1142,7 +1285,7 @@ def build_report(records: Sequence[Mapping[str, Any]], plan: Mapping[str, Any], 
         "",
         "> 此排名為專案自訂 Serenity-first operationalization，不是 Serenity 本人公布公式、背書、個人化投資建議或報酬保證。Aschenbrenner A/B/C 為獨立 overlay，不加入 Serenity 分數。",
         "",
-        f"102-source planner：catalog={plan['catalog_count']}；reviewed live overlay={','.join(plan['selected_reviewed_sources'])}；T3 discovery={','.join(plan['discovery_only_sources'])}；deferred={plan['deferred_count']}。",
+        f"{plan['catalog_count']}-source planner：catalog={plan['catalog_count']}；reviewed live overlay={','.join(plan['selected_reviewed_sources'])}；T3 discovery={','.join(plan['discovery_only_sources'])}；deferred={plan['deferred_count']}。",
         f"World Bank macro context：{macro.get('status', 'DEGRADED')}",
         "",
         "## Top 20",
@@ -1164,7 +1307,7 @@ def build_report(records: Sequence[Mapping[str, Any]], plan: Mapping[str, Any], 
             "## Public-only boundary",
             "",
             "- 不讀取持股、成本、損益、券商帳戶、私人訊息或 owner watchlist。",
-            "- yfinance 僅為 T3 候選發現／市場觀察，不算 authoritative evidence。",
+            "- yfinance 僅為 T3 候選發現／市場觀察，不算 authoritative evidence；Yahoo 篩選全無候選時由 Nasdaq 美股篩選器補位，同屬 T3。",
             "- SEC XBRL 是本輪公司層級主要 evidence；World Bank 提供官方宏觀 context。",
         ]
     )
@@ -1307,7 +1450,7 @@ def run(*, synthetic: bool, output_root: Path | None = None) -> dict[str, Any]:
 def self_test() -> None:
     with tempfile.TemporaryDirectory(prefix='ii-v21-self-test-') as temporary:
         output = run(synthetic=True, output_root=Path(temporary))
-        if output["top20_count"] != 20 or output["catalog_count"] != 102:
+        if output["top20_count"] != 20 or output["catalog_count"] != 103:
             raise PipelineError("Synthetic acceptance failed")
         top = json.loads(Path(output['top20_path']).read_text(encoding="utf-8"))
         if any(item["aschenbrenner_overlay"]["included_in_serenity_score"] for item in top):

@@ -675,6 +675,7 @@ class OrderForecastV3Tests(unittest.TestCase):
             "000660.KS": {
                 "symbol": "000660.KS",
                 "captured_at": "2026-09-28T08:00:00Z",
+                "source_url": "https://query2.finance.yahoo.com/v10/finance/quoteSummary/000660.KS?modules=earningsTrend,financialData",
                 "currency": "KRW",
                 "quarters": [
                     {"period": "0q", "end": "2026-09-30", "revenue": 15e12, "analysts": 25},
@@ -688,7 +689,9 @@ class OrderForecastV3Tests(unittest.TestCase):
 
         self.assertEqual(v3["status"], "AVAILABLE")
         self.assertEqual(v3["revenue_basis"], "CONSENSUS")
-        self.assertEqual(v3["m6"]["basis_label"], "非公司揭露、非訂單：分析師季度營收共識＋模型")
+        # Operator 2026-10-13: labelled analyst consensus, not company guidance, unofficial (provider, the smaller analyst
+        # count of the two quarters used, and the capture date).
+        self.assertEqual(v3["m6"]["basis_label"], "分析師共識（非公司財測、非官方）｜Yahoo Finance，24 位分析師，截至 2026-09-28")
         # amount6 = 15e12 + 16e12 = 31e12
         self.assertAlmostEqual(v3["m6"]["amount"], 31e12)
         # amount12 = 15 + 16 + 16 + 16 = 63e12

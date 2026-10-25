@@ -5,6 +5,7 @@
  * (older than the report bound, report-age.ts) gives null and the caller keeps the seven-field Top20.
  */
 import { forecastCard, forecastLines, forecastText, parseOrderForecast, parseOrderForecastV3, parseOrderForecastV3Machine, type OrderForecast } from "./order-forecast";
+import { historyViewOf, type HistoryView } from "./revenue-history-model";
 import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
 import type { PublicSnapshotView } from "./public-snapshot";
 import { v213ReportAgeFresh } from "./report-age";
@@ -646,13 +647,42 @@ export function outlookTiles(doc: BottleneckV3, entry: BottleneckEntry): [string
   const orders: [string, string, string] = !o ? ["現有訂單", "未揭露", secFiler ? "未申報 RPO" : "公司未公布"]
     : o.kind === "NOT_DISCLOSED" ? ["現有訂單", "未揭露", "公司未公布"]
     : ["現有訂單", money(o.amount, o.currency), `${o.kind === "RPO" ? "RPO" : "在手"} ${day(o.as_of)}${o.yoy === null || o.yoy === undefined ? "" : ` 年增${pct(o.yoy, 0)}`}`];
-  return [orders];
+  return [orders, ...proxyTile(doc, entry)];
+}
+
+/** V13 Phase A: while the current-orders tile says 未揭露 (no orders at all, or the company has not published any), a second tile
+ * shows the reported revenue momentum - the sealed latest-quarter YoY and its acceleration - labelled as a proxy and never as
+ * orders. It never replaces or edits the 現有訂單 tile; it fails closed to 未揭露 on a missing or faulty YoY or an old quarter. */
+const PROXY_LABEL = "營收動能（代理）";
+export const PROXY_FOOTNOTE = "營收動能是已報營收的年增與加速度，只是需求的間接參考；不是訂單、不是在手訂單、不是預測。";
+const PROXY_MAX_AGE_DAYS = 200;
+const PROXY_YOY_FAULT = 3;
+export function proxyTile(doc: BottleneckV3, entry: BottleneckEntry): [string, string, string][] {
+  const o = entry.outlook?.orders;
+  if (o && o.kind !== "NOT_DISCLOSED") return [];
+  const fund = entry.fundamentals;
+  const reportDay = doc.generated_at.slice(0, 10);
+  const age = fund && /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(fund.quarter_end ?? "")
+    ? Math.round((Date.parse(`${reportDay}T00:00:00Z`) - Date.parse(`${fund.quarter_end}T00:00:00Z`)) / 86_400_000) : null;
+  if (!fund || !num(fund.revenue_yoy) || age === null || age < 0 || age > PROXY_MAX_AGE_DAYS || Math.abs(fund.revenue_yoy) > PROXY_YOY_FAULT) {
+    return [[PROXY_LABEL, "未揭露", "非訂單"]];
+  }
+  const accel = accelOf(fund);
+  const accelText = accel === null ? "" : `｜加速 ${accel >= 0 ? "+" : "-"}${Math.abs(accel * 100).toFixed(0)}pp`;
+  return [[PROXY_LABEL, `年增 ${pct(fund.revenue_yoy, 0)}`, `非訂單${accelText}｜季末 ${fund.quarter_end}`]];
+}
+
+/** The proxy in the detail view (text lines): the tile, then its footnote. The compact flex card keeps only the tile (its
+ * sub-line says 非訂單) because twenty full cards sit at the 46 KB carousel limit; the lean card and the detail carry the footnote. */
+function proxyDetailLines(doc: BottleneckV3, entry: BottleneckEntry): string[] {
+  const tiles = proxyTile(doc, entry);
+  return tiles.length === 0 ? [] : [...tiles.map(([label, value, sub]) => `${label}：${value}（${sub}）`), PROXY_FOOTNOTE];
 }
 
 /** The future order block of every Top20 card, line by line ([text, heading]): 半年 and 1年 realization rows with their
  * windows, the conditional price rows, the data dates and later disclosures (Astra contract ORDERS-V2-01). */
 export function outlookForecast(doc: BottleneckV3, entry: BottleneckEntry): [string, boolean][] {
-  return forecastCard(forecastOf(doc, entry), money);
+  return forecastCard(forecastOf(doc, entry), money, historyOf(doc, entry));
 }
 
 /** Reader order (Astra contract ORDERS-V3-01 section 6):
@@ -676,6 +706,11 @@ function parseOutlookForecast(outlook: Outlook | null | undefined, reportDay: st
   return parseOrderForecast(outlook?.order_forecast, reportDay, symbol, generatedAt);
 }
 
+/** V13: the history-model view of an entry (null unless its revenue state passed the fail-closed eligibility list). */
+function historyOf(doc: BottleneckV3, entry: BottleneckEntry): HistoryView | null {
+  return historyViewOf(forecastOf(doc, entry), entry.fundamentals, doc.generated_at.slice(0, 10));
+}
+
 /** An entry's validated forecast (a parsed document always has one; a hand-built entry reads as unavailable). */
 function forecastOf(doc: BottleneckV3, entry: BottleneckEntry): OrderForecast {
   return entry.forecast ?? parseOutlookForecast(entry.outlook, doc.generated_at.slice(0, 10), entry.symbol, doc.generated_at);
@@ -689,20 +724,20 @@ function orderSection(doc: BottleneckV3, entry: BottleneckEntry, compact = true)
   const c = outlook?.consensus;
   const forecast = forecastOf(doc, entry);
   const footnoteText = forecast.version === 3
-    ? "條件情境：營收依上述推估實現，P/S與股數不變；以最新已報四季為基準，非目標價、非今日起報酬。預估推算不代表公司保證或實際回報。"
+    ? `條件情境：營收依上述推估實現，P/S與股數不變；以最新已報四季為基準，非目標價、非今日起報酬。預估推算不代表公司保證或實際回報。${forecast.revenueBasis === "CONSENSUS" ? "分析師共識為第三方分析師估計平均，非公司財測、非官方，可能與公司實際營收不同。" : ""}`
     : "預計認列＝公司揭露將於半年／1年內認列的已簽約訂單（RPO×揭露比例，自量測日起，非今日起）；公司未揭露時顯示未揭露，不以外推代替。股價情境＝訂單如期實現時的條件變動，非目標價、非投資建議。分析師目標價只在「瓶頸詳情」作參考。";
   if (compact) {
     return section("訂單與成長情境", [
       uiBox(outlookTiles(doc, entry).map(([label, value, sub]) => statTile(label, value, undefined, sub)), { layout: "horizontal", spacing: "sm" }),
       ...outlookForecast(doc, entry).map(([text, heading]) => uiText(text, "xs", T.ink, heading ? { weight: "bold" } : {})),
       footnote(footnoteText),
-
     ], "key");
   }
   return section("訂單與成長情境", [
     uiText(currentOrders(outlook, filer || entry.fundamentals?.source === "SEC EDGAR XBRL companyfacts"), "xs", T.ink),
     ...orderFloor(doc, entry),
-    ...forecastLines(forecastOf(doc, entry), money).map(line => uiText(line, "xs", T.ink, { weight: "bold" })),
+    ...proxyDetailLines(doc, entry).map(line => uiText(line, "xs", T.ink)),
+    ...forecastLines(forecastOf(doc, entry), money, historyOf(doc, entry)).map(line => uiText(line, "xs", T.ink, { weight: "bold" })),
     ...futureOutlook(outlook).map(line => uiText(line, "xs", T.ink)),
     ...scenarioBlocks(outlook, compact),
     footnote(c ? `${SCENARIO_NOTE}共識：${sourceZh(c.source)}，${day(c.asof)}` : SCENARIO_NOTE),
@@ -755,7 +790,8 @@ function companyBubble(doc: BottleneckV3, entry: BottleneckEntry, lean = false) 
         ...(entry.market.cross_check ? [footnote(exchangeCheck(entry.market.cross_check))] : []),
       ]),
       lean ? section("訂單與成長情境", [uiText([...outlookTiles(doc, entry).map(([label, value, sub]) => `${label} ${value}（${sub}）`),
-        ...outlookForecast(doc, entry).map(([text]) => text)].join("\n"), "xs", T.ink)], "key")
+        ...outlookForecast(doc, entry).map(([text]) => text),
+        ...(proxyTile(doc, entry).length > 0 ? [PROXY_FOOTNOTE] : [])].join("\n"), "xs", T.ink)], "key")
         : orderSection(doc, entry),
       ...(entry.name_zh ? [footnote(`中文名來源：${ZH_SOURCE_LABEL[entry.name_zh_source ?? ""] ?? "已核對"}`)] : []),
     ], { paddingAll: "lg", spacing: "md" }),
@@ -858,7 +894,8 @@ function detailText(doc: BottleneckV3, entry: BottleneckEntry): string {
     ...(entry.market.cross_check ? [exchangeCheck(entry.market.cross_check)] : []),
     currentOrders(outlook, ordersOf(doc, entry.symbol).filer || fund?.source === "SEC EDGAR XBRL companyfacts")
       + (outlook?.orders && outlook.orders.kind !== "NOT_DISCLOSED" ? `\n來源：${outlook.orders.source_url}` : ""),
-    ...forecastLines(forecastOf(doc, entry), money),
+    ...proxyDetailLines(doc, entry),
+    ...forecastLines(forecastOf(doc, entry), money, historyOf(doc, entry)),
     ...futureOutlook(outlook),
     scenarios ? `分析師共識情境（非訂單）：${scenarios}${analysts < MIN_ANALYSTS ? `（僅 ${analysts} 位分析師，參考性低）` : ""}${outlook?.consensus ? `\n來源：${outlook.consensus.source_url}` : ""}` : "分析師共識情境（非訂單）：無分析師共識可推算。",
     `${SCENARIO_NOTE}不自動下單。`,

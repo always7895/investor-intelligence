@@ -135,6 +135,19 @@ provider format is invented and no adapter or rights decision is added here.
 
 The public-EOD options (keep local-only versus a date-only reference surface) are laid out for the operator in [PUBLIC_EOD_OPTIONS_SCOPE_DECISION](PUBLIC_EOD_OPTIONS_SCOPE_DECISION.md); it is design only, grants no rights or admission and changes no code or catalog.
 
+## Nasdaq Nordic contract terms (V13, Stockholm listings such as SIVE.ST)
+
+The exchange chain read by `scripts/build_market_quotes_options.py` (`NORDIC_SOURCE`) sends `contractSize` "100" and `currency` "" on
+every option row (retained 2026-10-17: 634 rows; evidence and hashes in the workspace receipt folder `v13-evidence-a43bef58`). Nasdaq's
+contract specification for stock options on Swedish shares states "Contract Size One hundred shares per contract" and that the
+premium "Shall be expressed in Swedish Kronor or Euro depending on the underlying shares". Rule:
+
+- A blank contract currency (exactly "" or an absent key) follows the underlying, and only after the spot quote and the listing
+  search both confirm SEK; it is never typed SEK on its own (`_typed_currency("")` stays `UNKNOWN`).
+- `null`, whitespace, lowercase, padded, numeric, boolean or container values stay `UNKNOWN` (「合約單位或幣別來源未確認」); an explicit
+  other currency stays a conflict; a size other than "100" stays nonstandard; quotes must still be real two-sided bid/ask.
+- Re-calculated (adjusted) contracts are not modelled: a size other than "100" is refused rather than rescaled.
+
 ## Independent delivery paths to investigate
 
 | Source | Evidence | Appropriate scope / unresolved limitation |

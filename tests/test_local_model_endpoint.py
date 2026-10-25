@@ -335,5 +335,21 @@ class SelectedIntentDispatchTests(unittest.TestCase):
         listeners.assert_not_called()
 
 
+class EmbeddedInterpreterImportTests(unittest.TestCase):
+    """The relay watchdog runs this resolver on the portable embedded interpreter, whose python312._pth leaves the script
+    directory off sys.path (rollout v10, 2026-10-13: every run ended BINDING_HELPER_UNAVAILABLE). `python -I` implies -P and
+    reproduces that; no network, no model, the module is only loaded and its shared-helper seam called."""
+
+    def test_shared_helper_imports_without_the_script_directory_on_sys_path(self):
+        import subprocess
+        script = ROOT / "scripts" / "local_model_endpoint.py"
+        code = ("import runpy, sys; assert sys.flags.safe_path; "
+                "ns = runpy.run_path(sys.argv[1], run_name='embedded_probe'); print(ns['_shared']().__name__)")
+        done = subprocess.run([sys.executable, "-I", "-c", code, str(script)], capture_output=True, text=True, timeout=120,
+                              cwd=str(ROOT.parent))
+        self.assertEqual(done.returncode, 0, done.stderr[-600:])
+        self.assertEqual(done.stdout.strip().splitlines()[-1], "v213_model_profile")
+
+
 if __name__ == "__main__":
     unittest.main()

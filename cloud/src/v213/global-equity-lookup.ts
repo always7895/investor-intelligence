@@ -102,6 +102,9 @@ const CANDIDATE_ROUTE_REASON: Record<Exclude<CandidateRouteStatus, "CERTIFIED">,
 };
 const CANDIDATE_ROUTE_FOOTNOTE = "按鈕只送出本次快照驗證過的市場代號；下次查詢依當時快照重新解析，不保證結果相同，也不代表報價、期權資格或可交易。";
 const CANDIDATE_DISPLAY_ONLY_NOTE = "候選僅供辨識：未經查詢路徑驗證，不提供候選按鈕。";
+/** Leading-word name match (the typed text is the start of one or several company names, not a full name or a symbol). */
+const LEADING_TOKEN_UNIQUE_NOTE = "名稱比對：輸入文字是封存名錄中唯一一家公司名稱的開頭字詞，並非完整名稱；請核對下方公司名稱。";
+const LEADING_TOKEN_MANY_NOTE = "名稱比對：輸入文字是多家公司名稱的開頭字詞，下列僅為候選；請輸入完整公司名稱或含市場後綴的代號。";
 
 /** The candidate's one exact suffixed query, or null: no existing suffix for its venue, or text the parser would not read back
  * as exactly this symbol and suffix. Only the first matching scheme is tried, so aliases (.SS/.SH) never duplicate. */
@@ -171,6 +174,10 @@ export interface EquityLookupResult {
   resolution?: GlobalIdentityResolution;
   /** ISEL1: per-candidate query routes, set by the handler for a NEEDS_MARKET_SELECTION result (see trustedCandidateRoutes). */
   candidateRoutes?: readonly CandidateQueryRoute[];
+  /** Set ONLY by handleGlobalEquityLookup when the typed name was matched by the leading word(s) of company names (sealed token
+   * shards), never by an exact name or symbol: `total` is the number of matching listings. It adds a notice and, for a candidate
+   * list, the honest shown/total count; the resolution itself is the resolver's. */
+  leadingTokenMatch?: { total: number };
   /** ABS1: internal presentation context, set ONLY by handleGlobalEquityLookup for its UNAVAILABLE result: whether that handler had a
    * runtime-admitted query catalog (CATALOG_PRESENT; not complete coverage) or none (CATALOG_UNAVAILABLE). It is not origin or
    * authentication proof and grants no admission; results without it (direct or legacy callers) are shown unchanged. */
@@ -420,6 +427,9 @@ export function buildGlobalEquityLookupMessages(
     statusSub = "MARKET_AMBIGUOUS：本代號在多個市場掛牌，請使用精確代號後綴查詢。";
   }
 
+  if (result.leadingTokenMatch && resolution?.status === "RESOLVED") statusSub = `${statusSub}\n${LEADING_TOKEN_UNIQUE_NOTE}`;
+  else if (result.leadingTokenMatch && resolution?.status === "NEEDS_MARKET_SELECTION") statusSub = `${statusSub}\n${LEADING_TOKEN_MANY_NOTE}`;
+
   const nameZh = (result.nameUnverified || !identity.canonicalNameZh)
     ? (result.admittedInSealedSnapshot && !identity.isAmbiguous
       ? (secFallback ? SEC_FALLBACK_NAME_ZH : "無公認中文名（交易所、公司官方與中文維基百科皆無，不自行翻譯）")
@@ -444,7 +454,8 @@ export function buildGlobalEquityLookupMessages(
   // ISEL1 display bound: the same deterministic prefix of complete candidate lines for text and Flex. The unit budget is the room
   // left under CANDIDATE_TEXT_MAX after the actual fixed lines, the list title, a worst-case omission note, the note and their four
   // separators, capped at CANDIDATE_DISPLAY_MAX_UNITS; the prefix is measured on the bulleted text lines (longer than the Flex lines).
-  const candidateTotal = allCandidateLines.length;
+  // A leading-word match can have more listings than the candidates loaded; the omission notice then states shown/total of all.
+  const candidateTotal = shownCandidates ? Math.max(allCandidateLines.length, result.leadingTokenMatch?.total ?? 0) : allCandidateLines.length;
   const candidateBudget = shownCandidates
     ? Math.min(CANDIDATE_DISPLAY_MAX_UNITS, CANDIDATE_TEXT_MAX - [...headLines, ...tailLines].join("\n").length
       - CANDIDATE_LIST_TITLE.length - candidateOmissionNote(candidateTotal, candidateTotal).length - candidateNote.length - 4)
@@ -593,7 +604,7 @@ export async function handleGlobalEquityLookup(
 
   // Sealed identity shards (official listing directories, digest-verified lazily from this pinned view) are the
   // admitted identity authority; the legacy single-catalog slot stays deferred.
-  const shardCatalog = await loadIdentityCatalogForQuery(view, query.normalized);
+  const shardCatalog = await loadIdentityCatalogForQuery(view, query.normalized, { leadingToken: true });
   let effectiveCatalog = shardCatalog;
   if (!effectiveCatalog) {
     const candidateCatalog = await loadGlobalIdentityCatalog(view);
@@ -610,6 +621,8 @@ export async function handleGlobalEquityLookup(
   }
 
   const resolution = resolveGlobalIdentity(effectiveCatalog, query.normalized);
+  // The sealed-shard loader marks a catalog whose typed-name entries came from a leading-word match (never from a symbol or an exact name).
+  const leadingTokenMatch = effectiveCatalog?.leading_token ? { total: effectiveCatalog.leading_token.total } : undefined;
 
   if (resolution.status === "RESOLVED") {
     const rec = resolution.record;
@@ -642,6 +655,7 @@ export async function handleGlobalEquityLookup(
         : quote ? "公開研究資訊，非投資建議；身分來自官方上市目錄，報價為延遲觀察值，不下單。"
         : "公開研究資訊，非投資建議；官方上市身分已核對，本標的暫無延遲報價觀察。",
       resolution,
+      ...(leadingTokenMatch ? { leadingTokenMatch } : {}),
     };
     return buildGlobalEquityLookupMessages(result, isText ? "text" : "flex");
   }
@@ -673,6 +687,7 @@ export async function handleGlobalEquityLookup(
       disclaimer: "公開研究資訊，非投資建議；請選擇精確市場或輸入含後綴代號。",
       resolution,
       candidateRoutes,
+      ...(leadingTokenMatch ? { leadingTokenMatch } : {}),
     };
     return buildGlobalEquityLookupMessages(result, isText ? "text" : "flex");
   }
