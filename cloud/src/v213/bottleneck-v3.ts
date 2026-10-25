@@ -891,10 +891,13 @@ function companyBubble(doc: BottleneckV3, entry: BottleneckEntry, lean = false) 
   const scenarioRows = forecastRowsAfter(forecastLines, scenarioHeading)
     .filter(row => !row.startsWith("條件情境："))
     .map(cleanForecastRow).filter(Boolean);
+  // An RPO-based figure keeps its own meaning and coverage qualifier on this card.
+  const recognitionCaveat = forecastLines.find(([text]) => text.startsWith("RPO 為剩餘履約義務"))?.[0]
+    ?? (forecast.version === 3 ? "營收推估非保證" : "預計認列非保證");
   const closingDisclosure = [
     condition,
     ...(forecast.version === 2 ? ["認列依公司披露時程"] : []),
-    forecast.version === 3 ? "營收推估非保證" : "預計認列非保證",
+    recognitionCaveat,
     "非今日起",
     "非目標價、非投資建議、不自動下單",
   ].join("；");

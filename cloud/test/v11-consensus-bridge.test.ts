@@ -367,6 +367,8 @@ describe("consensus post-quarter-end bridge through the real LINE callers", () =
     expect(detail).not.toContain("共識時效警示");
     expect(detail).not.toContain(LABEL_PREFIX);
     expect(visibleText(bubblesFromReply(detail)).replace(/\s+/g, " ")).not.toContain(TEXT);
+    const other = await lineReply(env, "瓶頸詳情 ACME"); // the other issuer keeps its own valid state
+    expect(noWhitespace(visibleText(bubblesFromReply(other)))).toContain(noWhitespace(TEXT));
   });
 
   it("shows no figure when the warning sits beside a capture taken before the quarter ended", async () => {

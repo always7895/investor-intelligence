@@ -499,16 +499,19 @@ function headerBox(ctx: CardContext, eyebrow: string) {
 }
 
 const LIMIT_SELECTION_RULE = "價差25%內取中間價，較寬時取Bid＋四分之一價差";
+/** A bubble that shows the protective (bought) put limit states both sides: the sell rule above and the buy rule of the producer
+ * (scripts/build_market_quotes_options.py _buy_limit: the mid, or the ask minus a quarter of a wide spread, never above the ask). */
+const TWO_SIDED_LIMIT_RULE = "限價：價差25%內取中間價；較寬時賣出腿取Bid＋四分之一價差、買進Put取Ask－四分之一價差";
 
 /** Footer disclosures stay compact; the text route holds complete quote and strategy detail. */
-function footerBox(ctx: CardContext, risk: string, buttons: unknown[] = [], basis = "") {
+function footerBox(ctx: CardContext, risk: string, buttons: unknown[] = [], basis = "", rule = LIMIT_SELECTION_RULE) {
   const { cycle } = ctx;
   const sourceLabel = sourceZh(cycle.source);
   const shortDteCaveat = cycle.dte <= SHORT_DTE_NOTICE_MAX ? "短期年化至少按1日換算；數字放大，僅供比較" : null;
   return uiBox([
     ...disclosureGroups([
       { label: "來源", text: `${sourceLabel}，${ctx.carried ? "前一交易時段擷取時間" : "擷取時間"} ${cycle.timestamp}（報價時間未提供）${ctx.operatorNotice ? `；${ctx.operatorNotice}` : ""}` },
-      { label: "基準", text: `${ctx.carriedLabel ? `${ctx.carriedLabel}；` : ""}${LIMIT_SELECTION_RULE}${basis ? `；${basis}` : ""}` },
+      { label: "基準", text: `${ctx.carriedLabel ? `${ctx.carriedLabel}；` : ""}${rule}${basis ? `；${basis}` : ""}` },
       { label: "風險", text: `${risk}${shortDteCaveat ? `；${shortDteCaveat}` : ""}；公開延遲；非投資建議；年化非保證；不下單` },
     ]),
     ...buttons,
@@ -533,7 +536,7 @@ function overviewBubble(ctx: CardContext) {
   return {
     type: "bubble", size: "mega", header: headerBox(ctx, "三種保守期權策略"),
     body: uiBox([overviewRows(ctx), uiText(overviewNotes, "xxs", T.subtle)], { paddingAll: "lg", spacing: "md" }),
-    footer: footerBox(ctx, risk, detailButtons(ctx)),
+    footer: footerBox(ctx, risk, detailButtons(ctx), "", "none" in collar ? LIMIT_SELECTION_RULE : TWO_SIDED_LIMIT_RULE),
   };
 }
 function ccDetailBubble(ctx: CardContext) {
@@ -550,7 +553,7 @@ function ccDetailBubble(ctx: CardContext) {
     deltaBases.length === 1 ? `Delta ${deltaBases[0]}，僅供指派機率參考` : deltaBases.length > 1 ? "Delta 僅供指派機率參考" : "",
     "期間收益＝限價÷現價；年化收益＝期間收益×365÷DTE",
   ].filter(Boolean).join("；");
-  const risk = "最高履約價須達年化權利金至少 2%；超履約可能被指派、上漲收益封頂";
+  const risk = "最高履約價須達年化權利金至少 2%；超履約可能被指派、上漲收益封頂；正股仍有下跌風險";
   return {
     type: "bubble", size: "mega", header: headerBox(ctx, "備兌買權"),
     body: uiBox([section("買權檔位｜持有100股、賣1口", rows.length ? rows : [uiText("無符合檔位", "xs", T.ink)], "key")], { paddingAll: "lg", spacing: "md" }),
@@ -567,7 +570,7 @@ function cspRow(cycle: CoveredCallCycle, item: CspItem, index: number) {
 }
 function cspDetailBubble(ctx: CardContext, block: CspData) {
   const { cycle } = ctx;
-  const risk = "跌破履約價可能被指派；被指派時需以履約價買進正股（100股）";
+  const risk = "跌破履約價可能被指派；被指派時需以履約價買進正股（100股），損失可大於權利金";
   return {
     type: "bubble", size: "mega", header: headerBox(ctx, "現金擔保賣權"),
     body: uiBox([section("賣權檔位", block.suggestions.map((item, index) => cspRow(cycle, item, index)), "key")], { paddingAll: "lg", spacing: "md" }),
@@ -588,11 +591,11 @@ function collarDetailBubble(ctx: CardContext, block: CollarData) {
       `最大損失 ${money(perContract(item.max_loss_per_share), cycle.currency)}｜獲利 ${money(perContract(item.max_gain_per_share), cycle.currency)}`,
     ])),
   ];
-  const risk = "保護賣權需付權利金；下跌有界，上漲於Call履約價封頂";
+  const risk = "保護賣權需付權利金；下跌有界，上漲於Call履約價封頂；最大盈虧為到期估算";
   return {
     type: "bubble", size: "mega", header: headerBox(ctx, "領口策略"),
-    body: uiBox([section("保護與賣出檔位", rows, "key")], { paddingAll: "lg", spacing: "md" }),
-    footer: footerBox(ctx, risk, detailButtons(ctx)),
+    body: uiBox([section("檔位｜每組100股＋買1口Put＋賣1口Call", rows, "key")], { paddingAll: "lg", spacing: "md" }),
+    footer: footerBox(ctx, risk, detailButtons(ctx), "", TWO_SIDED_LIMIT_RULE),
   };
 }
 

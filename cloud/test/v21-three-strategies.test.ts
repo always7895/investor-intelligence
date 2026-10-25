@@ -215,6 +215,23 @@ describe("V21 card", () => {
     }
   });
 
+  it("keeps each strategy's loss warning, unit basis and expiry-estimate basis on its own payoff bubble", () => {
+    const cycle = clone("yahoo_monthly_full");
+    admitSyntheticTickers(cycle.ticker);
+    vi.mocked(admission.admitPublicOption).mockImplementation(() => ({ ok: true, provider_id: "synthetic-test-only-not-in-catalog", operator_accepted: true }) as never);
+    const list = bubbles(buildCoveredCallMessages(check(cycle) as never, "每月期權", "flex"));
+    const byEyebrow = (eyebrow: string) => {
+      const found = list.filter(bubble => joined(bubble.header).includes(`${eyebrow} · `));
+      expect(found, eyebrow).toHaveLength(1);
+      return joined(found[0]);
+    };
+    expect(byEyebrow("備兌買權")).toContain("正股仍有下跌風險");
+    expect(byEyebrow("現金擔保賣權")).toContain("損失可大於權利金");
+    const collar = byEyebrow("領口策略");
+    for (const required of ["每組100股＋買1口Put＋賣1口Call", "最大盈虧為到期估算", "買進Put取Ask－四分之一價差", "最大損失"])
+      expect(collar).toContain(required);
+  });
+
   it("every bubble carries source, rights, quote basis and capture time in at most three labelled disclosure lines", () => {
     const cycle = clone("yahoo_monthly_full");
     admitSyntheticTickers(cycle.ticker);
@@ -229,7 +246,11 @@ describe("V21 card", () => {
       expect(lines.join("\n")).toContain("依營運者決定顯示；本資料未取得再散布授權");
       expect(lines.join("\n")).toContain("非投資建議");
       expect(lines.join("\n")).toContain("不下單");
-      expect(lines.join("\n")).toContain("價差25%內取中間價，較寬時取Bid＋四分之一價差");
+      // A bubble showing the bought protective put also states the buy-leg rule; the sell rule alone never covers it.
+      if (/Put限價|保護賣權/.test(joined(bubble.body))) {
+        expect(lines.join("\n")).toContain("價差25%內取中間價；較寬時賣出腿取Bid＋四分之一價差、買進Put取Ask－四分之一價差");
+        expect(lines.join("\n")).not.toContain("價差25%內取中間價，較寬時取Bid＋四分之一價差");
+      } else expect(lines.join("\n")).toContain("價差25%內取中間價，較寬時取Bid＋四分之一價差");
       const nodes = disclosureNodes(bubble);
       expect(nodes.every(node => node.size === "xxs" && Array.from((node.contents as Json[]).map(span => span.text).join("")).length <= 110
         && (node.contents as Json[])[0]?.weight === "bold")).toBe(true);

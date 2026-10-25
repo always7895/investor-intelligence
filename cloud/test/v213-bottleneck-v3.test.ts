@@ -385,6 +385,10 @@ describe("bottleneck-explosion Top20 v3", () => {
       // V25-D4 preserves the scenario condition in a shorter label.
       expect(bubble).toContain("情境");
     }
+    // A card that shows a dated RPO figure states on the same card that RPO is remaining performance obligations, not all orders.
+    const rpoCards = bubbles.filter(bubble => /RPO \d{4}-\d{2}-\d{2}/.test(bubble));
+    expect(rpoCards.length).toBeGreaterThan(0);
+    for (const bubble of rpoCards) expect(bubble).toContain("RPO 為剩餘履約義務，非全部訂單");
     const serialized = JSON.stringify(messages);
     // V25-D4 uses a compact Chinese half-year label without changing the return horizon.
     expect(serialized.match(/"半年 [^"]*｜2年年化/g)).toHaveLength(20);

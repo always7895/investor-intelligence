@@ -29,10 +29,10 @@ const V20_CEILINGS: Record<string, { texts: number; chars: number }> = {
 };
 const V25_AFTER_CEILINGS: Record<string, { texts: number; chars: number }> = {
   "top20-presentation": { texts: 24, chars: 698 },
-  "bottleneck Top20 card": { texts: 16, chars: 582 },
+  "bottleneck Top20 card": { texts: 16, chars: 600 },
   "bottleneck detail page 1": { texts: 10, chars: 409 },
   "bottleneck industry": { texts: 8, chars: 97 },
-  "covered-call (3 tiers)": { texts: 22, chars: 597 },
+  "covered-call (3 tiers)": { texts: 22, chars: 606 },
   "options-guidance order": { texts: 12, chars: 339 },
   "options-guidance sizing": { texts: 7, chars: 172 },
   "educational-options": { texts: 9, chars: 361 },
@@ -40,15 +40,15 @@ const V25_AFTER_CEILINGS: Record<string, { texts: number; chars: number }> = {
   "options-product unavailable": { texts: 5, chars: 184 },
   // V25 integration: the stock-lookup hint, the past-returns caveat and the 七欄Top20 / 選單 文字 pointers stay on the panel.
   "rich-menu navigation": { texts: 6, chars: 132 },
-  "V21 three strategies": { texts: 21, chars: 633 },
+  "V21 three strategies": { texts: 21, chars: 656 },
   "options-guidance cycle comparison": { texts: 12, chars: 336 },
   "bottleneck detail (all pages)": { texts: 22, chars: 413 },
 };
 const V25_FLOORS: Record<string, { texts: number; chars: number; reason: string }> = {
   "bottleneck Top20 card": {
     texts: 16,
-    chars: 582,
-    reason: "The V25 pre-FIX3 capture was 13/560; target35 is 474 characters. The 16/582 surface keeps current-order status and the non-order proxy; both forecast windows and their start/end dates; source/date, normal-trading basis and listing history; the revenue-only scenario and the RPO/non-target/non-advice/no-order caveats; and three short labelled cross-check/scenario qualifiers on the same bubble. The +3 nodes/+22 characters are required same-bubble disclosures, not optional narrative.",
+    chars: 600,
+    reason: "The V25 pre-FIX3 capture was 13/560; target35 is 474 characters. The 16/582 surface keeps current-order status and the non-order proxy; both forecast windows and their start/end dates; source/date, normal-trading basis and listing history; the revenue-only scenario and the RPO/non-target/non-advice/no-order caveats; and three short labelled cross-check/scenario qualifiers on the same bubble. The +3 nodes/+22 characters are required same-bubble disclosures, not optional narrative. Review round 2 (+18 to 600): a card showing a dated RPO figure again states that RPO is remaining performance obligations, not all orders.",
   },
   "bottleneck detail page 1": {
     texts: 10,
@@ -57,8 +57,8 @@ const V25_FLOORS: Record<string, { texts: number; chars: number; reason: string 
   },
   "covered-call (3 tiers)": {
     texts: 22,
-    chars: 597,
-    reason: "V25 master after review round 1: the Delta basis and the yield formulas are stated once per bubble instead of once per tier (674 -> 586), and the section title carries the 100-share, one-contract cover basis that the 873be8c footer had (+11). The 6 characters over target35 (591) are that restored contract basis.",
+    chars: 606,
+    reason: "V25 master after review round 1: the Delta basis and the yield formulas are stated once per bubble instead of once per tier (674 -> 586), and the section title carries the 100-share, one-contract cover basis that the 873be8c footer had (+11). The 6 characters over target35 (591) are that restored contract basis. Review round 2 (+9 to 606): the underlying-stock downside warning is back in this bubble's risk group.",
   },
   "options-guidance order": {
     texts: 12,
@@ -82,8 +82,8 @@ const V25_FLOORS: Record<string, { texts: number; chars: number; reason: string 
   },
   "V21 three strategies": {
     texts: 21,
-    chars: 633,
-    reason: "The real V21 baseline is 25/626, so its 35% character target is 406 (not the unrelated 591-character covered-call target). The V25 pre-FIX3 capture was 18/590; the measured 21/633 keeps quote bands, limit-selection basis, source/time, 100-share basis and assignment/downside risks together. The +3 nodes/+43 characters are the three labelled source/basis/risk groups and required same-bubble qualifiers.",
+    chars: 656,
+    reason: "The real V21 baseline is 25/626, so its 35% character target is 406 (not the unrelated 591-character covered-call target). The V25 pre-FIX3 capture was 18/590; the measured 21/633 keeps quote bands, limit-selection basis, source/time, 100-share basis and assignment/downside risks together. The +3 nodes/+43 characters are the three labelled source/basis/risk groups and required same-bubble qualifiers. Review round 2 (+23 to 656): a bubble that shows the bought protective put states the buy-leg limit rule next to the sell rule, the cash-secured put keeps its loss-greater-than-premium warning, and the collar keeps its per-set unit basis and expiry-estimate basis.",
   },
   "options-guidance cycle comparison": {
     texts: 12,
@@ -169,7 +169,9 @@ function visibleText(value: unknown): string {
   if (Array.isArray(value)) return value.map(visibleText).join(" ");
   if (typeof value !== "object" || value === null) return "";
   const node = value as Node;
-  if (node.type === "text") return typeof node.text === "string" ? node.text : visibleText(node.contents);
+  // A rich-text line is the concatenation of its spans (disclosureGroups renders a bold label span plus a body span).
+  if (node.type === "text") return typeof node.text === "string" ? node.text
+    : (node.contents ?? []).map(span => typeof span.text === "string" ? span.text : "").join("");
   if (node.type === "button") return typeof (node as any).action?.label === "string" ? (node as any).action.label : "";
   return Object.entries(value as Record<string, unknown>)
     .filter(([key]) => key !== "action")
@@ -441,6 +443,17 @@ describe("V25 Flex density baseline and budgets", () => {
     expect(spans(nodes[0]!)).toEqual(["來源｜", "A B"]);
     expect(spans(nodes[1]!).join("")).toBe(`風險｜${long}`);
     expect(() => disclosureGroups([1, 2, 3, 4].map(n => ({ label: `L${n}`, text: "x" })))).toThrow("LINE_DISCLOSURE_GROUP_LIMIT");
+  });
+
+  it("reads rich-text disclosure spans, so an overlong line or a repeated caveat is detected", () => {
+    const groups = disclosureGroups([{ label: "風險", text: `${"x".repeat(200)}；非保證；非保證` }]) as Node[];
+    const bubble = { type: "bubble", body: { type: "box", contents: [] }, footer: { type: "box", contents: groups } } as unknown as Node;
+    const lines = footerDisclosureLines(bubble);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]!.labelledBold).toBe(true);
+    expect(Array.from(lines[0]!.text).length).toBeGreaterThan(110);
+    expect(lines[0]!.text.startsWith("風險｜xxx")).toBe(true);
+    expect(repeatedD1Caveats(bubble)).toEqual(["非保證"]);
   });
 
   it("keeps every Flex message within V25 carousel and alt-text limits", async () => {

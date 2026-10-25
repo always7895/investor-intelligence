@@ -40,10 +40,11 @@ const BEFORE: Record<string, { texts: number; chars: number; xxs: number }> = {
 };
 // V25 tightens supported surfaces to measured post-redesign ceilings. The legacy seven-field Top20 cap stays unchanged;
 // the V21 strategy card and extended bottleneck details are governed by the separate V25 budget.
-// V25-FIX3 restores same-bubble qualifiers; these measured floors remain below the pre-V20 BEFORE values above.
+// V25-FIX3 restores same-bubble qualifiers; these measured floors remain below the pre-V20 BEFORE values above (review round 2:
+// the Top20 card keeps the RPO meaning beside a dated RPO figure, 582 -> 600).
 const CEILING: Record<string, { texts: number; chars: number; bullets: number; sections: number; footerButtons: number }> = {
   "top20-presentation": { texts: 24, chars: 710, bullets: 0, sections: 0, footerButtons: 1 },
-  "bottleneck Top20 card": { texts: 16, chars: 582, bullets: 0, sections: 0, footerButtons: 2 },
+  "bottleneck Top20 card": { texts: 16, chars: 600, bullets: 0, sections: 0, footerButtons: 2 },
   "bottleneck detail page 1": { texts: 10, chars: 409, bullets: 0, sections: 0, footerButtons: 2 },
   "bottleneck industry": { texts: 8, chars: 97, bullets: 0, sections: 0, footerButtons: 2 },
   "covered-call (3 tiers)": { texts: 22, chars: 674, bullets: 0, sections: 1, footerButtons: 2 },
