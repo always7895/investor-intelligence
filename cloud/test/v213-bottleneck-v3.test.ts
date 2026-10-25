@@ -7,6 +7,7 @@ import { doc, forecastCase, HOUR, OUTLOOKS } from "./bottleneck-v3-fixture";
 import lineageContract from "../../tests/fixtures/v213-lineage-sealed-markets.json";
 import urlTable from "../../tests/fixtures/v213-order-forecast-urls.json";
 import officialRevenueFixture from "../../tests/fixtures/v213-official-quarterly-revenue.json";
+import consensusFixture from "../../tests/fixtures/v11-consensus-sealed.json";
 import type { LineOutboundMessage } from "../src/line-messages";
 function flexBubbleStrings(messages: readonly LineOutboundMessage[]): string[] {
   return messages.flatMap(message => {
@@ -404,6 +405,29 @@ describe("bottleneck-explosion Top20 v3", () => {
       "若半年內實現訂單 → 無法估價（缺認列時程）", "若1年內實現訂單 → 無法估價（訂單僅覆蓋同期營收 0.3%）", "RPO 為剩餘履約義務，非全部訂單；預計認列非保證",
       "訂單資料截至 2026-07-26｜來源公布 2026-08-26"]);
     expect(topText).toContain("若1年內實現訂單 → 無法估價（訂單僅覆蓋同期營收 0.3%）");
+  });
+
+  it("states the RPO meaning once beside a current RPO figure without a future forecast or with a v3 consensus forecast", () => {
+    const rpoCard = (raw: any, symbol: string, now: number, version: number) => {
+      const parsed = parseBottleneckV3(raw, now)!;
+      const entry = parsed.top.find(item => item.symbol === symbol)!;
+      expect(entry.outlook!.orders!.kind).toBe("RPO");
+      expect(entry.forecast?.version ?? 1).toBe(version);
+      return flexBubbleStrings(buildBottleneckTop20Messages(parsed, "flex")).find(bubble => bubble.includes(`${symbol}｜`))!;
+    };
+    const noForecast = doc(REPORT);
+    delete (noForecast.top as any[])[1].outlook.order_forecast;
+    // A valid v3 consensus revenue forecast beside the same independently admitted current RPO.
+    const consensus = (consensusFixture as any).cases.with_recognition;
+    const cutoff = Date.parse(consensus.cutoff);
+    const withConsensus = doc(cutoff);
+    const currentOrders = structuredClone((withConsensus.top as any[])[1].outlook.orders);
+    Object.assign((withConsensus.top as any[])[1], { symbol: "ACME", outlook: { ...structuredClone(consensus.outlooks.ACME), orders: currentOrders } });
+    for (const bubble of [rpoCard(noForecast, "S1", REPORT + HOUR, 1), rpoCard(withConsensus, "ACME", cutoff + HOUR / 2, 3)]) {
+      expect(bubble).toContain("US$3.2B");
+      expect(bubble).toContain("RPO 2026-07-26");
+      expect(bubble.match(/RPO 為剩餘履約義務，非全部訂單/g)).toHaveLength(1);
+    }
   });
 
   // The report time is fixed so the horizon arithmetic is exact.

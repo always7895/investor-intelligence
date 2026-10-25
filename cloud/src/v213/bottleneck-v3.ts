@@ -4,7 +4,7 @@
  * but are never shown as company facts; every figure carries its source and date. A malformed or stale document
  * (older than the report bound, report-age.ts) gives null and the caller keeps the seven-field Top20.
  */
-import { forecastCard, forecastLines, forecastText, parseOrderForecast, parseOrderForecastV3, parseOrderForecastV3Machine, type OrderForecast } from "./order-forecast";
+import { forecastCard, forecastLines, forecastText, parseOrderForecast, parseOrderForecastV3, parseOrderForecastV3Machine, RPO_MEANING, type OrderForecast } from "./order-forecast";
 import { historyBlockLines, historyViewOf, type HistoryView } from "./revenue-history-model";
 import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
 import type { PublicSnapshotView } from "./public-snapshot";
@@ -891,9 +891,11 @@ function companyBubble(doc: BottleneckV3, entry: BottleneckEntry, lean = false) 
   const scenarioRows = forecastRowsAfter(forecastLines, scenarioHeading)
     .filter(row => !row.startsWith("條件情境："))
     .map(cleanForecastRow).filter(Boolean);
-  // An RPO-based figure keeps its own meaning and coverage qualifier on this card.
-  const recognitionCaveat = forecastLines.find(([text]) => text.startsWith("RPO 為剩餘履約義務"))?.[0]
-    ?? (forecast.version === 3 ? "營收推估非保證" : "預計認列非保證");
+  // An RPO figure keeps its meaning and coverage qualifier on this card, once: from the forecast basis when it states it,
+  // otherwise from the displayed orders figure itself, with or without a future forecast and whatever its version.
+  const forecastCaveat = forecast.version === 3 ? "營收推估非保證" : "預計認列非保證";
+  const recognitionCaveat = forecastLines.find(([text]) => text.startsWith(RPO_MEANING))?.[0]
+    ?? (entry.outlook?.orders?.kind === "RPO" ? `${RPO_MEANING}；${forecastCaveat}` : forecastCaveat);
   const closingDisclosure = [
     condition,
     ...(forecast.version === 2 ? ["認列依公司披露時程"] : []),

@@ -2705,7 +2705,8 @@ const METRIC_TEXT: Record<string, string> = { RPO_STOCK: "RPO", BACKLOG_STOCK: "
   ORDER_INTAKE: "新接訂單", ORDER_GUIDANCE: "公司訂單指引", RECOGNITION_SCHEDULE: "認列時程" };
 export const CONDITION_TEXT = "條件情境：營收達預計認列額，P/S與股數不變；非目標價、非今日起報酬";
 export const CONDITION_TEXT_V3 = "條件情境：營收依上述推估實現，P/S與股數不變；以最新已報四季為基準，非目標價、非今日起報酬";
-export const RPO_TEXT = "RPO 為剩餘履約義務，非全部訂單；預計認列非保證";
+export const RPO_MEANING = "RPO 為剩餘履約義務，非全部訂單";
+export const RPO_TEXT = `${RPO_MEANING}；預計認列非保證`;
 export const SENSITIVITY_TITLE = "訂單餘額外推敏感度（非訂單實現情境）";
 export const SENSITIVITY_TEXT = "模型推估，非公司揭露、非期間認列";
 
