@@ -385,26 +385,33 @@ describe("OPTIONS-GLOBAL-01 acceptance regression tests", () => {
     expect(missingBlobReply).not.toContain("OPTION_DATA_NOT_ADMITTED");
   });
 
-  it("B4: healthy flex exposes provenance, currency, mid, liquidity and delta basis with no NaN", async () => {
+  it("B4: quote bands stay in compact Flex while the text command preserves full liquidity and delta basis", async () => {
     admitSyntheticTickers("TSM");
-    const reply = await actualReply({ ...(await sealedEnv()), V213_LINE_PRESENTATION: "flex" }, "TSM 每月期權");
-    expect(reply).toContain("https://finance.yahoo.com/quote/TSM/options");
-    expect(reply).toContain("計價 USD");
-    expect(reply).toContain("中價 $2.05");
-    expect(reply).toContain("OI 900");
-    expect(reply).toContain("成交量 50");
-    expect(reply).toContain("依報價隱含波動率");
-    expect(reply).not.toContain("NaN");
+    const env = await sealedEnv();
+    const flex = await actualReply({ ...env, V213_LINE_PRESENTATION: "flex" }, "TSM 每月期權");
+    // V25-D4 keeps the exact source label in compact Flex and the full URL on the existing text command.
+    expect(flex).toContain("Yahoo Finance 期權鏈（非官方，延遲）");
+    expect(flex).toContain("計價 USD");
+    expect(flex).toContain("TSM 完整報價與出處");
+    expect(flex).not.toContain("NaN");
+    expect(flex).toContain("Bid ");
+    expect(flex).toContain("Mid");
+    expect(flex).toContain("Ask ");
+    // V25-FIX1 restores Bid/Mid/Ask beside each visible limit; the full liquidity diagnostics remain on the text route.
+    const text = await actualReply({ ...env, V213_LINE_PRESENTATION: "flex" }, "TSM 每月期權 文字");
+    expect(text).toContain("https://finance.yahoo.com/quote/TSM/options");
+    for (const field of ["中價 $2.05", "OI 900", "成交量 50", "依報價隱含波動率"]) expect(text).toContain(field);
+    expect(text).not.toContain("NaN");
   });
 
-  it("B4: an omitted spread renders unknown, never NaN, in both flex and text", async () => {
+  it("B4: an omitted spread stays unknown in full text, never NaN, with the compact Flex route intact", async () => {
     admitSyntheticTickers("TSM");
     const drop = (lazy: any) => { delete lazy["v213:options:v2"].options.TSM.monthly.suggestions[0].spread_pct; };
-    const flexReply = await actualReply({ ...(await sealedEnv(drop)), V213_LINE_PRESENTATION: "flex" }, "TSM 每月期權");
-    expect(flexReply).toContain("330.00");
+    const env = await sealedEnv(drop);
+    const flexReply = await actualReply({ ...env, V213_LINE_PRESENTATION: "flex" }, "TSM 每月期權");
+    expect(flexReply).toContain("TSM 完整報價與出處");
     expect(flexReply).not.toContain("NaN");
-    expect(flexReply).toContain("價差占中價 未提供");
-    const textReply = await actualReply(await sealedEnv(drop), "TSM 每月期權");
+    const textReply = await actualReply({ ...env, V213_LINE_PRESENTATION: "flex" }, "TSM 每月期權 文字");
     expect(textReply).not.toContain("NaN");
     expect(textReply).toContain("價差占中價 未提供");
   });
@@ -455,7 +462,7 @@ describe("OPTIONS-GLOBAL-01 round2 I1 nonfinite/malformed optional liquidity fie
     });
   }
   for (const style of ["text", "flex"] as const) {
-    it(`${style}: null and missing optional fields stay 未提供, never NaN`, async () => {
+    it(`${style}: null and missing optional fields stay 未提供 in the full quote, never NaN`, async () => {
       admitSyntheticTickers("TSM");
       const nulled = await sealedEnv(l => {
         for (const k of ["oi", "volume", "spread_pct"]) l[KEY].options.TSM.monthly.suggestions[0][k] = null;
@@ -463,8 +470,10 @@ describe("OPTIONS-GLOBAL-01 round2 I1 nonfinite/malformed optional liquidity fie
       nulled.V213_LINE_PRESENTATION = style;
       const nreply = await actualReply(nulled, "TSM 每月期權");
       expect(nreply).toContain("330.00");
-      for (const word of ["OI 未提供", "成交量 未提供", "價差占中價 未提供"]) expect(nreply).toContain(word);
       expect(nreply).not.toMatch(/NaN|Infinity|undefined/);
+      // V25 keeps the complete unknown-field labels on the existing text command when Flex is intentionally compact.
+      const fullNull = style === "flex" ? await actualReply(nulled, "TSM 每月期權 文字") : nreply;
+      for (const word of ["OI 未提供", "成交量 未提供", "價差占中價 未提供"]) expect(fullNull).toContain(word);
       const missing = await sealedEnv(l => {
         for (const k of ["oi", "volume", "spread_pct"]) delete l[KEY].options.TSM.monthly.suggestions[0][k];
       });
@@ -472,6 +481,8 @@ describe("OPTIONS-GLOBAL-01 round2 I1 nonfinite/malformed optional liquidity fie
       const mreply = await actualReply(missing, "TSM 每月期權");
       expect(mreply).toContain("330.00");
       expect(mreply).not.toMatch(/NaN|Infinity|undefined/);
+      const fullMissing = style === "flex" ? await actualReply(missing, "TSM 每月期權 文字") : mreply;
+      for (const word of ["OI 未提供", "成交量 未提供", "價差占中價 未提供"]) expect(fullMissing).toContain(word);
     });
   }
 });

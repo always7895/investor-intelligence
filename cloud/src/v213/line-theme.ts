@@ -275,6 +275,13 @@ export const heroStat = (label: string, value: string, sub?: string, color: stri
   uiText(value, value.length > 10 ? "xl" : "3xl", color, { weight: "bold" }),
   ...(sub ? [uiText(sub, "xs", T.subtle)] : []),
 ], { spacing: "xs" });
+/** One short summary line; absent or overlong source data is omitted, never clipped. */
+export function verdictLine(text: string | null | undefined) {
+  if (!text || /^\s*$/.test(text)) return undefined;
+  let codePoints = 0;
+  for (const _ of text) if (++codePoints > 24) return undefined;
+  return uiText(text, "sm", T.ink, { weight: "bold" });
+}
 
 /** altText "<topic>｜<status>｜<next>" within 120 characters (code-point safe). */
 export function altSummary(parts: { topic: string; status: string; next: string }): string {

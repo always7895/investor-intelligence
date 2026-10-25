@@ -62,6 +62,11 @@ describe("covered-call suggestions", () => {
     expect(flex).toContain("$245.00");
     expect(flex).toContain("$152.00");
     expect(flex).toContain("Delta 0.17");
+    expect(flex).toMatch(/Bid \$1\.50｜Mid \$1\.5[23]｜Ask \$1\.55/);
+    expect(flex).toContain("最高履約價須達年化權利金至少 2%");
+    expect(flex).toContain("期間收益＝限價÷現價；年化收益＝期間收益×365÷DTE");
+    expect(flex).toContain("僅供指派機率參考");
+    expect(flex).toContain("完整流動性資料見文字版");
     expect(flex).not.toContain("UNAVAILABLE");
     const text = (buildCoveredCallMessages(valid, "每月期權", "text") as { text: string }[])[0]!.text;
     expect(text).toContain("建議賣出限價 $1.52");
@@ -75,7 +80,9 @@ describe("covered-call suggestions", () => {
     const valid = validateCoveredCallCycle(implied)!;
     expect(valid).not.toBeNull();
     const flex = JSON.stringify(buildCoveredCallMessages(valid, "每月期權", "flex"));
-    expect(flex).toContain("Delta 0.06（約 6%，模型值，波動率由買賣報價反推 157%）");
+    // V25 keeps the sealed value and its derivation basis beside the figure in Flex.
+    expect(flex).toContain("Delta 0.06");
+    expect(flex).toContain("模型值，波動率由買賣報價反推 157%");
     const text = (buildCoveredCallMessages(valid, "每月期權", "text") as { text: string }[])[0]!.text;
     expect(text).toContain("Delta 0.06（模型值，波動率由買賣報價反推 157%）");
     const unknown = structuredClone(implied); (unknown.suggestions as any)[0].delta_basis = "GUESSED";
@@ -83,6 +90,6 @@ describe("covered-call suggestions", () => {
     const badVol = structuredClone(implied); (badVol.suggestions as any)[0].iv = -1;
     expect(validateCoveredCallCycle(badVol)).toBeNull();
     const noDelta = cycle(); (noDelta.suggestions[1] as any).delta = undefined;
-    expect(JSON.stringify(buildCoveredCallMessages(validateCoveredCallCycle(noDelta)!, "每月期權", "flex"))).toContain("報價不足以推算 Delta");
+    expect(JSON.stringify(buildCoveredCallMessages(validateCoveredCallCycle(noDelta)!, "每月期權", "flex"))).toContain("Delta 未提供");
   });
 });

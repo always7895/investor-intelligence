@@ -11,7 +11,7 @@ import {
 } from "./option-recommendation-rules";
 import { admitPublicOption, OptionRightsNotAdmittedError } from "./public-options-admission";
 import {
-  LINE_THEME as T, altSummary, bulletRow, chip, clampText, detailsButton, disclosureLine, footerStyle, footnote, heroStat, kvRow, menuAction, meter, productHeader, section, uiBox, uiText,
+  LINE_THEME as T, altSummary, chip, detailsButton, disclosureLine, footerStyle, menuAction, productHeader, section, uiBox, uiText,
 } from "./line-theme";
 
 export interface CoveredCallSuggestion {
@@ -313,6 +313,13 @@ function sanitizeStrategies(cycle: Record<string, any>): CycleStrategies | null 
 
 const money = (value: number, currency: string) => currency === "USD" ? `$${value.toFixed(2)}` : `${value.toFixed(2)} ${currency}`;
 const pct = (value: number, digits = 1) => `${(value * 100).toFixed(digits)}%`;
+function quoteBandWithLimit(bid: number, mid: number, ask: number, limit: number, currency: string): string {
+  const midLabel = Math.abs(mid - limit) < 1e-9 ? "Mid＝限價" : `Mid ${money(mid, currency)}`;
+  return `Bid ${money(bid, currency)}｜${midLabel}｜Ask ${money(ask, currency)}`;
+}
+const legQuoteBand = (leg: StrategyLeg, currency: string) =>
+  quoteBandWithLimit(leg.bid, (leg.bid + leg.ask) / 2, leg.ask, leg.limit_price, currency);
+
 /** Spread as a share of mid, or an explicit unknown when the producer did not supply it (never NaN). */
 const spreadZh = (value: number | null | undefined) => typeof value === "number" && Number.isFinite(value) ? pct(value, 0) : "未提供";
 /** Open interest / traded volume as an integer count, or an explicit unknown for absent or non-finite values (defence in
@@ -355,29 +362,6 @@ function shortDteNoticeZh(cycle: CoveredCallCycle): string | null {
   return `${cycle.dte === 0 ? "今日到期" : `距到期僅 ${cycle.dte} 天`}：年化收益以至少 1 天換算，數字被大幅放大，只供比較，不代表可持續收益。`;
 }
 
-function assignmentText(item: CoveredCallSuggestion): string {
-  if (item.delta === null || item.delta === undefined) return "被指派機率參考：報價不足以推算 Delta";
-  const basis = deltaBasisZh(item);
-  return `被指派機率參考：Delta ${item.delta.toFixed(2)}（約 ${Math.round(item.delta * 100)}%${basis ? `，${basis}` : ""}）`;
-}
-
-/** V20: one tier as four figure rows (strike, limit, premium per contract, annualized), the assignment reference as a bullet and
- * the liquidity as one muted line. The role note (the tier's meaning) lives in the tier title and the text edition. */
-function suggestionSection(cycle: CoveredCallCycle, item: CoveredCallSuggestion, index: number) {
-  const title = tierTitle(item, index);
-  const assignment = assignmentText(item);
-  return section(title, [
-    kvRow("履約價", money(item.strike, cycle.currency), { sub: `距現價 +${pct(item.upside_to_strike)}` }),
-    kvRow("建議賣出限價", money(item.limit_price, cycle.currency), { emphasis: true, sub: `Bid ${money(item.bid, cycle.currency)}／中價 ${money(item.mid, cycle.currency)}／Ask ${money(item.ask, cycle.currency)}` }),
-    kvRow("每口權利金", money(item.premium_per_contract, cycle.currency), { sub: "100 股／口" }),
-    kvRow("年化收益", pct(item.annualized_yield), { sub: `期間 ${pct(item.period_yield, 2)}` }),
-    meter(Math.min(1, item.upside_to_strike / 0.5) * 100),
-    bulletRow(assignment),
-    uiText(`流動性：OI ${countZh(item.oi)}｜成交量 ${countZh(item.volume)}｜價差占中價 ${spreadZh(item.spread_pct)}`, "xs", T.muted),
-    // Only the tier whose note states the selection criterion (the annualized-yield floor) keeps its note.
-    ...(item.role === "HIGH_STRIKE" ? [footnote(ROLE.HIGH_STRIKE[1])] : []),
-  ], item.role === "HIGH_STRIKE" ? "key" : "detail");
-}
 
 /** "YYYY-MM-DD HH:mm" in New York for an instant, with the same Intl style the Worker uses for other local times (formatToParts, h23). */
 function newYorkStampZh(ms: number): string {
@@ -435,46 +419,59 @@ function cardContext(cycle: CoveredCallCycle, periodLabel: string): CardContext 
 /** Collar figures per contract (x100 of the per-share values the validator recomputed). */
 const perContract = (value: number) => value * 100;
 
-/** Overview section of one strategy: one hero figure and up to three bullets, or an explicit no-data row. */
-function overviewSection(title: string, tone: "key" | "detail", shown: { hero: ReturnType<typeof heroStat>; bullets: string[] } | { none: string }) {
-  if ("none" in shown) return section(title, [bulletRow(`無資料：${clampText(shown.none, 44)}`)], tone);
-  return section(title, [shown.hero, ...shown.bullets.map(text => bulletRow(text))], tone);
+function strategyRow(title: string, values: string[]) {
+  return uiBox([
+    uiText(title, "xs", T.subtle, { weight: "bold", flex: 2 }),
+    uiBox(values.map(value => uiText(value, "xs", T.ink)), { flex: 3, spacing: "xs" }),
+  ], { layout: "horizontal", spacing: "sm" });
 }
 
-function ccOverview(ctx: CardContext) {
+function overviewRows(ctx: CardContext) {
   const { cycle } = ctx;
-  const first = cycle.suggestions[0];
-  if (!first) return overviewSection(CC_TITLE, "key", { none: ccNone(cycle) });
-  return overviewSection(CC_TITLE, "key", {
-    hero: heroStat("每口權利金（保守檔）", money(first.premium_per_contract, cycle.currency), `年化 ${pct(first.annualized_yield)}`, T.ink),
-    bullets: [`履約價 ${money(first.strike, cycle.currency)}（距現價 +${pct(first.upside_to_strike)}），限價 ${money(first.limit_price, cycle.currency)}`,
-      ...(first.delta === null || first.delta === undefined ? [] : [`被指派機率參考：Delta ${first.delta.toFixed(2)}（約 ${Math.round(first.delta * 100)}%）`])],
-  });
+  const cc = displayTiers(cycle)[0];
+  const csp = cspShown(cycle);
+  const collar = collarShown(cycle);
+  const rows = [
+    strategyRow(cc ? `備兌買權｜${tierTitle(cc, 0)}` : "備兌買權", cc ? [
+      `履約 ${money(cc.strike, cycle.currency)}（距現價 ${pct(cc.upside_to_strike)}）｜限價 ${money(cc.limit_price, cycle.currency)}`,
+      `每口 ${money(cc.premium_per_contract, cycle.currency)}｜年化 ${pct(cc.annualized_yield)}`,
+    ] : ["無資料"]),
+    "none" in csp ? strategyRow("現金擔保賣權", ["無資料"]) : strategyRow(`現金擔保賣權｜建議一：${tierNameZh(csp.block.suggestions[0]!.role)}`, [
+      `履約 ${money(csp.block.suggestions[0]!.strike, cycle.currency)}｜限價 ${money(csp.block.suggestions[0]!.limit_price, cycle.currency)}`,
+      `每口 ${money(csp.block.suggestions[0]!.premium_per_contract, cycle.currency)}｜現金 ${money(csp.block.suggestions[0]!.cash_required, cycle.currency)}（100股）`,
+      `年化 ${pct(csp.block.suggestions[0]!.annualized_yield)}（以備妥現金計）｜損平 ${money(csp.block.suggestions[0]!.breakeven, cycle.currency)}`,
+    ]),
+    "none" in collar ? strategyRow("領口策略", ["無資料"]) : strategyRow(`領口策略｜建議一：${tierNameZh(collar.block.items[0]!.role)}`, [
+      `買進 Put ${money(collar.block.put.strike, cycle.currency)}｜賣出 Call ${money(collar.block.items[0]!.call.strike, cycle.currency)}`,
+      `Put限價 ${money(collar.block.put.limit_price, cycle.currency)}｜Call限價 ${money(collar.block.items[0]!.call.limit_price, cycle.currency)}`,
+      `淨權利金 ${signedMoney(perContract(collar.block.items[0]!.net_premium_per_share), cycle.currency)}（買賣相抵）｜損平 ${money(collar.block.items[0]!.break_even, cycle.currency)}`,
+    ]),
+  ];
+  return section("策略對照", rows, "key");
 }
-function cspOverview(ctx: CardContext) {
-  const { cycle } = ctx;
-  const shown = cspShown(cycle);
-  if ("none" in shown) return overviewSection(CSP_TITLE, "detail", shown);
-  const first = shown.block.suggestions[0]!;
-  return overviewSection(CSP_TITLE, "detail", {
-    hero: heroStat("每口權利金（保守檔）", money(first.premium_per_contract, cycle.currency), `年化 ${pct(first.annualized_yield)}（以備妥現金計）`, T.ink),
-    bullets: [`履約價 ${money(first.strike, cycle.currency)}（低於現價 ${pct(first.downside_buffer)}），限價 ${money(first.limit_price, cycle.currency)}`,
-      `需備現金 ${money(first.cash_required, cycle.currency)}（100 股）`, `損益兩平 ${money(first.breakeven, cycle.currency)}`],
-  });
+
+function compactOverviewBand(bid: number, mid: number, ask: number, currency: string): string {
+  return `${money(bid, currency)}/${money(mid, currency)}/${money(ask, currency)}`;
 }
-function collarOverview(ctx: CardContext) {
-  const { cycle } = ctx;
-  const shown = collarShown(cycle);
-  if ("none" in shown) return overviewSection(COLLAR_TITLE, "detail", shown);
-  const { put, items } = shown.block;
-  const first = items[0]!;
-  const net = perContract(first.net_premium_per_share);
-  return overviewSection(COLLAR_TITLE, "detail", {
-    hero: heroStat(net >= 0 ? "每口淨權利金（收入）" : "每口淨權利金（支出）", money(Math.abs(net), cycle.currency), "保守檔，買賣權利金相抵後", T.ink),
-    bullets: [`買進賣權 ${money(put.strike, cycle.currency)}（限價 ${money(put.limit_price, cycle.currency)}），賣出買權 ${money(first.call.strike, cycle.currency)}（限價 ${money(first.call.limit_price, cycle.currency)}）`,
-      `最大損失 ${money(perContract(first.max_loss_per_share), cycle.currency)}／口，最大獲利 ${money(perContract(first.max_gain_per_share), cycle.currency)}／口`],
-  });
+
+function compactLegOverviewBand(leg: StrategyLeg, currency: string): string {
+  return compactOverviewBand(leg.bid, (leg.bid + leg.ask) / 2, leg.ask, currency);
 }
+
+function overviewQuoteNotes(cycle: CoveredCallCycle): string[] {
+  const quotes: string[] = [];
+  const cc = displayTiers(cycle)[0];
+  if (cc) quotes.push(`備兌 ${compactOverviewBand(cc.bid, cc.mid, cc.ask, cycle.currency)}`);
+  const csp = cspShown(cycle);
+  if (!("none" in csp)) quotes.push(`賣沽 ${compactLegOverviewBand(csp.block.suggestions[0]!, cycle.currency)}`);
+  const collar = collarShown(cycle);
+  if (!("none" in collar)) {
+    const item = collar.block.items[0]!;
+    quotes.push(`領口 ${compactLegOverviewBand(collar.block.put, cycle.currency)}；Call ${compactLegOverviewBand(item.call, cycle.currency)}`);
+  }
+  return quotes.length ? [`Bid/Mid/Ask：${quotes.join("；")}`] : [];
+}
+
 
 /** Header chips shared by every bubble. */
 function headerBox(ctx: CardContext, eyebrow: string) {
@@ -485,17 +482,19 @@ function headerBox(ctx: CardContext, eyebrow: string) {
   ]);
 }
 
-/** Footer shared by every bubble: ONE disclosure line with the source and rights label, the quote basis and capture time, the provenance, the
- * operator-accepted notice, this bubble's risk line and the standing disclaimer; optional buttons. */
+/** Footer shared by every bubble: one disclosure line with source, capture time, this bubble's risk, and the standing disclaimer. */
 function footerBox(ctx: CardContext, risk: string, buttons: unknown[] = []) {
   const { cycle } = ctx;
+  const sourceLabel = sourceZh(cycle.source);
+  const shortDteCaveat = cycle.dte <= SHORT_DTE_NOTICE_MAX ? "短期年化按至少1日換算；數字放大、僅供比較" : null;
   return uiBox([
     disclosureLine([
-      `來源：${sourceZh(cycle.source)}，${ctx.carried ? "前一交易時段擷取時間" : "擷取時間"} ${cycle.timestamp}（來源報價時間未提供）`,
-      `資料出處：${cycle.provenance}`,
+      `${sourceLabel}，${ctx.carried ? "前一交易時段擷取時間" : "擷取時間"} ${cycle.timestamp}（報價時間未提供）`,
+      ...(ctx.carriedLabel ? [ctx.carriedLabel] : []),
       ...(ctx.operatorNotice ? [ctx.operatorNotice] : []),
       risk,
-      "公開行情觀察，非個人化投資建議；延遲／非即時可執行；年化收益非保證報酬；正股仍承擔下跌風險；本服務不下單",
+      ...(shortDteCaveat ? [shortDteCaveat] : []),
+      "公開行情；延遲／非即時可執行；非投資建議；年化非保證；正股仍有下跌風險；不下單",
     ]),
     ...buttons,
   ], footerStyle);
@@ -506,77 +505,100 @@ const detailButtons = (ctx: CardContext) => [
 ];
 
 function overviewBubble(ctx: CardContext) {
+  const cycle = ctx.cycle;
+  const textCommand = `${cycle.ticker} ${ctx.periodLabel.includes("每月") ? "每月" : "每週"}期權 文字`;
+  const csp = cspShown(cycle);
+  const collar = collarShown(cycle);
+  const statusNotes = [
+    ...(displayTiers(cycle).length === 0 ? [`備兌買權原因：${ccNone(cycle)}`] : []),
+    ...("none" in csp ? [`現金擔保賣權原因：${csp.none}`] : []),
+    ...("none" in collar ? [`領口策略原因：${collar.none}`] : []),
+  ];
+  const risk = [
+    "最高履約價年化權利金≥2%；超履約可能被指派、漲幅封頂",
+    "三策略皆可虧損",
+    ...statusNotes,
+    ...overviewQuoteNotes(cycle),
+    `詳見：${textCommand}`,
+  ].join("；");
   return {
     type: "bubble", size: "mega", header: headerBox(ctx, "三種保守期權策略"),
-    body: uiBox([
-      ...(ctx.carriedLabel ? [uiText(ctx.carriedLabel, "xs", T.ink)] : []),
-      ccOverview(ctx), cspOverview(ctx), collarOverview(ctx),
-      ...(shortDteNoticeZh(ctx.cycle) ? [bulletRow(shortDteNoticeZh(ctx.cycle)!, { color: T.caution })] : []),
-    ], { paddingAll: "lg", spacing: "md" }),
-    footer: footerBox(ctx, "股價不利時三種策略都可能虧損；各策略前提與最大損失見後續頁面", detailButtons(ctx)),
+    body: uiBox([overviewRows(ctx)], { paddingAll: "lg", spacing: "md" }),
+    footer: footerBox(ctx, risk, detailButtons(ctx)),
   };
 }
 function ccDetailBubble(ctx: CardContext) {
   const { cycle } = ctx;
+  const tiers = displayTiers(cycle);
+  const rows = tiers.map((item, index) => strategyRow(tierTitle(item, index), [
+    `履約 ${money(item.strike, cycle.currency)}｜限價 ${money(item.limit_price, cycle.currency)}`,
+    quoteBandWithLimit(item.bid, item.mid, item.ask, item.limit_price, cycle.currency),
+    `每口 ${money(item.premium_per_contract, cycle.currency)}｜期間 ${pct(item.period_yield, 2)}｜年化 ${pct(item.annualized_yield)}`,
+  ]));
+  const deltaNotes = tiers.map((item, index) => `${ORDINAL_ZH[index] ?? String(index + 1)} Delta ${
+    item.delta === null || item.delta === undefined ? "未提供" : `${item.delta.toFixed(2)}（${deltaBasisZh(item)}；僅供指派機率參考）`
+  }`);
+  const risk = [
+    "持有 100 股並賣出 1 口買權；超履約價可能被指派、上漲收益封頂",
+    "最高履約價須達年化權利金至少 2%",
+    "期間收益＝限價÷現價；年化收益＝期間收益×365÷DTE",
+    ...deltaNotes,
+    "完整流動性資料見文字版",
+  ].join("；");
   return {
     type: "bubble", size: "mega", header: headerBox(ctx, "備兌買權"),
-    body: uiBox([
-      ...(ctx.carriedLabel ? [uiText(ctx.carriedLabel, "xs", T.ink)] : []),
-      ...displayTiers(cycle).map((item, index) => suggestionSection(cycle, item, index)),
-      bulletRow("前提：持有 100 股、賣出 1 口買權；超過履約價可能被指派，上漲收益封頂。限價：價差 25% 內取中間價，較寬時取 Bid＋四分之一價差。"),
-    ], { paddingAll: "lg", spacing: "md" }),
-    footer: footerBox(ctx, "正股仍承擔下跌風險"),
+    body: uiBox([section("買權檔位", rows.length ? rows : [uiText("無符合檔位", "xs", T.ink)], "key")], { paddingAll: "lg", spacing: "md" }),
+    footer: footerBox(ctx, risk, detailButtons(ctx)),
   };
 }
-function cspSection(cycle: CoveredCallCycle, item: CspItem, index: number) {
-  return section(`建議${ORDINAL_ZH[index] ?? String(index + 1)}：${tierNameZh(item.role)}`, [
-    kvRow("履約價", money(item.strike, cycle.currency), { color: T.ink, sub: `低於現價 ${pct(item.downside_buffer)}` }),
-    kvRow("建議賣出限價", money(item.limit_price, cycle.currency), { emphasis: true, color: T.ink, sub: bidAskZh(item, cycle.currency) }),
-    kvRow("每口權利金", money(item.premium_per_contract, cycle.currency), { color: T.ink, sub: "100 股／口" }),
-    kvRow("需備現金", money(item.cash_required, cycle.currency), { color: T.ink, sub: "履約價 × 100" }),
-    kvRow("年化收益", pct(item.annualized_yield), { color: T.ink, sub: "以備妥現金計" }),
-    kvRow("損益兩平", money(item.breakeven, cycle.currency), { color: T.ink }),
-    bulletRow(`被指派（買進 100 股）機率參考：${legDeltaZh(item)}`),
-  ], index === 0 ? "key" : "detail");
+function cspRow(cycle: CoveredCallCycle, item: CspItem, index: number) {
+  return strategyRow(`建議${ORDINAL_ZH[index] ?? String(index + 1)}：${tierNameZh(item.role)}`, [
+    `履約 ${money(item.strike, cycle.currency)}｜限價 ${money(item.limit_price, cycle.currency)}`,
+    `每口 ${money(item.premium_per_contract, cycle.currency)}｜現金 ${money(item.cash_required, cycle.currency)}（100股）`,
+    `年化 ${pct(item.annualized_yield)}（以備妥現金計）｜損平 ${money(item.breakeven, cycle.currency)}｜Delta ${item.delta.toFixed(2)}`,
+  ]);
 }
 function cspDetailBubble(ctx: CardContext, block: CspData) {
   const { cycle } = ctx;
+  const quoteNotes = block.suggestions.map((item, index) =>
+    `建議${ORDINAL_ZH[index] ?? String(index + 1)} ${legQuoteBand(item, cycle.currency)}；${legDeltaZh(item)}`,
+  );
+  const risk = [
+    "跌破履約價可能被指派；被指派時需以履約價買進正股（100 股），損失可大於權利金",
+    "年化收益以備妥履約價×100的現金計",
+    ...quoteNotes,
+  ].join("；");
   return {
     type: "bubble", size: "mega", header: headerBox(ctx, "現金擔保賣權"),
-    body: uiBox([
-      ...block.suggestions.map((item, index) => cspSection(cycle, item, index)),
-      bulletRow("前提：賣出 1 口賣權並備足履約價 × 100 的現金；股價跌破履約價可能被指派買進 100 股，損失可大於已收權利金。"),
-    ], { paddingAll: "lg", spacing: "md" }),
-    footer: footerBox(ctx, "被指派時需以履約價買進正股，正股下跌風險由賣方承擔"),
+    body: uiBox([section("賣權檔位", block.suggestions.map((item, index) => cspRow(cycle, item, index)), "key")], { paddingAll: "lg", spacing: "md" }),
+    footer: footerBox(ctx, risk, detailButtons(ctx)),
   };
-}
-function collarSection(cycle: CoveredCallCycle, put: StrategyLeg, item: CollarItem, index: number) {
-  const net = perContract(item.net_premium_per_share);
-  return section(`建議${ORDINAL_ZH[index] ?? String(index + 1)}：${tierNameZh(item.role)}`, [
-    kvRow("賣出買權履約價", money(item.call.strike, cycle.currency), { color: T.ink, sub: `高於現價 ${pct(item.call.strike / cycle.spot - 1)}` }),
-    kvRow("賣出限價", money(item.call.limit_price, cycle.currency), { emphasis: true, color: T.ink, sub: bidAskZh(item.call, cycle.currency) }),
-    kvRow(net >= 0 ? "每口淨權利金（收入）" : "每口淨權利金（支出）", money(Math.abs(net), cycle.currency), { color: T.ink, sub: `賣出買權 − 買進賣權，${signedMoney(item.net_premium_per_share, cycle.currency)}／股` }),
-    kvRow("最大損失", money(perContract(item.max_loss_per_share), cycle.currency), { color: T.ink, sub: `每口；股價跌破 ${money(put.strike, cycle.currency)} 後不再擴大` }),
-    kvRow("最大獲利", money(perContract(item.max_gain_per_share), cycle.currency), { color: T.ink, sub: `每口；股價漲過 ${money(item.call.strike, cycle.currency)} 後封頂` }),
-    kvRow("損益兩平", money(item.break_even, cycle.currency), { color: T.ink }),
-    bulletRow(`被指派機率參考：${legDeltaZh(item.call)}`),
-  ], index === 0 ? "key" : "detail");
 }
 function collarDetailBubble(ctx: CardContext, block: CollarData) {
   const { cycle } = ctx;
   const { put } = block;
+  const rows = [
+    strategyRow("保護賣權", [`買進 ${money(put.strike, cycle.currency)}｜限價 ${money(put.limit_price, cycle.currency)}`, `Delta ${put.delta.toFixed(2)}`]),
+    ...block.items.map((item, index) => strategyRow(`建議${ORDINAL_ZH[index] ?? String(index + 1)}：${tierNameZh(item.role)}`, [
+      `Call ${money(item.call.strike, cycle.currency)}｜限價 ${money(item.call.limit_price, cycle.currency)}`,
+      `淨權利金 ${signedMoney(perContract(item.net_premium_per_share), cycle.currency)}（買賣相抵）｜損平 ${money(item.break_even, cycle.currency)}`,
+      `最大損失 ${money(perContract(item.max_loss_per_share), cycle.currency)}｜獲利 ${money(perContract(item.max_gain_per_share), cycle.currency)}`,
+    ])),
+  ];
+  const quoteNotes = [
+    `保護 Put ${legQuoteBand(put, cycle.currency)}；${legDeltaZh(put)}`,
+    ...block.items.map((item, index) =>
+      `建議${ORDINAL_ZH[index] ?? String(index + 1)} Call ${legQuoteBand(item.call, cycle.currency)}；${legDeltaZh(item.call)}`,
+    ),
+  ];
+  const risk = [
+    "持有 100 股、買進 1 口保護賣權並賣出 1 口買權；保護賣權需付權利金；上漲收益於 Call 履約價封頂；最大盈虧為到期估算",
+    ...quoteNotes,
+  ].join("；");
   return {
     type: "bubble", size: "mega", header: headerBox(ctx, "領口策略"),
-    body: uiBox([
-      section("保護賣權（買進，兩個建議共用）", [
-        kvRow("履約價", money(put.strike, cycle.currency), { color: T.ink, sub: `低於現價 ${pct(1 - put.strike / cycle.spot)}` }),
-        kvRow("建議買入限價", money(put.limit_price, cycle.currency), { emphasis: true, color: T.ink, sub: bidAskZh(put, cycle.currency) }),
-        bulletRow(`下跌保護程度參考：${legDeltaZh(put)}`),
-      ], "detail"),
-      ...block.items.map((item, index) => collarSection(cycle, put, item, index)),
-      bulletRow("前提：持有 100 股，買進 1 口賣權並賣出 1 口買權；下跌損失以保護賣權為界，上漲收益封頂於買權履約價。"),
-    ], { paddingAll: "lg", spacing: "md" }),
-    footer: footerBox(ctx, "保護賣權需付權利金；最大損失／獲利為到期時每口理論值"),
+    body: uiBox([section("保護與賣出檔位", rows, "key")], { paddingAll: "lg", spacing: "md" }),
+    footer: footerBox(ctx, risk, detailButtons(ctx)),
   };
 }
 
