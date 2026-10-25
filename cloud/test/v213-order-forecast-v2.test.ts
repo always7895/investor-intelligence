@@ -94,13 +94,16 @@ describe("version-2 order forecast", () => {
     }
     const parsed = parseBottleneckV3(raw, REPORT + HOUR)!;
     expect(card(parsed, parsed.top[5]!.symbol)[2]).toBe("1年內預計認列：US$21.0B（起算日 2026-08-31（非今日起），至 2027-08-31）");
+    // V25 compacts Flex to the data-led decision rows; the existing text command remains the complete source and clause surface.
     for (const entry of [parsed.top[0]!, parsed.top[19]!]) {
-      for (const style of ["text", "flex"] as const) {
-        const detail = JSON.stringify(buildBottleneckDetail(parsed, entry.symbol, style));
-        expect(detail.match(/本次查核 2026-09-21/g)?.length ?? 0, `${entry.symbol} ${style}`).toBeGreaterThanOrEqual(6);
-        for (let i = 1; i <= 4; i += 1) expect(detail, `${entry.symbol} ${style}`).toContain(`期後訂單消息（不併入 RPO）：合約${i}`);
-        expect(detail, style).not.toContain("…\"");  // nothing cut at a line boundary
-      }
+      const fullText = JSON.stringify(buildBottleneckDetail(parsed, entry.symbol, "text"));
+      const flex = JSON.stringify(buildBottleneckDetail(parsed, entry.symbol, "flex"));
+      expect(fullText.match(/本次查核 2026-09-21/g)?.length ?? 0, `${entry.symbol} text`).toBeGreaterThanOrEqual(6);
+      for (let i = 1; i <= 4; i += 1) expect(fullText, `${entry.symbol} text`).toContain(`期後訂單消息（不併入 RPO）：合約${i}`);
+      expect(flex, `${entry.symbol} flex`).toContain("完整數據與網址");
+      expect(flex, `${entry.symbol} flex`).toContain("逐項條件、期後披露與預估見文字版");
+      expect(flex, `${entry.symbol} flex`).toContain("預計認列非保證");
+      expect(fullText, `${entry.symbol} text`).not.toContain("…\"");
     }
   });
 
@@ -216,23 +219,24 @@ describe("version-2 order forecast", () => {
     const parsed = parseBottleneckV3(raw, REPORT + HOUR)!;
     const flex = buildBottleneckTop20Messages(parsed, "flex") as unknown[];
     expect(flex.length).toBeLessThanOrEqual(5);
-    const cards = JSON.stringify(flex);
-    expect(cards.match(/半年內預計認列：US\$12\.0B/g)?.length ?? 0).toBe(20);
-    expect(cards.match(/另有 5 則期後訂單消息/g)?.length ?? 0).toBe(20);
     const text = buildBottleneckTop20Messages(parsed, "text") as { text: string }[];
     expect(text.length).toBeLessThanOrEqual(5);
     for (const message of text) expect(message.text.length).toBeLessThanOrEqual(4900);
     const all = text.map(message => message.text).join("\n");
+    // V25-FIX1 keeps both sealed horizons and conditional prices on Top20; the text route retains every supplement and source clause.
+    expect(all.match(/半年內預計認列：US\$12\.0B/g)?.length ?? 0).toBe(20);
+    expect(all.match(/另有 5 則期後訂單消息/g)?.length ?? 0).toBe(20);
     expect(all.match(/1年內預計認列：US\$21\.0B（起算日 2026-08-31（非今日起），至 2027-08-31）/g)?.length ?? 0).toBe(20);
     expect(all.match(/若1年內實現訂單 → /g)?.length ?? 0).toBe(20);
-    for (const style of ["text", "flex"] as const) {
-      const detail = JSON.stringify(buildBottleneckDetail(parsed, parsed.top[3]!.symbol, style));
-      expect(detail.match(/期後訂單消息（不併入 RPO）/g)?.length ?? 0, style).toBe(6);  // every disclosure in the detail
-      expect(detail, style).toContain("若1年內實現訂單 → ");
-    }
+    const detailText = JSON.stringify(buildBottleneckDetail(parsed, parsed.top[3]!.symbol, "text"));
+    expect(detailText.match(/期後訂單消息（不併入 RPO）/g)?.length ?? 0).toBe(6);
+    expect(detailText).toContain("若1年內實現訂單 → ");
+    const detailFlex = JSON.stringify(buildBottleneckDetail(parsed, parsed.top[3]!.symbol, "flex"));
+    expect(detailFlex).toContain("完整數據與網址");
+    expect(detailFlex).toContain("逐項條件、期後披露與預估見文字版");
   });
 
-  it("keeps the largest presentation within the budget complete in every form (Astra review of revision 2, fix 7)", () => {
+  it("keeps the largest presentation complete on text and directs Flex users to the full detail route", () => {
     const raw = doc(REPORT);
     for (const entry of raw.top as any[]) {
       entry.outlook = { ...(entry.outlook ?? { orders: null, consensus: null, scenarios: [], consensus_second: null }),
@@ -247,13 +251,14 @@ describe("version-2 order forecast", () => {
     const text = buildBottleneckTop20Messages(parsed, "text") as { text: string }[];
     expect(text.map(m => m.text).join("\n").match(/若1年內實現訂單 → /g)?.length ?? 0).toBe(20);
     for (const entry of parsed.top) {
-      for (const style of ["text", "flex"] as const) {
-        const detail = JSON.stringify(buildBottleneckDetail(parsed, entry.symbol, style));
-        // Every disclosure with its source line, both horizons and the price rows, never cut.
-        for (let i = 1; i <= 4; i += 1) expect(detail, `${entry.symbol} ${style} 合${i}`).toContain(`期後訂單消息（不併入 RPO）：合${i}`);
-        expect(detail.match(/本次查核 2026-09-21/g)?.length ?? 0, `${entry.symbol} ${style}`).toBeGreaterThanOrEqual(6);
-        expect(detail, style).toContain("若1年內實現訂單 → ");
-      }
+      const detailText = JSON.stringify(buildBottleneckDetail(parsed, entry.symbol, "text"));
+      // V25-FIX1 moves only the long issuer-specific clauses to the existing detail; the compact horizon rows stay on the card.
+      for (let i = 1; i <= 4; i += 1) expect(detailText, `${entry.symbol} text 合${i}`).toContain(`期後訂單消息（不併入 RPO）：合${i}`);
+      expect(detailText.match(/本次查核 2026-09-21/g)?.length ?? 0, `${entry.symbol} text`).toBeGreaterThanOrEqual(6);
+      expect(detailText).toContain("若1年內實現訂單 → ");
+      const detailFlex = JSON.stringify(buildBottleneckDetail(parsed, entry.symbol, "flex"));
+      expect(detailFlex, `${entry.symbol} flex`).toContain("完整數據與網址");
+      expect(detailFlex, `${entry.symbol} flex`).toContain("逐項條件、期後披露與預估見文字版");
     }
   });
 

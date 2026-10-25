@@ -302,17 +302,27 @@ describe("analyst-consensus revenue route through the real LINE callers", () => 
     return JSON.stringify(messages);
   }
 
-  it("shows the label in the Top20 carousel, the Top20 text and the detail card (reader level)", () => {
+  it("keeps the compact consensus scenario on Top20 and full detail on existing detail/text routes", () => {
     const parsed = parsedDoc(CASE, SYMBOLS);
     const flex = JSON.stringify(buildBottleneckTop20Messages(parsed, "flex"));
     const text = JSON.stringify(buildBottleneckTop20Messages(parsed, "text"));
     const detailFlex = JSON.stringify(buildBottleneckDetail(parsed, "000660.KS", "flex"));
     const detailText = JSON.stringify(buildBottleneckDetail(parsed, "000660.KS", "text"));
-    for (const [name, body] of Object.entries({ flex, text, detailFlex, detailText })) {
-      expect(body, name).toContain(KR_LABEL);
-      expect(body, name).toContain(`達成${CONSENSUS_PRICE_LABEL}營收推估 → 股價情境`);
-    }
+    // V25-D4 merges the duplicate prefix into the remaining clause "情境：營收依上述推估實現，P/S股數不變；以最新已報四季為基準".
     expect(flex).toContain("分析師共識為第三方分析師估計平均，非公司財測、非官方");
+    expect(flex).toContain(`若約6個月（2財季）達成${CONSENSUS_PRICE_LABEL}營收推估 → 股價情境`);
+    expect(flex).toContain("情境：營收依上述推估實現，P/S股數不變；以最新已報四季為基準");
+    expect(flex).toContain("分析師共識情境（非訂單）：無分析師共識可推算。");
+    expect(flex).toContain("瓶頸詳情 000660.KS");
+    expect(flex).toContain(KR_LABEL);
+    expect(text).toContain(KR_LABEL);
+    expect(text).toContain("非訂單");
+    expect(text).toContain(`達成${CONSENSUS_PRICE_LABEL}營收推估 → 股價情境`);
+    expect(text).not.toContain("公司營收財測＋模型");
+    expect(detailFlex).toContain(KR_LABEL);
+    expect(detailFlex).toContain("完整數據與網址");
+    expect(detailText).toContain(KR_LABEL);
+    expect(detailText).toContain(`達成${CONSENSUS_PRICE_LABEL}營收推估 → 股價情境`);
     expect(detailText).toContain("分析師共識（非官方，0q，至2026-09-30）");
     expect(detailText).toContain("https://query2.finance.yahoo.com/v10/finance/quoteSummary/000660.KS");
   });
@@ -328,15 +338,19 @@ describe("analyst-consensus revenue route through the real LINE callers", () => 
     expect(detail).toContain(`達成${CONSENSUS_PRICE_LABEL}營收推估 → 股價情境`);
   });
 
-  it("answers through the Worker's LINE event entry: the TOP20 carousel and the company detail", async () => {
+  it("answers the TOP20 command compactly and keeps full company consensus data reachable", async () => {
     const env = await sealedEnv(rawDoc(CASE, SYMBOLS));
     const carousel = await lineReply(env, "TOP20");
     expect(carousel).toContain('"type":"flex"');
     expect(carousel).toContain(KR_LABEL);
-    expect(carousel).toContain(`達成${CONSENSUS_PRICE_LABEL}營收推估 → 股價情境`);
+    expect(carousel).toContain("分析師共識為第三方分析師估計平均，非公司財測、非官方");
+    expect(carousel).toContain("瓶頸詳情 000660.KS");
     const detail = await lineReply(env, "瓶頸詳情 000660.KS");
     expect(detail).toContain(KR_LABEL);
     expect(detail).not.toContain("公司營收財測＋模型");
+    const detailText = await lineReply(env, "瓶頸詳情 000660.KS 文字");
+    expect(detailText).toContain(KR_LABEL);
+    expect(detailText).toContain(`達成${CONSENSUS_PRICE_LABEL}營收推估 → 股價情境`);
   });
 
   it("shows no consensus figure through the LINE entry when the sealed block is malformed (fail closed)", async () => {

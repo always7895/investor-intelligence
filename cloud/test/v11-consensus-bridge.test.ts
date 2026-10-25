@@ -211,28 +211,38 @@ describe("consensus post-quarter-end bridge through the real LINE callers", () =
   }
   const answer = async (env: unknown, text: string) => JSON.stringify(await v213PublicLineAnswer(env as never, parseQuery(text)));
 
-  it("shows the warning in the Top20 carousel, the Top20 text and the detail card (reader level)", () => {
+  it("keeps the compact consensus disclosure and the full warning in existing detail/text routes", () => {
     const parsed = parseBottleneckV3(rawDoc(), cutoffMs + HOUR)!;
     const flex = JSON.stringify(buildBottleneckTop20Messages(parsed, "flex"));
     const text = JSON.stringify(buildBottleneckTop20Messages(parsed, "text"));
     const detailFlex = JSON.stringify(buildBottleneckDetail(parsed, "000660.KS", "flex"));
     const detailText = JSON.stringify(buildBottleneckDetail(parsed, "000660.KS", "text"));
-    for (const [name, body] of Object.entries({ flex, text, detailFlex, detailText })) {
-      expect(body, name).toContain(TEXT);
-      expect(body, name).toContain(`達成${CONSENSUS_PRICE_LABEL}營收推估 → 股價情境`);
-    }
+    // V25-D4 merges the duplicate prefix into the remaining clause "情境：營收依上述推估實現，P/S股數不變；以最新已報四季為基準".
+    expect(flex).toContain("分析師共識為第三方分析師估計平均，非公司財測、非官方");
+    expect(flex).toContain(`若約6個月（2財季）達成${CONSENSUS_PRICE_LABEL}營收推估 → 股價情境`);
+    expect(flex).toContain("情境：營收依上述推估實現，P/S股數不變；以最新已報四季為基準");
+    expect(flex).toContain("瓶頸詳情 000660.KS");
+    expect(flex).toContain(`${LABEL_PREFIX}2026-10-13`);
+    for (const [name, body] of Object.entries({ text, detailFlex, detailText })) expect(body, name).toContain(TEXT);
+    expect(text).toContain(`達成${CONSENSUS_PRICE_LABEL}營收推估 → 股價情境`);
+    expect(detailFlex).toContain("共識時效警示");
+    expect(detailFlex).toContain(`${LABEL_PREFIX}2026-10-13`);
+    expect(detailText).toContain(`達成${CONSENSUS_PRICE_LABEL}營收推估 → 股價情境`);
   });
 
-  it("answers TOP20 and the company detail through the Worker's LINE event entry (carousel)", async () => {
+  it("answers TOP20 compactly and preserves consensus detail through the Worker's LINE event entry", async () => {
     const env = await sealedEnv(rawDoc());
     const carousel = await lineReply(env, "TOP20");
     expect(carousel).toContain('"type":"flex"');
-    expect(carousel).toContain(TEXT);
-    expect(carousel).toContain(`達成${CONSENSUS_PRICE_LABEL}營收推估 → 股價情境`);
+    expect(carousel).toContain("分析師共識為第三方分析師估計平均，非公司財測、非官方");
+    expect(carousel).toContain("瓶頸詳情 000660.KS");
     const detail = await lineReply(env, "瓶頸詳情 000660.KS");
     expect(detail).toContain(TEXT);
     expect(detail).toContain(LABEL_PREFIX + "2026-10-13");
     expect(detail).not.toContain("財測時效警示");
+    const detailText = await lineReply(env, "瓶頸詳情 000660.KS 文字");
+    expect(detailText).toContain(TEXT);
+    expect(detailText).toContain(`達成${CONSENSUS_PRICE_LABEL}營收推估 → 股價情境`);
   });
 
   it("answers the public LINE route as text for TOP20 and the company detail", async () => {
