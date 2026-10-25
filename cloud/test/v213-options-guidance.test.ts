@@ -157,9 +157,13 @@ describe("Options order guidance (AGENTS.md authorization)", () => {
       assertLineMessages([msg]);
       expect(msg.type).toBe("flex");
       expect(msg.altText).toContain("NVDA");
-      expect(JSON.stringify(msg.contents)).toContain("LIMIT");
-      expect(JSON.stringify(msg.contents)).toContain("Annualized yield");
-      expect(JSON.stringify(msg.contents)).toContain("NOT broker execution");
+      expect(JSON.stringify(msg.contents)).toContain("LIMIT 2.25（Mid）");
+      expect(JSON.stringify(msg.contents)).toContain("Bid 2.10｜Mid＝LIMIT｜Ask 2.40（限價參考帶）");
+      expect(JSON.stringify(msg.contents)).toContain("避免市場單");
+      // V25-D4 preserves the advice-only, no-broker-execution, and full-premium-loss boundary in compact wording.
+      expect(JSON.stringify(msg.contents)).toContain("參數僅供參考，非券商執行、非投資建議；使用者自行下單，期權權利金可能全損。");
+      // V25-D3: Mid＝LIMIT is visible in the body; the footer keeps the annualization formula only.
+      expect(JSON.stringify(msg.contents)).toContain("年化＝Mid÷Strike×365÷max(DTE,1)");
     });
     it("renders full text with band, yield, liquidity and disclaimer", () => {
       const g = gd({ delta: null, bid: 2.2, mid: 2.25, ask: 2.3 });
@@ -183,9 +187,10 @@ describe("Options order guidance (AGENTS.md authorization)", () => {
       expect(text).toContain(CAVEAT_DISCLAIMER);
       const msg = buildPositionSizingFlexBubble(s, "TSM") as FlexMsg;
       assertLineMessages([msg]);
-      expect(msg.type).toBe("flex");
-      expect(msg.altText).toContain("4%");
-      expect(JSON.stringify(msg.contents)).toContain("3-4 tranches");
+      expect(JSON.stringify(msg.contents)).toContain("現金儲備下限需始終維持，不得低於此值");
+      // V25: the compact Chinese schedule preserves the sealed pacing and the standing reserve floor.
+      expect(JSON.stringify(msg.contents)).toContain("建倉 3-4 批");
+      expect(JSON.stringify(msg.contents)).toContain("6-18 個月內");
     });
     it("never uses a market order anywhere in rendered output", () => {
       const body = JSON.stringify(buildOptionsGuidanceFlexBubble(gd({ strategy: "cash_secured_put" })));
@@ -235,7 +240,10 @@ describe("Weekly and monthly option cycles (週期權／月期權)", () => {
     const g = gd({ expiry: "2026-10-09", dte: 7, cycle: "weekly" });
     const card = JSON.stringify(buildOptionsGuidanceFlexBubble(g));
     expect(card).toContain("週期權 Weekly");
-    expect(card).toContain("標準區間 0-14 天，符合標準區間");
+    expect(card).toContain("標準 0-14天｜符合標準區間");
+    expect(card).toContain("Bid 2.10｜Mid＝LIMIT｜Ask 2.40（限價參考帶）");
+    // V25-D3 removes the duplicate premium-basis phrase; Mid remains explicit in the body and formula.
+    expect(card).toContain("年化＝Mid÷Strike×365÷max(DTE,1)");
     expect(buildOptionsGuidanceText(g)).toContain("週期：週期權 Weekly｜DTE 7");
   });
 
@@ -247,6 +255,11 @@ describe("Weekly and monthly option cycles (週期權／月期權)", () => {
     expect((msg.contents as any).contents).toHaveLength(2);
     expect(msg.altText).toContain(`週 2026-10-09 年化 ${weekly.annualized_yield_pct!.toFixed(1)}%`);
     expect(msg.altText).toContain(`月 2026-10-16 年化 ${monthly.annualized_yield_pct!.toFixed(1)}%`);
+    const comparison = JSON.stringify(msg.contents);
+    expect(comparison).toContain("Bid 0.90｜Mid＝LIMIT｜Ask 1.10（限價參考帶）");
+    expect(comparison).toContain("Bid 2.90｜Mid＝LIMIT｜Ask 3.10（限價參考帶）");
+    // V25-D3 keeps the same formula while avoiding a repeated Mid qualifier.
+    expect(comparison).toContain("年化＝Mid÷Strike×365÷max(DTE,1)");
     expect(JSON.stringify(msg)).not.toContain("MARKET");
     expect(() => buildOptionsCycleComparisonFlex(monthly, weekly)).toThrow("OPTIONS_GUIDANCE_CYCLE_ORDER_INVALID");
     const other = gd({ ticker: "amd", expiry: "2026-10-16", dte: 30 });

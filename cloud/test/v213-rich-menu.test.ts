@@ -57,10 +57,23 @@ describe("existing LINE rich-menu commands through actual authorized caller", ()
     expect(body).toContain(action.text === "TOP20" ? "T00" : action.text === "期權" ? "教學範例，非推薦" : "MACRO_TOP5_SHORTFALL");
     expect(body).not.toContain("LOCAL_MODEL_NOT_CONFIGURED");
   });
-  it("menu actions exactly match the operator's configured text commands", async () => {
+  // V25 keeps the remaining command visible as text; inspect buttons recursively because the compact Flex tree is not positional.
+  it("limits the menu to two primary buttons while preserving every configured command", async () => {
     const messages = await actualReply("選單");
-    const actions = messages[0].contents.contents[0].footer.contents.map((b: any) => b.action.text);
-    expect(actions).toEqual(["TOP20", "宏觀產業分析", "期權"]);
+    const actions: string[] = [];
+    const walk = (node: any): void => {
+      if (!node || typeof node !== "object") return;
+      if (Array.isArray(node)) { node.forEach(walk); return; }
+      if (node.type === "button" && typeof node.action?.text === "string") actions.push(node.action.text);
+      Object.values(node).forEach(walk);
+    };
+    walk(messages);
+    expect(actions).toEqual(["TOP20", "宏觀產業分析"]);
+    // V25 integration: the panel names the stock lookup, an options example, the lesson, the legacy board and the full text menu.
+    for (const hint of ["輸入代號查個股", "NVDA 每月期權", "期權教學", "七欄Top20", "選單 文字", "歷史報酬非未來預測"]) expect(JSON.stringify(messages)).toContain(hint);
+    const text = (await actualReply("選單 文字")).map((message: any) => message.text).join("\n");
+    expect(text).toContain("期權與個股快查：期權");
+    expect(text).toContain("宏觀產業分析");
   });
   it.each(RICH_MENU_ACTIONS)("uses shared mobile-sized actions for $text", async action => {
     const messages = await actualReply(action.text);

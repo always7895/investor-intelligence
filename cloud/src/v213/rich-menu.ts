@@ -122,8 +122,8 @@ function panel(
   paragraphs: readonly string[],
   actions: readonly (readonly [string, string])[],
   isText = false,
-  /** V20: shorter bullets for the flex form (the text form keeps `paragraphs`) and the one-line disclosure under them. */
-  flex?: { bullets: readonly string[]; disclosure?: string },
+  /** V20: shorter flex bullets and a one-line disclosure; text keeps full paragraphs and every action. */
+  flex?: { bullets: readonly string[]; disclosure?: string; actions?: readonly (readonly [string, string])[]; plainBullets?: boolean; disclosureInFooter?: boolean },
 ): LineOutboundMessage[] {
   if (isText) return panelTextMessages(title, subtitle, paragraphs, actions);
   const bullets = flex?.bullets ?? paragraphs;
@@ -131,9 +131,14 @@ function panel(
     contents: { type: "carousel", contents: [{
     type: "bubble", size: "mega",
     header: productHeader("韭菜守護者 · 公開研究", title),
-    body: menuBox([section(subtitle, bullets.map(p => bulletRow(p)), "detail"), ...(flex?.disclosure ? [disclosureLine([flex.disclosure])] : [])],
-      { backgroundColor: T.paper, paddingAll: "lg" }),
-    footer: menuBox(actions.map(([label, command]) => menuAction(label, command)), { ...footerStyle }),
+    body: menuBox([
+      ...(flex?.plainBullets ? bullets.map(p => bulletRow(p)) : [section(subtitle, bullets.map(p => bulletRow(p)), "detail")]),
+      ...(flex?.disclosure && !flex.disclosureInFooter ? [disclosureLine([flex.disclosure])] : []),
+    ], { backgroundColor: T.paper, paddingAll: "lg" }),
+    footer: menuBox([
+      ...(flex?.disclosure && flex.disclosureInFooter ? [disclosureLine([flex.disclosure])] : []),
+      ...(flex?.actions ?? actions).map(([label, command]) => menuAction(label, command)),
+    ], { ...footerStyle }),
   }] } }];
   assertLineMessages(messages);
   return messages;
@@ -261,12 +266,10 @@ export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promis
       "D｜資料驅動潛力榜：輸入「潛力榜」；依官方資料每日重算，輸入「潛力報告 代號」看逐項數據報告，「訂單實現榜」看已簽約訂單覆蓋排序。",
       "E｜舊版七欄榜請輸入「七欄Top20」。本服務不連券商、不下單，內容非投資建議。",
     ], NAV, commandText, { bullets: [
-      "A｜TOP20：瓶頸爆發 TOP20 排名；歷史報酬不是未來預測",
-      "B｜宏觀產業：TOP5產業總覽、「產業爆發榜」",
-      "C｜期權與個股快查：「NVDA 每月期權」、直接輸入代號或名稱",
-      "D｜潛力榜：「潛力榜」「潛力報告 代號」「訂單實現榜」",
-      "E｜舊版七欄榜：「七欄Top20」",
-    ], disclosure: "不連券商、不下單，內容非投資建議｜完整說明：輸入「選單 文字」" });
+      "A｜TOP20、瓶頸詳情、潛力榜、訂單實現榜",
+      "B｜宏觀產業分析、產業爆發榜",
+      "C｜輸入代號查個股；「NVDA 每月期權」；「期權教學」",
+    ], disclosure: "歷史報酬非未來預測；不連券商、不自動下單；非投資建議｜舊榜「七欄Top20」｜完整說明「選單 文字」", actions: NAV.slice(0, 2), plainBullets: true, disclosureInFooter: true });
   }
 
   // --- Primary Macro Home Entry: 宏觀產業分析 & TOP5 產業總覽 ---

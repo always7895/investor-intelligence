@@ -12,7 +12,7 @@
  */
 
 import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
-import { LINE_THEME as T, altSummary, bulletRow, disclosureLine, divider, menuAction, menuBox, menuText, headerStyle, footerStyle, uiBox } from "./line-theme";
+import { LINE_THEME as T, altSummary, disclosureLine, menuAction, menuBox, menuText, headerStyle, footerStyle, uiBox, uiText } from "./line-theme";
 import type { OptionContractQuote } from "./market-product-schema";
 import { validateOptionContractQuote } from "./market-product-schema";
 import { admitPublicOption, OptionRightsNotAdmittedError } from "./public-options-admission";
@@ -46,17 +46,16 @@ export function buildOptionContractBubble(quote: OptionContractQuote) {
       menuText(`DTE: ${quote.dte} 天｜基準：${quote.quote_basis}｜幣別：${quote.currency}（乘數 ${quote.multiplier} 股/口）`, "xs", T.headerSubtle),
     ], { ...headerStyle }),
     body: uiBox([
-      bulletRow(`Bid ${formatMoney(quote.bid, quote.currency)} ｜ Mid ${formatMoney(quote.mid, quote.currency)} ｜ Ask ${formatMoney(quote.ask, quote.currency)}`, { size: "sm", weight: "bold" }),
-      bulletRow(`Spread: ${formatMoney(quote.spread, quote.currency)}（未驗證委託保證成交）`, { color: T.subtle }),
-      bulletRow([`Delta: ${quote.delta !== null ? quote.delta.toFixed(3) : "UNAVAILABLE"}`, `IV: ${quote.iv !== null ? `${(quote.iv * 100).toFixed(1)}%` : "UNAVAILABLE"}`].join("｜")),
-      bulletRow([`OI: ${quote.oi !== null ? quote.oi : "UNAVAILABLE"}`, `成交量: ${quote.volume !== null ? quote.volume : "UNAVAILABLE"}`].join("｜")),
-      divider(),
-      bulletRow(quote.assignment_risk),
-      bulletRow(quote.liquidity_warning),
+      uiText(`Bid ${formatMoney(quote.bid, quote.currency)}｜中價 ${formatMoney(quote.mid, quote.currency)}｜Ask ${formatMoney(quote.ask, quote.currency)}\nSpread ${formatMoney(quote.spread, quote.currency)}｜Delta ${quote.delta !== null ? quote.delta.toFixed(3) : "UNAVAILABLE"}`, "xs", T.ink),
+      uiText(`IV ${quote.iv !== null ? `${(quote.iv * 100).toFixed(1)}%` : "UNAVAILABLE"}｜OI ${quote.oi !== null ? quote.oi : "UNAVAILABLE"}｜量 ${quote.volume !== null ? quote.volume : "UNAVAILABLE"}`, "xs", T.subtle),
     ], { paddingAll: "lg", spacing: "sm", backgroundColor: T.paper }),
     footer: uiBox([
-      disclosureLine([`時間戳記：${quote.timestamp}`, `來源：${sourceZh(quote.source)}`, `憑證：${quote.provenance}`, `權利：${rightsZh(quote.rights_status)}`,
-        "本資料為公開行情觀察，非個人化投資建議、無委託下單功能"]),
+      disclosureLine([
+        `時間 ${quote.timestamp}｜來源 ${sourceZh(quote.source)}｜出處 ${quote.provenance}｜權利 ${rightsZh(quote.rights_status)}`,
+        `指派：${quote.assignment_risk}`,
+        `流動性：${quote.liquidity_warning}`,
+        "報價不保證委託成交；非投資建議、不下單",
+      ]),
       menuAction("查看期權策略教學", "期權教學"),
       menuAction("回功能選單", "選單"),
     ], { ...footerStyle }),
@@ -161,12 +160,12 @@ export function optionsUnavailableReport(
           menuText(`${ticker} ${periodLabel}｜嚴格無猜測`, "xs", T.headerAlert),
         ], { ...headerStyle }),
         body: uiBox([
-          bulletRow(`OPTION_DATA_UNAVAILABLE：${ticker} ${periodLabel}目前無已封存驗收之公開報價`, { size: "sm", weight: "bold" }),
-          bulletRow(`原因說明：${reason}`),
-          bulletRow("不使用模型推估、Black-Scholes 猜測或舊殘留快照冒充行情"),
-          bulletRow("Strike、Bid/Mid/Ask、Delta、OI、Volume 維持 UNAVAILABLE", { color: T.subtle }),
+          uiText("OPTION_DATA_UNAVAILABLE\n無合格封存報價；不推估、不回退舊快照\n拒用模型／Black-Scholes 猜價", "xs", T.ink, { weight: "bold" }),
         ], { backgroundColor: T.paper, paddingAll: "lg", spacing: "sm" }),
-        footer: menuBox(actions.slice(0, 3).map(([label, cmd]) => menuAction(label, cmd)), { ...footerStyle }),
+        footer: menuBox([
+          disclosureLine([`原因：${reason}`, "缺值欄位維持 UNAVAILABLE", "非投資建議、不下單"]),
+          ...actions.slice(0, 2).map(([label, cmd]) => menuAction(label, cmd)),
+        ], { ...footerStyle }),
       }],
     },
   }];

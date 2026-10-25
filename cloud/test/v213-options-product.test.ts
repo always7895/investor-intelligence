@@ -119,8 +119,9 @@ describe("Options Product Contract and Validation", () => {
     const flex = buildOptionContractFlex(validated, { evaluatedAt: "2026-09-14T12:00:00Z" });
     assertLineMessages(flex);
     const bodyStr = JSON.stringify(flex);
-    expect(bodyStr).toContain("Delta: UNAVAILABLE");
-    expect(bodyStr).toContain("OI: UNAVAILABLE");
+    // V25: the compact numeric row keeps the same null semantics without legacy punctuation.
+    expect(bodyStr).toContain("Delta UNAVAILABLE");
+    expect(bodyStr).toContain("OI UNAVAILABLE");
   });
 
   it("rejects future timestamps beyond allowable tolerance", () => {
@@ -160,6 +161,7 @@ describe("Options Product Contract and Validation", () => {
     assertLineMessages(flex);
     const flexStr = JSON.stringify(flex);
     expect(flexStr).toContain("OPTION_DATA_UNAVAILABLE");
+    expect(flexStr).toContain("拒用模型／Black-Scholes 猜價");
     expect(flexStr).toContain("AAPL 每週期權");
     expect(flexStr).toContain("AAPL 每月期權");
     expect(flexStr).toContain("期權教學");

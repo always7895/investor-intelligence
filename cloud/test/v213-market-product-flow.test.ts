@@ -142,12 +142,20 @@ describe("End-to-End Market Product Flow (Macro & Options)", () => {
     expect(body).toContain("UNBOUNDED（理論無限）");
   });
 
-  it("educational options single strategy command returns focused card", async () => {
+  it("educational options single strategy command returns a focused compact card and complete text", async () => {
     const messages = await actualReply("期權教學 cash_secured_put");
     const body = JSON.stringify(messages);
     expect(body).toContain("Cash-Secured Put");
     expect(body).toContain("$87.50");
-    expect(body).toContain("$9,000.00");
+    // V25-D4 keeps the contract multiplier and full-cash reserve on the compact lesson bubble.
+    expect(body).toContain("標準美股期權1口＝100股");
+    expect(body).toContain("100%全額現金擔保 $9,000.00");
+    // V25-D4 keeps the same synthetic/non-quote/non-advice/no-order boundary in the compact Flex footer.
+    expect(body).toContain("合成教學假設；非報價、非投資建議、不下單");
+    const text = JSON.stringify(await actualReply("期權教學 cash_secured_put 文字"));
+    expect(text).toContain("$9,000.00");
+    expect(text).toContain("全額現金擔保");
+    expect(text).toContain("$87.50");
   });
 
   it("functional query for ticker weekly/monthly options returns fail-closed UNAVAILABLE", async () => {

@@ -93,6 +93,15 @@ describe("Standalone Educational Options Strategies", () => {
     expect(flexStr).toContain("Cash-Secured Put");
     expect(flexStr).toContain("Bull Call Spread");
     expect(flexStr).toContain("Protective Put");
+    expect(flexStr).toContain("SYNTHETIC_EDUCATIONAL（模擬基準日：2026-09-14T00:00:00Z）");
+    expect(flexStr).toContain("1 口合約 = 100 股現股");
+    // V25 preserves the explicit assumption marker on the synthetic cost basis.
+    expect(flexStr).toContain("現股買入成本為 $100.00/股");
+    expect(flexStr).toContain("未計手續費");
+    expect(flexStr).toContain("提前指派");
+    // V25-D4 keeps the synthetic, non-quote, non-advice, and no-order meanings in a shorter disclosure.
+    expect(flexStr).toContain("合成教學假設；非報價、非投資建議、不下單");
+    expect(flexStr).toContain("期權教學 protective_put 文字");
   });
 
   it("renders single strategy in Flex when requested", () => {
