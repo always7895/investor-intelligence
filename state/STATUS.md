@@ -4,16 +4,16 @@
 
 ## Roles and operator decisions
 
-- Master and single tracked writer: Claude Code a43bef58 (Opus 5.5). Executors by herdr, cheapest capable first: Haiku 5.5 and Sonnet 5.5 subagents, Gemini (agy), `luna`, `sol`. Acceptance: `sol` by default, `astra` for hard problems and rollout GO/NO-GO (`R/OPERATOR-DECISION-HERDR-MULTIMODEL-SIMPLIFY-20261024.txt`). Markdown is master-owned (`R/OPERATOR-DECISION-MD-MASTER-OWNED-20261024.txt`). Sonnet and Fable receipts are history.
-- Jev gate on every staged commit and every PR range (`R/OPERATOR-DECISION-JEV-REVIEW-GATE-20261024.txt`). Low-confidence BLOCK/UNVERIFIED without a location is advisory; a MAJOR/BLOCKER at confidence >= 0.8, an unreviewed result or a reviewer-named problem stops (`...-JEV-LOW-CONFIDENCE-ADVISORY-20261024.txt`). A generator-fixture commit that is pure digest substitution may replace an oversize Jev with a lossless proof (`...-JEV-GENERATED-FIXTURE-LOSSLESS-PROOF-20261024.txt`).
-- Standing: DEFER-TESTS-20261010; INSTRUCTION-RULES-20261011; Q3-FOLLOW-AUTODETECTED-MODEL-20261011; XOR-SYSTEMONE-20261017; STAGE3-P8-V12-20261018 (Q2 merges below); `R/OPERATOR-AUTHORIZATION-ROLLOUT11-P6B-V5-20261019.txt`; V20-UIUX-POLISH and V21-THREE-CONSERVATIVE-STRATEGIES (2026-10-19). Authorization is current-session only; files are not authorization.
+- Master and single tracked writer: Claude Code a43bef58 (Opus 5.5). Executors by herdr: `astra`, `sol`, `luna` and Gemini (agy); the master does not implement. Acceptance review and rollout GO/NO-GO: the master, only on executor work (`R/OPERATOR-DECISION-EXECUTORS-ASTRA-SOL-LUNA-GEMINI-REVIEW-OPUS-20261025.txt`, superseding the 2026-10-24 executor and reviewer lists). Markdown is master-owned (`R/OPERATOR-DECISION-MD-MASTER-OWNED-20261024.txt`). Sonnet and Fable receipts are history.
+- Jev is reference only, machine-wide (`R/OPERATOR-DECISION-JEV-REFERENCE-ONLY-20261025.txt`): it may run per commit and PR range and is recorded, but never stops a commit, push, PR or merge; the master and the Codex reviewers (`sol`, `astra`) decide. Supersedes the 2026-10-24 Jev gate decisions.
+- Standing: DEFER-TESTS-20261010; INSTRUCTION-RULES-20261011; Q3-FOLLOW-AUTODETECTED-MODEL-20261011; XOR-SYSTEMONE-20261017; STAGE3-P8-V12-20261018 (Q2 merges below); `R/OPERATOR-AUTHORIZATION-ROLLOUT11-P6B-V5-20261019.txt`; V20-UIUX-POLISH and V21-THREE-CONSERVATIVE-STRATEGIES (2026-10-19); V25-UIUX-DESIGNER-CONCISE and Q2-MERGE-JEV-OVERSIZE (2026-10-25). Authorization is current-session only; files are not authorization.
 - Local model: auto-detected and followed; UNQUALIFIED; verify `/health` and `/v1/models` live.
 
 DEVELOPMENT_COMPLETE=false; FUNCTIONAL_PROJECT_COMPLETE=false; FINAL_RELEASE_COMPLETE=false; PRODUCTION_GO=false; MACHINE_ADMISSION_ENABLED=false; publication_eligible=false; source_complete=false; globalP0 NOT_REAUDITED; capacity UNQUALIFIED.
 
 ## Lanes DUAL-ACCEPTED (complete H5 each; detail in `git show 147d616:state/STATUS.md`)
 
-FIXGATE + next1 (8d98136, PR 37 open); V11 LINE data gaps (dbf63cf, PR 41 open); V13 (1c05eae); V14 + V15 (bd5848b); V12 (5cb69f0); V16 (a12405b); V17 (3968196); V18 (02d4fbd); V18b (8ed3698); V19 (f5ccc58); V20/V21 bulleted cards and three conservative strategies (9b71a1c); V22, V23 (with ba40730) and V24 (1e64823, below). Ruled BLOCKED: 20 native/sandbox modules (BLOCKED is never PASS).
+FIXGATE + next1 (8d98136, PR 37 merged to main as caafbeb); V11 LINE data gaps (dbf63cf; PR 41 merged at the V15 head 349ad1e as a97da47); V13 (1c05eae); V14 + V15 (bd5848b); V12 (5cb69f0); V16 (a12405b); V17 (3968196); V18 (02d4fbd); V18b (8ed3698); V19 (f5ccc58); V20/V21 bulleted cards and three conservative strategies (9b71a1c); V22, V23 (with ba40730) and V24 (1e64823); V25 (e0421f3, below). Ruled BLOCKED: 20 native/sandbox modules (BLOCKED is never PASS).
 
 ## Lanes V22-V24 (DUAL-ACCEPTED at 1e64823), branch `feat/v23-audit-cpu-docs` from 147d616
 
@@ -24,17 +24,18 @@ FIXGATE + next1 (8d98136, PR 37 open); V11 LINE data gaps (dbf63cf, PR 41 open);
 - Gate: complete H5 `R/final-a43bef58-v23-g3r` on 1e64823 PASS_AS_RULED (338 modules, PASS 318, ruled BLOCKED 20; the first run `R/final-a43bef58-v23-g3` stays FINDINGS for one observation race), harness `R/pygate4-repin-a43bef58-20261024` (pwsh 7.6.7 re-pin). Two review rounds rejected and were fixed (`sol` F1, F2; `astra` M1, M2, M1-R2).
 - Acceptance on 1e64823: `astra` ACCEPT-WITH-NOTES for V23, covering ba40730 (`R/ASTRA-V23-INDEPENDENT-ACCEPT-R3-CLAUDECODE-a43bef58.txt`); `sol` ACCEPT-WITH-NOTES for V24 and V22 (`R/SOL-V24V22-INDEPENDENT-ACCEPT-R3-CLAUDECODE-a43bef58.txt`; N1: the V24 cold-path cost is stated as operation counts, no fresh Worker CPU measurement). Receipt: `R/EXECUTOR-V23-RESULT-CLAUDECODE-a43bef58.txt`.
 
-## Current lane (IMPLEMENTED_UNVERIFIED)
+## Lane V25 (DUAL-ACCEPTED at e0421f3), branch `feat/v25-line-ui-concise` from 091b22d
 
-- V25 LINE UI/UX designer pass (`R/OPERATOR-DECISION-V25-UIUX-DESIGNER-CONCISE-20261025.txt`): one decision per card (verdict line, hero figure, at most three bullets, one disclosure line), the three conservative strategies as one comparison, fewer characters on the text-heavy options and bottleneck cards; disclosures, figures and the palette unchanged. In development in an isolated worktree.
+- LINE UI/UX designer pass (`R/OPERATOR-DECISION-V25-UIUX-DESIGNER-CONCISE-20261025.txt`): one decision per bubble (compact figure rows, at most three short labelled qualifier lines, each caveat once, at most two buttons); every qualifier, source, date and warning of a shown figure stays on its bubble; the Top20 card keeps current orders, both future-order horizons, both price scenarios and the consensus warning; the three conservative strategies are one comparison. Against V20: worst-bubble text nodes down 10-70 %, characters up to 65 % (`docs/LINE_TOP20_UI.md`). Review round 1 (`sol` REJECT on 873be8c: F1-F8, N1) fixed in 1d915b9 and 65e14cc; round 2 (REJECT on 65e14cc: RPO meaning, per-strategy loss/unit/expiry basis, buy-leg limit rule, span-aware designer observer) fixed in 759ab33 and 2fab8d1; round 3 (REJECT on 2fab8d1: RPO meaning for a current RPO without a future forecast or with a v3 consensus forecast) fixed in e0421f3.
+- Gate: complete H5 `R/final-a43bef58-v25-g4b` PASS_AS_RULED (PASS 318, BLOCKED 20) (full rerun; `v25-g4` stopped at 163 of 338 when the master process ended). Acceptance: master review ACCEPT-WITH-NOTES (`R/MASTER-V25-ACCEPT-R4-CLAUDECODE-a43bef58.txt`; N1 harness double run both PASS, N2 design 7/10, N3 independence limit); fix rounds 2-3 were master-written before the role change, their independent evidence is `sol` rounds 2-3 and its R3 probe passing at e0421f3. Receipt: `R/EXECUTOR-V25-RESULT-CLAUDECODE-a43bef58.txt`.
 
 ## Rollout v11 (authorized 2026-10-17; log `R/ROLLOUT11-EXEC-NOTES-CLAUDECODE-a43bef58.md`)
 
-Stages 1 and 2 done (Worker 5159441e; runtime bd5848b, H1 accepted). Stage 3 P6b under addendum V5 (F 100, N_a 30). Timed read-only watch 2026-10-24 hourly to 23:50Z, `R/rollout11-watch-20261024-a43bef58/timed/`: PASS each hour (E_M 860-881 <= 950) except PASS_WITH_FAILURE at 15:50Z (the 15:12Z sync failed at OBJECT_PUT with TRANSIENT_HTTP, pointer not attempted; the watch rule says continue). Then `astra` reviews the disposition (`R/ROLLOUT11-REVALIDATION-DISPOSITION-CLAUDECODE-a43bef58.md`); after DUAL-ACCEPTED (Q2): fast-forward feat/v11-line-data-gaps to the accepted head, merge PR 37 then PR 41, no tag or release; a refused merge goes to the operator on GitHub.
+Stages 1 and 2 done (Worker 5159441e; runtime bd5848b, H1 accepted). Stage 3 P6b under addendum V5 (F 100, N_a 30). Timed read-only watch 2026-10-24 hourly to 23:50Z, `R/rollout11-watch-20261024-a43bef58/timed/`: PASS each hour (E_M 860-881 <= 950) except PASS_WITH_FAILURE at 15:50Z (the 15:12Z sync failed at OBJECT_PUT with TRANSIENT_HTTP, pointer not attempted; the watch rule says continue). Complete: 20 of 20 hours, 19 PASS. DUAL-ACCEPTED with disclosed gaps (`R/ASTRA-ROLLOUT11-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt`; disposition `R/ROLLOUT11-REVALIDATION-DISPOSITION-CLAUDECODE-a43bef58.md`). Q2 done: feat/v11-line-data-gaps fast-forwarded to 349ad1e, PR 37 and PR 41 merged to main; no tag or release.
 
-## Rollout 12 (V16-V24 install and Worker deploy)
+## Rollout 12 (V16-V25 install and Worker deploy)
 
-Package r4 `R/rollout12-r4-a43bef58/` (r2 fixes M1-M7 kept, target 429586f; no CPU signal in the existing tools, so the CPU watch is a manual operator check) is retargeted once more after V25, to the head that includes it; `astra` GO, then operator authorization; deploy only in the timing windows; watch CPU p99 and exceeded-CPU counts.
+Package r4 `R/rollout12-r4-a43bef58/` (r2 fixes M1-M7 kept, target 429586f; no CPU signal in the existing tools, so the CPU watch is a manual operator check) is retargeted once more (r5, `luna`) to the V25 head; master GO/NO-GO review, then operator authorization; deploy only in the timing windows; watch CPU p99 and exceeded-CPU counts.
 
 ## Open work
 
@@ -49,4 +50,4 @@ History: `git show 147d616:state/STATUS.md`. Since: 2026-10-23/24 parallel write
 
 ## Next
 
-V25 integration, complete H5 and `sol` acceptance; rollout v11 disposition after 23:50Z, then the Q2 merges; rollout 12 retarget, `astra` GO and authorization. Boundaries: credentials, billing, broker, trades, Production without current-session authorization. No trades.
+Rollout 12 package r5 (`luna` retarget to the V25 head), master GO/NO-GO, then operator authorization and deploy in the timing windows; V16-V25 merge to main after rollout 12 is accepted (Q2 scope). Boundaries: credentials, billing, broker, trades, Production without current-session authorization. No trades.
