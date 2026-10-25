@@ -2,8 +2,8 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { isAbsolute, join, resolve, sep } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { resetAdmissionToReal } from "./synthetic-option-admission";
-import { measure, v25FlexMessages, v25Surfaces, type Node } from "./flex-density-fixtures";
-import { LINE_THEME as T, verdictLine } from "../src/v213/line-theme";
+import { measure, v25FlexMessages, v25Surfaces, v3D1Surfaces, type Node } from "./flex-density-fixtures";
+import { LINE_THEME as T, disclosureGroups, verdictLine } from "../src/v213/line-theme";
 
 vi.mock("../src/v213/public-options-admission", async importOriginal => {
   const real = await importOriginal<typeof import("../src/v213/public-options-admission")>();
@@ -23,37 +23,42 @@ const V20_CEILINGS: Record<string, { texts: number; chars: number }> = {
   "options-product contract": { texts: 10, chars: 330 },
   "options-product unavailable": { texts: 7, chars: 230 },
   "rich-menu navigation": { texts: 9, chars: 210 },
-  "V21 three strategies": { texts: 56, chars: 910 },
+  "V21 three strategies": { texts: 25, chars: 626 },
   "options-guidance cycle comparison": { texts: 23, chars: 490 },
   "bottleneck detail (all pages)": { texts: 23, chars: 963 },
 };
 const V25_AFTER_CEILINGS: Record<string, { texts: number; chars: number }> = {
   "top20-presentation": { texts: 24, chars: 698 },
-  "bottleneck Top20 card": { texts: 13, chars: 560 },
-  "bottleneck detail page 1": { texts: 8, chars: 203 },
+  "bottleneck Top20 card": { texts: 16, chars: 582 },
+  "bottleneck detail page 1": { texts: 10, chars: 409 },
   "bottleneck industry": { texts: 8, chars: 97 },
-  "covered-call (3 tiers)": { texts: 20, chars: 636 },
+  "covered-call (3 tiers)": { texts: 22, chars: 597 },
   "options-guidance order": { texts: 12, chars: 339 },
   "options-guidance sizing": { texts: 7, chars: 172 },
-  "educational-options": { texts: 7, chars: 411 },
-  "options-product contract": { texts: 6, chars: 295 },
+  "educational-options": { texts: 9, chars: 361 },
+  "options-product contract": { texts: 8, chars: 296 },
   "options-product unavailable": { texts: 5, chars: 184 },
   // V25 integration: the stock-lookup hint, the past-returns caveat and the 七欄Top20 / 選單 文字 pointers stay on the panel.
   "rich-menu navigation": { texts: 6, chars: 132 },
-  "V21 three strategies": { texts: 18, chars: 590 },
+  "V21 three strategies": { texts: 21, chars: 633 },
   "options-guidance cycle comparison": { texts: 12, chars: 336 },
-  "bottleneck detail (all pages)": { texts: 9, chars: 463 },
+  "bottleneck detail (all pages)": { texts: 22, chars: 413 },
 };
 const V25_FLOORS: Record<string, { texts: number; chars: number; reason: string }> = {
   "bottleneck Top20 card": {
-    texts: 13,
-    chars: 560,
-    reason: "The inherited 35% target is 474 characters. The measured 560-character floor keeps together six- and twelve-month order horizons and recognition dates; conditional price scenarios with P/S/share-count invariance; the RPO definition and non-guaranteed/non-target/non-advice/no-auto-order caveats; current-order and unreported-RPO status; the non-order proxy; six-month and short-history/two-year price basis; market cap; long-horizon normal-trading return and listing/spin-off history; and SEC/Yahoo source names and dates. Score composition is accessible in the detail route, not required as a card qualifier.",
+    texts: 16,
+    chars: 582,
+    reason: "The V25 pre-FIX3 capture was 13/560; target35 is 474 characters. The 16/582 surface keeps current-order status and the non-order proxy; both forecast windows and their start/end dates; source/date, normal-trading basis and listing history; the revenue-only scenario and the RPO/non-target/non-advice/no-order caveats; and three short labelled cross-check/scenario qualifiers on the same bubble. The +3 nodes/+22 characters are required same-bubble disclosures, not optional narrative.",
+  },
+  "bottleneck detail page 1": {
+    texts: 10,
+    chars: 409,
+    reason: "The V25 pre-FIX3 capture was 8/203; target35 is 266 characters. The measured 10/409 (still below the unchanged V20 ceiling 410) keeps the financial figures with source names and quarter/as-of dates, official prior-quarter attribution, diluted-share basis, long.sub and long.event, and the applicable revenue/exchange cross-checks on this same financial page. This is the required F1 restoration.",
   },
   "covered-call (3 tiers)": {
-    texts: 20,
-    chars: 636,
-    reason: "The inherited 35% target is 591 characters. The 636-character floor preserves all three strikes/limits and Bid/Mid/Ask bands, contract premium and period/annualized yields, the source name/capture time and unavailable quote time, 100-share cover and assignment/upside-cap risk, the high-strike threshold and return formulas, each Delta with its source and assignment-probability-only qualifier, the full-liquidity text-route pointer, short-term annualization caveat, delayed/non-executable public-data status, non-advice/non-guaranteed/no-order wording, and underlying downside risk.",
+    texts: 22,
+    chars: 597,
+    reason: "V25 master after review round 1: the Delta basis and the yield formulas are stated once per bubble instead of once per tier (674 -> 586), and the section title carries the 100-share, one-contract cover basis that the 873be8c footer had (+11). The 6 characters over target35 (591) are that restored contract basis.",
   },
   "options-guidance order": {
     texts: 12,
@@ -61,24 +66,34 @@ const V25_FLOORS: Record<string, { texts: number; chars: number; reason: string 
     reason: "The inherited 35% target is 318 characters. The 339-character floor preserves LIMIT/Mid and Bid/Mid/Ask, underlying/strike/expiry/DTE, Delta target, annualized yield and its out-of-range warning, wide-spread status, avoid-market rule, annualization formula, and the non-broker/non-execution/non-advice/self-order/full-premium-loss boundary.",
   },
   "educational-options": {
-    texts: 7,
-    chars: 411,
-    reason: "The inherited 35% target is 364 characters. The 411-character floor preserves the explicit non-recommendation label, synthetic status and as-of date, strategy and contract multiplier, assumed cost and full-share collateral, premium/cost assumptions, fees/slippage, early assignment and tax caveats, capped upside and substantial underlying downside, plus non-quote/non-advice/no-order disclosures.",
+    texts: 9,
+    chars: 361,
+    reason: "The V25 pre-FIX3 capture was 7/411; target35 is 364 characters. The 9/361 bubble preserves the two exact contract legs and Pin Risk/assignment clause with unit basis, plus explicit non-recommendation, synthetic status/date, multiplier/cost/collateral, fees/slippage, early assignment/tax, capped upside/downside and no-quote/no-advice/no-order terms. Three labelled qualifier groups raise text nodes by two while reducing total characters by 50.",
   },
   "options-product contract": {
-    texts: 6,
-    chars: 295,
-    reason: "The fixed contract identity, all sealed bid/mark/ask, spread, delta, IV, open-interest and volume fields, timestamp, source/provenance, rights, assignment, liquidity, and execution/advice caveats cannot be removed or clipped.",
+    texts: 8,
+    chars: 296,
+    reason: "The V25 pre-FIX3 capture was 6/295; target35 is 214 characters. The 8/296 bubble keeps timestamp/source, rights/provenance, assignment, liquidity and execution/advice caveats in three labelled groups. Splitting the former run-on disclosure adds two text nodes and one label character; no quote qualifier or provenance value is moved off the bubble.",
   },
   "options-product unavailable": {
     texts: 5,
     chars: 184,
     reason: "The caller-supplied reason must remain verbatim beside the unavailable/no-guess/no-stale-fallback status, unavailable-field and non-advice/no-order disclosures.",
   },
+  "V21 three strategies": {
+    texts: 21,
+    chars: 633,
+    reason: "The real V21 baseline is 25/626, so its 35% character target is 406 (not the unrelated 591-character covered-call target). The V25 pre-FIX3 capture was 18/590; the measured 21/633 keeps quote bands, limit-selection basis, source/time, 100-share basis and assignment/downside risks together. The +3 nodes/+43 characters are the three labelled source/basis/risk groups and required same-bubble qualifiers.",
+  },
   "options-guidance cycle comparison": {
     texts: 12,
     chars: 336,
     reason: "The inherited 35% target is 318 characters. The 336-character floor keeps the weekly/monthly comparison parameters, quote bands, DTE and freshness basis, annualization formula, source context, and non-broker/non-execution/non-advice/no-order qualifiers together on the same bubble.",
+  },
+  "bottleneck detail (all pages)": {
+    texts: 22,
+    chars: 413,
+    reason: "The corrected baseline is 22 text nodes at its maximum and 463 characters at a different page; the old 9/463 paired the node count with the character-largest page. After Fix3, independent maxima are 22/413 across all detail pages and the appended research-report bubble. The same-page analyst source/date stays with its consensus scenario summary; the text-node floor retains F1/F2 source, date, shares, order-floor and cross-check content.",
   },
 };
 
@@ -88,6 +103,7 @@ interface SurfaceSample {
   bubbleCount: number;
   worstBubbleIndex: number;
   worstBubble: Node;
+  metricMaxBubbleIndices: Record<"texts" | "chars" | "bullets" | "sections" | "xxs" | "footerButtons" | "distinctSizes" | "distinctWeights" | "longestPlainLine" | "disclosureLines", number>;
   metrics: {
     texts: number;
     chars: number;
@@ -122,10 +138,15 @@ function duplicateNumericFigures(bubble: Node): string[] {
       if (inFooter && node.size === "xxs" && node.color === T.subtle) return;
       const text = typeof node.text === "string" ? node.text : "";
       const pattern = /(?:US)?\$\s?-?\d[\d,]*(?:\.\d+)?|[+-]?\d+(?:\.\d+)?(?:%|pp)/g;
-      for (const match of text.matchAll(pattern)) {
-        const field = (text.slice(0, match.index).split(/[｜\n]/).at(-1) ?? "").trim().replace(/\s+/g, " ");
-        const key = `${context.join("/")}|${field}|${match[0]}`;
-        const current = figures.get(key) ?? { token: match[0], count: 0 };
+      const matches = [
+        ...Array.from(text.matchAll(pattern), match => ({ index: match.index ?? 0, token: match[0] })),
+        ...Array.from(text.matchAll(/(?:\bLIMIT\s+|限價\s*)(-?\d+(?:\.\d+)?)(?=\s*(?:\(|（|\||$))/gi),
+          match => ({ index: (match.index ?? 0) + match[0].lastIndexOf(match[1]!), token: match[1]! })),
+      ];
+      for (const { index, token } of matches) {
+        const field = (text.slice(0, index).split(/[｜\n]/).at(-1) ?? "").trim().replace(/\s+/g, " ");
+        const key = `${context.join("/")}|${field}|${token}`;
+        const current = figures.get(key) ?? { token, count: 0 };
         current.count += 1;
         figures.set(key, current);
       }
@@ -179,6 +200,41 @@ function top20DisclosureText(bubble: Node): string {
   visit((bubble as any).footer);
   return lines.join("");
 }
+const LABELLED_DISCLOSURE_SURFACES: Record<string, true> = {
+  "bottleneck Top20 card": true,
+  "bottleneck detail page 1": true,
+  "bottleneck detail (all pages)": true,
+  "covered-call (3 tiers)": true,
+  "educational-options": true,
+  "options-product contract": true,
+  "V21 three strategies": true,
+};
+function disclosureLines(bubble: Node): { text: string; labelledBold: boolean }[] {
+  const lines: { text: string; labelledBold: boolean }[] = [];
+  const visit = (value: unknown): void => {
+    if (Array.isArray(value)) { value.forEach(visit); return; }
+    if (typeof value !== "object" || value === null) return;
+    const node = value as Node;
+    if (node.type === "text" && node.size === "xxs" && node.color === T.subtle) {
+      const labelledBold = Array.isArray(node.contents) && node.contents.length >= 2
+        && node.contents[0]?.weight === "bold";
+      // V25-FIX3 counts each visible line separately; wrapped body notes are not one run-on disclosure.
+      for (const text of visibleText(node).split(/\r?\n/)) lines.push({ text, labelledBold });
+      return;
+    }
+    Object.values(value as Record<string, unknown>).forEach(visit);
+  };
+  visit(bubble);
+  return lines;
+}
+function footerDisclosureLines(bubble: Node): { text: string; labelledBold: boolean }[] {
+  return disclosureLines((bubble as any).footer);
+}
+function assertLabelledFooterDisclosures(name: string, bubble: Node): void {
+  const lines = footerDisclosureLines(bubble);
+  expect(lines.length, `${name} footer disclosures`).toBeGreaterThan(0);
+  for (const line of lines) expect(line.labelledBold, `${name} bold disclosure label`).toBe(true);
+}
 
 
 function assertBodyRows(name: string, bubble: Node): void {
@@ -202,11 +258,17 @@ function assertBubbleDesign(name: string, bubble: Node): void {
   assertBodyRows(name, bubble);
   expect(metrics.sections, `${name} framed sections`).toBeLessThanOrEqual(1);
   expect(metrics.bullets, `${name} bullets`).toBeLessThanOrEqual(3);
-  expect(metrics.longestPlainLine, `${name} plain body line: ${metrics.longPlain.join(" / ")}`).toBeLessThanOrEqual(40);
+  expect(metrics.footerDisclosureLines, `${name} footer disclosure groups`).toBeLessThanOrEqual(3);
+  for (const line of disclosureLines(bubble)) {
+    expect(Array.from(line.text).length, `${name} disclosure line`).toBeLessThanOrEqual(110);
+  }
   expect(metrics.distinctSizes, `${name} text sizes`).toBeLessThanOrEqual(4);
   expect(metrics.distinctWeights, `${name} text weights`).toBeLessThanOrEqual(2);
+  // The all-pages sample also appends an unchanged research-report bubble; its first four product pages are checked below.
+  if (LABELLED_DISCLOSURE_SURFACES[name] && name !== "bottleneck detail (all pages)") assertLabelledFooterDisclosures(name, bubble);
   expect(metrics.maxLinesUsed, `${name} maxLines`).toBe(0);
-  expect(metrics.footerDisclosureLines, `${name} footer disclosureLine`).toBe(1);
+  expect(metrics.footerDisclosureLines, `${name} footer disclosure groups`).toBeLessThanOrEqual(3);
+  expect(metrics.longestPlainLine, `${name} body line`).toBeLessThanOrEqual(40);
   expect(metrics.buttons, `${name} buttons`).toBeLessThanOrEqual(2);
   expect(metrics.footerButtons, `${name} footer buttons`).toBeLessThanOrEqual(2);
   expect(duplicateNumericFigures(bubble), `${name} repeated figures`).toEqual([]);
@@ -223,9 +285,34 @@ async function collectSamples(): Promise<SurfaceSample[]> {
     const bubbles = await build();
     expect(bubbles.length, `${name} must have a bubble`).toBeGreaterThan(0);
     const measurements = bubbles.map(measure);
-    const worstBubbleIndex = measurements.reduce((worst, candidate, index) =>
-      candidate.chars > measurements[worst]!.chars ? index : worst, 0);
-    const metrics = measurements[worstBubbleIndex]!;
+    const maxIndex = (key: keyof SurfaceSample["metrics"]) =>
+      measurements.reduce((worst, candidate, index) => candidate[key] > measurements[worst]![key] ? index : worst, 0);
+    const maxValue = (key: keyof SurfaceSample["metrics"]) => measurements[maxIndex(key)]![key];
+    const worstBubbleIndex = maxIndex("chars");
+    const metrics = {
+      texts: maxValue("texts"),
+      chars: maxValue("chars"),
+      bullets: maxValue("bullets"),
+      sections: maxValue("sections"),
+      xxs: maxValue("xxs"),
+      footerButtons: maxValue("footerButtons"),
+      distinctSizes: maxValue("distinctSizes"),
+      distinctWeights: maxValue("distinctWeights"),
+      longestPlainLine: maxValue("longestPlainLine"),
+      disclosureLines: maxValue("disclosureLines"),
+    };
+    const metricMaxBubbleIndices = {
+      texts: maxIndex("texts"),
+      chars: maxIndex("chars"),
+      bullets: maxIndex("bullets"),
+      sections: maxIndex("sections"),
+      xxs: maxIndex("xxs"),
+      footerButtons: maxIndex("footerButtons"),
+      distinctSizes: maxIndex("distinctSizes"),
+      distinctWeights: maxIndex("distinctWeights"),
+      longestPlainLine: maxIndex("longestPlainLine"),
+      disclosureLines: maxIndex("disclosureLines"),
+    };
     const ceiling = V20_CEILINGS[name] ?? null;
     samples.push({
       name,
@@ -233,18 +320,8 @@ async function collectSamples(): Promise<SurfaceSample[]> {
       bubbleCount: bubbles.length,
       worstBubbleIndex,
       worstBubble: bubbles[worstBubbleIndex]!,
-      metrics: {
-        texts: metrics.texts,
-        chars: metrics.chars,
-        bullets: metrics.bullets,
-        sections: metrics.sections,
-        xxs: metrics.xxs,
-        footerButtons: metrics.footerButtons,
-        distinctSizes: metrics.distinctSizes,
-        distinctWeights: metrics.distinctWeights,
-        longestPlainLine: metrics.longestPlainLine,
-        disclosureLines: metrics.disclosureLines,
-      },
+      metricMaxBubbleIndices,
+      metrics,
       v20Ceiling: ceiling,
       target35: ceiling ? { chars: Math.floor(ceiling.chars * 0.65), texts: Math.floor(ceiling.texts * 0.75) } : null,
     });
@@ -256,18 +333,27 @@ function writeCapture(samples: SurfaceSample[], phase: "before" | "after"): void
   const rawDirectory = process.env.V25_ARTIFACT_DIR;
   if (!rawDirectory || !isAbsolute(rawDirectory)) throw new Error("V25_ARTIFACT_DIR must be an absolute report path");
   const outputDirectory = resolve(rawDirectory);
-  const allowedSuffix = ["scratchpad", "v25", "luna", "out"].join(sep);
-  if (!outputDirectory.toLowerCase().endsWith(`${sep}${allowedSuffix}`.toLowerCase())) {
-    throw new Error("V25_ARTIFACT_DIR must end in scratchpad/v25/luna/out");
+  // Captures are evidence, never repository content: refuse any directory inside this checkout.
+  const repositoryRoot = resolve(__dirname, "..", "..").toLowerCase();
+  if (outputDirectory.toLowerCase() === repositoryRoot || outputDirectory.toLowerCase().startsWith(`${repositoryRoot}${sep}`)) {
+    throw new Error("V25_ARTIFACT_DIR must be outside the repository");
   }
   const phaseDirectory = join(outputDirectory, `flex-${phase}`);
   mkdirSync(phaseDirectory, { recursive: true });
   for (const sample of samples) {
     const fileName = `${sample.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}.json`;
     writeFileSync(join(phaseDirectory, fileName), `${JSON.stringify(sample.worstBubble, null, 2)}\n`, "utf8");
+    const metricMaxIndices = [...new Set(Object.values(sample.metricMaxBubbleIndices))];
+    for (const index of metricMaxIndices) {
+      if (index === sample.worstBubbleIndex) continue;
+      const metrics = Object.entries(sample.metricMaxBubbleIndices).filter(([, maxIndex]) => maxIndex === index)
+        .map(([metric]) => metric).join("-");
+      writeFileSync(join(phaseDirectory, `${fileName.slice(0, -5)}-max-${metrics}.json`),
+        `${JSON.stringify(sample.bubbles[index]!, null, 2)}\n`, "utf8");
+    }
   }
   const artifact = {
-    source: phase === "before" ? "V20 builder outputs before V25 code changes" : "V25 builder outputs after UI changes",
+    source: phase === "before" ? "Pinned base 873be8c before Fix3" : "Fix3 builder outputs after remediation",
     surfaces: samples.map(({ worstBubble, bubbles, ...sample }) => sample),
   };
   writeFileSync(join(outputDirectory, `${phase === "before" ? "BEFORE" : "AFTER"}.json`), `${JSON.stringify(artifact, null, 2)}\n`, "utf8");
@@ -297,6 +383,14 @@ describe("V25 Flex density baseline and budgets", () => {
       expect(sample.metrics.texts, `${sample.name} text count`).toBeLessThanOrEqual(sample.target35!.texts);
     }
   });
+  it("detects duplicate bare LIMIT values", () => {
+    const repeatedLimit = "LIMIT 2.25（Mid）";
+    const bubble = { type: "box", contents: [
+      { type: "text", text: repeatedLimit },
+      { type: "text", text: repeatedLimit },
+    ] };
+    expect(duplicateNumericFigures(bubble as Node)).toEqual(["2.25"]);
+  });
   it("keeps D1 caveats single-use per bubble and the Top20 disclosure within 260 code points", async () => {
     const samples = await collectSamples();
     for (const sample of samples) {
@@ -305,6 +399,10 @@ describe("V25 Flex density baseline and budgets", () => {
     }
     const top20 = samples.find(sample => sample.name === "bottleneck Top20 card")!;
     const disclosure = top20DisclosureText(top20.worstBubble);
+    const detail = samples.find(sample => sample.name === "bottleneck detail (all pages)")!;
+    expect(detail.bubbles.length).toBeGreaterThanOrEqual(4);
+    detail.bubbles.slice(0, 4).forEach((bubble, index) =>
+      assertLabelledFooterDisclosures(`bottleneck detail page ${index + 1}`, bubble));
     expect(disclosure).not.toBe("");
     const body = visibleText((top20.worstBubble as any).body);
     const footer = visibleText((top20.worstBubble as any).footer);
@@ -314,7 +412,17 @@ describe("V25 Flex density baseline and budgets", () => {
     expect(footer).not.toContain("市值 ");
     expect(footer).not.toContain("角色 ");
     expect(footer).not.toContain("分數構成：");
-    expect(Array.from(disclosure).length, "Top20 disclosure code points").toBeLessThanOrEqual(260);
+    for (const [name, bubbles] of Object.entries(v3D1Surfaces())) {
+      expect(bubbles.length, `${name} must have a bubble`).toBeGreaterThan(0);
+      bubbles.forEach((bubble, index) => {
+        expect(repeatedD1Caveats(bubble), `${name} bubble ${index + 1}`).toEqual([]);
+        for (const line of disclosureLines(bubble)) {
+          expect(Array.from(line.text).length, `${name} disclosure line`).toBeLessThanOrEqual(110);
+        }
+        // V25-FIX3 includes actual V3 footer groups while excluding unrelated xxs header/body text.
+        assertLabelledFooterDisclosures(name, bubble);
+      });
+    }
   });
 
 
@@ -323,6 +431,16 @@ describe("V25 Flex density baseline and budgets", () => {
     expect(Array.from(exactLimit.text ?? "").length).toBe(24);
     expect(verdictLine("🙂".repeat(25))).toBeUndefined();
     expect(verdictLine("   ")).toBeUndefined();
+  });
+
+  it("never drops or throws on a long live disclosure; skips empty groups", () => {
+    const long = "流動性：" + "價差偏寬".repeat(40);
+    const nodes = disclosureGroups([{ label: "來源", text: "A\nB" }, { label: "風險", text: long }, { label: "基準", text: " " }]) as Node[];
+    expect(nodes).toHaveLength(2);
+    const spans = (node: Node) => (node.contents as Node[]).map(span => span.text ?? "");
+    expect(spans(nodes[0]!)).toEqual(["來源｜", "A B"]);
+    expect(spans(nodes[1]!).join("")).toBe(`風險｜${long}`);
+    expect(() => disclosureGroups([1, 2, 3, 4].map(n => ({ label: `L${n}`, text: "x" })))).toThrow("LINE_DISCLOSURE_GROUP_LIMIT");
   });
 
   it("keeps every Flex message within V25 carousel and alt-text limits", async () => {

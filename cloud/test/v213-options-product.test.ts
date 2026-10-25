@@ -148,6 +148,10 @@ describe("Options Product Contract and Validation", () => {
     expect(flexStr).toContain("NVDA 2026-09-25 125CALL");
     expect(flexStr).not.toContain("UNAVAILABLE（無定義策略）");
     expect(flexStr).toContain("Bid $4.20");
+    // V25-FIX3 keeps source/date, rights, provenance and both risk operands in three labelled rows on this bubble.
+    for (const qualifier of [validQuote.timestamp, "來源｜", "權利｜", "出處 OP_TEST_SUITE", "風險｜", validQuote.assignment_risk, validQuote.liquidity_warning]) {
+      expect(flexStr).toContain(qualifier);
+    }
 
     const text = buildOptionContractText(validQuote, { evaluatedAt: "2026-09-14T12:00:00Z" });
     assertLineMessages(text);

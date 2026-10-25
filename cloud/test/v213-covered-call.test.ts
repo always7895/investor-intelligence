@@ -56,7 +56,8 @@ describe("covered-call suggestions", () => {
   it("renders two sell suggestions with limit, premium, yield and assignment reference, no payoff placeholders", () => {
     admitSyntheticTickers("NVDA"); // Explicit quote subjects for this test only.
     const valid = validateCoveredCallCycle(cycle())!;
-    const flex = JSON.stringify(buildCoveredCallMessages(valid, "每月期權", "flex"));
+    // V25-FIX3 wraps required quote figures at line boundaries; preserve visible-value assertions across those breaks.
+    const flex = JSON.stringify(buildCoveredCallMessages(valid, "每月期權", "flex")).replaceAll("\\n", " ");
     expect(flex).toContain("建議一：高履約價（不易被賣掉）");
     expect(flex).toContain("建議二：平衡型（收較多權利金）");
     expect(flex).toContain("$245.00");
@@ -64,11 +65,18 @@ describe("covered-call suggestions", () => {
     expect(flex).toContain("Delta 0.17");
     expect(flex).toMatch(/Bid \$1\.50｜Mid \$1\.5[23]｜Ask \$1\.55/);
     expect(flex).toContain("最高履約價須達年化權利金至少 2%");
-    expect(flex).toContain("期間收益＝限價÷現價；年化收益＝期間收益×365÷DTE");
+    // V25-FIX3 measures the complete formula independent of Flex line wrapping.
+    expect(flex.replace(/\s/g, "")).toContain("期間收益＝限價÷現價；年化收益＝期間收益×365÷DTE");
     expect(flex).toContain("僅供指派機率參考");
-    expect(flex).toContain("完整流動性資料見文字版");
+    // V25 master: the Delta basis and the yield formulas are stated once per bubble, not once per tier.
+    expect(flex.split("僅供指派機率參考").length - 1).toBe(1);
+    expect(flex.replace(/\s/g, "").split("年化收益＝期間收益×365÷DTE").length - 1).toBe(1);
+    // V25-FIX3 asserts the action embedded in the returned Flex message reaches the real text command.
+    expect(flex).toContain("NVDA 每月期權 文字");
     expect(flex).not.toContain("UNAVAILABLE");
     const text = (buildCoveredCallMessages(valid, "每月期權", "text") as { text: string }[])[0]!.text;
+    // V25-FIX3 verifies optional liquidity detail through the existing text edition.
+    expect(text).toContain("流動性：OI");
     expect(text).toContain("建議賣出限價 $1.52");
     expect(text).toContain("本服務不下單");
   });
@@ -79,7 +87,7 @@ describe("covered-call suggestions", () => {
       delta: 0.061, delta_basis: "QUOTE_IMPLIED", iv: 1.5658 }], dte: 20 });
     const valid = validateCoveredCallCycle(implied)!;
     expect(valid).not.toBeNull();
-    const flex = JSON.stringify(buildCoveredCallMessages(valid, "每月期權", "flex"));
+    const flex = JSON.stringify(buildCoveredCallMessages(valid, "每月期權", "flex")).replaceAll("\\n", " ");
     // V25 keeps the sealed value and its derivation basis beside the figure in Flex.
     expect(flex).toContain("Delta 0.06");
     expect(flex).toContain("模型值，波動率由買賣報價反推 157%");
@@ -90,6 +98,7 @@ describe("covered-call suggestions", () => {
     const badVol = structuredClone(implied); (badVol.suggestions as any)[0].iv = -1;
     expect(validateCoveredCallCycle(badVol)).toBeNull();
     const noDelta = cycle(); (noDelta.suggestions[1] as any).delta = undefined;
-    expect(JSON.stringify(buildCoveredCallMessages(validateCoveredCallCycle(noDelta)!, "每月期權", "flex"))).toContain("Delta 未提供");
+    // V25-FIX3 wraps unavailable deltas without dropping their status.
+    expect(JSON.stringify(buildCoveredCallMessages(validateCoveredCallCycle(noDelta)!, "每月期權", "flex")).replaceAll("\\n", " ")).toContain("Delta 未提供");
   });
 });

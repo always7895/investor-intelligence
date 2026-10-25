@@ -268,6 +268,20 @@ export const barRow = (label: string, value: number, display: string, max = 100)
 /** ONE xxs line for every required disclosure and source label, parts joined by "｜". Not clamped: the long form of each
  * part stays reachable through a details button. */
 export const disclosureLine = (parts: readonly string[]) => uiText(parts.filter(part => part.length > 0).join("｜"), "xxs", T.subtle);
+export interface DisclosureGroup { label: string; text: string }
+
+/** At most three short, muted qualifier lines; the label is bold and the complete line is never clipped. Empty groups are
+ * skipped. The 110-code-point line budget is asserted by the designer test on the fixtures, never by throwing on live data:
+ * a long source or warning must still reach the user. */
+export function disclosureGroups(groups: readonly DisclosureGroup[]) {
+  if (groups.length > 3) throw new Error("LINE_DISCLOSURE_GROUP_LIMIT");
+  return groups.filter(({ label, text }) => label.trim() && text.trim()).map(({ label, text }) => ({
+    type: "text", size: "xxs", color: T.subtle, wrap: true, contents: [
+      { type: "span", text: `${label}｜`, color: T.subtle, weight: "bold" },
+      { type: "span", text: text.replace(/[\r\n]+/g, " "), color: T.subtle },
+    ],
+  }));
+}
 
 /** The card's headline number: muted label, one large figure, optional sub line. */
 export const heroStat = (label: string, value: string, sub?: string, color: string = signColor(value)) => uiBox([

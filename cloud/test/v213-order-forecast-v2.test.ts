@@ -97,12 +97,16 @@ describe("version-2 order forecast", () => {
     // V25 compacts Flex to the data-led decision rows; the existing text command remains the complete source and clause surface.
     for (const entry of [parsed.top[0]!, parsed.top[19]!]) {
       const fullText = JSON.stringify(buildBottleneckDetail(parsed, entry.symbol, "text"));
-      const flex = JSON.stringify(buildBottleneckDetail(parsed, entry.symbol, "flex"));
+      const flexPages = buildBottleneckDetail(parsed, entry.symbol, "flex");
+      const flex = JSON.stringify(flexPages);
       expect(fullText.match(/本次查核 2026-09-21/g)?.length ?? 0, `${entry.symbol} text`).toBeGreaterThanOrEqual(6);
       for (let i = 1; i <= 4; i += 1) expect(fullText, `${entry.symbol} text`).toContain(`期後訂單消息（不併入 RPO）：合約${i}`);
       expect(flex, `${entry.symbol} flex`).toContain("完整數據與網址");
       expect(flex, `${entry.symbol} flex`).toContain("逐項條件、期後披露與預估見文字版");
-      expect(flex, `${entry.symbol} flex`).toContain("預計認列非保證");
+      // V25-FIX3 uses a separate bold group label and qualifier node; assert both on the same orders bubble.
+      const ordersPage = JSON.stringify((flexPages[0] as any).contents.contents[2]);
+      expect(ordersPage, `${entry.symbol} orders page`).toContain("預計");
+      expect(ordersPage, `${entry.symbol} orders page`).toContain("認列非保證");
       expect(fullText, `${entry.symbol} text`).not.toContain("…\"");
     }
   });

@@ -253,6 +253,8 @@ describe("OPTIONS-GLOBAL-01 acceptance regression tests", () => {
     });
     const reply = await actualReply(env, "NVDA covered call 文字！");
     expect(reply).toContain("330.00");
+    // V25-FIX3: this real Worker text route retains the limit-selection rule for its displayed limits.
+    expect(reply).toContain("限價選取：價差25%內取中間價，較寬時取Bid＋四分之一價差");
     expect(reply).toContain("【備兌買權建議｜NVDA");
   });
 

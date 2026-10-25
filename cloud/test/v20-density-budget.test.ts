@@ -40,16 +40,17 @@ const BEFORE: Record<string, { texts: number; chars: number; xxs: number }> = {
 };
 // V25 tightens supported surfaces to measured post-redesign ceilings. The legacy seven-field Top20 cap stays unchanged;
 // the V21 strategy card and extended bottleneck details are governed by the separate V25 budget.
+// V25-FIX3 restores same-bubble qualifiers; these measured floors remain below the pre-V20 BEFORE values above.
 const CEILING: Record<string, { texts: number; chars: number; bullets: number; sections: number; footerButtons: number }> = {
   "top20-presentation": { texts: 24, chars: 710, bullets: 0, sections: 0, footerButtons: 1 },
-  "bottleneck Top20 card": { texts: 13, chars: 560, bullets: 0, sections: 0, footerButtons: 2 },
-  "bottleneck detail page 1": { texts: 8, chars: 203, bullets: 0, sections: 0, footerButtons: 2 },
+  "bottleneck Top20 card": { texts: 16, chars: 582, bullets: 0, sections: 0, footerButtons: 2 },
+  "bottleneck detail page 1": { texts: 10, chars: 409, bullets: 0, sections: 0, footerButtons: 2 },
   "bottleneck industry": { texts: 8, chars: 97, bullets: 0, sections: 0, footerButtons: 2 },
-  "covered-call (3 tiers)": { texts: 20, chars: 636, bullets: 0, sections: 1, footerButtons: 2 },
+  "covered-call (3 tiers)": { texts: 22, chars: 674, bullets: 0, sections: 1, footerButtons: 2 },
   "options-guidance order": { texts: 12, chars: 339, bullets: 0, sections: 0, footerButtons: 1 },
   "options-guidance sizing": { texts: 7, chars: 172, bullets: 0, sections: 0, footerButtons: 1 },
-  "educational-options": { texts: 7, chars: 411, bullets: 0, sections: 0, footerButtons: 2 },
-  "options-product contract": { texts: 6, chars: 295, bullets: 0, sections: 0, footerButtons: 2 },
+  "educational-options": { texts: 9, chars: 361, bullets: 0, sections: 0, footerButtons: 2 },
+  "options-product contract": { texts: 8, chars: 296, bullets: 0, sections: 0, footerButtons: 2 },
   "options-product unavailable": { texts: 5, chars: 184, bullets: 0, sections: 0, footerButtons: 2 },
   "rich-menu navigation": { texts: 6, chars: 132, bullets: 3, sections: 0, footerButtons: 2 },
 };

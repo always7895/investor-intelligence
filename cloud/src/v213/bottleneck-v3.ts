@@ -5,7 +5,7 @@
  * (older than the report bound, report-age.ts) gives null and the caller keeps the seven-field Top20.
  */
 import { forecastCard, forecastLines, forecastText, parseOrderForecast, parseOrderForecastV3, parseOrderForecastV3Machine, type OrderForecast } from "./order-forecast";
-import { historyViewOf, HISTORY_HEADING, type HistoryView } from "./revenue-history-model";
+import { historyBlockLines, historyViewOf, type HistoryView } from "./revenue-history-model";
 import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
 import type { PublicSnapshotView } from "./public-snapshot";
 import { v213ReportAgeFresh } from "./report-age";
@@ -15,7 +15,7 @@ import { sourceZh } from "./source-labels";
 import { PRICE_SOURCE_LABEL } from "./market-observations";
 import { buildCompanyDataReportFlex, buildCompanyDataReportMessages, validateCompanyDataReport } from "./deep-analysis";
 import {
-  LINE_THEME as T, altSummary, chip, detailsButton, disclosureLine, footerStyle, footnote, menuAction, packCarousels,
+  LINE_THEME as T, altSummary, chip, detailsButton, disclosureGroups, disclosureLine, footerStyle, footnote, menuAction, packCarousels,
   productHeader, rankBadge, statTile, uiBox, uiText,
 } from "./line-theme";
 
@@ -855,70 +855,88 @@ function companyBubble(doc: BottleneckV3, entry: BottleneckEntry, lean = false) 
   const official = officialPrevious(fund);
   const [ordersTile, ...proxyTiles] = outlookTiles(doc, entry);
   const forecast = forecastOf(doc, entry);
+  const warning = forecast.m6.warning ?? forecast.m12.warning;
   const consensusV3 = forecast.version === 3 && forecast.revenueBasis === "CONSENSUS";
   const history = historyOf(doc, entry);
+  // Keep the independent historical revenue estimate and its inputs beside its figures on the Top20 bubble.
+  // Closing disclosure carries shared "非今日起"/"非目標價" once; avoid repeating them per history horizon.
+  const historyRows = historyBlockLines(history, money).map(row => row.replaceAll("非今日起", "").replaceAll("非目標價", ""));
   const forecastLines = forecastCard(forecast, money, history);
   const orderHeading = forecast.version === 3 ? "訂單認列／營收推估" : "未來訂單預估";
   const scenarioHeading = forecast.version === 3 ? "營收實現後股價情境" : "訂單實現後股價情境";
-  const orderRows = forecastRowsAfter(forecastLines, orderHeading);
-  const scenarioRows = forecastRowsAfter(forecastLines, scenarioHeading);
+  const consensusAttribution = "分析師共識為第三方分析師估計平均，非公司財測、非官方";
+  const forecastWarningRows = [...new Set([
+    ...(forecast.revenueBasis === "CONSENSUS" && forecast.consensusNote ? [forecast.consensusNote] : []),
+    ...(warning?.text ? [warning.text] : []),
+  ])];
+  if (forecast.revenueBasis === "CONSENSUS" && entry.outlook?.consensus
+    && !forecastWarningRows.some(row => row.includes(consensusAttribution))) forecastWarningRows.unshift(consensusAttribution);
+  const cleanForecastRow = (row: string) => {
+    let clean = row;
+    for (const warningText of forecastWarningRows) clean = clean.replaceAll(warningText, "");
+    return clean.replace(/（非今日起）|非今日起報酬|非今日起|非目標價|非投資建議|非保證|不自動下單/g, "")
+      .replace(/(?:[，、；]\s*){2,}/g, "；")
+      .replace(/^[，、；]+\s*|\s*[，、；]+$/g, "")
+      .trim();
+  };
+  const orderRows = forecastRowsAfter(forecastLines, orderHeading).map(cleanForecastRow).filter(Boolean);
   const rawCondition = forecastLines.find(([text]) => text.startsWith("條件情境："))?.[0]
     ?? (forecast.version === 3 ? "條件情境：營收依上述推估實現，P/S與股數不變；以最新已報四季為基準，非目標價、非今日起報酬"
       : "條件情境：營收達預計認列額，P/S與股數不變；非目標價、非今日起報酬");
-  const condition = rawCondition
-    .replace("條件情境：", "情境：")
+  const condition = cleanForecastRow(rawCondition.replace("條件情境：", "")
+    .replace(/[，、；]\s*非目標價[，、；]\s*非今日起報酬.*$/u, "")
+    .replace("營收依上述推估實現", "營收推估達成")
     .replace("營收達預計認列額", "營收達認列額")
-    .replace("P/S與股數不變", "P/S股數不變")
-    .replace(/；非目標價、非今日起報酬$/, "");
-  const recognitionCaveat = forecastLines.find(([text]) => text.startsWith("RPO 為剩餘履約義務"))?.[0]
-    ?? (forecast.version === 3 ? "營收推估非公司保證" : "預計認列非保證");
+    .replace("以最新已報四季為基準", "基準：最新已報四季"));
+  const scenarioRows = forecastRowsAfter(forecastLines, scenarioHeading)
+    .filter(row => !row.startsWith("條件情境："))
+    .map(cleanForecastRow).filter(Boolean);
   const closingDisclosure = [
     condition,
-    ...(forecast.version === 2 ? ["訂單認列依公司披露時程"] : []),
-    recognitionCaveat,
-    ...(orderRows.some(row => row.includes("起算日")) ? ["非今日起"] : []),
+    ...(forecast.version === 2 ? ["認列依公司披露時程"] : []),
+    forecast.version === 3 ? "營收推估非保證" : "預計認列非保證",
+    "非今日起",
     "非目標價、非投資建議、不自動下單",
   ].join("；");
   return {
     type: "bubble", size: "mega",
     header: productHeader(`瓶頸 TOP20 · ${entry.archetype === "EXPLOSION" ? "爆發型" : "核心複利型"}`, `${entry.symbol}｜${chineseName(entry)}`.slice(0, 60), [
       ...(!lean ? [uiText(entry.name.slice(0, 80), "xxs", T.headerMuted)] : []),
+      ...(entry.name_zh ? [uiText(`中文名來源：${ZH_SOURCE_LABEL[entry.name_zh_source ?? ""] ?? "來源已核對"}`, "xxs", T.headerMuted)] : []),
       uiBox([rankBadge(entry.rank, entry.rank === 1), chip(layerName(doc, entry.layer)), chip(`${entry.score.toFixed(1)} 分`)], { layout: "horizontal", spacing: "sm" }),
     ]),
     body: uiBox([
       uiBox([
-        uiText(`營收年增 ${pct(fund?.revenue_yoy ?? null, 0)}｜毛利變化 ${ppShort(fund?.gross_margin_change)}`, "xs", T.ink),
-        uiText(wrapForecastRow(`半年 ${pct(entry.market.ret_6m, 0)}｜2年年化 ${long.value}｜市值${cap(entry.market_cap_usd)}`), "xs", T.ink),
+        uiText(`${pct(fund?.revenue_yoy ?? null, 0)}營收年增｜毛利變化 ${ppShort(fund?.gross_margin_change)}`, "xs", T.ink),
+        uiText(wrapForecastRow(fund
+          ? `財報：${sourceZh(fund.source)}${official ? "（前一季採官方合併季報）" : ""}，季末 ${fund.quarter_end}`
+          : "財報：未取得可比季度"), "xs", T.ink),
+        ...(official ? [uiText(wrapForecastRow(official.label), "xs", T.ink)] : []),
       ], { spacing: "xs" }),
       uiBox([
-        uiText(wrapForecastRow(`${ordersTile![0].replace(/^現有/, "")}：${ordersTile![1]}｜${entry.role_zh ?? entry.role}`), "xs", T.ink),
+        uiText(wrapForecastRow(`半年 ${pct(entry.market.ret_6m, 0)}｜2年年化 ${long.value}｜市值${cap(entry.market_cap_usd)}${long.sub ? `｜${long.sub}` : ""}${long.event ? `｜上市沿革 ${long.event}` : ""}｜股價來源 ${sourceZh(entry.market.source)}，至 ${entry.market.asof}`), "xs", T.ink),
+        uiText(wrapForecastRow(`${ordersTile![0]}：${ordersTile![1]}｜${entry.role_zh ?? entry.role}｜訂單：${ordersTile![2]}`), "xs", T.ink),
         ...proxyTiles.map(([label, value, sub]) => {
           const detail = sub.replace(/^非訂單(?:｜)?/, "").replace(/｜季末 \d{4}-\d{2}-\d{2}$/, "");
           const displayLabel = label.replace("營收動能（代理）", "營收代理");
-          return uiText(wrapForecastRow(`${displayLabel}：${value}${detail ? `｜${detail}` : ""}`), "xs", T.ink);
+          return uiText(wrapForecastRow(`${displayLabel}：${value}${detail ? `｜${detail}` : ""}｜非訂單`), "xs", T.ink);
         }),
       ], { spacing: "xs" }),
       uiBox([
-        uiText(forecastDisplayRows("未來訂單", orderRows, true), "xs", T.ink),
+        uiText([
+          forecastDisplayRows("未來訂單", orderRows, true),
+          ...forecastWarningRows.map(row => wrapForecastRow(row)),
+          ...historyRows.map(row => wrapForecastRow(row)),
+        ].filter(Boolean).join("\n"), "xs", T.ink),
         uiText(forecastDisplayRows("股價情境", scenarioRows), "xs", T.ink),
         ...(consensusV3 ? [uiBox(scenarioBlocks(entry.outlook, true), { spacing: "xs" })] : []),
       ], { spacing: "xs" }),
     ], { paddingAll: "lg", spacing: "sm" }),
     footer: uiBox([
-      disclosureLine([
-        fund ? `財報：${sourceZh(fund.source)}${official ? "（前一季採官方合併季報）" : ""}，季末 ${fund.quarter_end}` : "財報：未取得可比季度",
-        `股價 ${sourceZh(entry.market.source)}，至 ${entry.market.asof}`,
-        ...(entry.name_zh ? [`中文名來源：${ZH_SOURCE_LABEL[entry.name_zh_source ?? ""] ?? "已核對"}`] : []),
-        ...(consensusV3 ? ["分析師共識為第三方分析師估計平均，非公司財測、非官方"] : []),
-        ...(consensusV3 && forecast.m6.basis_label ? [forecast.m6.basis_label] : []),
-        closingDisclosure,
-        `訂單：${ordersTile![2]}`,
-        ...proxyTiles.map(([, , sub]) => sub.split("｜")[0]!),
-        ...(long.sub ? [`長期：${long.sub}`] : []),
-        ...(long.event ? [`沿革：${long.event}`] : []),
-        ...(fund?.cross_check ? [revenueCheck(fund.cross_check)] : []),
-        ...(entry.market.cross_check ? [exchangeCheck(entry.market.cross_check)] : []),
-        ...(history ? [`${HISTORY_HEADING}；實際可能大幅偏離，詳見文字版`] : []),
+      ...disclosureGroups([
+        { label: "營收交叉", text: fund?.cross_check ? revenueCheck(fund.cross_check) : "未取得官方營收交叉比對" },
+        { label: "行情交叉", text: entry.market.cross_check ? exchangeCheck(entry.market.cross_check) : "未取得交易所收盤交叉比對" },
+        { label: "情境", text: closingDisclosure },
       ]),
       detailsButton(`${entry.symbol} 瓶頸詳情`, `瓶頸詳情 ${entry.symbol}`),
       ...(!lean ? [menuAction("產業爆發榜", "產業爆發榜")] : []),
@@ -965,8 +983,8 @@ const gmText = (value: number | null | undefined) => value === null || value ===
 /** The basis of a share-count change when it is not shares outstanding. */
 const sharesBasis = (fund: Fundamentals) => fund.shares_yoy !== null && fund.shares_basis === "DILUTED_WEIGHTED_AVERAGE" ? "稀釋加權平均股數" : undefined;
 const ppShort = (value: number | null | undefined) => value === null || value === undefined ? "未揭露" : `${value >= 0 ? "+" : ""}${(value * 100).toFixed(1)}pp`;
-/** V20: the detail of a Top20 entry as three small pages (financials and market, orders and scenarios, sources) instead of
- * one 70-text card. Every figure of the old card is kept; source URLs and passages stay in the text edition one tap away
+/** V20: the detail of a Top20 entry as four compact pages (financials and market, orders and scenarios, order basis, sources)
+ * instead of one 70-text card. Full source URLs and narrative remain in the text edition one tap away
  * (`瓶頸詳情 <代號> 文字`). */
 function detailBubbles(doc: BottleneckV3, entry: BottleneckEntry) {
   const fund = entry.fundamentals;
@@ -979,84 +997,105 @@ function detailBubbles(doc: BottleneckV3, entry: BottleneckEntry) {
   const warning = forecast.m6.warning ?? forecast.m12.warning;
   const kind = entry.archetype === "EXPLOSION" ? "爆發型（市值<US$10B）" : "核心複利型";
   const buttons = [detailsButton(`${entry.symbol} 完整數據與網址`, `瓶頸詳情 ${entry.symbol} 文字`), menuAction("回瓶頸 TOP20", "TOP20")];
-  const page = (eyebrow: string, body: unknown[], notes: string[]) => {
-    const disclosure = [...notes];
-    if (!disclosure.some(note => note.includes("非投資建議"))) disclosure.push("非投資建議");
-    if (!disclosure.some(note => note.includes("不自動下單"))) disclosure.push("不自動下單");
-    return {
-      type: "bubble", size: "mega",
-      header: productHeader(`瓶頸詳情 · #${entry.rank} · ${eyebrow}`, `${entry.symbol}｜${chineseName(entry)}`.slice(0, 60), [
-        uiText(entry.name.slice(0, 80), "xxs", T.headerMuted),
-        uiBox([chip(layerName(doc, entry.layer)), chip(`${entry.score.toFixed(1)} 分`), chip(entry.archetype === "EXPLOSION" ? "爆發型" : "核心複利型")], { layout: "horizontal", spacing: "sm" }),
-      ]),
-      body: uiBox(body, { paddingAll: "lg", spacing: "sm" }),
-      footer: uiBox([disclosureLine(disclosure), ...buttons], footerStyle),
-    };
-  };
+  const page = (eyebrow: string, body: unknown[], notes: { label: string; text: string }[]) => ({
+    type: "bubble", size: "mega",
+    header: productHeader(`瓶頸詳情 · #${entry.rank} · ${eyebrow}`, `${entry.symbol}｜${chineseName(entry)}`.slice(0, 60), [
+      uiText(entry.name.slice(0, 80), "xxs", T.headerMuted),
+      uiBox([chip(layerName(doc, entry.layer)), chip(`${entry.score.toFixed(1)} 分`), chip(entry.archetype === "EXPLOSION" ? "爆發型" : "核心複利型")], { layout: "horizontal", spacing: "sm" }),
+    ]),
+    body: uiBox(body, { paddingAll: "lg", spacing: "sm" }),
+    footer: uiBox([...disclosureGroups(notes), ...buttons], footerStyle),
+  });
 
-  const financeSummary = fund
-    ? [
-      `營收 ${pct(fund.revenue_yoy, 0)}｜前季 ${pct(fund.revenue_yoy_prev, 0)}｜加速 ${accel}`,
-      `毛利 ${gmText(fund.gross_margin)}（${ppShort(fund.gross_margin_change)}）｜RPO ${pct(fund.rpo_yoy, 0)}｜股數 ${pct(fund.shares_yoy, 1)}`,
-      `6個月 ${pct(entry.market.ret_6m, 0)}｜2年年化 ${long.value}｜市值 ${cap(entry.market_cap_usd)}`,
-    ].join("\n")
-    : `財報未取得可比季度；6個月 ${pct(entry.market.ret_6m, 0)}｜2年年化 ${long.value}｜市值 ${cap(entry.market_cap_usd)}`;
+  const financeRows = fund ? [
+    `營收 ${pct(fund.revenue_yoy, 0)}｜前季 ${pct(fund.revenue_yoy_prev, 0)}｜加速 ${accel}`,
+    `毛利 ${gmText(fund.gross_margin)}（${ppShort(fund.gross_margin_change)}）｜RPO ${pct(fund.rpo_yoy, 0)}｜股數 ${pct(fund.shares_yoy, 1)}${sharesBasis(fund) ? `（${sharesBasis(fund)}）` : ""}`,
+    `6個月 ${pct(entry.market.ret_6m, 0)}｜2年年化 ${long.value}｜市值 ${cap(entry.market_cap_usd)}`,
+    `財報來源：${sourceZh(fund.source)}；季末 ${fund.quarter_end}`,
+    ...(official ? [official.label] : []),
+    `股價來源：${sourceZh(entry.market.source)}；至 ${entry.market.asof}`,
+    ...(long.sub ? [`長期口徑：${long.sub}`] : []),
+    ...(long.event ? [`上市沿革：${long.event}`] : []),
+    "非投資建議；不自動下單",
+  ] : [
+    `財報未取得可比季度；6個月 ${pct(entry.market.ret_6m, 0)}｜2年年化 ${long.value}｜市值 ${cap(entry.market_cap_usd)}`,
+    `股價來源：${sourceZh(entry.market.source)}；至 ${entry.market.asof}`,
+    ...(long.sub ? [`長期口徑：${long.sub}`] : []),
+    ...(long.event ? [`上市沿革：${long.event}`] : []),
+    "非投資建議；不自動下單",
+  ];
+  const financeSummary = financeRows.map(row => wrapForecastRow(row)).join("\n");
   const page1 = page(`財報與市場 · ${kind}`, [
     uiText(financeSummary, "xs", T.ink),
-  ], ["完整來源、日期與交叉比對見「來源」頁；逐項數據見文字版"]);
+  ], [
+    { label: "營收交叉", text: fund?.cross_check ? revenueCheck(fund.cross_check) : "未取得官方營收交叉比對" },
+    { label: "行情交叉", text: entry.market.cross_check ? exchangeCheck(entry.market.cross_check) : "未取得交易所收盤交叉比對" },
+    ...(!official ? [{ label: "前季", text: "沿用可比來源" }] : []),
+  ]);
 
   const [ordersTile] = outlookTiles(doc, entry);
   const floorValue = (value: number | null | undefined) => value === null || value === undefined ? "需新訂單" : `≥${value >= 0 ? "+" : ""}${value.toFixed(0)}%`;
-  const floorSummary = orders ? `RPO 6月 ${floorValue(orders.floor.m6)}｜1年 ${floorValue(orders.floor.m12)}\n2年 ${floorValue(orders.floor.m24)}`
-    : "RPO 認列時程未披露";
+  const coverageValue = (value: number | null | undefined) => value === null || value === undefined ? "未揭露" : `${value.toFixed(0)}%`;
+  const floorSummary = orders ? [
+    "已簽約營收成長支撐（RPO認列時程）",
+    `6個月 ${floorValue(orders.floor.m6)}（覆蓋 ${coverageValue(orders.coverage.m6)}）｜1年 ${floorValue(orders.floor.m12)}（覆蓋 ${coverageValue(orders.coverage.m12)}）`,
+    `2年 ${floorValue(orders.floor.m24)}（覆蓋 ${coverageValue(orders.coverage.m24)}）`,
+    "計算：分期已簽約認列金額÷目前營收−1",
+  ].map(row => wrapForecastRow(row)).join("\n") : "RPO 認列時程未披露";
   const scenario = outlook?.scenarios?.[0];
   const scenarioSummary = scenario && outlook?.consensus
     ? "分析師共識情境：詳見文字版"
     : "分析師共識情境：無資料可推算";
-  const floorNote = orders ? `RPO ${orders.form}（${orders.filed}），基準日 ${orders.as_of}；僅指營收，不是股價下限，未計新訂單、取消或遞延`
+  const forecastConsensusLabel = [forecast.m6.basis_label, forecast.m12.basis_label]
+    .find((label): label is string => typeof label === "string" && label.startsWith("分析師共識（非公司財測、非官方）"));
+  const consensusAnalysts = outlook?.consensus?.revenue_analysts;
+  const consensusSourceLine = forecastConsensusLabel ?? (scenario && outlook?.consensus
+    ? `分析師共識（非公司財測、非官方）｜${outlook.consensus.source ?? "來源未揭露"}，${consensusAnalysts == null ? "數量未揭露" : `${consensusAnalysts} 位`}分析師，截至 ${(outlook.consensus.asof ?? "").slice(0, 10) || "日期未揭露"}`
+    : "");
+  const floorNote = orders ? `RPO ${orders.form}（申報 ${orders.filed}），認列基準 ${orders.as_of}；營收下限非股價下限，未計新訂單、取消或遞延`
     : !filer ? "非 SEC 定期申報公司，無 RPO 認列時程" : "最新財報未揭露認列時程，不推估實現金額";
+  const stockRecognitionDates = orders
+    ? `股價 ${entry.market.asof}；認列基準 ${orders.as_of}；申報 ${orders.filed}`
+    : `股價 ${entry.market.asof}；RPO 認列基準未揭露`;
   const page2 = page("訂單與情境", [
-    uiText(`${ordersTile![0]}：${ordersTile![1]}`, "xs", T.ink),
+    uiText(wrapForecastRow(`${ordersTile![0]}：${ordersTile![1]}｜${ordersTile![2]}`), "xs", T.ink),
     uiText(floorSummary, "xs", T.ink),
-    uiText(scenarioSummary, "xs", T.ink),
-  ], [floorNote, SCENARIO_NOTE,
-    ...(ordersTile![0] === "歷史披露（已過期）" ? [ordersTile![2]] : []),
-    ...(orders || forecast.version === 2 ? ["預計認列非保證"] : []),
-    ...(scenario && outlook ? [scenarioSample(outlook, scenario.kind)] : []),
-    ...(outlook?.consensus ? [`共識 ${sourceZh(outlook.consensus.source)}，${day(outlook.consensus.asof)}；非訂單、非目標價、非預測`] : []),
-    ...(forecast.consensusNote ? [forecast.consensusNote] : []),
-    ...(forecast.version === 3 && (forecast.revenueReason === "INVALID" || forecast.m6.reason === "INVALID" || forecast.m12.reason === "INVALID")
-      ? ["資料未通過驗證"] : []),
-    ...(warning ? [`${forecast.revenueBasis === "CONSENSUS" ? "共識時效警示" : "時效警示"}：${warning.text}`] : [])]);
-
-  const evidenceLabel = orders ? `RPO ${orders.form}｜申報 ${orders.filed}｜基準日 ${orders.as_of}`
+    uiText([stockRecognitionDates, scenarioSummary, consensusSourceLine].filter(Boolean).map(row => wrapForecastRow(row)).join("\n"), "xs", T.ink),
+  ], [
+    { label: "來源", text: orders ? `${orders.form}，申報 ${orders.filed}` : floorNote },
+    { label: "認列", text: orders ? floorNote : "無可用 RPO 認列時程；不推估實現金額" },
+    { label: "用途", text: "非投資建議；不自動下單" },
+  ]);
+  const evidenceLabel = orders ? `RPO ${orders.form}｜申報 ${orders.filed}｜認列基準 ${orders.as_of}`
     : !filer ? "非 SEC 定期申報公司；無 RPO 認列時程" : "最新申報未揭露 RPO 認列時程";
+  const orderSource = outlook?.orders && outlook.orders.kind !== "NOT_DISCLOSED"
+    ? `${sourceZh(outlook.orders.source)}；${outlook.orders.as_of ?? "日期未揭露"}`
+    : "未披露訂單來源";
+  const forecastWarnings = [
+    forecast.consensusNote,
+    forecast.version === 3 && (forecast.revenueReason === "INVALID" || forecast.m6.reason === "INVALID" || forecast.m12.reason === "INVALID") ? "資料未通過驗證" : "",
+    warning ? `${forecast.revenueBasis === "CONSENSUS" ? "共識時效警示" : "時效警示"}：${warning.text}` : "",
+  ].filter(Boolean).join("；");
   const page3 = page("訂單依據", [
-    uiText(evidenceLabel, "xs", T.ink),
-    uiText(`訂單來源：${outlook?.orders && outlook.orders.kind !== "NOT_DISCLOSED" ? sourceZh(outlook.orders.source) : "未披露"}`, "xs", T.ink),
-    uiText("逐項條件、期後披露與預估見文字版", "xs", T.ink),
-  ], [SCENARIO_NOTE]);
+    uiText(wrapForecastRow(evidenceLabel), "xs", T.ink),
+    uiText(wrapForecastRow(`訂單來源：${orderSource}`), "xs", T.ink),
+    uiText(forecastWarnings ? wrapForecastRow(forecastWarnings) : "逐項條件、期後披露與預估見文字版", "xs", T.ink),
+  ], [
+    { label: "預計", text: orders || forecast.version === 2 ? "認列非保證；未計新訂單、取消或遞延" : "沒有可驗證的認列預估" },
+    { label: "情境", text: "分析師共識為算術推算；非預測" },
+    { label: "用途", text: "非投資建議；不自動下單" },
+  ]);
 
-  const sourceLines = [
-    `角色來源 ${entry.role_source.date}：${entry.role_source.url}`,
-    fund ? `${sourceZh(fund.source)}：${fund.source_url}` : "財報：未取得可比季度（不以估計替代）。",
-    ...(fund && sharesBasis(fund) ? [`股數口徑：${sharesBasis(fund)}`] : []),
-    ...(forecast.version === 3 && forecast.m6.basis_label ? [forecast.m6.basis_label] : []),
-    ...(official ? [official.label, `前一季來源：${official.url}`] : []),
-    ...(outlook?.orders && outlook.orders.kind !== "NOT_DISCLOSED" ? [`訂單來源 ${sourceZh(outlook.orders.source)}：${outlook.orders.source_url}`] : []),
-    ...(outlook?.consensus ? [`預估來源 ${sourceZh(outlook.consensus.source)}：${outlook.consensus.source_url}`] : []),
-    ...(fund?.cross_check ? [`${revenueCheck(fund.cross_check)}：${fund.cross_check.source_url}`] : []),
-    `${sourceZh(entry.market.source)}，至 ${entry.market.asof}：${entry.market.source_url}`,
-    ...long.sources.map(source => `沿革來源 ${source}`),
-    ...(entry.market.cross_check ? [`${exchangeCheck(entry.market.cross_check)}：${entry.market.cross_check.source_url}`] : []),
-  ].filter((line): line is string => line !== null);
   const page4 = page("來源", [
-    uiText("來源名稱、日期與連結見頁尾", "xs", T.ink),
-    uiText("完整來源清單可用文字版", "xs", T.ink),
-  ], ["來源名稱、日期與網址如下", ...sourceLines,
-    ...(long.sub ? [long.sub] : []),
-    ...(long.event ? [`上市沿革：${long.event}`] : []),
-    ...(entry.name_zh ? [`中文名來源：${ZH_SOURCE_LABEL[entry.name_zh_source ?? ""] ?? "已核對"}`] : [])]);
+    uiText(wrapForecastRow(`財報：${fund ? `${sourceZh(fund.source)}；季末 ${fund.quarter_end}` : "未取得可比季度"}`), "xs", T.ink),
+    ...(official ? [uiText(wrapForecastRow(official.label), "xs", T.ink)] : []),
+    uiText(wrapForecastRow(`股價：${sourceZh(entry.market.source)}；至 ${entry.market.asof}`), "xs", T.ink),
+    uiText(`交叉比對、沿革與完整網址見文字版${entry.name_zh ? `；中文名來源：${ZH_SOURCE_LABEL[entry.name_zh_source ?? ""] ?? "來源已核對"}` : ""}`, "xs", T.ink),
+  ], [
+    { label: "財報", text: fund ? sourceZh(fund.source) : "未取得可比季度；不以估計替代" },
+    { label: "行情", text: `${sourceZh(entry.market.source)}；${entry.market.asof}` },
+    { label: "連結", text: "完整來源網址及逐項交叉比對見文字版" },
+  ]);
   return [page1, page2, page3, page4];
 }
 
@@ -1070,7 +1109,7 @@ function detailText(doc: BottleneckV3, entry: BottleneckEntry): string {
     `【瓶頸詳情｜#${entry.rank} ${entry.symbol} ${chineseName(entry)}（${entry.name}）】`,
     `型態：${entry.archetype === "EXPLOSION" ? "瓶頸爆發型（市值<US$10B）" : "核心複利型"}；市值 ${cap(entry.market_cap_usd)}`,
     `瓶頸位置：${entry.role_zh ?? entry.role}${entry.role_zh ? `（原文：${entry.role}）` : ""}`,
-    `分數構成：層級熱度 ${entry.parts.layer_heat}｜公司捕獲 ${entry.parts.capture}｜市場確認 ${entry.parts.confirmation}｜爆發性 ${entry.parts.size}`,
+    `分數構成：層級熱度 ${entry.parts.layer_heat}｜公司捕獲 ${entry.parts.capture}｜市場確認 ${entry.parts.confirmation}｜爆發性 ${entry.parts.size}${entry.parts.penalty !== 0 ? `｜條件式稀釋／融資扣分 -${entry.parts.penalty}` : ""}`,
     fund ? `財報（${sourceZh(fund.source)}${official ? "；前一季年增採官方合併季報" : ""}，季末 ${fund.quarter_end}）：營收年增 ${pct(fund.revenue_yoy)}，前一季年增 ${pct(fund.revenue_yoy_prev)}（加速度 ${pp(accelOf(fund))}）；毛利率 ${gmText(fund.gross_margin)}（年變化 ${pp(fund.gross_margin_change)}）；剩餘履約義務年增 ${pct(fund.rpo_yoy)}；股數年增 ${pct(fund.shares_yoy)}${sharesBasis(fund) ? `（${sharesBasis(fund)}）` : ""}\n來源：${fund.source_url}${official ? `\n${official.label}\n前一季來源：${official.url}` : ""}` : "財報：未取得可比季度（不以估計替代）。",
     ...(fund?.cross_check ? [`${revenueCheck(fund.cross_check)}\n來源：${fund.cross_check.source_url}`] : []),
     `股價（${sourceZh(entry.market.source)}，至 ${entry.market.asof}）：6個月 ${pct(entry.market.ret_6m)}、2年年化 ${long.value}${long.sub ? `（${long.sub}）` : ""}\n來源：${entry.market.source_url}`,
@@ -1154,7 +1193,8 @@ export function buildIndustryExplosionMessages(doc: BottleneckV3, style: "flex" 
       const members = doc.top.filter(entry => entry.layer === industry.id).map(entry => entry.name_zh ? `${entry.symbol} ${entry.name_zh}` : entry.symbol);
       return [
         `${industry.rank}. ${industry.name_zh}｜爆發力 ${industry.explosiveness.toFixed(1)}｜營收年增中位數 ${pct(industry.median_revenue_yoy, 0)}｜加速度中位數 ${industry.median_acceleration === null || industry.median_acceleration === undefined ? "未揭露" : `${industry.median_acceleration >= 0 ? "+" : ""}${(industry.median_acceleration * 100).toFixed(0)}pp`}｜SEC申報熱度 ${newsRatio(industry.news)}｜6個月股價中位數 ${pct(industry.median_return_6m, 0)}`,
-        `Leopold 綁定限制：${industry.leopold_constraint_zh ?? industry.leopold_constraint}`,
+        `Leopold 綁定限制：${industry.leopold_constraint_zh ?? industry.leopold_constraint}\n原文引句：「${industry.leopold_constraint}」`,
+        `SEC申報統計：近30天 ${industry.news?.recent_30d ?? "未取得"} 件｜前60天 ${industry.news?.prior_60d ?? "未取得"} 件｜近30天／前60天比率 ${industry.news?.ratio === null || industry.news?.ratio === undefined ? "未取得" : `${industry.news.ratio.toFixed(2)}x`}`,
         `本輪 TOP20 成員：${members.length ? members.join("、") : "（無）"}`,
       ].join("\n");
     });

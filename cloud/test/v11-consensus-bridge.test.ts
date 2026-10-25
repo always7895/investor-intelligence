@@ -11,6 +11,7 @@ import { SNAPSHOT_SEAL_KEY } from "../src/v213/snapshot-seal";
 import { doc, HOUR } from "./bottleneck-v3-fixture";
 import { asKv, MemoryKv } from "./fake-kv";
 import { sealUnboundReport } from "./sealed-report-migration";
+import officialRevenueFixture from "../../tests/fixtures/v213-official-quarterly-revenue.json";
 
 // Operator 2026-10-14 (R/OPERATOR-DECISION-CONSENSUS-BRIDGE-AND-NAME-MATCH-20261014.txt): like the company-guidance route, an
 // ended first consensus quarter keeps the projection for 70 days with a warning and the unofficial label, but only beside a
@@ -20,6 +21,18 @@ type Case = { cutoff: string; outlooks: Record<string, any> };
 const fixture = JSON.parse(readFileSync("../tests/fixtures/v11-consensus-sealed.json", "utf-8")) as { cases: Record<string, Case> };
 const money = (amount: number, currency: string | null) => `${currency ?? ""} ${amount}`;
 const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value));
+function bubblesFromReply(reply: string): any[] {
+  return (JSON.parse(reply) as any[]).flatMap(message => message.type === "flex"
+    ? message.contents?.type === "carousel" ? message.contents.contents : [message.contents]
+    : []);
+}
+function visibleText(value: any): string {
+  if (Array.isArray(value)) return value.map(visibleText).join(" ");
+  if (value === null || typeof value !== "object") return "";
+  return Object.entries(value).filter(([key]) => key !== "action")
+    .map(([key, child]) => key === "text" && typeof child === "string" ? child : visibleText(child)).join(" ");
+}
+const noWhitespace = (value: string) => value.replace(/\\n|\s/g, "");
 const END = "2026-09-30";
 const warningText = (ends: string, capturedAt: string) =>
   `所估季度已於${ends}結束，實際營收尚未公布；截至${capturedAt}分析師共識；仍為分析師共識（非官方），非實績`;
@@ -214,35 +227,126 @@ describe("consensus post-quarter-end bridge through the real LINE callers", () =
   it("keeps the compact consensus disclosure and the full warning in existing detail/text routes", () => {
     const parsed = parseBottleneckV3(rawDoc(), cutoffMs + HOUR)!;
     const flex = JSON.stringify(buildBottleneckTop20Messages(parsed, "flex"));
+    const consensusFlex = visibleText(bubblesFromReply(flex).find(bubble => visibleText(bubble).includes("000660.KS"))).replace(/\s+/g, " ");
     const text = JSON.stringify(buildBottleneckTop20Messages(parsed, "text"));
     const detailFlex = JSON.stringify(buildBottleneckDetail(parsed, "000660.KS", "flex"));
     const detailText = JSON.stringify(buildBottleneckDetail(parsed, "000660.KS", "text"));
-    // V25-D4 merges the duplicate prefix into the remaining clause "情境：營收依上述推估實現，P/S股數不變；以最新已報四季為基準".
-    expect(flex).toContain("分析師共識為第三方分析師估計平均，非公司財測、非官方");
-    expect(flex).toContain(`若約6個月（2財季）達成${CONSENSUS_PRICE_LABEL}營收推估 → 股價情境`);
-    expect(flex).toContain("情境：營收依上述推估實現，P/S股數不變；以最新已報四季為基準");
-    expect(flex).toContain("瓶頸詳情 000660.KS");
-    expect(flex).toContain(`${LABEL_PREFIX}2026-10-13`);
-    for (const [name, body] of Object.entries({ text, detailFlex, detailText })) expect(body, name).toContain(TEXT);
-    expect(text).toContain(`達成${CONSENSUS_PRICE_LABEL}營收推估 → 股價情境`);
+    // V25-FIX3: the forecast-bearing Top20 bubble keeps source/date and the exact warning; detail Flex has no consensus figure, while text retains full attribution.
+    expect(noWhitespace(consensusFlex)).toContain(noWhitespace(TEXT));
+    expect(consensusFlex).toContain("非實績");
+    expect(noWhitespace(consensusFlex)).toContain(noWhitespace(`若約6個月（2財季）達成${CONSENSUS_PRICE_LABEL}營收推估 → 股價情境`));
+    expect(noWhitespace(consensusFlex)).toContain(noWhitespace("營收推估達成，P/S與股數不變；基準：最新已報四季"));
+    expect(noWhitespace(consensusFlex)).toContain(noWhitespace(`${LABEL_PREFIX}2026-10-13`));
+    expect(JSON.stringify(bubblesFromReply(flex))).toContain("瓶頸詳情 000660.KS");
+    for (const [name, body] of Object.entries({ text, detailFlex, detailText })) expect(noWhitespace(body), name).toContain(noWhitespace(TEXT));
+    expect(noWhitespace(text)).toContain(noWhitespace(`達成${CONSENSUS_PRICE_LABEL}營收推估 → 股價情境`));
     expect(detailFlex).toContain("共識時效警示");
-    expect(detailFlex).toContain(`${LABEL_PREFIX}2026-10-13`);
-    expect(detailText).toContain(`達成${CONSENSUS_PRICE_LABEL}營收推估 → 股價情境`);
+    expect(noWhitespace(detailText)).toContain(noWhitespace(`達成${CONSENSUS_PRICE_LABEL}營收推估 → 股價情境`));
+    expect(noWhitespace(detailText)).toContain(noWhitespace(`${LABEL_PREFIX}2026-10-13`));
+  });
+  it("restores financial attribution on the actual detail-page caller bubble", async () => {
+    const raw = doc(Date.now());
+    const financial = raw.top[2] as any;
+    const official = structuredClone((officialRevenueFixture as any).fundamentals);
+    official.shares_yoy = 0.02;
+    official.shares_basis = "DILUTED_WEIGHTED_AVERAGE";
+    official.cross_check = { source_id: "TPEX", source_url: "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap05_O",
+      period: "2026-08", revenue_yoy: 0.525, cumulative_yoy: 4.89, currency: "TWD" };
+    financial.symbol = "5351.TWO";
+    financial.name = "鈺創";
+    financial.fundamentals = official;
+    financial.market.cross_check = structuredClone((raw.top as any[])[0].market.cross_check);
+    const env = await sealedEnv(raw);
+    const financePages = bubblesFromReply(await lineReply(env, "瓶頸詳情 5351.TWO"));
+    const finance = visibleText(financePages[0]);
+    for (const required of ["Yahoo Finance 季度損益表（非官方）", "2026-06-30", "鈺創官方合併季報",
+      "稀釋加權平均股數", "正常交易以來年化 +64%（非2年）", "2025-02-21",
+      "官方月營收：櫃買中心 2026-08", "交易所收盤交叉比對"]) expect.soft(finance.replace(/\s+/g, " ")).toContain(required);
   });
 
+  it("keeps RPO amount status, revenue-growth calculation, coverage and distinct dates on the actual orders bubble", async () => {
+    const env = await sealedEnv(doc(Date.now()));
+    const orderPages = bubblesFromReply(await lineReply(env, "瓶頸詳情 S1"));
+    const orders = visibleText(orderPages[1]);
+    for (const required of ["RPO 2026-07-26 年增+68%", "已簽約營收成長支撐", "分期已簽約認列金額÷目前營收−1",
+      "40%", "133%", "股價 2026-09-25", "認列基準 2026-06-30"]) expect.soft(orders).toContain(required);
+  });
+
+  it("keeps exact spread legs, assignment risk and unit basis on the actual lesson bubble", async () => {
+    const env = await sealedEnv(doc(Date.now()));
+    const lesson = bubblesFromReply(await lineReply(env, "期權教學 bull_call_spread"));
+    const spread = visibleText(lesson[0]);
+    for (const required of ["$100 Call", "$4.00", "$110 Call", "$1.50", "Pin Risk", "100股"]) expect.soft(spread).toContain(required);
+  });
+
+  it("preserves the conditional dilution and financing penalty in the actual full-text score route", async () => {
+    const env = await sealedEnv(doc(Date.now()));
+    const score = await lineReply(env, "瓶頸詳情 S3 文字");
+    expect(score).toContain("稀釋／融資扣分 -2");
+  });
+
+  it("preserves the industry source quotation and count operands in the actual full-text route", async () => {
+    const env = await sealedEnv(doc(Date.now()));
+    const industry = await lineReply(env, "產業爆發榜 文字");
+    for (const required of ["HBM 與 CoWoS 是近期限制。", "HBM and CoWoS are near-term constraints.", "296", "197", "3.00x"])
+      expect.soft(industry).toContain(required);
+  });
+
+
+
   it("answers TOP20 compactly and preserves consensus detail through the Worker's LINE event entry", async () => {
-    const env = await sealedEnv(rawDoc());
+    const raw = rawDoc();
+    const env = await sealedEnv(raw);
     const carousel = await lineReply(env, "TOP20");
     expect(carousel).toContain('"type":"flex"');
-    expect(carousel).toContain("分析師共識為第三方分析師估計平均，非公司財測、非官方");
+    const consensusBubble = bubblesFromReply(carousel).find(bubble => visibleText(bubble).includes("000660.KS"));
+    const consensusText = visibleText(consensusBubble);
+    // V25-FIX3: compare the same returned Top20 bubble after line wrapping; every horizon keeps its own window and basis.
+    expect(noWhitespace(consensusText)).toContain(noWhitespace(TEXT));
+    expect(consensusText).toContain("非實績");
+    expect(noWhitespace(consensusText)).toContain(noWhitespace(`${LABEL_PREFIX}2026-10-13`));
+    const forecast = parseBottleneckV3(raw, cutoffMs + HOUR)!.top[1]!.forecast!;
+    for (const horizon of [forecast.m6, forecast.m12]) {
+      expect(horizon.start).toBeTruthy();
+      expect(horizon.end).toBeTruthy();
+      expect(horizon.basis_label).toBeTruthy();
+      expect(noWhitespace(consensusText)).toContain(noWhitespace(horizon.start!));
+      expect(noWhitespace(consensusText)).toContain(noWhitespace(horizon.end!));
+      expect(noWhitespace(consensusText)).toContain(noWhitespace(horizon.basis_label!));
+    }
+    for (const token of ["非目標價", "非投資建議", "非今日起", "非保證", "不自動下單"]) {
+      const count = consensusText.split(token).length - 1;
+      expect(count, token).toBe(1);
+    }
     expect(carousel).toContain("瓶頸詳情 000660.KS");
     const detail = await lineReply(env, "瓶頸詳情 000660.KS");
-    expect(detail).toContain(TEXT);
-    expect(detail).toContain(LABEL_PREFIX + "2026-10-13");
+    expect(noWhitespace(visibleText(bubblesFromReply(detail)))).toContain(noWhitespace(TEXT));
     expect(detail).not.toContain("財測時效警示");
     const detailText = await lineReply(env, "瓶頸詳情 000660.KS 文字");
-    expect(detailText).toContain(TEXT);
-    expect(detailText).toContain(`達成${CONSENSUS_PRICE_LABEL}營收推估 → 股價情境`);
+    expect(noWhitespace(detailText)).toContain(noWhitespace(TEXT));
+    expect(noWhitespace(detailText)).toContain(noWhitespace(`達成${CONSENSUS_PRICE_LABEL}營收推估 → 股價情境`));
+  });
+  it("keeps V3 company-guidance caveats single-use and both horizons sourced through the LINE caller", async () => {
+    const guidance = fixture.cases["guidance_precedence"]!;
+    vi.setSystemTime(Date.parse(guidance.cutoff) + 30 * 60_000);
+    const raw = doc(Date.parse(guidance.cutoff));
+    raw.top[1]!.symbol = "NVDA";
+    (raw.top[1] as any).outlook = clone(guidance.outlooks.NVDA);
+    const env = await sealedEnv(raw);
+    const reply = await lineReply(env, "TOP20");
+    const bubble = bubblesFromReply(reply).find(item => visibleText(item).includes("NVDA"));
+    const text = visibleText(bubble);
+    // V25-FIX3: required scenario caveats must be present exactly once, not merely free of duplicates.
+    for (const token of ["非目標價", "非投資建議", "非今日起", "非保證", "不自動下單"]) {
+      const count = text.split(token).length - 1;
+      expect.soft(count, token).toBe(1);
+    }
+    const forecast = parseBottleneckV3(raw, Date.parse(guidance.cutoff) + HOUR)!.top[1]!.forecast!;
+    for (const horizon of [forecast.m6, forecast.m12]) {
+      if (horizon.start) expect(text).toContain(horizon.start);
+      if (horizon.end) expect(text).toContain(horizon.end);
+      if (horizon.basis_label) expect(text).toContain(horizon.basis_label);
+    }
   });
 
   it("answers the public LINE route as text for TOP20 and the company detail", async () => {
@@ -262,8 +366,7 @@ describe("consensus post-quarter-end bridge through the real LINE callers", () =
     expect(detail).toContain("資料未通過驗證");
     expect(detail).not.toContain("共識時效警示");
     expect(detail).not.toContain(LABEL_PREFIX);
-    const other = await lineReply(env, "瓶頸詳情 ACME"); // the other issuer keeps its own valid state
-    expect(other).toContain(TEXT);
+    expect(visibleText(bubblesFromReply(detail)).replace(/\s+/g, " ")).not.toContain(TEXT);
   });
 
   it("shows no figure when the warning sits beside a capture taken before the quarter ended", async () => {
@@ -282,8 +385,9 @@ describe("consensus post-quarter-end bridge through the real LINE callers", () =
     const raw = doc(Date.parse(cutoff));
     raw.top[1]!.symbol = "000660.KS";
     (raw.top[1] as any).outlook = clone(fixture.cases["bridge_day71"]!.outlooks["000660.KS"]);
-    const detail = await lineReply(await sealedEnv(raw), "瓶頸詳情 000660.KS");
-    expect(detail).toContain("公司未提供營收財測；分析師共識所估財季已結束，待公司公布財報並更新審核紀錄後再推估");
+    const env = await sealedEnv(raw);
+    const detail = await lineReply(env, "瓶頸詳情 000660.KS");
+    expect(noWhitespace(visibleText(bubblesFromReply(detail)))).toContain(noWhitespace("公司未提供營收財測；分析師共識所估財季已結束，待公司公布財報並更新審核紀錄後再推估"));
     expect(detail).not.toContain("共識時效警示");
     expect(detail).not.toContain("股價情境 +");
   });

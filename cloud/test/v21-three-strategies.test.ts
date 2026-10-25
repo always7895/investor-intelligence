@@ -31,12 +31,18 @@ const texts = (node: unknown, out: string[] = []): string[] => {
   if (Array.isArray(node)) node.forEach(child => texts(child, out));
   else if (node && typeof node === "object") {
     const record = node as Json;
-    if (record.type === "text") out.push(String(record.text));
+    if (record.type === "text") {
+      if (typeof record.text === "string") out.push(record.text);
+      else if (Array.isArray(record.contents)) out.push((record.contents as Json[]).map(span => String(span.text ?? "")).join(""));
+      return out;
+    }
     Object.values(record).forEach(child => texts(child, out));
   }
   return out;
 };
-const joined = (node: unknown) => texts(node).join("\n");
+const joined = (node: unknown) => texts(node).join("\n").replace(/\s+/g, " ");
+const disclosureNodes = (bubble: Json): Json[] => (bubble.footer.contents as Json[]).filter(node => node.type === "text" && Array.isArray(node.contents));
+const disclosureLines = (bubble: Json): string[] => disclosureNodes(bubble).map(node => (node.contents as Json[]).map(span => span.text).join(""));
 const unavailable = { unavailable: STRATEGY_DEGRADED_TEXT };
 /** The full cycle with its covered call removed (the shape the producer emits when only the put side qualifies). */
 const withoutCoveredCall = (): Json => {
@@ -145,7 +151,9 @@ describe("V21 validator: a bad block degrades alone", () => {
     expect(joined(list[0])).toContain(STRATEGY_DEGRADED_TEXT);  // V25-FIX1 restores the qualifier beside the Flex no-data status.
     expect(joined(list[1])).toContain("建議一：高履約價");
     expect(joined(list[2])).toContain("領口策略");
-    expect(joined(list.map(joined).join("\n"))).not.toContain("需備現金");
+    // V25-FIX3 inspects the actual joined reply, so a leaked CSP cash requirement cannot pass through an empty traversal.
+    const visible = list.map(joined).join("\n");
+    expect(visible).not.toMatch(/現金 \$[\d,.]+/);
     expect(joined(render(cycle, "text"))).toContain(`無資料：${STRATEGY_DEGRADED_TEXT}`);
   });
 });
@@ -180,11 +188,15 @@ describe("V21 card", () => {
   it("keeps the overview compact and preserves same-bubble qualifiers plus text-edition details", () => {
     const list = bubbles(full());
     const overview = joined(list[0]);
-    // V25-D3 reports quote bands once; the strategy rows already show their chosen limit prices.
+    // V25 moves quote bands into the overview body as individual short lines.
     for (const expected of ["$94.00", "$1.00", "$100.00", "$9400.00", "年化", "$92.00", "$107.00", "+$46.00",
-      "以備妥現金計", "買進 Put", "賣出 Call", "買賣相抵", "Bid/Mid/Ask：備兌 $0.36/$0.38/$0.40；賣沽 $0.98/$1.00/$1.02；領口 $0.59/$0.61/$0.63；Call $1.05/$1.07/$1.09", "AAA 每月期權 文字"]) {
+      "以備妥現金計", "買進 Put", "賣出 Call", "買賣相抵", "Bid/Mid/Ask 備兌 $0.36/$0.38/$0.40",
+      "Bid/Mid/Ask 賣沽 $0.98/$1.00/$1.02", "領口 Put Bid/Mid/Ask $0.59/$0.61/$0.63",
+      "Call Bid/Mid/Ask $1.05/$1.07/$1.09"]) {
       expect(overview, expected).toContain(expected);
     }
+    // V25-FIX3: the command lives in the returned action, not the visible button-label text.
+    expect(JSON.stringify(list[0])).toContain("AAA 每月期權 文字");
     expect(overview).not.toContain("後續頁面");
     const csp = joined(list[2]);
     for (const expected of ["履約 $94.00", "限價 $1.00", "$9400.00（100股）", "$9600.00（100股）", "年化 13.9%（以備妥現金計）",
@@ -203,27 +215,29 @@ describe("V21 card", () => {
     }
   });
 
-  it("every bubble carries the source and rights label, the quote basis and the capture timestamp, in one disclosure line", () => {
+  it("every bubble carries source, rights, quote basis and capture time in at most three labelled disclosure lines", () => {
     const cycle = clone("yahoo_monthly_full");
     admitSyntheticTickers(cycle.ticker);
     vi.mocked(admission.admitPublicOption).mockImplementation(() => ({ ok: true, provider_id: "synthetic-test-only-not-in-catalog", operator_accepted: true }) as never);
     const list = bubbles(buildCoveredCallMessages(check(cycle) as never, "每月期權", "flex"));
     for (const bubble of list) {
-      const footer = texts(bubble.footer).join("\n");
-      // V25-D4 removes the redundant source prefix while preserving its exact label.
-      expect(footer).toContain("Yahoo Finance 期權鏈（非官方，延遲）");
-      expect(footer).toContain(STAMP);
-      expect(footer).toContain("擷取時間");
-      expect(footer).toContain("依營運者決定顯示；本資料未取得再散布授權");
-      // V25-D4 states the required exact non-investment-advice qualifier without the redundant personalized wording.
-      expect(footer).toContain("非投資建議");
-      // V25-D4 retains the service no-order boundary in the compact phrase.
-      expect(footer).toContain("不下單");
-      expect(texts(bubble.footer).filter(text => text.includes("Yahoo Finance 期權鏈（非官方，延遲）"))).toHaveLength(1);
+      const lines = disclosureLines(bubble);
+      expect(lines).toHaveLength(3);
+      expect(lines.join("\n")).toContain("Yahoo Finance 期權鏈（非官方，延遲）");
+      expect(lines.join("\n")).toContain(STAMP);
+      expect(lines.join("\n")).toContain("擷取時間");
+      expect(lines.join("\n")).toContain("依營運者決定顯示；本資料未取得再散布授權");
+      expect(lines.join("\n")).toContain("非投資建議");
+      expect(lines.join("\n")).toContain("不下單");
+      expect(lines.join("\n")).toContain("價差25%內取中間價，較寬時取Bid＋四分之一價差");
+      const nodes = disclosureNodes(bubble);
+      expect(nodes.every(node => node.size === "xxs" && Array.from((node.contents as Json[]).map(span => span.text).join("")).length <= 110
+        && (node.contents as Json[])[0]?.weight === "bold")).toBe(true);
+      expect(lines.filter(text => text.includes("Yahoo Finance 期權鏈（非官方，延遲）"))).toHaveLength(1);
     }
-    const strategyBubbles = list.slice(2).map(bubble => texts(bubble.footer).join("\n"));
-    expect(strategyBubbles[0]).toContain("被指派時需以履約價買進正股");
-    expect(strategyBubbles[1]).toContain("保護賣權需付權利金");
+    const text = joined(render(cycle, "text"));
+    expect(text).toContain("被指派時需以履約價買進正股");
+    expect(text).toContain("保護賣權需付權利金");
   });
 
   it("stays under the 46 KB packing size and the LINE altText limits", () => {
@@ -246,19 +260,23 @@ describe("V21 card", () => {
         if (!node || typeof node !== "object") return;
         if (node.type === "button") { buttons.push(node.action.label); return; }
         if (node.type === "box" && node.layout === "horizontal" && node.contents?.length === 2 && node.contents[0]?.width === BULLET_DOT_SIZE) bullets += 1;
-        if (node.type === "text") { textCount += 1; chars += Array.from(node.text).length; if (node.maxLines) maxLines += 1; if (node.size === "xxs") xxs += 1; return; }
+        if (node.type === "text") {
+          const text = typeof node.text === "string" ? node.text
+            : Array.isArray(node.contents) ? node.contents.map((span: any) => String(span.text ?? "")).join("") : "";
+          textCount += 1; chars += Array.from(text).length; if (node.maxLines) maxLines += 1; if (node.size === "xxs") xxs += 1; return;
+        }
         Object.values(node).forEach(walk);
       };
       walk(bubble);
       return { bullets, textCount, chars, maxLines, xxs, buttons };
     });
-    // overview: three strategies of one hero figure and at most three bullets each, one disclosure line
+    // overview: three strategies of one hero figure and at most three bullets each, no more than three labelled disclosures
     expect(metrics[0]!.bullets).toBeLessThanOrEqual(9);
-    expect(metrics[0]!.textCount).toBeLessThanOrEqual(34);
+    expect(metrics[0]!.textCount).toBeLessThanOrEqual(36);
     expect(metrics[0]!.chars).toBeLessThanOrEqual(800);
     for (const item of metrics) {
       expect(item.maxLines).toBe(0);
-      expect(item.xxs).toBeLessThanOrEqual(1 + 8);  // the single disclosure line plus section/footnote captions
+      expect(item.xxs).toBeLessThanOrEqual(3 + 8);  // up to three disclosure labels plus section/footnote captions
       expect(item.textCount).toBeLessThanOrEqual(56);
       for (const label of item.buttons) {
         expect(Array.from(label).length).toBeLessThanOrEqual(20);

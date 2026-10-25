@@ -6,7 +6,7 @@
  */
 
 import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
-import { LINE_THEME as T, altSummary, detailsButton, disclosureLine, menuAction, menuBox, menuText, headerStyle, uiBox } from "./line-theme";
+import { LINE_THEME as T, altSummary, detailsButton, disclosureGroups, menuAction, menuBox, menuText, headerStyle, uiBox } from "./line-theme";
 import type { OptionEducationalStrategyCard } from "./market-product-schema";
 
 export const EDUCATIONAL_DISCLAIMER = "教學範例，非推薦" as const;
@@ -156,43 +156,44 @@ export const EDUCATIONAL_STRATEGIES: readonly OptionEducationalStrategyCard[] = 
   },
 ]);
 
-function flexAssumptions(card: OptionEducationalStrategyCard): string[] {
-  const assumptions = card.assumptions;
-  if (card.strategy_id === "cash_secured_put") return [
-    assumptions.quantity_multiplier.replace("標準美股選擇權 1 口合約 = 100 股現股。", "標準美股期權1口＝100股。"),
-    assumptions.cost_basis.replace("若被指派，每股有效取得成本為 $90.00 - $2.50 = $87.50/股。", "被指派後有效成本：$90.00−$2.50=$87.50/股。"),
-    assumptions.collateral.replace("必須準備 100% 全額現金擔保 $9,000.00（$90 × 100 股），凍結於帳戶不得挪作他用。", "100%全額現金擔保 $9,000.00（$90×100股）；凍結不可挪用。"),
-    assumptions.premium_fees.replace("假定收取權利金 $2.50/股，未計利息機會成本、交易手續費與稅金。", "收權利金 $2.50/股；未計利息機會成本、手續費與稅金。"),
-    assumptions.exercise_assignment_tax.replace("到期日實值賣權將由 OCC 自動執行指派；接股後轉為現股多頭部位。", "到期實值賣權由 OCC 自動指派；接股後為現股多頭。"),
-    assumptions.specific_caveats.replace("現金擔保賣權要求鎖定全額現金，存在資金機會成本；下檔實質承擔接股後跌至 0 的巨大風險。", "全額現金鎖定有機會成本；接股後承受股價跌至 $0 的重大下行風險。"),
-  ];
-  if (card.strategy_id === "protective_put") return [
-    assumptions.quantity_multiplier.replace("1 口保護性賣權對應 100 股長線持有之現股。", "保護性賣權1口對應長期持有100股。"),
-    assumptions.cost_basis.replace("現股成本 $100.00/股，加計保險成本後保本門檻為 $103.00/股。", "現股成本 $100.00/股；保費已計入損平。"),
-    assumptions.collateral.replace("現股全額持有，支付賣權權利金即可，無衍生品空頭保證金需求。", "現股全額持有；僅付權利金，無衍生品空頭保證金需求。"),
-    assumptions.premium_fees.replace("假定付出權利金 $3.00/股，未計手續費；保險到期未行使則權利金全損。", "付權利金 $3.00/股；未計手續費，未行使則全損。"),
-    assumptions.exercise_assignment_tax.replace("若行使賣權出售現股，賣出價格視為 $95 扣除（或加計）相關權利金規定計算資本損益。", "行使以 $95 售股；資本損益依權利金規定調整。"),
-    assumptions.specific_caveats.replace("保護性賣權存在長期時間耗損（Premium Drag）；若持續滾動避險，即使股價不跌，淨資產仍會因保費支出持續減少。", "長期時間耗損（Premium Drag）；持續滾動付保費，即使股價不跌，淨資產仍減少。"),
-  ];
-  if (card.strategy_id !== "bull_call_spread") return [
-    assumptions.quantity_multiplier, assumptions.cost_basis, assumptions.collateral,
-    assumptions.premium_fees, assumptions.exercise_assignment_tax, assumptions.specific_caveats,
-  ];
-  return [
-    assumptions.quantity_multiplier.replace("1 口垂直價差 = 同時買進與賣出各 1 口同月份不同履約價之合約（對應 100 股）。", "價差買賣各1口，同月不同履約價；乘數100股。"),
-    assumptions.cost_basis.replace("開倉最大淨支出為 $2.50/股（合約 $250.00）。", "淨支出 $2.50/股。"),
-    assumptions.collateral.replace("作為淨支出型垂直價差（Debit Spread），不需額外保證金，已支付權利金即為最大風險。", "Debit Spread；免額外保證金，已付權利金為最大風險。"),
-    assumptions.premium_fees.replace("兩腿各有一筆買進與賣出交易手續費與價差滑價摩擦成本。", "兩腿均計手續費與滑價成本。"),
-    assumptions.exercise_assignment_tax.replace("雙腿組合可能因各腿不同時平倉引發提前指派、交割不對稱與洗售規則（Wash Sale）稅務影響。", "雙腿不同步平倉可能提前指派、交割不對稱及 Wash Sale 稅務影響。"),
-    assumptions.specific_caveats.replace("價差交易涉及雙腿成交滑價；短腿提前指派與到期履約不對稱可能引發保證金衝擊（Legging Risk）。", "雙腿滑價、短腿提前指派或到期交割不對稱，可能衝擊保證金（Legging Risk）。"),
-  ];
+
+function wrapFlexRow(text: string, max = 40): string {
+  const lines: string[] = [];
+  let line = "";
+  for (const part of text.split(/(?<=\s)|(?<=[｜，；。+])/u).filter(Boolean)) {
+    if (Array.from(line + part).length <= max) { line += part; continue; }
+    if (line) lines.push(line.trimEnd());
+    line = part.trimStart();
+    while (Array.from(line).length > max) {
+      const points = Array.from(line);
+      lines.push(points.slice(0, max).join(""));
+      line = points.slice(max).join("");
+    }
+  }
+  if (line) lines.push(line.trimEnd());
+  return lines.join("\n");
+}
+
+function riskDisclosure(card: OptionEducationalStrategyCard): string {
+  switch (card.strategy_id) {
+    case "covered_call": return "手續費、規費與滑價未計；美式買權可提前指派並可能涉稅；上檔封頂、權利金緩衝有限，仍承受正股下行。";
+    case "cash_secured_put": return "未計利息機會成本、手續費與稅；到期實值賣權由OCC自動指派接股；全額現金鎖定，接股後可能跌至$0。";
+    case "bull_call_spread": return "兩腿計手續費與滑價；短腿$110 Call可提前指派；到期介於履約價有 Pin Risk、交割不對稱及 Wash Sale／保證金風險。";
+    case "protective_put": return "未計手續費；未行使則權利金全損；行使按$95售股；長期滾動耗損，持續保費可令淨資產減少。";
+  }
 }
 
 function cardToBubble(card: OptionEducationalStrategyCard) {
-  const flexCopy = flexAssumptions(card);
   const net = card.payoff_reference.net_credit_debit;
   const profit = card.payoff_reference.max_profit_amount === "UNBOUNDED"
     ? "UNBOUNDED（理論無限）" : `$${card.payoff_reference.max_profit_amount.toFixed(2)}/口`;
+  const architecture = `${card.strikes}${card.strategy_id === "bull_call_spread" ? "；每口100股" : ""}`;
+  const status = `${card.status}（模擬基準日：${card.simulated_as_of}）；合成教學假設；非報價、非投資建議、不下單`;
+  const contract = card.strategy_id === "covered_call" ? "持有100股擔保；每口對應100股；費用與稅務細節見文字版"
+    : card.strategy_id === "cash_secured_put" ? `${card.assumptions.collateral}；每口${card.payoff_reference.contract_multiplier}股；機會成本見文字版`
+      : card.strategy_id === "bull_call_spread" ? "兩腿各1口、同月不同履約價；乘數100股；淨權利金為最大虧損"
+        : "持有100股並買進1口Put；支付保費；未行使則權利金全損";
+  const risk = riskDisclosure(card);
   return {
     type: "bubble",
     size: "mega",
@@ -203,18 +204,16 @@ function cardToBubble(card: OptionEducationalStrategyCard) {
     ], { ...headerStyle }),
     body: uiBox([
       uiBox([
-        menuText(`淨${net >= 0 ? "收" : "付"} $${Math.abs(net).toFixed(2)}/口`, "xs", T.ink),
-        menuText(`損平 $${card.payoff_reference.breakeven_price.toFixed(2)}/股`, "xs", T.ink),
-        menuText(`獲利 ${profit}｜最大損失 $${card.payoff_reference.max_loss_amount.toFixed(2)}/口`, "xs", T.ink),
+        menuText(wrapFlexRow(architecture), "xs", T.ink),
+        menuText(wrapFlexRow(`淨${net >= 0 ? "收" : "付"} $${Math.abs(net).toFixed(2)}/口｜損平 $${card.payoff_reference.breakeven_price.toFixed(2)}/股`), "xs", T.ink),
+        menuText(wrapFlexRow(`獲利 ${profit}｜最大損失 $${card.payoff_reference.max_loss_amount.toFixed(2)}/口`), "xs", T.ink),
       ], { spacing: "sm" }),
     ], { paddingAll: "lg", spacing: "sm", backgroundColor: T.paper }),
     footer: uiBox([
-      disclosureLine([
-        `狀態：${card.status}（模擬基準日：${card.simulated_as_of}）`,
-        `合約/成本/擔保：${flexCopy[0]}；${flexCopy[1]}；${flexCopy[2]}`,
-        `費用/指派：${flexCopy[3]}；${flexCopy[4]}`,
-        `風險：${flexCopy[5]}`,
-        "合成教學假設；非報價、非投資建議、不下單",
+      ...disclosureGroups([
+        { label: "狀態", text: status },
+        { label: "合約", text: contract },
+        { label: "風險", text: risk },
       ]),
       detailsButton("查看適用情境與假設", `期權教學 ${card.strategy_id} 文字`),
       menuAction("範例：NVDA 每月期權", "NVDA 每月期權"),

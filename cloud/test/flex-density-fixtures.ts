@@ -13,6 +13,7 @@ import { BULLET_DOT_SIZE, LINE_THEME as T } from "../src/v213/line-theme";
 import { doc as bottleneckDoc } from "./bottleneck-v3-fixture";
 import { admitSyntheticTickers } from "./synthetic-option-admission";
 import strategyFixture from "./fixtures/v21-three-strategies.json";
+import consensusFixture from "../../tests/fixtures/v11-consensus-sealed.json";
 
 export interface Node {
   type?: string;
@@ -58,7 +59,7 @@ export const isBulletRow = (value: unknown): value is Node => {
   return isNode(dot) && dot.type === "box" && dot.width === BULLET_DOT_SIZE && dot.height === BULLET_DOT_SIZE;
 };
 
-/** Structure metrics for one bubble; body prose excludes the single footer disclosure line. */
+/** Structure metrics for one bubble; body prose excludes its footer disclosure groups. */
 export function measure(bubble: Node): Metrics {
   const m: Metrics = { texts: 0, chars: 0, bullets: 0, sections: 0, xxs: 0, buttons: 0, footerButtons: 0,
     longPlain: [], maxLinesUsed: 0, labels: [], footerDisclosureLines: 0, disclosureLines: 0, distinctSizes: 0, distinctWeights: 0, longestPlainLine: 0 };
@@ -80,6 +81,9 @@ export function measure(bubble: Node): Metrics {
       m.texts += 1; m.chars += Array.from(text).length;
       if (value.size === "xxs") m.xxs += 1;
       if (!inHeader && typeof value.size === "string") sizes.add(value.size);
+      if (!inHeader && Array.isArray(value.contents)) {
+        for (const span of value.contents) if (isNode(span) && typeof span.weight === "string") weights.add(span.weight);
+      }
       if (!inHeader && typeof value.weight === "string") weights.add(value.weight);
       const disclosure = value.size === "xxs" && value.color === T.subtle;
       if (disclosure) {
@@ -207,6 +211,22 @@ export const v25Surfaces = {
   "options-guidance cycle comparison": optionsCycleComparison,
   "bottleneck detail (all pages)": bottleneckDetailAllPages,
 } satisfies Record<string, () => Promise<Node[]> | Node[]>;
+export function v3D1Surfaces(): Record<string, Node[]> {
+  const cases = (consensusFixture as any).cases;
+  const scenarios = [
+    ["bottleneck consensus V3", "bridge_day13", "000660.KS"],
+    ["bottleneck company-guidance V3", "guidance_precedence", "NVDA"],
+  ] as const;
+  return Object.fromEntries(scenarios.map(([name, caseName, symbol]) => {
+    const scenario = cases[caseName];
+    const generated = Date.parse(scenario.cutoff);
+    const raw = bottleneckDoc(generated);
+    raw.top[1]!.symbol = symbol;
+    raw.top[1]!.outlook = structuredClone(scenario.outlooks[symbol]);
+    const parsed = parseBottleneckV3(raw, generated + 3600_000);
+    return [name, parsed ? bubblesOf(buildBottleneckTop20Messages(parsed, "flex")) : []];
+  }));
+}
 export async function v25FlexMessages(): Promise<Extract<LineOutboundMessage, { type: "flex" }>[]> {
   admitSyntheticTickers("NVDA");
   const report = parseV213Top20Report(top20Report() as never)!;

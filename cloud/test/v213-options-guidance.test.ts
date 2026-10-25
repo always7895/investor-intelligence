@@ -191,6 +191,9 @@ describe("Options order guidance (AGENTS.md authorization)", () => {
       // V25: the compact Chinese schedule preserves the sealed pacing and the standing reserve floor.
       expect(JSON.stringify(msg.contents)).toContain("建倉 3-4 批");
       expect(JSON.stringify(msg.contents)).toContain("6-18 個月內");
+      expect(Array.from(msg.altText).length).toBeLessThanOrEqual(120);
+      // V25-FIX3 restores the accessible allocation ceiling in the altText itself.
+      expect(msg.altText).toContain(`上限 ${s.max_allocation_cap_pct}%`);
     });
     it("never uses a market order anywhere in rendered output", () => {
       const body = JSON.stringify(buildOptionsGuidanceFlexBubble(gd({ strategy: "cash_secured_put" })));

@@ -303,6 +303,7 @@ describe("W1 + W2 through the real LINE entry", () => {
         expect(reply).toContain("115.00");
         expect(reply).toContain("Yahoo Finance 期權鏈（非官方，延遲）");
         expect(reply).toContain(w.covered.OPERATOR_ACCEPTED_NOTICE_ZH);
+        expect(reply).toContain("價差25%內取中間價，較寬時取Bid＋四分之一價差");
         expect(reply).not.toContain("前一交易時段最後報價");
         expect(reply).not.toContain("OPTION_RIGHTS_NOT_ADMITTED");
       }

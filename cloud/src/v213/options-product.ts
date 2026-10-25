@@ -12,7 +12,7 @@
  */
 
 import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
-import { LINE_THEME as T, altSummary, disclosureLine, menuAction, menuBox, menuText, headerStyle, footerStyle, uiBox, uiText } from "./line-theme";
+import { LINE_THEME as T, altSummary, disclosureGroups, disclosureLine, menuAction, menuBox, menuText, headerStyle, footerStyle, uiBox, uiText } from "./line-theme";
 import type { OptionContractQuote } from "./market-product-schema";
 import { validateOptionContractQuote } from "./market-product-schema";
 import { admitPublicOption, OptionRightsNotAdmittedError } from "./public-options-admission";
@@ -50,11 +50,10 @@ export function buildOptionContractBubble(quote: OptionContractQuote) {
       uiText(`IV ${quote.iv !== null ? `${(quote.iv * 100).toFixed(1)}%` : "UNAVAILABLE"}｜OI ${quote.oi !== null ? quote.oi : "UNAVAILABLE"}｜量 ${quote.volume !== null ? quote.volume : "UNAVAILABLE"}`, "xs", T.subtle),
     ], { paddingAll: "lg", spacing: "sm", backgroundColor: T.paper }),
     footer: uiBox([
-      disclosureLine([
-        `時間 ${quote.timestamp}｜來源 ${sourceZh(quote.source)}｜出處 ${quote.provenance}｜權利 ${rightsZh(quote.rights_status)}`,
-        `指派：${quote.assignment_risk}`,
-        `流動性：${quote.liquidity_warning}`,
-        "報價不保證委託成交；非投資建議、不下單",
+      ...disclosureGroups([
+        { label: "來源", text: `時間 ${quote.timestamp}｜${sourceZh(quote.source)}` },
+        { label: "權利", text: `${rightsZh(quote.rights_status)}｜出處 ${quote.provenance}` },
+        { label: "風險", text: `指派：${quote.assignment_risk}；流動性：${quote.liquidity_warning}；報價不保證委託成交；非投資建議、不下單` },
       ]),
       menuAction("查看期權策略教學", "期權教學"),
       menuAction("回功能選單", "選單"),
