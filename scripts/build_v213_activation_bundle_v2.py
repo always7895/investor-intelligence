@@ -29,12 +29,18 @@ import secrets
 import sys
 import tempfile
 import urllib.parse
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import ModuleType
 from typing import Any, Iterable, Mapping
 
 SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+
+from report_source_acquisition import FIELDS, SourceAcquisitionError, field_clock, utc_time, validate_report_acquisition
+from claim_lineage_qualification import claim_lineage_qualified as _claim_lineage_qualified
+
 ROOT = SCRIPT_DIR.parent
 CORE_PATH = SCRIPT_DIR / "build_v213_activation_bundle.py"
 FRESHNESS_POLICY_PATH = ROOT / "config" / "v213-serenity-evidence-freshness-policy.json"
@@ -132,12 +138,11 @@ def _timestamp(value: Any, label: str) -> datetime:
     try:
         parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
     except ValueError as exc:
-        try:
-            parsed = datetime.fromisoformat(text[:10] + "T00:00:00+00:00")
-        except ValueError:
-            raise SerenityEvidenceError(
-                f"Invalid evidence timestamp: {label}"
-            ) from exc
+        # Date-only ISO values are already accepted above. Never rescue a
+        # corrupt timestamp by discarding its invalid time/offset/suffix.
+        raise SerenityEvidenceError(
+            f"Invalid evidence timestamp: {label}"
+        ) from exc
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=timezone.utc)
     return parsed.astimezone(timezone.utc)
@@ -371,6 +376,9 @@ def _validate_same_run_freshness(
         "source_federation.generated_at": federation.get("generated_at"),
         "source_independence.generated_at": source_audit.get("generated_at"),
     }
+    for name, document in (('v212', v212), ('v213', v213)):
+        for index, row in enumerate(document['records']):
+            dated_values[f'{name}.records[{index}].retrieved_at'] = row.get('retrieved_at')
     ages: dict[str, float] = {}
     timestamps: list[datetime] = []
     for label, value in dated_values.items():
@@ -676,6 +684,7 @@ def _validate_record_evidence(
         and len(claim_primary) >= min_primary
         and dated_ratio >= min_dated_ratio
         and current_units
+        and _claim_lineage_qualified(audit_row, policy, now)
     )
     positive_support = bool(
         len(current_units) >= min_advantage_units
@@ -1166,6 +1175,14 @@ def _validate_inputs(
             "v2.1.3 report order does not match final Top20"
         )
 
+    try:
+        validate_report_acquisition(v212, require_known=True)
+        for five, seven in zip(v212['records'], v213['records']):
+            if any(five[key] != seven.get(key) for key in FIELDS) or utc_time(seven.get('retrieved_at')) > utc_time(five['retrieved_at']):
+                raise SourceAcquisitionError('SOURCE_ACQUISITION_REPORT_MISMATCH')
+    except SourceAcquisitionError as error:
+        raise core.ActivationBundleError(str(error)) from None
+
     gates = federation.get("gates")
     if (
         federation.get("schema_version") != 1
@@ -1363,6 +1380,31 @@ def _synthetic_documents() -> tuple[dict[str, Any], ...]:
             {
                 "rank": index + 1,
                 "ticker": ticker,
+                "claim_evidence_audit": {
+                    "schema_version": 2,
+                    "all_material_claims_supported": True,
+                    "validated_at": stamp,
+                    "valid_until": (generated + timedelta(hours=1)).isoformat(),
+                    "claims": [{
+                        "claim_id": ticker + ":revenue",
+                        "status": "SUPPORTED",
+                        "high_confidence_eligible": True,
+                        "value": 100,
+                        "conflict_set": [],
+                        "evidence_ids": ["synthetic-primary", "synthetic-research"],
+                    }],
+                    "evidence": [{
+                        "observation_id": "synthetic-" + origin,
+                        "claim_ids": [ticker + ":revenue"],
+                        "admitted": True,
+                        "freshness": "CURRENT",
+                        "valid_until": (generated + timedelta(hours=1)).isoformat(),
+                        "value": 100,
+                        "independence_group": origin,
+                        "origin_group": origin,
+                        "content_sha256": hashlib.sha256(origin.encode()).hexdigest(),
+                    } for origin in ("primary", "research")],
+                },
                 "source_metrics": {
                     "claim_relevant_independent_families": 2,
                     "claim_relevant_independent_domains": 2,
@@ -1456,6 +1498,26 @@ def _synthetic_documents() -> tuple[dict[str, Any], ...]:
             for index in range(20)
         ],
     }
+    # Source-aware synthetic report control, not a real HTTP or publication proof.
+    from build_v213_scheduled_top20_report import build as build_seven
+    columns = ['股票', '長期投資報酬率（近2年年化）', '短期投資報酬率（近6個月）', '行業別', '獲利簡述']
+    v212.update(schema_version=2, calculation_cutoff=stamp, display_columns=columns,
+                long_term_definition='trailing_2y_adjusted_close_cagr', short_term_definition='trailing_6m_adjusted_close_price_return',
+                provider_scope='public_only', owner_watchlist_inherited=False)
+    for row in v212['records']:
+        row.update(schema_version=2, long_term_return_pct=None, short_term_return_pct=None,
+                   industry='未分類', profit_summary='獲利；淨利率 20.0%', long_term_window='2y_cagr', short_term_window='6m_price_return',
+                   market_source='yfinance', profit_source='sec_edgar', retrieved_at=stamp,
+                   provider_scope='public_only', owner_watchlist_inherited=False)
+        row['source_acquisition'] = {key: field_clock(key, row[key],
+            **({'retrieved_at': stamp, 'evidence_sha256': '1'*64} if key == 'profit_summary' else {})) for key in FIELDS}
+    for row in v213['records']:
+        row.update(current_orders='未揭露（無可靠公開訂單數字）', future_orders_estimate='無可靠公開預估',
+                   orders_as_of='', orders_confidence='UNAVAILABLE', current_order_source_urls=[], future_order_source_urls=[])
+    v213 = build_seven(v212, v213, {f"T{index:02d}": f"Synthetic Company {index}" for index in range(20)},
+                       return_evidence={"records": {f"T{index:02d}": {"windows": {"six_month": {"actual_end": stamp[:10]}}}
+                                                    for index in range(20)}},
+                       profit_display={"records": {f"T{index:02d}": {"claim_filed_at": stamp[:10]} for index in range(20)}})
     federation = {
         "schema_version": 1,
         "product_version": "2.1.3",

@@ -4,16 +4,23 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import fnmatch
 import json
 import posixpath
 import re
 import stat
+import sys
 import zipfile
 from pathlib import Path, PurePosixPath
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from v213_model_profile import parse_profile, profile_sha256
 
 HEX40 = re.compile(r"^[0-9a-f]{40}$")
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
 BASE = "43f3be048cedf228cfe9e8e31f7b9901895838be"
+DEFAULT_ARTIFACT_NAME = "Investor-Intelligence-v2.1.3-R75-Free-Relay-Hotfix"
+ARTIFACT_NAME = re.compile(r"^Investor-Intelligence-v2\.1\.3-R75-[A-Za-z0-9][A-Za-z0-9-]{0,60}$")
 
 
 class VerificationError(RuntimeError):
@@ -34,9 +41,16 @@ def safe_name(value: str) -> str:
 
 
 def load_json(data: bytes, label: str) -> dict:
+    def unique(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError('duplicate key')
+            result[key] = value
+        return result
     try:
-        value = json.loads(data.decode("utf-8-sig"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        value = json.loads(data.decode("utf-8-sig"), object_pairs_hook=unique)
+    except (ValueError, RecursionError) as exc:
         raise VerificationError(f"invalid {label}") from exc
     if not isinstance(value, dict):
         raise VerificationError(f"invalid {label}")
@@ -57,6 +71,8 @@ def verify_public_research_payload(files: dict[str, tuple[str, bytes]]) -> None:
         'skills/serenity-public-research/skill.md',
         'skills/serenity-public-research/references/research_method.md',
         'skills/serenity-public-research/references/cross_validation.md',
+        'skills/serenity-public-research/references/serenity_logic.md',
+        'skills/serenity-public-research/references/aschenbrenner_context.md',
     }
     if {p for p in files if p.startswith('skills/')} != expected:
         raise VerificationError('public research payload missing or unreviewed skill included')
@@ -69,14 +85,40 @@ def verify_public_research_payload(files: dict[str, tuple[str, bytes]]) -> None:
             raise VerificationError('packaged research reference is missing or unsafe')
 
 
+WIRE_TEST = "cloud/test/v213-revenue-guidance-wire-integration.test.ts"
+WIRE_FIXTURE = "tests/fixtures/revenue-guidance-wire-v1-functional.json"
+# Bounds mirrored from the packager for these exact fixture entries only (not a global archive policy).
+FIXTURE_MAX_BYTES = 2 * 1024 * 1024
+FIXTURE_TOTAL_MAX_BYTES = 16 * 1024 * 1024
+GIT_REGULAR_MODES = ("100644", "100755")
+GIT_BLOB = re.compile(r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
+# The exact fixtures the default Worker collection reads from tests/, required in every package.
+ALWAYS_FIXTURES = (
+    "tests/fixtures/v213-order-forecast-sealed.json", "tests/fixtures/v213-order-forecast-urls.json",
+    "tests/fixtures/v213-order-forecast-v2.json", "tests/fixtures/v213-order-forecast-v2-sealed.json",
+    "tests/fixtures/v213-lineage-sealed-markets.json", "tests/fixtures/v213-official-quarterly-revenue.json",
+    "tests/fixtures/source-acquisition-reports.json", "tests/fixtures/v213-orders-v3-golden-sealed.json",
+    "tests/fixtures/v213-orders-v3-proof-rpo.json", "tests/fixtures/v213-orders-v3-proof-states.json",
+    "tests/fixtures/v213-orders-v3-probes.json",
+    "tests/fixtures/v213-r75-publication-mode/all-limited.json",
+    "tests/fixtures/v213-r75-publication-mode/mixed.json",
+    "tests/fixtures/v213-r75-publication-mode/claim-recount-vectors.json",
+    "tests/fixtures/receipt-id-persisted-form-vectors.json",
+    "tests/fixtures/identity-batch04-functional.json",
+    "tests/fixtures/revenue-guidance-machine-auto-functional.json",
+    "tests/fixtures/revenue-guidance-machine-barrier-functional.json",
+    "tests/fixtures/revenue-guidance-machine-nbis-auto-functional.json",
+    "tests/fixtures/revenue-guidance-machine-nbis-reaffirm-functional.json",
+)
+
+
 def verify_worker_test_payload(files: dict[str, tuple[str, bytes]], refs: dict) -> None:
     """Activation must remain executable after extracting the delivered ZIP."""
     required = {
         "cloud/test/fake-kv.ts", "cloud/test/qa.test.ts",
         "cloud/test/v213-activation.test.ts", "cloud/test/v213-free-relay.test.ts",
         "cloud/test/v213-publication-mode.test.ts",
-        "tests/fixtures/v213-r75-publication-mode/all-limited.json",
-        "tests/fixtures/v213-r75-publication-mode/mixed.json",
+        *ALWAYS_FIXTURES,
     }
     inventory = refs.get("worker_test_payload")
     if not isinstance(inventory, list) or not all(isinstance(p, str) for p in inventory):
@@ -85,20 +127,127 @@ def verify_worker_test_payload(files: dict[str, tuple[str, bytes]], refs: dict) 
     actual = {p for p in files if p.startswith(("cloud/test/", "tests/"))}
     if len(expected) != len(inventory) or expected != actual or not required.issubset(actual):
         raise VerificationError("activation test payload missing or inconsistent")
-    if any(p.startswith("tests/") and p not in required for p in actual):
+    # The revenue-guidance wire consumer and its fixture travel together or not at all.
+    wire_test, wire_fixture = WIRE_TEST in actual, WIRE_FIXTURE in actual
+    if wire_test != wire_fixture or refs.get("revenue_guidance_wire_pair_present") is not wire_fixture:
+        raise VerificationError("revenue guidance wire pair inconsistent")
+    allowed = set(ALWAYS_FIXTURES) | ({WIRE_FIXTURE} if wire_fixture else set())
+    if any(p.startswith("tests/") and p not in allowed for p in actual):
         raise VerificationError("non-runtime Python test content leaked")
+    digests = refs.get("worker_test_fixture_sha256")
+    if (not isinstance(digests, dict) or len(digests) != len(allowed)
+            or {safe_name(k).casefold() for k in digests} != allowed
+            or any(not isinstance(v, str) or not HEX64.fullmatch(v) or v != sha(files[safe_name(k).casefold()][1])
+                   for k, v in digests.items())):
+        raise VerificationError("activation test fixture digests missing or inconsistent")
+    git_meta = refs.get("worker_test_fixture_git")
+    if (not isinstance(git_meta, dict) or len(git_meta) != len(allowed)
+            or {safe_name(k).casefold() for k in git_meta} != allowed
+            or any(not isinstance(v, dict) or set(v) != {"mode", "blob"} or v["mode"] not in GIT_REGULAR_MODES
+                   or not isinstance(v["blob"], str) or not GIT_BLOB.fullmatch(v["blob"]) for v in git_meta.values())):
+        raise VerificationError("activation test fixture Git identity metadata missing or not a regular blob")
+    sizes = [len(files[p][1]) for p in allowed]
+    if any(size > FIXTURE_MAX_BYTES for size in sizes) or sum(sizes) > FIXTURE_TOTAL_MAX_BYTES:
+        raise VerificationError("activation test fixture size bound exceeded")
     count = refs.get("packaged_worker_test_count")
     if type(count) is not int or count <= 0:
         raise VerificationError("packaged Worker test count invalid")
 
 
-def verify(archive: Path, checksum: Path, commit: str, run_id: str, receipts: list[Path]) -> dict:
+def verify_model_binding(files, refs, receipts, archive_sha):
+    """Use trusted validators, never import code from the archive being checked."""
+    key = 'config/v213-model-profile-v1.json'
+    markers = {key, 'scripts/v213_model_profile.py', 'cloud/src/v213/model-profile.ts'}
+    modern = bool(markers.intersection(files)) or any(r.get('model_profile_sha256') is not None for r in [refs, *receipts])
+    if not modern:
+        if refs.get('exact_model') != 'qwen38-q6':
+            raise VerificationError('legacy model mismatch')
+        return {'exact_model': 'qwen38-q6', 'model_profile_sha256': None}
+    required = {key, 'scripts/v213_model_profile.py', 'scripts/v213_compact_qa_gateway.py',
+                'scripts/v213_local_llm_gateway.py', 'cloud/src/v213/model-profile.ts',
+                'scripts/v213_decision_backend_client.py', 'scripts/v213_adaptive_reasoning.py',
+                'config/local-runtime-independence-v1.json'}
+    if not required.issubset(files):
+        raise VerificationError('profile runtime payload missing')
+    try:
+        profile = parse_profile(files[key][1].decode('utf-8-sig'))
+    except (ValueError, UnicodeError):
+        raise VerificationError('packaged model profile invalid') from None
+    if profile['enable_thinking'] or profile['reasoning_effort'] != 'none':
+        raise VerificationError('thinking capability unqualified')
+    identity = {'exact_model': profile['model'], 'model_profile_sha256': profile_sha256(profile)}
+    if any(r.get('artifact_kind') != 'R75_FREE_WORKERS_RELAY_HOTFIX' for r in receipts):
+        raise VerificationError('profile receipt artifact kind mismatch')
+    windows = [r for r in receipts if r.get('release_ready') is True and
+               r.get('live_qa') == 'PASS' and r.get('live_free_relay_smoke') == 'PASS']
+    deployment = [r for r in receipts if r.get('extracted_zip_worker_gate') == 'PASS']
+    delivery = [r for r in receipts if r.get('zip_sha256') == archive_sha]
+    if any(len(group) != 1 for group in (windows, deployment, delivery)) or len({id(windows[0]), id(deployment[0]), id(delivery[0])}) != 3:
+        raise VerificationError('profile receipt roles missing or ambiguous')
+    for record in (refs, windows[0], deployment[0]):
+        if any(record.get(k) != v for k, v in identity.items()):
+            raise VerificationError('model profile receipt binding mismatch')
+    return identity
+
+
+def verify_qa_binding(files, refs, receipts, qa_receipt):
+    bound = ('scripts/r75_release_inputs.py' in files or 'qa_live_receipt_path' in refs
+             or 'qa_live_receipt_sha256' in refs or any('qa_live_receipt_path' in r for r in receipts))
+    if not bound:
+        if qa_receipt is not None: raise VerificationError('legacy archive has no QA binding')
+        return
+    relative, digest = refs.get('qa_live_receipt_path'), refs.get('qa_live_receipt_sha256')
+    if (not isinstance(relative, str) or not re.fullmatch(r'state/[A-Za-z0-9][A-Za-z0-9._-]{0,160}\.json', relative)
+            or '..' in relative or not isinstance(digest, str) or not HEX64.fullmatch(digest)):
+        raise VerificationError('QA reference binding missing or invalid')
+    windows = [r for r in receipts if r.get('release_ready') is True]
+    if (len(windows) != 1 or windows[0].get('qa_live_receipt_path') != relative
+            or windows[0].get('qa_live_receipt_sha256') != digest):
+        raise VerificationError('Windows/QA reference mismatch')
+    if qa_receipt is None or not 0 < qa_receipt.stat().st_size <= 1048576:
+        raise VerificationError('external QA receipt missing or oversized')
+    raw = qa_receipt.read_bytes()
+    if sha(raw) != digest: raise VerificationError('external QA receipt digest mismatch')
+    data = load_json(raw, 'external QA receipt')
+    manifest = {name: sha(body) for name, body in files.values() if name.startswith('cloud/src/')
+                or fnmatch.fnmatchcase(name, 'scripts/v21*.py') or fnmatch.fnmatchcase(name, 'config/*.json')
+                or name in ('cloud/test/r75-live-bench-worker.ts', 'cloud/test/r75-line-presentation-proof.ts', 'scripts/v213_edge_readiness.ps1')}
+    try:
+        from verify_r75_qa_evidence import verify as verify_live
+        profile = parse_profile(files['config/v213-model-profile-v1.json'][1].decode('utf-8-sig')) if 'config/v213-model-profile-v1.json' in files else None
+        qualified = verify_live(data, manifest, expected_profile=profile)
+        if any(qualified.get(key) != refs.get(key) for key in ('exact_model', 'model_profile_sha256')):
+            raise ValueError('QA model identity differs from archive')
+    except (ValueError, KeyError, TypeError, UnicodeError):
+        raise VerificationError('external QA qualification failed') from None
+
+
+def verify_scope_binding(refs: dict, manifest: dict, verified: list[dict], artifact_name: str) -> None:
+    """Successor (reviewed-inventory) archives bind the artifact name and the scope inventory digest in refs, manifest and Windows receipt."""
+    if "scope_mode" not in refs and artifact_name == DEFAULT_ARTIFACT_NAME and not any("scope_mode" in r for r in verified):
+        return  # legacy allowlist archive
+    digest = refs.get("scope_inventory_sha256")
+    windows = [r for r in verified if r.get("release_ready") is True]
+    if (refs.get("scope_mode") != "reviewed_inventory" or refs.get("artifact_name") != artifact_name
+            or artifact_name == DEFAULT_ARTIFACT_NAME or not isinstance(digest, str) or not HEX64.fullmatch(digest)
+            or manifest.get("artifact_name") != artifact_name or manifest.get("scope_inventory_sha256") != digest
+            or len(windows) != 1 or windows[0].get("scope_mode") != "reviewed_inventory"
+            or windows[0].get("artifact_name") != artifact_name or windows[0].get("scope_inventory_sha256") != digest
+            or windows[0].get("scope_baseline_commit") != refs.get("scope_baseline_commit")
+            or not isinstance(refs.get("scope_baseline_commit"), str) or not HEX40.fullmatch(refs["scope_baseline_commit"])
+            or windows[0].get("scope_covered_head") != refs.get("scope_covered_head")
+            or not isinstance(refs.get("scope_covered_head"), str) or not HEX40.fullmatch(refs["scope_covered_head"])):
+        raise VerificationError("scope binding mismatch")
+
+
+def verify(archive: Path, checksum: Path, commit: str, run_id: str, receipts: list[Path], qa_receipt: Path | None = None,
+           artifact_name: str = DEFAULT_ARTIFACT_NAME) -> dict:
     commit = commit.lower()
-    if not HEX40.fullmatch(commit) or not run_id.isdigit():
+    if not HEX40.fullmatch(commit) or not run_id.isdigit() or not ARTIFACT_NAME.fullmatch(artifact_name):
         raise VerificationError("invalid immutable identity")
     if len(receipts) != 3:
         raise VerificationError("exactly three external receipts are required")
-    stem = f"Investor-Intelligence-v2.1.3-R75-Free-Relay-Hotfix-{commit}-{run_id}"
+    stem = f"{artifact_name}-{commit}-{run_id}"
     if archive.name != stem + ".zip":
         raise VerificationError("archive name mismatch")
     parts = checksum.read_text(encoding="ascii").strip().split()
@@ -130,7 +279,7 @@ def verify(archive: Path, checksum: Path, commit: str, run_id: str, receipts: li
         "scripts/v213_sealed_refresh.ps1", "run-v213-scheduled-refresh.ps1", "register-v213-refresh-tasks.ps1",
         "cloud/src/v213/free-relay.ts", "cloud/src/v213/production-worker.ts",
         "cloud/wrangler.v213.production.template.toml", "run-v213-local.ps1",
-        "config/v213-r75-publication-mode-v1.json", "scripts/v213_r75_activation_preflight.py",
+        "config/v213-r75-publication-mode-v2.json", "scripts/v213_r75_activation_preflight.py",
         "cloud/src/v213/publication-mode.ts", "cloud/src/v213/activation-v2.ts",
     }
     if not required.issubset(files):
@@ -146,12 +295,12 @@ def verify(archive: Path, checksum: Path, commit: str, run_id: str, receipts: li
             refs.get("base_named_tunnel_commit") != BASE or refs.get("source_commit") != commit or
             str(refs.get("workflow_run_id")) != run_id or refs.get("production_mutation_by_ci") is not False or
             refs.get("protected_release_semantics_unchanged") is not True or refs.get("consecutive_public_health_required") != 3 or
-            refs.get("health_schema_version") != 2 or refs.get("exact_model") != "qwen38-q6" or
+            refs.get("health_schema_version") != 2 or
             refs.get("normal_production_tunnel_mode") != "quick_free_relay" or
             refs.get("workers_dev_stable_entrypoint") is not True or refs.get("custom_domain_required") is not False):
         raise VerificationError("hotfix refs mismatch")
     verify_worker_test_payload(files, refs)
-    contract_sha = sha(files["config/v213-r75-publication-mode-v1.json"][1])
+    contract_sha = sha(files["config/v213-r75-publication-mode-v2.json"][1])
     if refs.get("publication_contract_sha256") != contract_sha:
         raise VerificationError("publication contract binding mismatch")
 
@@ -187,12 +336,16 @@ def verify(archive: Path, checksum: Path, commit: str, run_id: str, receipts: li
         raise VerificationError("SHA256SUMS digest mismatch")
 
     verified = [verify_receipt(path, commit, run_id) for path in receipts]
+    verify_scope_binding(refs, manifest, verified, artifact_name)
     deployment = [r for r in verified if r.get("extracted_zip_worker_gate") == "PASS"]
     if (len(deployment) != 1 or deployment[0].get("packaged_worker_typecheck") != "PASS" or
             deployment[0].get("packaged_worker_tests") != refs["packaged_worker_test_count"] or
             deployment[0].get("extracted_zip_runtime_install") != "PASS"):
         raise VerificationError("extracted ZIP Worker gate receipt missing or inconsistent")
+    model_binding = verify_model_binding(files, refs, verified, actual)
+    verify_qa_binding(files, refs, verified, qa_receipt)
     return {
+        **model_binding,
         "status": "PASS", "artifact_kind": "R75_FREE_WORKERS_RELAY_HOTFIX",
         "archive": archive.name, "archive_sha256": actual, "source_commit": commit,
         "workflow_run_id": run_id, "base_named_tunnel_commit": BASE, "zip_crc": "PASS",
@@ -202,6 +355,8 @@ def verify(archive: Path, checksum: Path, commit: str, run_id: str, receipts: li
         "activation_test_payload": "PASS", "public_research_payload": "PASS", "extracted_zip_worker_gate": "PASS",
         "extracted_zip_runtime_install": "PASS",
         "packaged_worker_tests": refs["packaged_worker_test_count"],
+        "qa_live_receipt_path": refs.get('qa_live_receipt_path'),
+        "qa_live_receipt_sha256": refs.get('qa_live_receipt_sha256'),
         "production_mutation_by_ci": False, "protected_release_semantics_unchanged": True,
     }
 
@@ -213,10 +368,13 @@ def main() -> int:
     parser.add_argument("--source-commit", required=True)
     parser.add_argument("--workflow-run-id", required=True)
     parser.add_argument("--receipt", action="append", default=[], type=Path)
+    parser.add_argument("--qa-live-receipt", type=Path)
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--artifact-name", default=DEFAULT_ARTIFACT_NAME)
     args = parser.parse_args()
     try:
-        result = verify(args.archive, args.checksum, args.source_commit, args.workflow_run_id, args.receipt)
+        result = verify(args.archive, args.checksum, args.source_commit, args.workflow_run_id, args.receipt, args.qa_live_receipt,
+                        args.artifact_name)
     except (OSError, UnicodeError, zipfile.BadZipFile, VerificationError) as exc:
         print(f"V213_R75_FREE_RELAY_ARTIFACT_VERIFICATION = FAIL; reason={type(exc).__name__}")
         return 1

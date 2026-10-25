@@ -21,13 +21,17 @@ import hashlib
 import json
 import math
 import re
+import sys
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # embedded CPython ._pth
+from claim_lineage_qualification import claim_lineage_structurally_qualified  # noqa: E402
+
 ROOT = Path(__file__).resolve().parents[1]
-CONTRACT_PATH = ROOT / "config" / "v213-r75-publication-mode-v1.json"
+CONTRACT_PATH = ROOT / "config" / "v213-r75-publication-mode-v2.json"
 try:
     CONTRACT = json.loads(CONTRACT_PATH.read_text(encoding="utf-8-sig"))
 except (OSError, json.JSONDecodeError) as exc:
@@ -420,6 +424,10 @@ def validate_source_audit(
                 raise PreflightError(f"{ticker}: EVIDENCE_QUALIFIED has no primary claim source")
             if number(metrics.get("claim_dated_evidence_ratio")) < number(THRESHOLDS["min_claim_dated_evidence_ratio"]):
                 raise PreflightError(f"{ticker}: EVIDENCE_QUALIFIED dated-evidence ratio is below 80%")
+            # Contract v2: saved counts are not proof. Recount from the row's own claim audit
+            # (structural only; expiry is a producer concern, see the contract's claim_recount block).
+            if not claim_lineage_structurally_qualified(record, int(THRESHOLDS["min_evidence_claim_families"])):
+                raise PreflightError(f"{ticker}: EVIDENCE_QUALIFIED claim evidence recount failed")
         elif mode == LIMITED:
             limited_count += 1
             if integer(state.get("claim_primary_units")) < int(THRESHOLDS["min_limited_claim_primary_units"]):
@@ -930,6 +938,30 @@ def self_test() -> None:
             else:
                 raise AssertionError(f"strict metric was accepted: {field}")
 
+        def recount_mutations(record: dict[str, Any]) -> dict[str, Any]:
+            audit = record["claim_evidence_audit"]
+            first, second = audit["evidence"][0], audit["evidence"][1]
+            return {
+                "absent audit": lambda: record.pop("claim_evidence_audit"),
+                "merged lineage": lambda: second.update(independence_group=first["independence_group"]),
+                "value disagreement": lambda: second.update(value=first["value"] + 1),
+                "unsupported claim": lambda: audit["claims"][0].update(status="UNAVAILABLE"),
+                "wrong audit schema": lambda: audit.update(schema_version=1),
+            }
+
+        for label in recount_mutations(json.loads(mixed_bundle["payloads"]["source_independence_json"])["records"][1]):
+            recounted = copy.deepcopy(mixed_bundle)
+            source = json.loads(recounted["payloads"]["source_independence_json"])
+            recount_mutations(source["records"][1])[label]()
+            rewrite_payload(recounted, "source_independence_json", source)
+            path.write_text(json.dumps(recounted), encoding="utf-8")
+            try:
+                validate_bundle(path, mixed_now)
+            except PreflightError as exc:
+                assert "recount" in str(exc), f"{label}: {exc}"
+            else:
+                raise AssertionError(f"claim recount defect was accepted: {label}")
+
     for relative in CONTRACT["fixture_files"]:
         validate_fixture(ROOT / relative)
 
@@ -937,7 +969,7 @@ def self_test() -> None:
         "V213_R75_ACTIVATION_PREFLIGHT_SELF_TEST = PASS; "
         "all_limited=true; optional_bls=true; positive_limited_rejected=true; "
         "limited_high_rejected=true; single_origin_rejected=true; "
-        "validated_thesis_rejected=true; strict_metrics_rejected=true; "
+        "validated_thesis_rejected=true; strict_metrics_rejected=true; claim_recount_rejected=true; "
         "count_order_freshness_digest_rejected=true; negative_factor_pass=true; "
         "production_mutation=false"
     )

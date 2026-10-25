@@ -1,0 +1,8 @@
+{
+  "service": "strata",
+  "status": "ok",
+  "loaded": true,
+  "model": "batch07-synthetic",
+  "api_key": false,
+  "max_context": 262144
+}

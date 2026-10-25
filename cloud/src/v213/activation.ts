@@ -359,12 +359,8 @@ export async function ingestV213ActivationBundle(
     ["v213:source-federation:latest", JSON.stringify(federation)],
     ["v213:source-independence:latest", JSON.stringify(sourceAudit)],
   ];
-  if (previousRunId) {
-    for (const key of ["v211:universe:latest", "options:latest"] as const) {
-      const value = await env.PUBLIC_CACHE.get(`snapshot:${previousRunId}:${key}`, "text");
-      if (value !== null) objects.push([key, value]);
-    }
-  }
+  // Unsealed options/universe from an older run must not inherit this run's
+  // freshness. Keep old immutable objects only for exact pointer rollback.
   for (const [key, value] of objects) {
     await env.PUBLIC_CACHE.put(`${prefix}${key}`, value, { expirationTtl: 259200 });
   }

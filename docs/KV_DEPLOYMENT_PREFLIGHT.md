@@ -29,3 +29,23 @@ A release must fail when:
 - conversation memory is enabled before Phase 8 deletion/race acceptance.
 
 The public snapshot must be rebuilt into a fresh `PUBLIC_CACHE`. No data is copied from a legacy combined namespace. `TENANT_PRIVATE_CACHE` and `EPHEMERAL_SECURITY_CACHE` begin empty.
+
+## Pre-KV replay gate and the revenue-guidance machine binding
+
+`scripts/stage_sealed_replay.py` replays a locally sealed run through the real Worker readers before any KV write. The machine tier (`--guidance-machine`) seals `v213:revenue-guidance-binding:v1` next to the Top20 v3 report, but the ordinary replay read the report without the machine opt-in and never touched the binding, so a broken binding could not fail the gate.
+
+Design choice: **reader contract `v213-reader-replay-v4`** (not an additive probe under v3). The replay result gains `guidance_machine_probe`, computed by `cloud/test/helpers/guidance-machine-probe.ts` (`probeGuidanceMachine`) and written by `cloud/test/live-kv-replay.test.ts`:
+
+| Value | Meaning |
+| --- | --- |
+| `ABSENT` | The pinned sealed view names no machine binding (every non-machine tier, or a run that is not a sealed snapshot). |
+| `ADMITTED` | `loadBottleneckV3(view, { guidanceMachineEnabled: true })` resolved the binding against the sealed report through the real loader. |
+| `REFUSED` | The sealed index names the binding but the machine loader cannot read it (altered, missing, replayed or re-bound blob). |
+
+Why a version bump: an absent-tolerant expectation under v3 would let a v3 reader (which writes no probe) pass a machine run unchecked, which is the hole being closed. The version is pinned in four places that move together: `READER_CONTRACT_VERSION` in `scripts/stage_sealed_replay.py` and `cloud/test/live-kv-replay.test.ts`, the `Test-ReplayAcceptance` check in `scripts/deploy_production_gate.ps1`, and the test pins. The staged layout (`index.json` plus `k<N>.txt`) is unchanged, so the committed F06 fixture needs no regeneration.
+
+Gate rules:
+
+- `stage_sealed_replay.expectations(..., machine=True)` is used when the run's seal lists the binding key; it adds `GUIDANCE_MACHINE_BINDING`, which requires `ADMITTED`. Without the binding in the seal the expectation list is exactly the previous one.
+- `deploy_production_gate.ps1` (`-Phase post`, replay of the live snapshot) refuses a replay whose probe is `REFUSED` with `GUIDANCE_MACHINE_BINDING`; `ABSENT` is accepted because the live tier may be non-machine. The post gate has no notion of the intended tier, so the pre-KV gate (driven by the seal) is the authority for machine runs. The probe value is recorded in the acceptance artifact (`replay.guidanceMachineProbe`).
+- The probe reads the pinned public view only, at the real clock; it never reads the tenant-private or security namespaces. Machine publication stays opt-in (`-GuidanceMachinePublicationEnabled`), so no current output changes. Installing the changed gate on the machine belongs to the Production rollout.

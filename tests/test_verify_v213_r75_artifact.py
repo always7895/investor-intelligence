@@ -39,7 +39,7 @@ class R75ArtifactVerifierTests(unittest.TestCase):
         files = {
             "VERSION-REFS.json": b"",
             "InvestorIntelligence.exe": b"MZsynthetic-pe",
-            "config/v213-r75-publication-mode-v1.json": contract,
+            "config/v213-r75-publication-mode-v2.json": contract,
             "scripts/v213_r75_activation_preflight.py": b"# test\n",
             "cloud/src/v213/publication-mode.ts": b"// test\n",
             "cloud/src/v213/activation-v2.ts": b"// test\n",

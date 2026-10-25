@@ -1,4 +1,5 @@
-import contract from "../../../config/v213-r75-publication-mode-v1.json";
+import contract from "../../../config/v213-r75-publication-mode-v2.json";
+import { claimLineageStructurallyQualified } from "./claim-recount";
 
 const EVIDENCE_QUALIFIED = contract.modes.evidence_qualified;
 const LIMITED = contract.modes.limited;
@@ -126,6 +127,11 @@ export function validateR75PublicationModes(
         finiteNumber(metrics.claim_relevant_primary_sources) < THRESHOLDS.min_evidence_primary_sources ||
         finiteNumber(metrics.claim_dated_evidence_ratio) < THRESHOLDS.min_claim_dated_evidence_ratio
       ) {
+        throw new Error("V213_ACTIVATION_EVIDENCE_QUALIFIED_INVALID");
+      }
+      // Contract v2: saved counts are not proof. Recount from the row's own claim audit
+      // (structural only; see claim-recount.ts and the contract's claim_recount block).
+      if (!claimLineageStructurallyQualified(item, THRESHOLDS.min_evidence_claim_families)) {
         throw new Error("V213_ACTIVATION_EVIDENCE_QUALIFIED_INVALID");
       }
       return;

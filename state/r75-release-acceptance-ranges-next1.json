@@ -1,0 +1,559 @@
+{
+ "schema_version": 1,
+ "lane": "next1",
+ "baseline": "ec03f0443290a623aeb0173388475147d3773856",
+ "ranges": [
+  {
+   "id": "HIST-20260910",
+   "to": "8c08dfddab5885f06ebac50fd202f7e20b10a3a5",
+   "status": "ACCEPTED",
+   "kind": "FABLE_INDEPENDENT_ACCEPT",
+   "receipt": "R/FABLE-HIST-SCOPE-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "Content of the HIST-touched release scope (733 paths) accepted at the next1 head by the Fable 5.1 lens review (boundaries, privacy, gates, supplychain, integrity; two rounds, SP/acc and SP/acc2) and arbiter HA; a lens review of the final content, not a per-commit review of this day's commits."
+  },
+  {
+   "id": "HIST-20260911",
+   "to": "f4558a96834555bf39a11df26a5c151dfe8ee57c",
+   "status": "ACCEPTED",
+   "kind": "FABLE_INDEPENDENT_ACCEPT",
+   "receipt": "R/FABLE-HIST-SCOPE-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "Content of the HIST-touched release scope (733 paths) accepted at the next1 head by the Fable 5.1 lens review (boundaries, privacy, gates, supplychain, integrity; two rounds, SP/acc and SP/acc2) and arbiter HA; a lens review of the final content, not a per-commit review of this day's commits."
+  },
+  {
+   "id": "HIST-20260912",
+   "to": "b96167af641e103018b4b63203777715a70c61e2",
+   "status": "ACCEPTED",
+   "kind": "FABLE_INDEPENDENT_ACCEPT",
+   "receipt": "R/FABLE-HIST-SCOPE-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "Content of the HIST-touched release scope (733 paths) accepted at the next1 head by the Fable 5.1 lens review (boundaries, privacy, gates, supplychain, integrity; two rounds, SP/acc and SP/acc2) and arbiter HA; a lens review of the final content, not a per-commit review of this day's commits."
+  },
+  {
+   "id": "HIST-20260913",
+   "to": "f418f370ab8b4d019d0d14193e4cdfb3e24b36d5",
+   "status": "ACCEPTED",
+   "kind": "FABLE_INDEPENDENT_ACCEPT",
+   "receipt": "R/FABLE-HIST-SCOPE-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "Content of the HIST-touched release scope (733 paths) accepted at the next1 head by the Fable 5.1 lens review (boundaries, privacy, gates, supplychain, integrity; two rounds, SP/acc and SP/acc2) and arbiter HA; a lens review of the final content, not a per-commit review of this day's commits."
+  },
+  {
+   "id": "HIST-20260914",
+   "to": "a536c1656a2d5950402a89731c6d66471b53c6e2",
+   "status": "ACCEPTED",
+   "kind": "FABLE_INDEPENDENT_ACCEPT",
+   "receipt": "R/FABLE-HIST-SCOPE-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "Content of the HIST-touched release scope (733 paths) accepted at the next1 head by the Fable 5.1 lens review (boundaries, privacy, gates, supplychain, integrity; two rounds, SP/acc and SP/acc2) and arbiter HA; a lens review of the final content, not a per-commit review of this day's commits."
+  },
+  {
+   "id": "HIST-20260915",
+   "to": "d15577d1f459d8e5ada70169da5c998cf8b64dd1",
+   "status": "ACCEPTED",
+   "kind": "FABLE_INDEPENDENT_ACCEPT",
+   "receipt": "R/FABLE-HIST-SCOPE-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "Content of the HIST-touched release scope (733 paths) accepted at the next1 head by the Fable 5.1 lens review (boundaries, privacy, gates, supplychain, integrity; two rounds, SP/acc and SP/acc2) and arbiter HA; a lens review of the final content, not a per-commit review of this day's commits."
+  },
+  {
+   "id": "HIST-20260916",
+   "to": "8e017b7ba6d94849420cfbbe70642f347e889704",
+   "status": "ACCEPTED",
+   "kind": "FABLE_INDEPENDENT_ACCEPT",
+   "receipt": "R/FABLE-HIST-SCOPE-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "Content of the HIST-touched release scope (733 paths) accepted at the next1 head by the Fable 5.1 lens review (boundaries, privacy, gates, supplychain, integrity; two rounds, SP/acc and SP/acc2) and arbiter HA; a lens review of the final content, not a per-commit review of this day's commits."
+  },
+  {
+   "id": "HIST-20260917",
+   "to": "babdd099ba1fecccb0ef42f3aa813df5c80d229d",
+   "status": "ACCEPTED",
+   "kind": "FABLE_INDEPENDENT_ACCEPT",
+   "receipt": "R/FABLE-HIST-SCOPE-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "Content of the HIST-touched release scope (733 paths) accepted at the next1 head by the Fable 5.1 lens review (boundaries, privacy, gates, supplychain, integrity; two rounds, SP/acc and SP/acc2) and arbiter HA; a lens review of the final content, not a per-commit review of this day's commits."
+  },
+  {
+   "id": "HIST-20260918",
+   "to": "7070152604a5b3fd963e88e33980e7cb1c8bd92b",
+   "status": "ACCEPTED",
+   "kind": "FABLE_INDEPENDENT_ACCEPT",
+   "receipt": "R/FABLE-HIST-SCOPE-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "Content of the HIST-touched release scope (733 paths) accepted at the next1 head by the Fable 5.1 lens review (boundaries, privacy, gates, supplychain, integrity; two rounds, SP/acc and SP/acc2) and arbiter HA; a lens review of the final content, not a per-commit review of this day's commits."
+  },
+  {
+   "id": "HIST-20260919",
+   "to": "977057d910898e0e1a88cf9b70fd69155df93469",
+   "status": "ACCEPTED",
+   "kind": "FABLE_INDEPENDENT_ACCEPT",
+   "receipt": "R/FABLE-HIST-SCOPE-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "Content of the HIST-touched release scope (733 paths) accepted at the next1 head by the Fable 5.1 lens review (boundaries, privacy, gates, supplychain, integrity; two rounds, SP/acc and SP/acc2) and arbiter HA; a lens review of the final content, not a per-commit review of this day's commits."
+  },
+  {
+   "id": "HIST-20260920",
+   "to": "1a76f1e55273ed4fe0502ea7adff1972920aa034",
+   "status": "ACCEPTED",
+   "kind": "FABLE_INDEPENDENT_ACCEPT",
+   "receipt": "R/FABLE-HIST-SCOPE-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "Content of the HIST-touched release scope (733 paths) accepted at the next1 head by the Fable 5.1 lens review (boundaries, privacy, gates, supplychain, integrity; two rounds, SP/acc and SP/acc2) and arbiter HA; a lens review of the final content, not a per-commit review of this day's commits."
+  },
+  {
+   "id": "HIST-20260921",
+   "to": "6922278ac865727fdcdded96535f94aaaabeb8b3",
+   "status": "ACCEPTED",
+   "kind": "FABLE_INDEPENDENT_ACCEPT",
+   "receipt": "R/FABLE-HIST-SCOPE-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "Content of the HIST-touched release scope (733 paths) accepted at the next1 head by the Fable 5.1 lens review (boundaries, privacy, gates, supplychain, integrity; two rounds, SP/acc and SP/acc2) and arbiter HA; a lens review of the final content, not a per-commit review of this day's commits."
+  },
+  {
+   "id": "HIST-20260924",
+   "to": "c6ce5272d5c47ada716ecf194af06a15df3b9d97",
+   "status": "ACCEPTED",
+   "kind": "FABLE_INDEPENDENT_ACCEPT",
+   "receipt": "R/FABLE-HIST-SCOPE-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "Content of the HIST-touched release scope (733 paths) accepted at the next1 head by the Fable 5.1 lens review (boundaries, privacy, gates, supplychain, integrity; two rounds, SP/acc and SP/acc2) and arbiter HA; a lens review of the final content, not a per-commit review of this day's commits."
+  },
+  {
+   "id": "HIST-20260925",
+   "to": "de595a9588de8abbf1f5238cf9cc2c8e1c4848d9",
+   "status": "ACCEPTED",
+   "kind": "FABLE_INDEPENDENT_ACCEPT",
+   "receipt": "R/FABLE-HIST-SCOPE-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "Content of the HIST-touched release scope (733 paths) accepted at the next1 head by the Fable 5.1 lens review (boundaries, privacy, gates, supplychain, integrity; two rounds, SP/acc and SP/acc2) and arbiter HA; a lens review of the final content, not a per-commit review of this day's commits."
+  },
+  {
+   "id": "HIST-20260926",
+   "to": "f9fad0ef557ecc8cfd23f81b653281c10b74bdbc",
+   "status": "ACCEPTED",
+   "kind": "FABLE_INDEPENDENT_ACCEPT",
+   "receipt": "R/FABLE-HIST-SCOPE-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "Content of the HIST-touched release scope (733 paths) accepted at the next1 head by the Fable 5.1 lens review (boundaries, privacy, gates, supplychain, integrity; two rounds, SP/acc and SP/acc2) and arbiter HA; a lens review of the final content, not a per-commit review of this day's commits."
+  },
+  {
+   "id": "HIST-20260927",
+   "to": "06a7f28d78de6a035297019ab4a69d8d4e3b06d1",
+   "status": "ACCEPTED",
+   "kind": "FABLE_INDEPENDENT_ACCEPT",
+   "receipt": "R/FABLE-HIST-SCOPE-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "Content of the HIST-touched release scope (733 paths) accepted at the next1 head by the Fable 5.1 lens review (boundaries, privacy, gates, supplychain, integrity; two rounds, SP/acc and SP/acc2) and arbiter HA; a lens review of the final content, not a per-commit review of this day's commits."
+  },
+  {
+   "id": "HIST-20260928",
+   "to": "b0860c949b406e3b327dbe7cff4d80f02a08298b",
+   "status": "ACCEPTED",
+   "kind": "FABLE_INDEPENDENT_ACCEPT",
+   "receipt": "R/FABLE-HIST-SCOPE-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "Content of the HIST-touched release scope (733 paths) accepted at the next1 head by the Fable 5.1 lens review (boundaries, privacy, gates, supplychain, integrity; two rounds, SP/acc and SP/acc2) and arbiter HA; a lens review of the final content, not a per-commit review of this day's commits."
+  },
+  {
+   "id": "HIST-20260929",
+   "to": "7dab435f973ee43dc68e03fc2fda09432ab99b6f",
+   "status": "ACCEPTED",
+   "kind": "FABLE_INDEPENDENT_ACCEPT",
+   "receipt": "R/FABLE-HIST-SCOPE-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "Content of the HIST-touched release scope (733 paths) accepted at the next1 head by the Fable 5.1 lens review (boundaries, privacy, gates, supplychain, integrity; two rounds, SP/acc and SP/acc2) and arbiter HA; a lens review of the final content, not a per-commit review of this day's commits."
+  },
+  {
+   "id": "HIST-20260930",
+   "to": "9e00f3bee23ad7462ad6d6721f10e73b4d2fc701",
+   "status": "ACCEPTED",
+   "kind": "FABLE_INDEPENDENT_ACCEPT",
+   "receipt": "R/FABLE-HIST-SCOPE-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "Content of the HIST-touched release scope (733 paths) accepted at the next1 head by the Fable 5.1 lens review (boundaries, privacy, gates, supplychain, integrity; two rounds, SP/acc and SP/acc2) and arbiter HA; a lens review of the final content, not a per-commit review of this day's commits."
+  },
+  {
+   "id": "HIST-20261001",
+   "to": "6f52eac2c09614440a2a472b5c20e2205dedeb9d",
+   "status": "ACCEPTED",
+   "kind": "FABLE_INDEPENDENT_ACCEPT",
+   "receipt": "R/FABLE-HIST-SCOPE-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "Content of the HIST-touched release scope (733 paths) accepted at the next1 head by the Fable 5.1 lens review (boundaries, privacy, gates, supplychain, integrity; two rounds, SP/acc and SP/acc2) and arbiter HA; a lens review of the final content, not a per-commit review of this day's commits."
+  },
+  {
+   "id": "COMMIT3",
+   "to": "52c7733f4031e2016f7586a566e4c0782f57449d",
+   "status": "ACCEPTED",
+   "kind": "MASTER_INDEPENDENT_ACCEPT",
+   "receipt": "R/COMMIT3-MASTER-INDEPENDENT-ACCEPT-OPUS-6a239259.txt",
+   "note": "Writer result R/ASTRA-COMMIT3-RESULT.txt; accepted by the independent master on the committed snapshot."
+  },
+  {
+   "id": "COMMIT4",
+   "to": "ac504ba78497b3bb42de14b14a86b0c1619ebaeb",
+   "status": "ACCEPTED",
+   "kind": "MASTER_INDEPENDENT_ACCEPT",
+   "receipt": "R/COMMIT4-MASTER-INDEPENDENT-ACCEPT-CLAUDECODE-2440b1e0.txt",
+   "note": "Writer result R/ASTRA-COMMIT4-RESULT.txt; accepted by the independent master on the committed snapshot."
+  },
+  {
+   "id": "COMMIT5",
+   "to": "36b519275b72cb34ad39651a36f05f32ae271f4b",
+   "status": "ACCEPTED",
+   "kind": "MASTER_INDEPENDENT_ACCEPT",
+   "receipt": "R/COMMIT5-MASTER-INDEPENDENT-ACCEPT-CLAUDECODE-2440b1e0.txt",
+   "note": "Writer result R/ASTRA-COMMIT5-RESULT.txt; accepted by the independent master on the committed snapshot."
+  },
+  {
+   "id": "COMMIT6",
+   "to": "78d6c67e41473ada47b93fe23d9437b1c4828268",
+   "status": "ACCEPTED",
+   "kind": "MASTER_INDEPENDENT_ACCEPT",
+   "receipt": "R/COMMIT6-MASTER-INDEPENDENT-ACCEPT-CLAUDECODE-2440b1e0.txt",
+   "note": "Writer result R/ASTRA-COMMIT6-RESULT.txt; accepted by the independent master on the committed snapshot."
+  },
+  {
+   "id": "COMMIT7",
+   "to": "e4194d70298ea2d75eaeb16bf487c3ca54682952",
+   "status": "ACCEPTED",
+   "kind": "MASTER_INDEPENDENT_ACCEPT",
+   "receipt": "R/COMMIT7-MASTER-INDEPENDENT-ACCEPT-CLAUDECODE-2440b1e0.txt",
+   "note": "Writer result R/ASTRA-COMMIT7-RESULT.txt; accepted by the independent master on the committed snapshot."
+  },
+  {
+   "id": "COMMIT8",
+   "to": "19b46f2f4349d4a71208336f297c30ccb505d288",
+   "status": "ACCEPTED",
+   "kind": "MASTER_INDEPENDENT_ACCEPT",
+   "receipt": "R/COMMIT8-MASTER-INDEPENDENT-ACCEPT-CLAUDECODE-2440b1e0.txt",
+   "note": "Writer result R/ASTRA-COMMIT8-RESULT.txt; accepted by the independent master on the committed snapshot."
+  },
+  {
+   "id": "COMMIT9",
+   "to": "243d1e462520e7f7647262d2d50fe2b70fede800",
+   "status": "ACCEPTED",
+   "kind": "MASTER_INDEPENDENT_ACCEPT",
+   "receipt": "R/COMMIT9-MASTER-INDEPENDENT-ACCEPT-CLAUDECODE-2440b1e0.txt",
+   "note": "Writer result R/ASTRA-COMMIT9-RESULT.txt; accepted by the independent master on the committed snapshot."
+  },
+  {
+   "id": "COMMIT10",
+   "to": "a540ff1329499860bb4f3ed5f2727d48be1e754b",
+   "status": "ACCEPTED",
+   "kind": "MASTER_INDEPENDENT_ACCEPT",
+   "receipt": "R/COMMIT10-MASTER-INDEPENDENT-ACCEPT-CLAUDECODE-2440b1e0.txt",
+   "note": "Writer result R/ASTRA-COMMIT10-RESULT.txt; accepted by the independent master on the committed snapshot."
+  },
+  {
+   "id": "COMMIT11",
+   "to": "82e98aa18163566f2991a78d7b74ea42ca2b2c29",
+   "status": "ACCEPTED",
+   "kind": "MASTER_INDEPENDENT_ACCEPT",
+   "receipt": "R/COMMIT11-MASTER-INDEPENDENT-ACCEPT-CLAUDECODE-2440b1e0.txt",
+   "note": "Writer result R/ASTRA-COMMIT11-RESULT.txt; accepted by the independent master on the committed snapshot."
+  },
+  {
+   "id": "COMMIT12",
+   "to": "fabcad6df86c9235ebd789511023fcc8159d39e6",
+   "status": "ACCEPTED",
+   "kind": "MASTER_INDEPENDENT_ACCEPT",
+   "receipt": "R/COMMIT12-MASTER-INDEPENDENT-ACCEPT-CLAUDECODE-2440b1e0.txt",
+   "note": "Writer result R/ASTRA-COMMIT12-RESULT.txt; accepted by the independent master on the committed snapshot."
+  },
+  {
+   "id": "COMMIT13",
+   "to": "03c0887ba7ad1b63ea259e5fba32c2e73b2a0086",
+   "status": "ACCEPTED",
+   "kind": "MASTER_INDEPENDENT_ACCEPT",
+   "receipt": "R/COMMIT13-MASTER-INDEPENDENT-ACCEPT-CLAUDECODE-2440b1e0.txt",
+   "note": "Writer result R/ASTRA-COMMIT13-RESULT.txt; accepted by the independent master on the committed snapshot."
+  },
+  {
+   "id": "COMMIT14",
+   "to": "6fb30daf96a97b043652857bb34aae30d8844364",
+   "status": "ACCEPTED",
+   "kind": "MASTER_INDEPENDENT_ACCEPT",
+   "receipt": "R/COMMIT14-MASTER-INDEPENDENT-ACCEPT-CLAUDECODE-2440b1e0.txt",
+   "note": "Writer result R/ASTRA-COMMIT14-RESULT.txt; accepted by the independent master on the committed snapshot."
+  },
+  {
+   "id": "COMMIT15",
+   "to": "a15d1e2d4bdb87f8fe365bcc41e5ae4f8499485e",
+   "status": "ACCEPTED",
+   "kind": "MASTER_INDEPENDENT_ACCEPT",
+   "receipt": "R/COMMIT15-MASTER-INDEPENDENT-ACCEPT-CLAUDECODE-2440b1e0.txt",
+   "note": "Writer result R/ASTRA-COMMIT15-RESULT.txt; accepted by the independent master on the committed snapshot."
+  },
+  {
+   "id": "COMMIT16",
+   "to": "584a1d8fb4ebde5622693aab88847cb0f2bd71ef",
+   "status": "ACCEPTED",
+   "kind": "MASTER_INDEPENDENT_ACCEPT",
+   "receipt": "R/COMMIT16-MASTER-INDEPENDENT-ACCEPT-CLAUDECODE-b25d1766.txt",
+   "note": "Writer result R/ASTRA-COMMIT16-RESULT.txt; accepted by the independent master on the committed snapshot."
+  },
+  {
+   "id": "COMMIT17",
+   "to": "9a524e4e305e8ae4ff61d7848dab0c383eda18e7",
+   "status": "ACCEPTED",
+   "kind": "MASTER_INDEPENDENT_ACCEPT",
+   "receipt": "R/COMMIT17-MASTER-INDEPENDENT-ACCEPT-CLAUDECODE-b25d1766.txt",
+   "note": "Writer result R/ASTRA-COMMIT17-RESULT.txt; accepted by the independent master on the committed snapshot."
+  },
+  {
+   "id": "COMMIT18",
+   "to": "a951ec91dc10b89078a05bfc26dd4fc5ed78f1be",
+   "status": "ACCEPTED",
+   "kind": "MASTER_INDEPENDENT_ACCEPT",
+   "receipt": "R/COMMIT18-MASTER-INDEPENDENT-ACCEPT-CLAUDECODE-b25d1766.txt",
+   "note": "Writer result R/ASTRA-COMMIT18-RESULT.txt; accepted by the independent master on the committed snapshot."
+  },
+  {
+   "id": "COMMIT19",
+   "to": "a20aba0768c48b72355085ad022a66e5e71f70da",
+   "status": "ACCEPTED",
+   "kind": "MASTER_INDEPENDENT_ACCEPT",
+   "receipt": "R/COMMIT19-MASTER-INDEPENDENT-ACCEPT-CLAUDECODE-b25d1766.txt",
+   "note": "Writer result R/ASTRA-COMMIT19-RESULT.txt; accepted by the independent master on the committed snapshot."
+  },
+  {
+   "id": "COMMIT20",
+   "to": "ab0fb67d360f54cd0cc891d0a8489f23305ed5dd",
+   "status": "ACCEPTED",
+   "kind": "MASTER_INDEPENDENT_ACCEPT",
+   "receipt": "R/COMMIT20-MASTER-INDEPENDENT-ACCEPT-CLAUDECODE-dd95ab60.txt",
+   "note": "Writer result R/ASTRA-COMMIT20-RESULT.txt; accepted by the independent master on the committed snapshot."
+  },
+  {
+   "id": "COMMIT21",
+   "to": "62d61ae7550e327d751f79aed73fb9b17cde0bb5",
+   "status": "ACCEPTED",
+   "kind": "MASTER_INDEPENDENT_ACCEPT",
+   "receipt": "R/COMMIT21-MASTER-INDEPENDENT-ACCEPT-CLAUDECODE-dd95ab60.txt",
+   "note": "Writer result R/ASTRA-COMMIT21-RESULT.txt; accepted by the independent master on the committed snapshot."
+  },
+  {
+   "id": "COMMIT22",
+   "to": "8537afadcd0b854370b6889d26d24a33d84eafa4",
+   "status": "ACCEPTED",
+   "kind": "MASTER_INDEPENDENT_ACCEPT",
+   "receipt": "R/COMMIT22-MASTER-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "Writer result R/ASTRA-COMMIT22-RESULT.txt; accepted by the independent master on the committed snapshot."
+  },
+  {
+   "id": "COMMIT23",
+   "to": "dfe3ef8b7dae41f095dbbc10c7aa558a1f63fe2f",
+   "status": "ACCEPTED",
+   "kind": "MASTER_INDEPENDENT_ACCEPT",
+   "receipt": "R/COMMIT23-MASTER-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "Writer result R/ASTRA-COMMIT23-RESULT.txt; accepted by the independent master on the committed snapshot."
+  },
+  {
+   "id": "COMMIT24",
+   "to": "aa7e09cdd68ffd2247bb9f7cd7322527fde145ab",
+   "status": "ACCEPTED",
+   "kind": "MASTER_INDEPENDENT_ACCEPT",
+   "receipt": "R/COMMIT24-MASTER-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "Writer result R/ASTRA-COMMIT24-RESULT.txt; accepted by the independent master on the committed snapshot."
+  },
+  {
+   "id": "COMMIT25",
+   "to": "11029e70a857cd8fdb3776ada91aaefc78edcf0c",
+   "status": "ACCEPTED",
+   "kind": "MASTER_INDEPENDENT_ACCEPT",
+   "receipt": "R/COMMIT25-MASTER-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "Writer result R/ASTRA-COMMIT25-RESULT.txt; accepted by the independent master on the committed snapshot."
+  },
+  {
+   "id": "COMMIT26",
+   "to": "292eb8fb26765b6f1d3ddb5b17c6b9a72a626dab",
+   "status": "ACCEPTED",
+   "kind": "MASTER_INDEPENDENT_ACCEPT",
+   "receipt": "R/COMMIT26-MASTER-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "Writer result R/ASTRA-COMMIT26-RESULT.txt; accepted by the independent master on the committed snapshot."
+  },
+  {
+   "id": "COMMIT27",
+   "to": "2c6ca5d0f53246e06f98c51f8ed61f374893ce89",
+   "status": "ACCEPTED",
+   "kind": "FABLE_INDEPENDENT_ACCEPT",
+   "receipt": "R/FABLE-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58-20261010.txt",
+   "note": "Dual-accepted with writer R/EXECUTOR-BATCH10C-RESULT-CLAUDECODE-a43bef58.txt."
+  },
+  {
+   "id": "COMMIT28",
+   "to": "e27b4cb5ac7c42e44b97e5d8d5ab79f38743e979",
+   "status": "ACCEPTED",
+   "kind": "FABLE_INDEPENDENT_ACCEPT",
+   "receipt": "R/FABLE-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58-20261010.txt",
+   "note": "Dual-accepted with writer R/EXECUTOR-T11F1A-RESULT-CLAUDECODE-a43bef58.txt."
+  },
+  {
+   "id": "COMMIT29",
+   "to": "42770026296a2f1176189b8c1ac281bdc4ca06dd",
+   "status": "ACCEPTED",
+   "kind": "FABLE_INDEPENDENT_ACCEPT",
+   "receipt": "R/FABLE-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58-20261010.txt",
+   "note": "Dual-accepted with writer R/EXECUTOR-T13P1-RESULT-CLAUDECODE-a43bef58.txt."
+  },
+  {
+   "id": "COMMIT30",
+   "to": "9255297f8484f2a3889db0dfaed6de9e0cedc3c1",
+   "status": "ACCEPTED",
+   "kind": "FABLE_INDEPENDENT_ACCEPT",
+   "receipt": "R/FABLE-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58-20261010.txt",
+   "note": "Dual-accepted with writer R/EXECUTOR-G7-RESULT-CLAUDECODE-a43bef58.txt. Snapshot basis: the receipt names no commit SHA; it accepts the receipt HEAD plus a working tree whose pinned file digests equal the blobs of this commit."
+  },
+  {
+   "id": "COMMIT31",
+   "to": "4e52bb61c9b3544782d844a3188442f41745ed02",
+   "status": "ACCEPTED",
+   "kind": "FABLE_INDEPENDENT_ACCEPT",
+   "receipt": "R/FABLE-D1-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "D1 dual-accepted with writer R/EXECUTOR-D1-RESULT-CLAUDECODE-a43bef58.txt and AMEND1. Snapshot basis: no commit SHA in the receipt; its pinned SHA-256 prefixes (8 docs and STATUS) equal the blobs of this commit."
+  },
+  {
+   "id": "COMMIT32",
+   "to": "686deed5594e3e49f7cbe26baca2ff974a2430bb",
+   "status": "ACCEPTED",
+   "kind": "FABLE_INDEPENDENT_ACCEPT",
+   "receipt": "R/FABLE-Z1-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "STATUS-only commit recording D2 (R/FABLE-D2-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt) and Z1. Snapshot basis: no commit SHA in the receipt; its pinned STATUS digest equals this commit blob."
+  },
+  {
+   "id": "COMMIT33",
+   "to": "a6d04a9d7d5baf9bbc4569ee3e088cbc574c4d45",
+   "status": "ACCEPTED",
+   "kind": "FABLE_INDEPENDENT_ACCEPT",
+   "receipt": "R/FABLE-B10CF1-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "B10C-F1 dual-accepted with writer R/EXECUTOR-B10CF1-RESULT-CLAUDECODE-a43bef58.txt. Snapshot basis: no commit SHA in the receipt; its pinned digests (autoupdate.py, REVENUE_GUIDANCE_AUTOUPDATE.md, STATUS) equal this commit blobs."
+  },
+  {
+   "id": "ENDPHASE",
+   "to": "f7d6353fe8b3f61e152250f8abcff267ae685071",
+   "status": "ACCEPTED",
+   "kind": "FABLE_INDEPENDENT_ACCEPT",
+   "receipt": "R/FABLE-ENDPHASE-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "End-phase batch (c028462..f7d6353) dual-accepted with writer R/EXECUTOR-ENDPHASE-RESULT-CLAUDECODE-a43bef58.txt; includes the F3 instruction sync commits. Snapshot basis: the receipt names no commit SHA for the two docs commits; the end-phase write_s-write3.json (SHA-256 E30612E7...) records AGENTS.md, CLAUDE.md, SKILL.md and state/STATUS.md byte-equal to the f7d6353 blobs, which covers 07612b4 and f7d6353. A receipt file existing in R (--receipts-root) is not SHA binding."
+  },
+  {
+   "id": "NEXT1-rg",
+   "to": "8957e7ecb5c32da29077821ba1b24e486c990706",
+   "status": "ACCEPTED",
+   "kind": "FABLE_INDEPENDENT_ACCEPT",
+   "receipt": "R/FABLE-NEXT1-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "Batch next1 + FIX-R1 commit group rg (31 paths): dual-accepted with writer R/EXECUTOR-NEXT1-RESULT-CLAUDECODE-a43bef58.txt on the same 210-path snapshot."
+  },
+  {
+   "id": "NEXT1-prodtools",
+   "to": "f456b96ebeb7228ede4c2b7e6c2af422eeb51f89",
+   "status": "ACCEPTED",
+   "kind": "FABLE_INDEPENDENT_ACCEPT",
+   "receipt": "R/FABLE-NEXT1-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "Batch next1 + FIX-R1 commit group prodtools (5 paths): dual-accepted with writer R/EXECUTOR-NEXT1-RESULT-CLAUDECODE-a43bef58.txt on the same 210-path snapshot."
+  },
+  {
+   "id": "NEXT1-sealed",
+   "to": "a22bcf59320993cc63d38485fef214626abd8ba0",
+   "status": "ACCEPTED",
+   "kind": "FABLE_INDEPENDENT_ACCEPT",
+   "receipt": "R/FABLE-NEXT1-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "Batch next1 + FIX-R1 commit group sealed (8 paths): dual-accepted with writer R/EXECUTOR-NEXT1-RESULT-CLAUDECODE-a43bef58.txt on the same 210-path snapshot."
+  },
+  {
+   "id": "NEXT1-refresh",
+   "to": "08d59e26a5b305c3c3938758a852ac05a17055c1",
+   "status": "ACCEPTED",
+   "kind": "FABLE_INDEPENDENT_ACCEPT",
+   "receipt": "R/FABLE-NEXT1-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "Batch next1 + FIX-R1 commit group refresh (2 paths): dual-accepted with writer R/EXECUTOR-NEXT1-RESULT-CLAUDECODE-a43bef58.txt on the same 210-path snapshot."
+  },
+  {
+   "id": "NEXT1-ranking",
+   "to": "ae895380df479f0a32eafdbdaa6a640e40f43319",
+   "status": "ACCEPTED",
+   "kind": "FABLE_INDEPENDENT_ACCEPT",
+   "receipt": "R/FABLE-NEXT1-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "Batch next1 + FIX-R1 commit group ranking (6 paths): dual-accepted with writer R/EXECUTOR-NEXT1-RESULT-CLAUDECODE-a43bef58.txt on the same 210-path snapshot."
+  },
+  {
+   "id": "NEXT1-qa",
+   "to": "f72d5ace2dbe7582a1b21c895ed280909572c5c3",
+   "status": "ACCEPTED",
+   "kind": "FABLE_INDEPENDENT_ACCEPT",
+   "receipt": "R/FABLE-NEXT1-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "Batch next1 + FIX-R1 commit group qa (4 paths): dual-accepted with writer R/EXECUTOR-NEXT1-RESULT-CLAUDECODE-a43bef58.txt on the same 210-path snapshot."
+  },
+  {
+   "id": "NEXT1-tests",
+   "to": "1301118236259f4c460fd9701d5ca233d8814f94",
+   "status": "ACCEPTED",
+   "kind": "FABLE_INDEPENDENT_ACCEPT",
+   "receipt": "R/FABLE-NEXT1-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "Batch next1 + FIX-R1 commit group tests (10 paths): dual-accepted with writer R/EXECUTOR-NEXT1-RESULT-CLAUDECODE-a43bef58.txt on the same 210-path snapshot."
+  },
+  {
+   "id": "NEXT1-options",
+   "to": "aaa584bdac6d75b6b48c45db8b82e35ae68a2e2f",
+   "status": "ACCEPTED",
+   "kind": "FABLE_INDEPENDENT_ACCEPT",
+   "receipt": "R/FABLE-NEXT1-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "Batch next1 + FIX-R1 commit group options (29 paths): dual-accepted with writer R/EXECUTOR-NEXT1-RESULT-CLAUDECODE-a43bef58.txt on the same 210-path snapshot."
+  },
+  {
+   "id": "NEXT1-model",
+   "to": "737084900d1fc6275c34252f0092b2bdeb836786",
+   "status": "ACCEPTED",
+   "kind": "FABLE_INDEPENDENT_ACCEPT",
+   "receipt": "R/FABLE-NEXT1-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "Batch next1 + FIX-R1 commit group model (14 paths): dual-accepted with writer R/EXECUTOR-NEXT1-RESULT-CLAUDECODE-a43bef58.txt on the same 210-path snapshot."
+  },
+  {
+   "id": "NEXT1-loopback",
+   "to": "1f479f0deeffe8303462d7782dd539f35c64c3ee",
+   "status": "ACCEPTED",
+   "kind": "FABLE_INDEPENDENT_ACCEPT",
+   "receipt": "R/FABLE-NEXT1-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "Batch next1 + FIX-R1 commit group loopback (6 paths): dual-accepted with writer R/EXECUTOR-NEXT1-RESULT-CLAUDECODE-a43bef58.txt on the same 210-path snapshot."
+  },
+  {
+   "id": "NEXT1-line",
+   "to": "0d58ec30586f4c106f38a165fa36f0ed6e34af13",
+   "status": "ACCEPTED",
+   "kind": "FABLE_INDEPENDENT_ACCEPT",
+   "receipt": "R/FABLE-NEXT1-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "Batch next1 + FIX-R1 commit group line (20 paths): dual-accepted with writer R/EXECUTOR-NEXT1-RESULT-CLAUDECODE-a43bef58.txt on the same 210-path snapshot."
+  },
+  {
+   "id": "NEXT1-c1",
+   "to": "ccf8ee6e42c86ee96d4ec7aae33b7647b737f034",
+   "status": "ACCEPTED",
+   "kind": "FABLE_INDEPENDENT_ACCEPT",
+   "receipt": "R/FABLE-NEXT1-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "Batch next1 + FIX-R1 commit group c1 (43 paths): dual-accepted with writer R/EXECUTOR-NEXT1-RESULT-CLAUDECODE-a43bef58.txt on the same 210-path snapshot."
+  },
+  {
+   "id": "NEXT1-taifex",
+   "to": "63a341dc80349d27d4b8bd66126481eefe71a625",
+   "status": "ACCEPTED",
+   "kind": "FABLE_INDEPENDENT_ACCEPT",
+   "receipt": "R/FABLE-NEXT1-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "Batch next1 + FIX-R1 commit group taifex (5 paths): dual-accepted with writer R/EXECUTOR-NEXT1-RESULT-CLAUDECODE-a43bef58.txt on the same 210-path snapshot."
+  },
+  {
+   "id": "NEXT1-release",
+   "to": "59e48b38dcfe40a9d2c099f4cdc848b8aded2771",
+   "status": "ACCEPTED",
+   "kind": "FABLE_INDEPENDENT_ACCEPT",
+   "receipt": "R/FABLE-NEXT1-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "Batch next1 + FIX-R1 commit group release (9 paths): dual-accepted with writer R/EXECUTOR-NEXT1-RESULT-CLAUDECODE-a43bef58.txt on the same 210-path snapshot."
+  },
+  {
+   "id": "NEXT1-docs",
+   "to": "c989bc73ecf036680a37eb774a97bc7a6bdcdaa2",
+   "status": "ACCEPTED",
+   "kind": "FABLE_INDEPENDENT_ACCEPT",
+   "receipt": "R/FABLE-NEXT1-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "Batch next1 + FIX-R1 commit group docs (5 paths): dual-accepted with writer R/EXECUTOR-NEXT1-RESULT-CLAUDECODE-a43bef58.txt on the same 210-path snapshot."
+  },
+  {
+   "id": "NEXT1-security",
+   "to": "e180f28c95fd77834c64445c4bbbc98a25f76650",
+   "status": "ACCEPTED",
+   "kind": "FABLE_INDEPENDENT_ACCEPT",
+   "receipt": "R/FABLE-NEXT1-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "Batch next1 + FIX-R1 commit group security (12 paths): dual-accepted with writer R/EXECUTOR-NEXT1-RESULT-CLAUDECODE-a43bef58.txt on the same 210-path snapshot."
+  },
+  {
+   "id": "NEXT1-fixgate",
+   "to": "75f4f2f1a4fe6b2304a18f795f6b1bd51bbe78e7",
+   "status": "ACCEPTED",
+   "kind": "DUAL_ACCEPT_RECEIPT",
+   "receipt": "R/SONNET-FIXGATE-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt",
+   "note": "State records b1147b9, 6a1123c and 46b2e8f plus lane FIXGATE: the deploy-gate lockfile v3 fix and the documents naming Sonnet 5.5 as reviewer (operator decision 2026-10-12), dual-accepted by the writer (R/EXECUTOR-FIXGATE-RESULT-CLAUDECODE-a43bef58.txt) and a Sonnet 5.5 reviewer on the same snapshot."
+  }
+ ]
+}

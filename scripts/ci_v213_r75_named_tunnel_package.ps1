@@ -57,7 +57,7 @@ try {
         if ($process.ExitCode -ne 0) { throw "Packaged launcher test failed: $argument" }
     }
 
-    $contractSha = (Get-FileHash -LiteralPath (Join-Path $stage 'config\v213-r75-publication-mode-v1.json') -Algorithm SHA256).Hash.ToLowerInvariant()
+    $contractSha = (Get-FileHash -LiteralPath (Join-Path $stage 'config\v213-r75-publication-mode-v2.json') -Algorithm SHA256).Hash.ToLowerInvariant()
     $refs = [ordered]@{
         schema_version = 1; artifact_kind = 'R75_NAMED_TUNNEL_DEPLOYMENT_HOTFIX'; package_version = '2.1.3'
         base_release_commit = $baseCommit; source_commit = $sha; workflow_run_id = $runId; workflow_run_attempt = $attempt

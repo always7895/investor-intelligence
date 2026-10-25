@@ -84,7 +84,7 @@ def verify(archive: Path, checksum: Path, commit: str, run_id: str, receipts: li
         "investorintelligence.exe", "hotfix-refs.json", "manifest.json", "sha256sums.txt",
         "scripts/setup_v213_named_tunnel.ps1", "scripts/v213_named_tunnel_helpers.ps1",
         "scripts/run_v213_local_llm_bridge_core.ps1", "run-v213-local.ps1",
-        "config/v213-r75-publication-mode-v1.json", "scripts/v213_r75_activation_preflight.py",
+        "config/v213-r75-publication-mode-v2.json", "scripts/v213_r75_activation_preflight.py",
         "cloud/src/v213/publication-mode.ts", "cloud/src/v213/activation-v2.ts",
     }
     if not required.issubset(files):
@@ -101,7 +101,7 @@ def verify(archive: Path, checksum: Path, commit: str, run_id: str, receipts: li
             refs.get("protected_release_semantics_unchanged") is not True or refs.get("consecutive_public_health_required") != 3 or
             refs.get("health_schema_version") != 2 or refs.get("normal_production_tunnel_mode") != "named"):
         raise VerificationError("hotfix refs mismatch")
-    contract_sha = sha(files["config/v213-r75-publication-mode-v1.json"][1])
+    contract_sha = sha(files["config/v213-r75-publication-mode-v2.json"][1])
     if refs.get("publication_contract_sha256") != contract_sha:
         raise VerificationError("publication contract binding mismatch")
 

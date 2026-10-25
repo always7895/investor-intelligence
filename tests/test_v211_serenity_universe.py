@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -14,11 +15,12 @@ import v211_serenity_top20 as v211
 
 class SerenityUniverseV211Tests(unittest.TestCase):
     def test_synthetic_universe_and_public_symbols(self) -> None:
-        output = v211.run(synthetic=True)
-        self.assertEqual(output["top20_count"], 20)
-        self.assertGreaterEqual(output["research_universe_count"], 20)
-        universe = json.loads(v211.UNIVERSE_PATH.read_text(encoding="utf-8"))
-        symbols = json.loads(v211.GENERATED_SYMBOLS_PATH.read_text(encoding="utf-8"))
+        with tempfile.TemporaryDirectory(prefix='ii-universe-case-') as temporary:
+            output = v211.run(synthetic=True, output_root=Path(temporary))
+            self.assertEqual(output["top20_count"], 20)
+            self.assertGreaterEqual(output["research_universe_count"], 20)
+            universe = json.loads(Path(output['universe_path']).read_text(encoding="utf-8"))
+            symbols = json.loads(Path(output['public_symbols_path']).read_text(encoding="utf-8"))
         self.assertEqual([item["rank"] for item in universe], list(range(1, len(universe) + 1)))
         self.assertFalse(symbols["owner_watchlist_inheritance"])
         self.assertEqual(

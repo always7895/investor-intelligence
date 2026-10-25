@@ -1,0 +1,25 @@
+{
+ "schema_version": 1,
+ "rule": "Quarterly revenue of Korean Top20 listings from the companies' own IR releases, shown beside the Yahoo quarter (operator 2026-09-26: no OpenDART key; non-US fundamentals must not be Yahoo-only). Curated per quarter because SK hynix's newsroom terms forbid automated access and Samsung's statement is a PDF; each figure is copied from the cited release. The builder attaches an entry only when its period_end equals the Yahoo quarter on the card, so a stale entry is never shown beside a newer quarter. Refresh after each earnings release.",
+ "verified_at": "2026-09-26",
+ "companies": {
+  "000660.KS": {
+   "company": "SK hynix",
+   "document": "SK hynix Reports Second Quarter 2026 Financial Results (newsroom)",
+   "source_url": "https://news.skhynix.com/en/q2-2026-business-results/",
+   "published": "2026-07-29",
+   "period": "2026-Q2",
+   "period_end": "2026-06-30",
+   "revenue": {"amount": 79318700000000, "prior": 22232000000000, "currency": "KRW", "evidence": "Unit: Billion KRW | Revenue 2Q26 79,318.7 | 2Q25 22,232"}
+  },
+  "005930.KS": {
+   "company": "Samsung Electronics",
+   "document": "Consolidated interim statement of income 2Q 2026",
+   "source_url": "https://images.samsung.com/is/content/samsung/assets/global/ir/docs/2026_con_quarter02_soi.pdf",
+   "published": "2026-07-30",
+   "period": "2026-Q2",
+   "period_end": "2026-06-30",
+   "revenue": {"amount": 171499470000000, "prior": 74566317000000, "currency": "KRW", "evidence": "Revenue (KRW million) 2Q26 171,499,470 | 2Q25 74,566,317; newsroom 2026-07-30: KRW 171.5 trillion in consolidated revenue"}
+  }
+ }
+}

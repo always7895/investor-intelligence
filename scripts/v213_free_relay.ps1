@@ -74,12 +74,51 @@ function New-V213FreeRelayRouteRecord {
     }
 }
 
+# The route refresh's signature purpose (cloud/src/v213/free-relay.ts FREE_RELAY_SIGNATURE_PURPOSE): such a signature is
+# valid only at /v213/admin/free-relay-route, never at another admin endpoint.
+$script:V213FreeRelaySignaturePurpose = 'ii-v213-free-relay-route-v1'
+
 function Get-V213FreeRelaySignature {
-    param([string]$HmacSecret,[string]$Timestamp,[string]$Nonce,[string]$Body)
-    $value = "$Timestamp.$Nonce.$Body"
+    param([string]$HmacSecret,[string]$Timestamp,[string]$Nonce,[string]$Body,[string]$Purpose = '')
+    $value = if ($Purpose) { "$Purpose`n$Timestamp.$Nonce.$Body" } else { "$Timestamp.$Nonce.$Body" }
     $algorithm = New-Object Security.Cryptography.HMACSHA256 -ArgumentList (,[Text.Encoding]::UTF8.GetBytes($HmacSecret))
     try { return ([BitConverter]::ToString($algorithm.ComputeHash([Text.Encoding]::UTF8.GetBytes($value)))).Replace('-','').ToLowerInvariant() }
     finally { $algorithm.Dispose() }
+}
+
+function Get-V213FreeRelayErrorCode([string]$Code) {
+    # Case-sensitive, whole-string: an upper-case token of 1..80 characters, nothing else (no newline, no body text).
+    if ($Code -cmatch '\A[A-Z0-9_]{1,80}\z') { return $Code }
+    return 'UNKNOWN'
+}
+
+function Invoke-V213FreeRelayRegistration {
+    # One signed registration attempt. Returns ok, or the HTTP status and the Worker's own error code (an upper-case token):
+    # never headers or the body.
+    param([object]$Configuration,[string]$Body,[string]$Purpose,[scriptblock]$Transport)
+    $timestamp = [string][DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+    $nonce = [guid]::NewGuid().ToString('N').ToLowerInvariant()
+    $signature = Get-V213FreeRelaySignature -HmacSecret ([string]$Configuration.hmac_secret) -Timestamp $timestamp -Nonce $nonce -Body $Body -Purpose $Purpose
+    $headers = @{
+        'x-ii-v21-timestamp' = $timestamp
+        'x-ii-v21-nonce' = $nonce
+        'x-ii-v21-signature' = $signature
+        'cache-control' = 'no-store'
+    }
+    try {
+        if ($null -ne $Transport) { $result = & $Transport ([string]$Configuration.registration_endpoint) $headers $Body }
+        else { $result = Invoke-RestMethod -Method Post -Uri ([string]$Configuration.registration_endpoint) -Headers $headers -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($Body)) -TimeoutSec 45 }
+    }
+    catch {
+        $status = try { [int]$_.Exception.Response.StatusCode } catch { 0 }
+        $code = try { [string](($_.ErrorDetails.Message | ConvertFrom-Json).code) } catch { '' }
+        return [pscustomobject]@{ ok=$false; http=$status; code=(Get-V213FreeRelayErrorCode $code) }
+    }
+    $ok = $result.PSObject.Properties['ok']
+    $accepted = $result.PSObject.Properties['status']
+    if (($null -ne $ok -and $ok.Value -eq $true) -or ($null -ne $accepted -and [string]$accepted.Value -eq 'accepted')) { return [pscustomobject]@{ ok=$true } }
+    $code = $result.PSObject.Properties['code']
+    return [pscustomobject]@{ ok=$false; http=0; code=(Get-V213FreeRelayErrorCode $(if ($null -ne $code) { [string]$code.Value } else { '' })) }
 }
 
 function Publish-V213FreeRelayRoute {
@@ -89,22 +128,13 @@ function Publish-V213FreeRelayRoute {
         [scriptblock]$Transport = $null
     )
     $body = $Record | ConvertTo-Json -Depth 6 -Compress
-    $timestamp = [string][DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
-    $nonce = [guid]::NewGuid().ToString('N').ToLowerInvariant()
-    $signature = Get-V213FreeRelaySignature -HmacSecret ([string]$Configuration.hmac_secret) -Timestamp $timestamp -Nonce $nonce -Body $body
-    $headers = @{
-        'x-ii-v21-timestamp' = $timestamp
-        'x-ii-v21-nonce' = $nonce
-        'x-ii-v21-signature' = $signature
-        'cache-control' = 'no-store'
+    # The route-only signature first (no KV write on a Worker from batch 28 on). A Worker that predates it (a later Worker
+    # rolled back, or this runtime installed first) answers V21_SYNC_SIGNATURE_INVALID: then once more with the generic
+    # admin signature and a fresh nonce, which that Worker guards with its KV nonce as before. Any other refusal is final.
+    $attempt = Invoke-V213FreeRelayRegistration -Configuration $Configuration -Body $body -Purpose $script:V213FreeRelaySignaturePurpose -Transport $Transport
+    if (-not $attempt.ok -and $attempt.code -ceq 'V21_SYNC_SIGNATURE_INVALID') {
+        $attempt = Invoke-V213FreeRelayRegistration -Configuration $Configuration -Body $body -Purpose '' -Transport $Transport
     }
-    try {
-        if ($null -ne $Transport) { $result = & $Transport ([string]$Configuration.registration_endpoint) $headers $body }
-        else { $result = Invoke-RestMethod -Method Post -Uri ([string]$Configuration.registration_endpoint) -Headers $headers -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($body)) -TimeoutSec 45 }
-    }
-    catch { throw 'FREE_RELAY authenticated route registration failed closed.' }
-    $ok = $result.PSObject.Properties['ok']
-    $status = $result.PSObject.Properties['status']
-    if (($null -eq $ok -or $ok.Value -ne $true) -and ($null -eq $status -or [string]$status.Value -ne 'accepted')) { throw 'FREE_RELAY Worker rejected the route update.' }
+    if (-not $attempt.ok) { throw ('FREE_RELAY authenticated route registration failed closed (http={0}; code={1}).' -f $attempt.http, $attempt.code) }
     return [pscustomobject]@{ status='PASS'; route_generation=[string]$Record.route_generation; expires_at=[string]$Record.expires_at }
 }

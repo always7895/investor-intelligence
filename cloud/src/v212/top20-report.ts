@@ -1,8 +1,14 @@
 import type { ParsedQuery } from "../core";
-import { publicJson, type StorageEnv } from "../storage";
+import type { StorageEnv } from "../storage";
+import { pinPublicSnapshot } from "../v213/public-snapshot";
+import { v213ReportTimesAreFresh, V213_STALE_RECORDS_MESSAGE } from "../v213/top20-report";
+
+type SourceClock = { status: "KNOWN" | "UNKNOWN" | "UNAVAILABLE"; value: number | string | null; retrieved_at: string | null; evidence_sha256: string | null };
+const SOURCE_FIELDS = ["long_term_return_pct", "short_term_return_pct", "industry", "profit_summary"] as const;
 
 export interface V212Top20ReportRecord {
-  schema_version: 1;
+  schema_version: 1 | 2;
+  source_acquisition?: Record<typeof SOURCE_FIELDS[number], SourceClock>;
   rank: number;
   ticker: string;
   long_term_return_pct: number | null;
@@ -19,7 +25,8 @@ export interface V212Top20ReportRecord {
 }
 
 export interface V212Top20Report {
-  schema_version: 1;
+  schema_version: 1 | 2;
+  calculation_cutoff?: string;
   product_version: "2.1.2";
   generated_at: string;
   display_columns: ["股票", "長期投資報酬率（近2年年化）", "短期投資報酬率（近6個月）", "行業別", "獲利簡述"];
@@ -58,18 +65,51 @@ function finiteOrNull(value: unknown): value is number | null {
   return value === null || (typeof value === "number" && Number.isFinite(value));
 }
 
+function sourceTime(value: unknown): number {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(value)) return NaN;
+  if (value.startsWith("0000-")) return NaN;
+  const time = Date.parse(value);
+  const canonical = value.includes(".") ? value : value.replace("Z", ".000Z");
+  return Number.isFinite(time) && new Date(time).toISOString() === canonical ? time : NaN;
+}
+
+/** Clock/value binding, NOT verification of the referenced HTTP body or rights. */
+function knownAcquisition(item: Record<string, unknown>, generated: number): boolean {
+  const clocks = item.source_acquisition;
+  if (!clocks || typeof clocks !== "object" || Array.isArray(clocks) || !exactKeys(clocks as Record<string, unknown>, new Set(SOURCE_FIELDS))) return false;
+  let oldest: { value: string; time: number } | null = null;
+  for (const key of SOURCE_FIELDS) {
+    const raw = (clocks as Record<string, unknown>)[key];
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return false;
+    const clock = raw as Record<string, unknown>;
+    if (!exactKeys(clock, new Set(["status", "value", "retrieved_at", "evidence_sha256"])) || clock.value !== item[key]) return false;
+    const missing = key === "industry" ? item[key] === "未分類" : key === "profit_summary" ? item[key] === "SEC 可用獲利指標不足" : item[key] === null;
+    if (missing) {
+      if (clock.status !== "UNAVAILABLE" || clock.retrieved_at !== null || clock.evidence_sha256 !== null) return false;
+      continue;
+    }
+    if (clock.status !== "KNOWN" || typeof clock.evidence_sha256 !== "string" || !/^[0-9a-f]{64}$/.test(clock.evidence_sha256)) return false;
+    const time = sourceTime(clock.retrieved_at);
+    if (!Number.isFinite(time) || time > generated) return false;
+    if (!oldest || time < oldest.time) oldest = { value: clock.retrieved_at as string, time };
+  }
+  return oldest !== null && item.retrieved_at === oldest.value;
+}
+
 export function parseV212Top20Report(raw: unknown): V212Top20Report | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const doc = raw as Record<string, unknown>;
-  if (!exactKeys(doc, DOCUMENT_KEYS)) return null;
+  const version = doc.schema_version;
+  if (!exactKeys(doc, version === 2 ? new Set([...DOCUMENT_KEYS, "calculation_cutoff"]) : DOCUMENT_KEYS)) return null;
+  if (version === 2 && (!Number.isFinite(sourceTime(doc.generated_at)) || !Number.isFinite(sourceTime(doc.calculation_cutoff)) || sourceTime(doc.calculation_cutoff) > sourceTime(doc.generated_at))) return null;
   if (
-    doc.schema_version !== 1 ||
+    (version !== 1 && version !== 2) ||
     doc.product_version !== "2.1.2" ||
     doc.provider_scope !== "public_only" ||
     doc.owner_watchlist_inherited !== false ||
     doc.long_term_definition !== "trailing_2y_adjusted_close_cagr" ||
     doc.short_term_definition !== "trailing_6m_adjusted_close_price_return" ||
-    !Number.isFinite(Date.parse(String(doc.generated_at ?? ""))) ||
+    typeof doc.generated_at !== "string" || !Number.isFinite(Date.parse(doc.generated_at)) ||
     !Array.isArray(doc.display_columns) ||
     doc.display_columns.length !== DISPLAY_COLUMNS.length ||
     doc.display_columns.some((value, index) => value !== DISPLAY_COLUMNS[index]) ||
@@ -82,10 +122,10 @@ export function parseV212Top20Report(raw: unknown): V212Top20Report | null {
     const rawRecord = doc.records[index];
     if (!rawRecord || typeof rawRecord !== "object" || Array.isArray(rawRecord)) return null;
     const item = rawRecord as Record<string, unknown>;
-    if (!exactKeys(item, RECORD_KEYS)) return null;
-    const ticker = String(item.ticker ?? "").toUpperCase();
+    if (!exactKeys(item, version === 2 ? new Set([...RECORD_KEYS, "source_acquisition"]) : RECORD_KEYS)) return null;
+    const ticker = typeof item.ticker === "string" ? item.ticker.toUpperCase() : "";
     if (
-      item.schema_version !== 1 || item.rank !== index + 1 ||
+      item.schema_version !== version || item.rank !== index + 1 ||
       !/^[A-Z0-9][A-Z0-9.-]{0,14}$/.test(ticker) || seen.has(ticker) ||
       !finiteOrNull(item.long_term_return_pct) || !finiteOrNull(item.short_term_return_pct) ||
       typeof item.industry !== "string" || !item.industry.trim() || item.industry.length > 100 ||
@@ -94,8 +134,11 @@ export function parseV212Top20Report(raw: unknown): V212Top20Report | null {
       item.long_term_window !== "2y_cagr" || item.short_term_window !== "6m_price_return" ||
       item.market_source !== "yfinance" || item.profit_source !== "sec_edgar" ||
       item.provider_scope !== "public_only" || item.owner_watchlist_inherited !== false ||
-      !Number.isFinite(Date.parse(String(item.retrieved_at ?? "")))
+      typeof item.retrieved_at !== "string" || !Number.isFinite(Date.parse(item.retrieved_at))
     ) return null;
+    if (version === 2 && (item.ticker !== ticker || (!knownAcquisition(item, sourceTime(doc.generated_at))) ||
+        (typeof item.long_term_return_pct === "number" && item.long_term_return_pct < -100) ||
+        (typeof item.short_term_return_pct === "number" && item.short_term_return_pct < -100))) return null;
     seen.add(ticker);
     records.push({ ...(item as unknown as V212Top20ReportRecord), ticker });
   }
@@ -116,15 +159,20 @@ export function formatV212Top20Report(report: V212Top20Report): string {
   ].join("\n");
 }
 
-export async function v212Top20ReportAnswer(env: StorageEnv, query: ParsedQuery): Promise<string | null> {
+export async function v212Top20ReportAnswer(env: StorageEnv & { V21_TOP20_MAX_AGE_SECONDS?: string }, query: ParsedQuery): Promise<string | null> {
   const asksTop20 =
     !query.ticker &&
     query.intent === "ranking" &&
     /(?:top\s*20|前\s*20|排行|排名)/i.test(query.normalized);
   if (!asksTop20) return null;
-  const report = parseV212Top20Report(await publicJson<unknown>(env, ["v212:top20-report:latest"]));
+  const view = await pinPublicSnapshot(env);
+  const report = parseV212Top20Report(await view.json<unknown>(["v212:top20-report:latest"]));
   if (!report) {
     return "目前五欄 Top 20 報告尚未通過本輪 freshness / validation gate，系統不會退回舊欄位格式。";
   }
+  const stamp = await view.text(["last_successful_pipeline_timestamp"]);
+  // Five-field legacy lane keeps its own assembly + retrieval contract; the
+  // persisted-class evidence gate governs V213+ records only.
+  if (!v213ReportTimesAreFresh(env, stamp, [report.generated_at, ...report.records.map(row => row.retrieved_at)])) return V213_STALE_RECORDS_MESSAGE;
   return formatV212Top20Report(report);
 }

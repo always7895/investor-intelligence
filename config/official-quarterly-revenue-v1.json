@@ -1,0 +1,142 @@
+{
+  "schema": "official-quarterly-revenue-v1",
+  "records": [
+    {
+      "id": "5351.TWO-2026Q2-prev-2026Q1",
+      "symbol": "5351.TWO",
+      "status": "VERIFIED",
+      "issuer": {
+        "name_en": "Etron Technology, Inc.",
+        "name_zh": "鈺創科技股份有限公司",
+        "short_name_zh": "鈺創",
+        "ticker": "5351",
+        "exchange": "TPEx"
+      },
+      "publisher": "Etron Technology, Inc. (鈺創科技股份有限公司)",
+      "applies_to_quarter_end": "2026-06-30",
+      "previous_quarter_end": "2026-03-31",
+      "currency": "TWD",
+      "unit": "THOUSANDS",
+      "unit_multiplier": 1000,
+      "scope": "CONSOLIDATED",
+      "accounting_standard": "IAS34_TW_FSC",
+      "metric": "TOTAL_REVENUE",
+      "documents": [
+        {
+          "id": "ETRON-115Q1-CONSOLIDATED",
+          "title": "鈺創科技股份有限公司及子公司 合併財務報告暨會計師核閱報告 民國115年及114年第一季",
+          "url": "https://etron.com/wp-content/uploads/2026/05/115Q1%E5%90%88%E4%BD%B5%E8%B2%A1%E5%A0%B1.pdf",
+          "publisher": "Etron Technology, Inc. (鈺創科技股份有限公司)",
+          "published_date": "2026-05-11",
+          "retrieved_at": "2026-09-27T10:14:52Z",
+          "byte_size": 4002971,
+          "sha256": "51480f108489255be813c50e784fc46bd8d6f15a10a078c72c0b4f613d5b888b",
+          "assurance": "CPA_REVIEWED"
+        },
+        {
+          "id": "ETRON-115Q2-CONSOLIDATED",
+          "title": "鈺創科技股份有限公司及子公司 合併財務報告暨會計師核閱報告 民國115年及114年第二季",
+          "url": "https://etron.com/wp-content/uploads/2026/08/115Q2%E5%90%88%E4%BD%B5%E8%B2%A1%E5%A0%B1.pdf",
+          "publisher": "Etron Technology, Inc. (鈺創科技股份有限公司)",
+          "published_date": "2026-07-31",
+          "retrieved_at": "2026-09-27T10:14:53Z",
+          "byte_size": 4270095,
+          "sha256": "c5f50733a6b621b802b600f714bde6bd15d196ee69ad771709085cd5c0eabc12",
+          "assurance": "CPA_REVIEWED"
+        }
+      ],
+      "previous_pair": {
+        "current": {
+          "amount": 2735412,
+          "start": "2026-01-01",
+          "end": "2026-03-31",
+          "period_kind": "QUARTER",
+          "document_id": "ETRON-115Q1-CONSOLIDATED",
+          "page_label": "39",
+          "note": "六(二十四)",
+          "row": "客戶合約之收入"
+        },
+        "prior_year": {
+          "amount": 627130,
+          "start": "2025-01-01",
+          "end": "2025-03-31",
+          "period_kind": "QUARTER",
+          "document_id": "ETRON-115Q1-CONSOLIDATED",
+          "page_label": "39",
+          "note": "六(二十四)",
+          "row": "客戶合約之收入"
+        }
+      },
+      "current_pair": {
+        "current": {
+          "amount": 4898686,
+          "start": "2026-04-01",
+          "end": "2026-06-30",
+          "period_kind": "QUARTER",
+          "document_id": "ETRON-115Q2-CONSOLIDATED",
+          "page_label": "42",
+          "note": "六(二十四)",
+          "row": "客戶合約之收入"
+        },
+        "prior_year": {
+          "amount": 744722,
+          "start": "2025-04-01",
+          "end": "2025-06-30",
+          "period_kind": "QUARTER",
+          "document_id": "ETRON-115Q2-CONSOLIDATED",
+          "page_label": "42",
+          "note": "六(二十四)",
+          "row": "客戶合約之收入"
+        }
+      },
+      "restatement_check": {
+        "status": "MATCHED_THROUGH_2026Q2",
+        "document_id": "ETRON-115Q2-CONSOLIDATED",
+        "half_year_claims": {
+          "current": {
+            "amount": 7634098,
+            "start": "2026-01-01",
+            "end": "2026-06-30",
+            "period_kind": "HALF_YEAR",
+            "document_id": "ETRON-115Q2-CONSOLIDATED",
+            "page_label": "42",
+            "note": "六(二十四)",
+            "row": "客戶合約之收入"
+          },
+          "prior_year": {
+            "amount": 1371852,
+            "start": "2025-01-01",
+            "end": "2025-06-30",
+            "period_kind": "HALF_YEAR",
+            "document_id": "ETRON-115Q2-CONSOLIDATED",
+            "page_label": "42",
+            "note": "六(二十四)",
+            "row": "客戶合約之收入"
+          }
+        },
+        "reconciliations": [
+          {
+            "period": "2026Q1",
+            "half_year_amount": 7634098,
+            "current_quarter_amount": 4898686,
+            "derived_q1_amount": 2735412,
+            "q1_claim_amount": 2735412,
+            "difference": 0
+          },
+          {
+            "period": "2025Q1",
+            "half_year_amount": 1371852,
+            "current_quarter_amount": 744722,
+            "derived_q1_amount": 627130,
+            "q1_claim_amount": 627130,
+            "difference": 0
+          }
+        ]
+      },
+      "review": {
+        "checked_at": "2026-09-27T10:20:00Z",
+        "receipt": "writer-5351-verification"
+      }
+    }
+  ]
+}

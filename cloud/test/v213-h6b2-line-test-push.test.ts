@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { deriveTenantId } from "../src/security";
+import { memoryPushNamespace, syntheticPushPolicy, withPushPreflight } from "./line-push-fixture";
 import { asKv, MemoryKv } from "./fake-kv";
 import { storeOwnerPairing } from "../src/v21/owner-storage";
 import { parseH6B2Preview, sendH6B2SevenFieldTestPush } from "../src/v213/h6b2-line-test-push";
@@ -102,6 +103,8 @@ function runtime() {
     TENANT_HASH_SECRET: HASH_KEY,
     TENANT_DATA_ENCRYPTION_KEY: DATA_KEY,
     LINE_CHANNEL_ACCESS_TOKEN: "SYNTHETIC_LINE_CHANNEL_ACCESS_NOT_REAL",
+    LINE_FREE_PUSH_POLICY: syntheticPushPolicy(),
+    V213_BROADCAST_DEDUPE: memoryPushNamespace().namespace,
   };
   return { publicKv, privateKv, securityKv, env };
 }
@@ -137,16 +140,27 @@ describe("v2.1.3 H6B2 order-reconciled seven-field LINE acceptance", () => {
     expect(parsed.canonical.split(/\r?\n/).slice(1).every((row) => row.split("｜").length === 7)).toBe(true);
   });
 
-  it("pushes exactly one reconciled seven-field message without public KV writes", async () => {
+  it("refuses the retained transaction-shaped unsealed fixture before historical push transport", async () => {
+    const { publicKv, env } = runtime();
+    await storeOwnerPairing(env, await deriveTenantId({ type: "user", userId: LINE_TARGET }, HASH_KEY), LINE_TARGET);
+    const runId = "20260901T122248Z-fccfd14d3c79";
+    publicKv.values.set("snapshot:current", JSON.stringify({ run_id: runId }));
+    publicKv.values.set(`snapshot:${runId}:v21:top20:latest`, JSON.stringify(top20()));
+    const before = new Map(publicKv.values); const network = vi.fn(); vi.stubGlobal("fetch", network);
+    expect((await sendH6B2SevenFieldTestPush(env, envelope())).status).toBe("top20_unavailable");
+    expect(network).not.toHaveBeenCalled(); expect(publicKv.values).toEqual(before);
+  });
+
+  it("retains the historical unsealed preview formatting through mocked free push only", async () => {
     const { publicKv, env } = runtime();
     const tenantId = await deriveTenantId({ type: "user", userId: LINE_TARGET }, HASH_KEY);
     await storeOwnerPairing(env, tenantId, LINE_TARGET);
-    const runId = "20260901T122248Z-fccfd14d3c79";
+    const runId = "legacy-synthetic-h6b2-preview"; // Not current sealed admission or phone receipt.
     publicKv.values.set("snapshot:current", JSON.stringify({ run_id: runId }));
     publicKv.values.set(`snapshot:${runId}:v21:top20:latest`, JSON.stringify(top20()));
     const beforeKeys = [...publicKv.values.keys()].sort();
     const calls: Array<Record<string, unknown>> = [];
-    vi.stubGlobal("fetch", vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+    vi.stubGlobal("fetch", withPushPreflight(async (_input: RequestInfo | URL, init?: RequestInit) => {
       calls.push(JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>);
       return new Response("{}", { status: 200 });
     }));
@@ -164,11 +178,11 @@ describe("v2.1.3 H6B2 order-reconciled seven-field LINE acceptance", () => {
     expect([...publicKv.values.keys()].sort()).toEqual(beforeKeys);
   });
 
-  it("fails closed when live public Top20 order drifts after reconciliation", async () => {
+  it("retains the historical unsealed order-mismatch guard", async () => {
     const { publicKv, env } = runtime();
     const tenantId = await deriveTenantId({ type: "user", userId: LINE_TARGET }, HASH_KEY);
     await storeOwnerPairing(env, tenantId, LINE_TARGET);
-    const runId = "20260901T122248Z-fccfd14d3c79";
+    const runId = "legacy-synthetic-h6b2-order";
     const wrong = [...TICKERS];
     [wrong[17], wrong[18]] = [wrong[18]!, wrong[17]!];
     publicKv.values.set("snapshot:current", JSON.stringify({ run_id: runId }));

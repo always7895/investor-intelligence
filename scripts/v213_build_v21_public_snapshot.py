@@ -5,8 +5,9 @@ Before the immutable snapshot is created, this entrypoint reconciles positive
 Serenity advantage factors against the exact source-level audit produced in the
 same run. A positive demand-wave, chokepoint, pricing-power,
 replacement-friction or TAM-capture factor is retained only when the ticker has
-fresh claim evidence from at least two independent source units and domains,
-including primary evidence. Unsupported positives are withheld, scores are
+fresh claim evidence from at least two independent source units, families and
+domains, including primary and non-primary evidence, AND policy-qualified per-claim lineages with a
+30-minute validity reserve for the subsequent bundle build. Unsupported positives are withheld, scores are
 recomputed, and every rank-coupled document is atomically reordered.
 
 This is a fail-closed evidence guard, not a source-discovery shortcut. It never
@@ -27,6 +28,11 @@ from pathlib import Path
 from typing import Any, Mapping
 
 SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+
+from claim_lineage_qualification import GUARD_VALIDITY_MARGIN, claim_lineage_qualified
+
 ROOT = SCRIPT_DIR.parent
 BASE_PATH = SCRIPT_DIR / "build_v21_public_snapshot.py"
 SCORER_PATH = SCRIPT_DIR / "v213_apply_diversified_operationalization.py"
@@ -112,10 +118,8 @@ def _timestamp(value: Any) -> datetime | None:
     try:
         parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
     except ValueError:
-        try:
-            parsed = datetime.fromisoformat(text[:10] + "T00:00:00+00:00")
-        except ValueError:
-            return None
+        # Invalid suffixes/times are failed evidence, not date-only evidence.
+        return None
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=timezone.utc)
     return parsed.astimezone(timezone.utc)
@@ -138,6 +142,7 @@ def _fresh_claim_support(
     *,
     now: datetime,
     maximum_age_days: float,
+    minimum_families: int = 2,
 ) -> dict[str, Any]:
     raw_sources = audit_row.get("sources")
     sources = raw_sources if isinstance(raw_sources, list) else []
@@ -166,11 +171,26 @@ def _fresh_claim_support(
         or str(source.get("family") or "").strip().lower() in CLAIM_PRIMARY_FAMILIES
     ]
     usable_domains = {value for value in domains if value and value != "unknown"}
+    # The bundle builder also requires distinct claim families and a fresh
+    # non-primary corroborator for a positive factor; withholding here keeps
+    # its refusal from stopping the whole bundle.
+    families = {family for family, _domain, _claim_type in units}
+    non_primary = [
+        source
+        for source in values
+        if not source.get("primary")
+        and str(source.get("family") or "").strip().lower() not in CLAIM_PRIMARY_FAMILIES
+    ]
     return {
         "unit_count": len(values),
         "domain_count": len(usable_domains),
         "primary_count": len(primary),
-        "supported": len(values) >= 2 and len(usable_domains) >= 2 and bool(primary),
+        "family_count": len(families),
+        "non_primary_count": len(non_primary),
+        "supported": (
+            len(values) >= 2 and len(usable_domains) >= 2 and bool(primary)
+            and len(families) >= minimum_families and bool(non_primary)
+        ),
     }
 
 
@@ -202,12 +222,16 @@ def _guard_row(
     if not positive:
         return []
 
+    minimum = policy.get("minimum_claim_source_families_per_ticker")
     support = _fresh_claim_support(
         audit_row,
         now=now,
         maximum_age_days=float(policy.get("current_state_claim_max_age_days") or 135.0),
+        minimum_families=minimum if type(minimum) is int else 2,
     )
-    if support["supported"]:
+    if support["supported"] and claim_lineage_qualified(
+        audit_row, policy, now, validity_margin=GUARD_VALIDITY_MARGIN,
+    ):
         return []
 
     for name in positive:
@@ -301,6 +325,7 @@ def apply_latest_evidence_factor_guard() -> dict[str, Any]:
     _atomic_json(V213_PATH, v213)
     _atomic_json(FEDERATION_PATH, federation)
     _atomic_json(SOURCE_AUDIT_PATH, audit)
+    base.REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
     base.REPORT_PATH.write_text(
         scorer.markdown_report(guarded, federation) + "\n",
         encoding="utf-8",

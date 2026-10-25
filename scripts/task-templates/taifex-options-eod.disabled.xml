@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- TEMPLATE ONLY. Not registered by any project command.
+     Replace placeholders only in a reviewed copy after separate scheduling authority.
+     Keep both Enabled values false until an explicitly authorized activation.
+     Output must be a new local observation file, never Production/public storage. -->
+<Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo>
+    <Description>Opt-in local TAIFEX dataset 11320 EOD observations; not quotes, not LINE or publication. Default OFF.</Description>
+  </RegistrationInfo>
+  <Triggers>
+    <CalendarTrigger>
+      <StartBoundary>__LOCAL_START_BOUNDARY__</StartBoundary>
+      <Enabled>false</Enabled>
+      <ScheduleByDay><DaysInterval>1</DaysInterval></ScheduleByDay>
+    </CalendarTrigger>
+  </Triggers>
+  <Principals>
+    <Principal id="Collector">
+      <LogonType>InteractiveToken</LogonType>
+      <RunLevel>LeastPrivilege</RunLevel>
+    </Principal>
+  </Principals>
+  <Settings>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <StartWhenAvailable>false</StartWhenAvailable>
+    <AllowStartOnDemand>true</AllowStartOnDemand>
+    <Enabled>false</Enabled>
+    <WakeToRun>false</WakeToRun>
+    <ExecutionTimeLimit>PT5M</ExecutionTimeLimit>
+  </Settings>
+  <Actions Context="Collector">
+    <Exec>
+      <Command>__PROJECT_PYTHON__</Command>
+      <Arguments>-I -B -X utf8 "__SOURCE_ROOT__/scripts/fetch_public_source_observations.py" --fetch --source taifex_options_eod --output "__LOCAL_OUTPUT__"</Arguments>
+      <WorkingDirectory>__SOURCE_ROOT__</WorkingDirectory>
+    </Exec>
+  </Actions>
+</Task>
