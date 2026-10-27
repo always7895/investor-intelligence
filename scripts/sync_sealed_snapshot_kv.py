@@ -27,6 +27,7 @@ ATTEMPTS = 3
 RETRY_SECONDS = 5.0
 LAST_ERROR: list[str] = []
 LAST_CALL: dict = {"attempts": 0, "exit_code": None, "error_category": "NONE"}
+LAST_CALL_DETAIL: dict = {"http_status": None, "provider_code": None}
 TOTAL_ATTEMPTS = 0
 BLOB_PREFIX = "blob:v1:"
 RUN_KEY_TTL_SECONDS = 14 * 86400
@@ -134,6 +135,34 @@ def _kv_get_http_status(stdout: str, stderr: str) -> int | None:
     return int(match.group(1)) if match else None
 
 
+
+def _cli_failure_detail(stdout: str, stderr: str) -> dict:
+    """Only explicit, bounded numeric markers from the final CLI attempt.
+
+    A provider code is never translated into an inferred HTTP status. Missing
+    or conflicting markers remain null; no stream fragment is retained.
+    """
+    text = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", f"{stdout or ''}\n{stderr or ''}")
+    codes, _ = _known_error_markers(stdout, stderr)
+    codes.update(int(value) for value in re.findall(r"\[\s*code\s*:\s*(\d{1,6})\s*\]", text, re.IGNORECASE))
+    codes = {value for value in codes if type(value) is int and 1 <= value <= 999999}
+    statuses = {int(value) for value in re.findall(
+        r"\b(?:HTTP(?:\s+status)?|status(?:\s+code)?)[\s:=]+([1-5]\d\d)\b", text, re.IGNORECASE)}
+    statuses.update(int(value) for value in KV_GET_HTTP_STATUS.findall(text) if 100 <= int(value) <= 599)
+    for candidate in [text, *text.splitlines()]:
+        try:
+            envelope = json.loads(candidate)
+        except (ValueError, TypeError):
+            continue
+        if isinstance(envelope, dict) and envelope.get("success") is False:
+            for field in ("status", "status_code", "statusCode"):
+                value = envelope.get(field)
+                if type(value) is int and 100 <= value <= 599:
+                    statuses.add(value)
+    return {"http_status": next(iter(statuses)) if len(statuses) == 1 else None,
+            "provider_code": next(iter(codes)) if len(codes) == 1 else None}
+
+
 def _credential_rejected(category: str, p: subprocess.CompletedProcess) -> bool:
     """An authentication rejection: code 10000/AuthenticationError, or a KV GET answered 401 (still reported UNKNOWN)."""
     return category == "AUTHENTICATION_ERROR" or (
@@ -173,6 +202,8 @@ def _run_with_retry(args: list[str]) -> subprocess.CompletedProcess:
             p = subprocess.CompletedProcess(args, None, "", "")
             category = "CLI_LAUNCH_FAILED"
         LAST_CALL.update(attempts=launched, exit_code=p.returncode, error_category=category)
+        LAST_CALL_DETAIL.update(_cli_failure_detail(p.stdout, p.stderr) if p.returncode != 0 else
+                                {"http_status": None, "provider_code": None})
         if p.returncode == 0:
             break
         LAST_ERROR[:] = [category]
@@ -225,13 +256,37 @@ def _outcome(operation: str) -> dict:
             "phase": "INPUT", "error_category": "UNKNOWN", "pointer_state": "NOT_ATTEMPTED",
             "run_id": "", "cli_attempts_total": 0, "last_cli_attempts": 0,
             "last_cli_exit_code": None, "objects_uploaded": 0, "objects_reused": 0,
-            "objects_verified": 0}
+            "objects_verified": 0, "failed_objects": []}
 
 
 def _finish_call(record: dict, category: str | None = None) -> None:
     record.update(cli_attempts_total=TOTAL_ATTEMPTS, last_cli_attempts=LAST_CALL["attempts"],
                   last_cli_exit_code=LAST_CALL["exit_code"],
                   error_category=category or LAST_CALL["error_category"])
+
+
+
+def _record_failed_object(record: dict, key: str) -> None:
+    """Sync stops at its first failed object: at most one fixed-shape detail.
+
+    Prefixes omit key suffixes; v213 families are validated and bounded.
+    A readback mismatch after a successful CLI has null numeric error fields.
+    """
+    if record["failed_objects"]:
+        return
+    if key.startswith(BLOB_PREFIX):
+        kind = BLOB_PREFIX
+    elif key.startswith("snapshot:"):
+        kind = "snapshot:"
+    elif key.startswith("v213:"):
+        family = key.split(":", 2)[1]
+        kind = "v213:" + family if re.fullmatch(r"[a-z0-9_-]{1,32}", family) else "v213:other"
+    else:
+        kind = "unknown"
+    record["failed_objects"].append({
+        "key_kind": kind, "http_status": LAST_CALL_DETAIL["http_status"],
+        "provider_code": LAST_CALL_DETAIL["provider_code"], "attempt_count": LAST_CALL["attempts"],
+    })
 
 
 def sync_run(run_dir: Path, record: dict) -> int:
@@ -277,6 +332,7 @@ def sync_run(run_dir: Path, record: dict) -> int:
             continue
         if not client_put(key, fp, BLOB_TTL_SECONDS if blob else RUN_KEY_TTL_SECONDS):
             _finish_call(record)
+            _record_failed_object(record, key)
             return 1
         record["objects_uploaded"] += 1
     print(f"OBJECTS_UPLOADED {record['objects_uploaded']} BLOBS_REUSED {len(reused)}")
@@ -286,6 +342,7 @@ def sync_run(run_dir: Path, record: dict) -> int:
         live = client_get(key)
         if live is None or sha(live) != sha(body):
             _finish_call(record, "READBACK_MISMATCH" if live is not None else None)
+            _record_failed_object(record, key)
             return 1
         record["objects_verified"] += 1
     print(f"READBACK_VERIFIED {record['objects_verified']}")
@@ -293,11 +350,13 @@ def sync_run(run_dir: Path, record: dict) -> int:
     record["pointer_state"] = "ATTEMPTED_UNCONFIRMED"
     if not client_put("snapshot:current", ptr_fp):
         _finish_call(record)
+        _record_failed_object(record, "snapshot:current")
         return 1
     record["phase"] = "POINTER_READBACK"
     live_ptr = client_get("snapshot:current")
     if live_ptr is None or sha(live_ptr) != sha(ptr_raw):
         _finish_call(record, "READBACK_MISMATCH" if live_ptr is not None else None)
+        _record_failed_object(record, "snapshot:current")
         return 1
     record["pointer_state"] = "READBACK_CONFIRMED"
     print(f"POINTER_LAST {record['run_id']}")
@@ -363,6 +422,7 @@ def main() -> int:
     global TOTAL_ATTEMPTS
     TOTAL_ATTEMPTS = 0
     LAST_CALL.update(attempts=0, exit_code=None, error_category="NONE")
+    LAST_CALL_DETAIL.update(http_status=None, provider_code=None)
     ap = argparse.ArgumentParser()
     modes = ap.add_mutually_exclusive_group(required=True)
     modes.add_argument("--run-dir")
