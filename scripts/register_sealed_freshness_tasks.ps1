@@ -1,20 +1,20 @@
 # Canonical registration for the hourly sealed-freshness pipeline task and the
-# read-only freshness watchdog. Idempotent: re-registers with verified settings
+# read-only-by-default freshness watchdog. Idempotent: re-registers with verified settings
 # and rolls back to the captured XML definition on any verification failure.
 #
 #   * InvestorIntelligenceSealedFreshness  - hourly generate + fail-closed KV sync
 #       (scripts/run_production_sealed_refresh.ps1; the previous ad-hoc task keeps
 #       its name so the known-good schedule identity survives the re-point).
-#   * InvestorIntelligenceFreshnessWatchdog - every 30 minutes, READ-ONLY
-#       (scripts/freshness_watchdog.ps1; never writes KV; durable jsonl artifact).
+#   * InvestorIntelligenceFreshnessWatchdog - every 30 minutes, READ-ONLY by default
+#       (scripts/freshness_watchdog.ps1; opt-in :42 pre-pointer retry under the same mutex).
 #
 # Settings hardening (P0 freshness incident follow-up):
 #   * StartWhenAvailable ON  (a missed align under host sleep catches up on wake)
 #   * ExecutionTimeLimit PT1H (the previous PT72H hides multi-hour overruns)
 #   * Repetition interval anchored at registration (hourly / 30)
 #
-# -CarryForwardTop20 / -SnapshotRoot are passed through to the hourly task only (single-writer design T10: the
-# hourly publisher carries the validated Top20 bundle; an installed runtime keeps sealed runs under data\). The
+# -CarryForwardTop20 passes to the hourly task; -SnapshotRoot passes to an opt-in retry watchdog too
+# (single-writer design T10: the installed runtime keeps sealed runs under data\). The
 # registration receipt is written under %LOCALAPPDATA%\InvestorIntelligence\status, never into the script root.
 #
 # No secret, tenant, or credential material is read, stored, or printed.
@@ -25,6 +25,7 @@ param(
     [string]$ScriptRoot = '',
     [switch]$CarryForwardTop20,
     [string]$SnapshotRoot = '',
+    [switch]$EnableSyncRetry,
     [switch]$ValidateOnly)
 
 $ErrorActionPreference = 'Stop'
@@ -51,7 +52,7 @@ $definitions = @(
         ArgumentScript = 'freshness_watchdog.ps1'
         RepetitionMinutes = 30
         Due = 'DAILY'
-        Description = 'Read-only hourly public pointer freshness watchdog; appends durable state lines; never writes to any KV namespace.'
+        Description = 'Public pointer freshness watchdog; read-only unless explicitly enabled for a single bounded pre-pointer sync retry.'
     }
 )
 
@@ -69,6 +70,12 @@ function Get-ActionArguments([hashtable]$Definition, [string]$ScriptPath) {
     $arguments = "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$ScriptPath`""
     if ($Definition.Name -eq 'InvestorIntelligenceSealedFreshness') {
         if ($CarryForwardTop20) { $arguments += ' -CarryForwardTop20' }
+        if ($SnapshotRoot) {
+            if ($SnapshotRoot -match '["\r\n]') { throw 'SNAPSHOT_ROOT_INVALID' }
+            $arguments += " -SnapshotRoot `"$SnapshotRoot`""
+        }
+    } elseif ($Definition.Name -eq 'InvestorIntelligenceFreshnessWatchdog' -and $EnableSyncRetry) {
+        $arguments += ' -RetryFailedSync'
         if ($SnapshotRoot) {
             if ($SnapshotRoot -match '["\r\n]') { throw 'SNAPSHOT_ROOT_INVALID' }
             $arguments += " -SnapshotRoot `"$SnapshotRoot`""
@@ -102,6 +109,7 @@ $receiptPath = Join-Path $statusDir 'sealed-freshness-tasks.json'
     tasks = $definitions | ForEach-Object { @{ name = $_.Name; intervalMinutes = $_.RepetitionMinutes } }
     carryForwardTop20 = [bool]$CarryForwardTop20
     snapshotRoot = $SnapshotRoot
+    syncRetryEnabled = [bool]$EnableSyncRetry
     startWhenAvailable = $true
     executionTimeLimitMinutes = 60
     logonType = $logonType
@@ -111,7 +119,8 @@ $receiptPath = Join-Path $statusDir 'sealed-freshness-tasks.json'
     productionMutation = $true
     scheduleMutation = $true
     activatesPublishingTask = $true
+    activatesRetryPublisher = [bool]$EnableSyncRetry
     directKvWrite = $false
 } | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $receiptPath -Encoding utf8
 
-Write-Host "SEALED_FRESHNESS_TASKS = PASS; hourly sealed refresh + 30min read-only watchdog registered." -ForegroundColor Green
+Write-Host "SEALED_FRESHNESS_TASKS = PASS; hourly sealed refresh + 30min watchdog registered; retry opt-in=$([bool]$EnableSyncRetry)." -ForegroundColor Green

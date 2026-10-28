@@ -373,5 +373,25 @@ class FailureDetailTests(KvTestCase):
         self.assert_detail(result.record, "blob:v1:", None, None, 0)
 
 
+class V28PerStreamFailureDetailTests(unittest.TestCase):
+    def test_pretty_stdout_envelope_with_unrelated_stderr(self):
+        stdout = json.dumps({"success": False, "status": 504,
+                             "errors": [{"code": 7009}]}, indent=2)
+        stderr = "Warning: non-JSON diagnostic text"
+        self.assertEqual(sync._cli_failure_detail(stdout, stderr),
+                         {"http_status": 504, "provider_code": 7009})
+
+    def test_pretty_stderr_envelope_with_unrelated_stdout(self):
+        stderr = json.dumps({"success": False, "statusCode": 401,
+                             "errors": [{"code": 10000}]}, indent=4)
+        self.assertEqual(sync._cli_failure_detail("other diagnostic", stderr),
+                         {"http_status": 401, "provider_code": 10000})
+
+    def test_conflicting_statuses_still_fail_closed(self):
+        stdout = json.dumps({"success": False, "status": 504}, indent=2)
+        stderr = json.dumps({"success": False, "status_code": 503}, indent=2)
+        self.assertIsNone(sync._cli_failure_detail(stdout, stderr)["http_status"])
+
+
 if __name__ == "__main__":
     unittest.main()

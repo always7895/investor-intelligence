@@ -149,16 +149,20 @@ def _cli_failure_detail(stdout: str, stderr: str) -> dict:
     statuses = {int(value) for value in re.findall(
         r"\b(?:HTTP(?:\s+status)?|status(?:\s+code)?)[\s:=]+([1-5]\d\d)\b", text, re.IGNORECASE)}
     statuses.update(int(value) for value in KV_GET_HTTP_STATUS.findall(text) if 100 <= int(value) <= 599)
-    for candidate in [text, *text.splitlines()]:
-        try:
-            envelope = json.loads(candidate)
-        except (ValueError, TypeError):
-            continue
-        if isinstance(envelope, dict) and envelope.get("success") is False:
-            for field in ("status", "status_code", "statusCode"):
-                value = envelope.get(field)
-                if type(value) is int and 100 <= value <= 599:
-                    statuses.add(value)
+    # Each stream can contain its own full pretty-printed JSON envelope.
+    # Concatenating stdout with unrelated stderr breaks json.loads on stdout.
+    for stream in (stdout or "", stderr or ""):
+        clean = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", stream)
+        for candidate in [clean, *clean.splitlines()]:
+            try:
+                envelope = json.loads(candidate)
+            except (ValueError, TypeError):
+                continue
+            if isinstance(envelope, dict) and envelope.get("success") is False:
+                for field in ("status", "status_code", "statusCode"):
+                    value = envelope.get(field)
+                    if type(value) is int and 100 <= value <= 599:
+                        statuses.add(value)
     return {"http_status": next(iter(statuses)) if len(statuses) == 1 else None,
             "provider_code": next(iter(codes)) if len(codes) == 1 else None}
 

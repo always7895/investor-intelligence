@@ -1,7 +1,8 @@
 # Read-only pointer/report observation through the shared locked-CLI adapter.
 # CLI/auth/parse failure is UNKNOWN, never an old FRESH or measured STALE.
 [CmdletBinding()]
-param([string]$RepoRoot = '', [int]$CapSeconds = 7200)
+param([string]$RepoRoot = '', [int]$CapSeconds = 7200,
+      [switch]$RetryFailedSync, [string]$SnapshotRoot = '')
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 Set-StrictMode -Version Latest
@@ -138,4 +139,38 @@ if ($null -ne $logPath) {
 }
 # Always emit a sanitized structured status, including when durable storage is unavailable.
 Write-Host ('FRESHNESS_WATCH ' + ($entry | ConvertTo-Json -Compress))
+# Opt-in only: the normal freshness observation stays read-only. The :42
+# invocation may independently claim one failed pre-pointer sync retry.
+if ($RetryFailedSync -and $null -ne $logPath) {
+    $utcMinute = [DateTime]::UtcNow.Minute
+    if ($utcMinute -ge 39 -and $utcMinute -le 49) {
+        $lockHeld = $false
+        try {
+            $retryHelper = Join-Path $RepoRoot 'scripts/sealed_sync_retry.py'
+            $lockScript = Join-Path $RepoRoot 'scripts/v213_operation_lock.ps1'
+            $runsRoot = if ([string]::IsNullOrWhiteSpace($SnapshotRoot)) {
+                Join-Path $RepoRoot 'state/v213-snapshots'
+            } elseif ([IO.Path]::IsPathRooted($SnapshotRoot)) {
+                $SnapshotRoot
+            } else { Join-Path $RepoRoot $SnapshotRoot }
+            $runsRoot = [IO.Path]::GetFullPath($runsRoot)
+            foreach ($path in @($retryHelper, $lockScript, $runsRoot)) { Assert-PlainLocalPath $path }
+            . $lockScript
+            Enter-V213OperationLock -Owner 'SEALED_SYNC_RETRY' -TimeoutSeconds 0 | Out-Null
+            $lockHeld = $true
+            $previous = $ErrorActionPreference
+            try {
+                $ErrorActionPreference = 'Continue'
+                $global:LASTEXITCODE = $null
+                & $python $retryHelper --repo-root $RepoRoot --snapshot-root $runsRoot 2>$null |
+                    ForEach-Object { Write-Host $_ }
+            } finally { $ErrorActionPreference = $previous }
+        } catch {
+            # No exception messages, run identifiers, paths or CLI streams escape.
+            Write-Host 'RETRY_OUTCOME {"status":"SKIPPED","reason":"LOCK_OR_LOCAL_REFUSED","attempted":false}'
+        } finally {
+            if ($lockHeld) { Exit-V213OperationLock }
+        }
+    }
+}
 exit $exitCode
