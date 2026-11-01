@@ -11,7 +11,7 @@
 # Settings hardening (P0 freshness incident follow-up):
 #   * StartWhenAvailable ON  (a missed align under host sleep catches up on wake)
 #   * ExecutionTimeLimit PT1H (the previous PT72H hides multi-hour overruns)
-#   * Repetition interval anchored at registration (hourly / 30)
+#   * Existing single time triggers retain their anchor and repetition; first install anchors at registration.
 #
 # -CarryForwardTop20 passes to the hourly task; -SnapshotRoot passes to an opt-in retry watchdog too
 # (single-writer design T10: the installed runtime keeps sealed runs under data\). The

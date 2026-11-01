@@ -20,8 +20,18 @@ Set-StrictMode -Version Latest
 $case = Get-Content -LiteralPath $args[0] -Raw | ConvertFrom-Json
 $global:Store = @{}
 foreach ($p in $case.existing.PSObject.Properties) { $global:Store[$p.Name] = [string]$p.Value }
+$global:Initial = @{} + $global:Store
 $global:Calls = New-Object System.Collections.Generic.List[string]
 $global:Minutes = @{ 'InvestorIntelligenceSealedFreshness' = 60; 'InvestorIntelligenceFreshnessWatchdog' = 30 }
+$global:Triggers = @{}
+$global:Exports = @{}
+foreach ($name in @('InvestorIntelligenceSealedFreshness', 'InvestorIntelligenceFreshnessWatchdog')) {
+    $minute = if ($name -eq 'InvestorIntelligenceSealedFreshness') { '12' } else { '42' }
+    $global:Triggers[$name] = [pscustomobject]@{ StartBoundary = "2026-10-31T01:${minute}:32Z"
+        Repetition = [pscustomobject]@{ Interval = "PT$($global:Minutes[$name])M"; Duration = 'P10000D' } }
+    $global:Exports[$name] = 0
+}
+if ($case.custom_interval) { $global:Triggers['InvestorIntelligenceSealedFreshness'].Repetition.Interval = $case.custom_interval }
 function Fail-Name($list, $name) { return (@($list) -contains $name) }
 function Get-ScheduledTask {
     [CmdletBinding()] param([string]$TaskName)
@@ -30,7 +40,7 @@ function Get-ScheduledTask {
     if ($global:Store.ContainsKey($TaskName)) {
         return [pscustomobject]@{ TaskName = $TaskName; Principal = [pscustomobject]@{ LogonType = 'Interactive' }
             Settings = [pscustomobject]@{ StartWhenAvailable = $true; ExecutionTimeLimit = 'PT1H' }
-            Triggers = @([pscustomobject]@{ Repetition = [pscustomobject]@{ Interval = "PT$($global:Minutes[$TaskName])M" } }) }
+            Triggers = @($global:Triggers[$TaskName]) }
     }
     $record = New-Object Management.Automation.ErrorRecord ([Exception]"No task $TaskName"), 'NotFound', 'ObjectNotFound', $TaskName
     $PSCmdlet.WriteError($record)
@@ -39,7 +49,11 @@ function Export-ScheduledTask {
     [CmdletBinding()] param([string]$TaskName)
     $global:Calls.Add("EXPORT $TaskName")
     if (Fail-Name $case.export_fail $TaskName) { throw "SYNTHETIC_EXPORT_FAILURE $TaskName" }
-    return $global:Store[$TaskName]
+    $global:Exports[$TaskName]++
+    $trigger = $global:Triggers[$TaskName]
+    $start = $trigger.StartBoundary
+    if ($case.change_anchor -eq $TaskName -and $global:Exports[$TaskName] -ge 2) { $start = '2026-10-31T01:13:32Z' }
+    return "<Task><Triggers><TimeTrigger><StartBoundary>$start</StartBoundary><Repetition><Interval>$($trigger.Repetition.Interval)</Interval><Duration>$($trigger.Repetition.Duration)</Duration></Repetition></TimeTrigger></Triggers></Task>"
 }
 function Register-ScheduledTask {
     [CmdletBinding()] param([string]$TaskName, $Action, $Trigger, $Settings, $Principal, [string]$Description, [string]$Xml, [switch]$Force)
@@ -47,7 +61,11 @@ function Register-ScheduledTask {
     $global:Calls.Add("$kind $TaskName")
     if ($kind -eq 'REGISTER' -and (Fail-Name $case.register_fail $TaskName)) { throw "SYNTHETIC_REGISTER_FAILURE $TaskName" }
     if ($kind -eq 'RESTORE' -and (Fail-Name $case.restore_fail $TaskName)) { throw "SYNTHETIC_RESTORE_FAILURE $TaskName" }
-    $global:Store[$TaskName] = if ($Xml) { $Xml } else { "new:$TaskName" }
+    if ($kind -eq 'REGISTER') {
+        $global:Triggers[$TaskName] = $Trigger
+        if ($case.change_after_register -eq $TaskName) { $global:Triggers[$TaskName].StartBoundary = '2026-10-31T01:13:32Z' }
+    }
+    $global:Store[$TaskName] = if ($Xml) { $global:Initial[$TaskName] } else { "new:$TaskName" }
 }
 function Unregister-ScheduledTask {
     [CmdletBinding()] param([string]$TaskName, [switch]$Confirm)
@@ -56,7 +74,12 @@ function Unregister-ScheduledTask {
 }
 function New-ScheduledTaskPrincipal { return 'principal' }
 function New-ScheduledTaskSettingsSet { return 'settings' }
-function New-ScheduledTaskTrigger { return 'trigger' }
+function New-ScheduledTaskTrigger {
+    param([switch]$Once, $At, $RepetitionInterval, $RepetitionDuration)
+    return [pscustomobject]@{ StartBoundary = 'FIRST-INSTALL'; Repetition = [pscustomobject]@{
+        Interval = [System.Xml.XmlConvert]::ToString($RepetitionInterval)
+        Duration = [System.Xml.XmlConvert]::ToString($RepetitionDuration) } }
+}
 . $args[1]
 $definitions = @(
     @{ Name = 'InvestorIntelligenceSealedFreshness'; RepetitionMinutes = 60; Description = 'hourly' },
@@ -64,7 +87,7 @@ $definitions = @(
 $errorText = $null
 try { Invoke-SealedFreshnessTaskTransaction -Definitions $definitions -BuildAction { param($d) "action:$($d.Name)" } -CurrentUser 'owner' -LogonType 'Interactive' }
 catch { $errorText = $_.Exception.Message }
-[pscustomobject]@{ calls = @($global:Calls); store = $global:Store; error = $errorText } | ConvertTo-Json -Depth 5 -Compress
+[pscustomobject]@{ calls = @($global:Calls); store = $global:Store; triggers = $global:Triggers; error = $errorText } | ConvertTo-Json -Depth 8 -Compress
 """
 
 
@@ -72,7 +95,8 @@ catch { $errorText = $_.Exception.Message }
 class SealedFreshnessTaskTransactionTests(unittest.TestCase):
     def run_case(self, existing=None, **fail):
         case = {"existing": existing if existing is not None else {HOURLY: "<old hourly/>", WATCHDOG: "<old watchdog/>"},
-                "lookup_fail": [], "export_fail": [], "register_fail": [], "restore_fail": []}
+                "lookup_fail": [], "export_fail": [], "register_fail": [], "restore_fail": [],
+                "change_anchor": "", "change_after_register": "", "custom_interval": ""}
         case.update(fail)
         with tempfile.TemporaryDirectory() as tmp:
             harness, data = Path(tmp) / "harness.ps1", Path(tmp) / "case.json"
@@ -129,6 +153,35 @@ class SealedFreshnessTaskTransactionTests(unittest.TestCase):
         self.assertIsNone(result["error"])
         self.assertEqual(mutations, [f"REGISTER {HOURLY}", f"REGISTER {WATCHDOG}"])
         self.assertEqual(result["store"], {HOURLY: f"new:{HOURLY}", WATCHDOG: f"new:{WATCHDOG}"})
+
+    def test_existing_anchor_and_repetition_preserved(self):
+        result, _ = self.run_case()
+        self.assertIsNone(result["error"])
+        for name, minute, interval in ((HOURLY, "12", "PT60M"), (WATCHDOG, "42", "PT30M")):
+            trigger = result["triggers"][name]
+            self.assertEqual(trigger["StartBoundary"], f"2026-10-31T01:{minute}:32Z")
+            self.assertEqual(trigger["Repetition"], {"Interval": interval, "Duration": "P10000D"})
+
+    def test_existing_nondefault_repetition_is_preserved(self):
+        result, _ = self.run_case(custom_interval="PT75M")
+        self.assertIsNone(result["error"])
+        self.assertEqual(result["triggers"][HOURLY]["Repetition"]["Interval"], "PT75M")
+
+    def test_first_install_creates_new_triggers(self):
+        result, _ = self.run_case(existing={})
+        self.assertIsNone(result["error"])
+        self.assertEqual(result["triggers"][HOURLY]["StartBoundary"], "FIRST-INSTALL")
+        self.assertEqual(result["triggers"][WATCHDOG]["StartBoundary"], "FIRST-INSTALL")
+
+    def test_changed_anchor_before_mutation_is_refused(self):
+        result, mutations = self.run_case(change_anchor=WATCHDOG)
+        self.assertEqual(mutations, [])
+        self.assertIn("TRIGGER_CHANGED", result["error"])
+
+    def test_changed_anchor_after_registration_rolls_back(self):
+        result, mutations = self.run_case(change_after_register=WATCHDOG)
+        self.assertIn("TRIGGER_CHANGED", result["error"])
+        self.assertEqual(mutations[-2:], [f"RESTORE {HOURLY}", f"RESTORE {WATCHDOG}"])
 
     def test_rollback_failure_is_reported_unverified(self):
         result, mutations = self.run_case(register_fail=[WATCHDOG], restore_fail=[HOURLY])

@@ -10,6 +10,17 @@
 #      a task that was absent is unregistered if it now exists (a failed lookup marks recovery unverified). Untouched
 #      or uncaptured definitions are never altered.
 
+function Get-SealedFreshnessTriggerXml([string]$Xml) {
+    try {
+        $document = [xml]$Xml
+        $nodes = @($document.SelectNodes("/*[local-name()='Task']/*[local-name()='Triggers']/*"))
+        if ($nodes.Count -ne 1 -or $nodes[0].LocalName -ne 'TimeTrigger' -or
+            @($nodes[0].SelectNodes("./*[local-name()='StartBoundary']")).Count -ne 1 -or
+            @($nodes[0].SelectNodes("./*[local-name()='Repetition']")).Count -ne 1) { throw 'TRIGGER_UNSUPPORTED' }
+        return $nodes[0].OuterXml
+    } catch { throw 'TRIGGER_UNSUPPORTED' }
+}
+
 function Get-SealedFreshnessTaskPreimage([string]$Name) {
     try {
         $found = @(Get-ScheduledTask -TaskName $Name -ErrorAction Stop)
@@ -24,7 +35,9 @@ function Get-SealedFreshnessTaskPreimage([string]$Name) {
         throw "PREIMAGE_CAPTURE_FAILED: export $Name"
     }
     if ([string]::IsNullOrWhiteSpace($xml)) { throw "PREIMAGE_CAPTURE_FAILED: empty export $Name" }
-    return @{ Exists = $true; Xml = $xml }
+    $triggerXml = Get-SealedFreshnessTriggerXml $xml
+    if (@($found[0].Triggers).Count -ne 1) { throw 'TRIGGER_UNSUPPORTED' }
+    return @{ Exists = $true; Xml = $xml; Trigger = $found[0].Triggers[0]; TriggerXml = $triggerXml }
 }
 
 function Invoke-SealedFreshnessTaskTransaction {
@@ -40,6 +53,17 @@ function Invoke-SealedFreshnessTaskTransaction {
     } catch {
         throw "SEALED_FRESHNESS_TASKS_UNCHANGED; $($_.Exception.Message)"
     }
+    # Recheck all anchors before any mutation; ambiguous or changed definitions fail closed.
+    try {
+        foreach ($Definition in $Definitions) {
+            $preimage = $preimages[$Definition.Name]
+            if ($preimage.Exists) {
+                $current = Get-SealedFreshnessTaskPreimage $Definition.Name
+                if (-not $current.Exists -or $current.TriggerXml -cne $preimage.TriggerXml) { throw 'TRIGGER_CHANGED' }
+            }
+        }
+    } catch { throw "SEALED_FRESHNESS_TASKS_UNCHANGED; $($_.Exception.Message)" }
+
 
     $attempted = New-Object System.Collections.Generic.List[string]
     try {
@@ -47,7 +71,11 @@ function Invoke-SealedFreshnessTaskTransaction {
             $action = & $BuildAction $Definition
             $principal = New-ScheduledTaskPrincipal -UserId $CurrentUser -LogonType $LogonType -RunLevel Limited
             $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Hours 1)
-            $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Minutes $Definition.RepetitionMinutes) -RepetitionDuration (New-TimeSpan -Days 10000)
+            $trigger = if ($preimages[$Definition.Name].Exists) {
+                $preimages[$Definition.Name].Trigger
+            } else {
+                New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Minutes $Definition.RepetitionMinutes) -RepetitionDuration (New-TimeSpan -Days 10000)
+            }
             $attempted.Add($Definition.Name)
             Register-ScheduledTask -TaskName $Definition.Name -Action $action -Trigger $trigger -Settings $settings -Principal $principal -Description $Definition.Description -Force -ErrorAction Stop | Out-Null
         }
@@ -61,7 +89,12 @@ function Invoke-SealedFreshnessTaskTransaction {
             if ($limitSpan -ne (New-TimeSpan -Hours 1)) { throw "EXECUTION_TIME_LIMIT_INVALID: $($Definition.Name)" }
             $repetition = $Task.Triggers[0].Repetition
             $repSpan = if ($repetition -and $repetition.Interval -is [TimeSpan]) { $repetition.Interval } elseif ($repetition) { [System.Xml.XmlConvert]::ToTimeSpan([string]$repetition.Interval) } else { $null }
-            if (-not $repSpan -or $repSpan -ne (New-TimeSpan -Minutes $Definition.RepetitionMinutes)) {
+            if ($preimages[$Definition.Name].Exists) {
+                $installedXml = [string](Export-ScheduledTask -TaskName $Definition.Name -ErrorAction Stop)
+                if ((Get-SealedFreshnessTriggerXml $installedXml) -cne $preimages[$Definition.Name].TriggerXml) {
+                    throw "TRIGGER_CHANGED: $($Definition.Name)"
+                }
+            } elseif (-not $repSpan -or $repSpan -ne (New-TimeSpan -Minutes $Definition.RepetitionMinutes)) {
                 throw "REPETITION_INTERVAL_INVALID: $($Definition.Name)"
             }
         }
