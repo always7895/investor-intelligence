@@ -196,6 +196,7 @@ def validate_option_quote(quote: dict, evaluated_at: str | None = None) -> None:
         "candidate_local_review",
         "unadmitted_third_party",
         "review_before_enable",
+        "licence_required",
         "automated_access_prohibited",
     ):
         raise MarketProductValidationError("INVALID_RIGHTS_STATUS")
@@ -626,7 +627,7 @@ COVERAGE_NOTES = frozenset({
     "CATALOG_COUNT_IS_NOT_INDEPENDENT_CONFIRMATION", "DECLARED_IS_NOT_COLLECTED_OR_LIVE", "EOD_INDEX_AND_DELTA_NOT_ADMITTED_BY_THIS_VIEW",
     "NO_RAW_QUOTES_IN_THIS_OBJECT", "ORIGIN_LINEAGE_UNKNOWN_NO_CORROBORATION_METRIC", "UNCATALOGUED_JURISDICTIONS_ARE_NOT_COVERAGE",
 })
-_COVERAGE_RIGHTS = frozenset({"review_before_enable", "reviewed_public_access", "automated_access_prohibited", "operator_accepted_unlicensed"})
+_COVERAGE_RIGHTS = frozenset({"review_before_enable", "reviewed_public_access", "automated_access_prohibited", "licence_required", "operator_accepted_unlicensed"})
 _COVERAGE_ADAPTERS = frozenset({"not_implemented", "candidate_implemented", "adapter_reviewed", "not_permitted"})
 _COVERAGE_ID = re.compile(r"[a-z0-9_]{1,64}")
 _COVERAGE_CODE = re.compile(r"[A-Z0-9_]{1,12}")

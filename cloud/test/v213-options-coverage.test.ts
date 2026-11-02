@@ -54,8 +54,9 @@ const bytes = (text: string) => new TextEncoder().encode(text).byteLength;
 const admittedByCatalog = (provider: Json) => provider.runtime_enabled === true && provider.line_quote_eligible === true;
 
 /** The catalog-derived sections, built the way scripts/publish_sealed_snapshot.py builds them. */
-function derivedBody(generatedAt = "2026-09-30T17:00:00Z", link: Json | null = null, observed: Json[] = []): Json {
-  const providers = (catalogJson as unknown as { providers: Json[] }).providers;
+function derivedBody(generatedAt = "2026-09-30T17:00:00Z", link: Json | null = null, observed: Json[] = [],
+  catalogRoot: Json = catalogJson): Json {
+  const providers = catalogRoot.providers as Json[];
   const byCode = new Map<string, string[]>();
   for (const provider of providers) for (const code of provider.jurisdictions as string[]) byCode.set(code, [...(byCode.get(code) ?? []), provider.id as string]);
   const codes = [...byCode.keys()].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
@@ -63,7 +64,7 @@ function derivedBody(generatedAt = "2026-09-30T17:00:00Z", link: Json | null = n
     schema: "v213-options-coverage-v1", generated_at: generatedAt, purpose: "SOURCE_COVERAGE_METADATA_ONLY", options_link: link,
     // V11: the catalog may enable the pinned operator-accepted provider, so the admitted count and the root selection follow the catalog.
     catalog_summary: { catalog_provider_count: providers.length, public_admitted_provider_count: providers.filter(admittedByCatalog).length,
-      production_provider_selected: (catalogJson as unknown as { production_quote_provider_selected: boolean }).production_quote_provider_selected },
+      production_provider_selected: catalogRoot.production_quote_provider_selected },
     providers: providers.map(provider => ({ provider_id: provider.id, name: provider.name, authority: provider.authority, jurisdictions: provider.jurisdictions,
       data_roles: provider.data_roles, rights_status: provider.rights_status, rights_reviewed_at: provider.rights_reviewed_at,
       adapter_status: provider.adapter_status, runtime_enabled: provider.runtime_enabled, line_quote_eligible: provider.line_quote_eligible,
@@ -178,10 +179,43 @@ describe("G1A loader states", () => {
     expect((await load({ ...derivedBody(), generated_at: "2026-02-30T00:00:00Z" })).result.status).toBe("COVERAGE_SCHEMA_INVALID");
   });
 
+  it("accepts the pinned predecessor projection and renders its own statuses through the sealed public caller", async () => {
+    const bundled = readFileSync(resolve(__dirname, "../src/v213/options-provider-catalog-4065fbe.json"), "utf-8");
+    const fixture = readFileSync(resolve(__dirname, "fixtures/options-provider-catalog-pre-v30.json"), "utf-8");
+    expect(await sha(bundled)).toBe("174d0ae313171f48e6fc4611bf88a6fa2a11251a0b772be6bfe62094c0695f3e");
+    expect(await sha(fixture)).toBe(await sha(bundled));
+    const old = derivedBody(undefined, null, [], JSON.parse(fixture) as Json);
+    const { env, result } = await load(old);
+    expect(result.status).toBe("OK");
+    const output = textOf(await v213PublicLineAnswer(env as never, parseQuery("全球期權來源與缺口")) as { type: string; text?: string }[]);
+    expect(output).toContain("eurex_public_derivatives｜Eurex Frankfurt AG｜EU/DE/GLOBAL｜權利:review_before_enable");
+    expect(output).not.toContain("krx_open_api_options");
+    expect(output).not.toContain("OPTIONS_COVERAGE_UNAVAILABLE");
+    const changed = clone(old);
+    changed.providers.find((row: Json) => row.provider_id === "eurex_public_derivatives").rights_status = "licence_required";
+    expect((await load(changed)).result.status).toBe("COVERAGE_SCHEMA_INVALID");
+    const mixed = clone(old);
+    mixed.jurisdictions = derivedBody().jurisdictions;
+    expect((await load(mixed)).result.status).toBe("COVERAGE_SCHEMA_INVALID");
+    expect((await load(derivedBody())).result.status).toBe("OK");
+  });
+
+  it("accepts the catalog's licence-required declarations", async () => {
+    const body = derivedBody();
+    expect(body.providers.some((row: Json) => row.rights_status === "licence_required")).toBe(true);
+    expect((await load(body)).result.status).toBe("OK");
+  });
+
+  it("rejects an unknown rights status", async () => {
+    const body = derivedBody();
+    body.providers[0].rights_status = "invented_rights";
+    expect((await load(body)).result.status).toBe("COVERAGE_SCHEMA_INVALID");
+  });
+
   it("every declared section must equal the Worker's own derivation: a forged or widened body is invalid, never merged", async () => {
     const forgeries: [string, (body: Json) => void][] = [
       ["provider name", body => { body.providers[0].name = "Forged Exchange Name"; }],
-      ["rights status", body => { const row = body.providers.find((item: Json) => item.rights_status === "review_before_enable"); row.rights_status = "reviewed_public_access"; }],
+      ["rights status", body => { const row = body.providers.find((item: Json) => item.rights_status === "licence_required"); row.rights_status = "reviewed_public_access"; }],
       ["line eligibility", body => { body.providers[0].line_quote_eligible = !body.providers[0].line_quote_eligible; }],
       ["provider dropped", body => { body.providers.pop(); body.catalog_summary.catalog_provider_count -= 1; }],
       ["jurisdiction expanded", body => { body.jurisdictions.push({ code: "ZZ", provider_ids: [body.providers[0].provider_id], catalog_provider_count: 1 }); }],

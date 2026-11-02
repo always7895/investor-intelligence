@@ -3,9 +3,8 @@
 // processAuthorizedLineEvent on a sealed MemoryKv snapshot. The sealed options object is a slice of what the real Python producer and sealer emit
 // (cloud/test/fixtures/v11-options-carry.json, byte-pinned by tests/test_v11_options_carry_forward.py).
 //
-// The catalog is the REPOSITORY catalog with the test copy of the pinned operator-accepted entry applied through vi.doMock (the Worker imports the
-// catalog JSON at build time), so these rows prove the target state without depending on the repository catalog edit; the parity row compares
-// the copy with config/public-options-provider-candidates.json when the entry is there. Synthetic LINE credentials; every other network call throws.
+// The historical catalog predates V30 and keeps these October clocks meaningful. A separate parity row compares the pinned Yahoo entry
+// with the current repository catalog. Synthetic LINE credentials; every other network call throws.
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -16,6 +15,7 @@ import { SNAPSHOT_SEAL_KEY } from "../src/v213/snapshot-seal";
 
 const CATALOG_MODULE = "../../config/public-options-provider-candidates.json";
 const repository = JSON.parse(readFileSync(resolve(__dirname, CATALOG_MODULE), "utf-8")) as Doc;
+const historical = JSON.parse(readFileSync(resolve(__dirname, "fixtures/options-provider-catalog-pre-v30.json"), "utf-8")) as Doc;
 const fixture = JSON.parse(readFileSync(resolve(__dirname, "fixtures/v11-options-carry.json"), "utf-8")) as Doc;
 type Doc = Record<string, any>;
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
@@ -32,9 +32,9 @@ const YAHOO_ENTRY: Doc = {
   admitted_scopes: [SCOPE, { ...SCOPE, quote_basis: "previous_session_last" }], operator_decision: DECISION,
 };
 
-/** The repository catalog with the test copy of the Yahoo entry (replacing a repository one) and the matching root selection. */
+/** The historical catalog with the test copy of the Yahoo entry and the matching root selection. */
 function catalogWith(mutate?: (yahoo: Doc, doc: Doc) => void, withYahoo = true): Doc {
-  const doc = clone(repository);
+  const doc = clone(historical); // These 2026-10-13 cases precede the 2026-11-02 review.
   // V13: the Nasdaq Nordic entry (decided 2026-10-17) lies after this file's 2026-10-13 clocks, where it would make the whole catalog unusable;
   // its own rows live in v13-nordic-options-operator-accepted.test.ts. V19: the Nasdaq US entry (decided 2026-10-19) is dropped the same way
   // (its rows live in v19-nasdaq-us-options-operator-accepted.test.ts). Dropping them here keeps these rows proving the Yahoo behaviour alone.
@@ -195,7 +195,7 @@ describe("W1 admission: the pinned operator decision, through the catalog", () =
   });
 
   it("any other provider claiming the operator status invalidates the catalog, whatever it copies", async () => {
-    const others = repository.providers.filter((item: Doc) => item.id !== YAHOO_ID && item.id !== "nasdaq_nordic_option_chain" && item.id !== "nasdaq_public_option_chain").map((item: Doc) => item.id as string);
+    const others = historical.providers.filter((item: Doc) => item.id !== YAHOO_ID && item.id !== "nasdaq_nordic_option_chain" && item.id !== "nasdaq_public_option_chain").map((item: Doc) => item.id as string);
     expect(others.length).toBeGreaterThanOrEqual(11);
     for (const id of others) {
       const doc = catalogWith((_yahoo, root) => {

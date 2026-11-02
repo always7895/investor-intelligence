@@ -38,7 +38,7 @@ print(json.dumps({"choices": [choice.isoformat() if choice is not None else None
   pythonChoices = observed.choices;
   pythonWindows = observed.windows;
   capturedAt = observed.captured_at;
-});
+}, 60_000);
 
 describe("monthly expiry Python/Worker behavioral parity", () => {
   it.each(cases.map((row, index) => ({ ...row, index })))("$name", row => {

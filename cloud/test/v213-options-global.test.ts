@@ -326,7 +326,7 @@ describe("OPTIONS-GLOBAL-01 acceptance regression tests", () => {
 
     // IQE -> Unsupported market
     const iqeReply = await actualReply(env, "IQE 每月期權");
-    expect(iqeReply).toContain("尚未採用此市場");
+    expect(iqeReply).toContain("尚無可免費自動公開散布的授權個股期權報價來源");
 
     // Ambiguous dual listing
     const dualReply = await actualReply(env, "合成雙掛 每月期權");

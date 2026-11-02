@@ -44,7 +44,7 @@ class PublicOptionsProviderGateTests(unittest.TestCase):
         self.assertGreaterEqual(summary["authority_count"], 10)
         self.assertGreaterEqual(summary["jurisdiction_count"], 6)
         self.assertEqual(summary["automation_prohibited_count"], 4)
-        self.assertEqual(summary["pending_rights_count"], 6)  # V19: the Nasdaq US row left review_before_enable
+        self.assertEqual(summary["pending_rights_count"], 2)  # NYSE and CME lack V30 review evidence
         self.assertEqual(summary["reviewed_public_access_count"], 1)
         # V11 (operator 2026-10-13): the ONLY provider that can ever be enabled is the pinned operator-accepted Yahoo one (no rights-reviewed
         # provider is live). These invariants hold whether or not the catalog currently carries that entry.
@@ -199,11 +199,9 @@ class PublicOptionsProviderGateTests(unittest.TestCase):
         temporary, root = self.fixture_root()
         try:
             path, document = self.read_candidates(root)
-            provider = next(
-                item
-                for item in document["providers"]
-                if item["rights_status"] == "review_before_enable"
-            )
+            provider = next(item for item in document["providers"] if item["id"] == "eurex_public_derivatives")
+            provider["rights_status"] = "review_before_enable"
+            provider["adapter_status"] = "not_implemented"
             provider["automated_access_allowed"] = True
             provider["rights_reviewed_at"] = "2026-08-25"
             self.write_candidates(path, document)

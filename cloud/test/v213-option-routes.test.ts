@@ -59,6 +59,8 @@ async function sealedEnv() {
   await sealUnboundReport(kv, RUN);
   const shard = (bucket: string, rows: unknown[]) => ({ schema: "v213-identity-shard-v2", kind: "symbol", bucket, generated_at: stamp, feeds: FEEDS, rows });
   const lazy: Record<string, unknown> = {
+    "v213:identity:v2:sym:1": shard("1", [["1303", "TWSE", "TAIWAN", "Taiwan", "Synthetic Listed Option", null, "COMMON_STOCK", "TWD", 0]]),
+    "v213:identity:v2:sym:3": shard("3", [["3006", "TWSE", "TAIWAN", "Taiwan", "Synthetic Unlisted Option", null, "COMMON_STOCK", "TWD", 0]]),
     "v213:identity:v2:sym:2": shard("2", [["2330", "TWSE", "TAIWAN", "Taiwan", "Taiwan Semiconductor Manufacturing", null, "COMMON_STOCK", "TWD", 0, ["台積電", "TWSE"]]]),
     "v213:identity:v2:sym:I": shard("I", [["IQE", "LSE AIM", "UK", "United Kingdom", "IQE PLC", null, "COMMON_STOCK", "GBX", 1]]),
     "v213:identity:v2:sym:A": shard("A", [["AZN", "NASDAQ", "US", "United States", "AstraZeneca PLC ADS", null, "ADR", "USD", 0, ["阿斯特捷利康", "ZHWIKI"]],
@@ -98,6 +100,12 @@ async function sealedEnv() {
 }
 
 const answer = async (env: Awaited<ReturnType<typeof sealedEnv>>, text: string) => JSON.stringify(await v213PublicLineAnswer(env as never, parseQuery(text)));
+const expectShortReason = (body: string) => {
+  const text = (JSON.parse(body) as { text: string }[])[0]!.text;
+  const reason = text.split("\n").find(line => line.startsWith("原因說明："))!;
+  expect(reason.length).toBeLessThanOrEqual(120);
+  expect(reason.match(/。/g)).toHaveLength(2);
+};
 
 describe("option routes outside the sealed option markets", () => {
   it("TESTFIX1 rights NONE: denies the ADR option route without opt-in", async () => {
@@ -133,16 +141,31 @@ describe("option routes outside the sealed option markets", () => {
     const body = await answer(env, "IQE 每月期權");
     expect(body).toContain("IQE 在英國（倫敦）（LSE AIM）掛牌");
     expect(body).toContain("只涵蓋美股與Nasdaq Stockholm");
-    expect(body).toContain("本服務尚未採用此市場的個股期權報價來源");  // the service's coverage, not a claim about the market
-    // ABS-WORDING decision A: the hedge below is a caveat about the stock, not an absence inference from the snapshot (this branch has
-    // no snapshot evidence about the listing at all, unlike a covered market whose answer states only what the snapshot proves,
-    // v213-options-nonus.test.ts "no speculative 'may have no options'"). It stays, and it never becomes an absence claim.
-    expect(body).toContain("（該股也可能沒有掛牌期權）；不以模型推估。");
+    expect(body).toContain("本服務尚無可免費自動公開散布的授權個股期權報價來源");
+    expect(body).toContain("該股也可能沒有掛牌期權");
+    expect(body).toContain("全球期權來源與缺口");
     expect(body).not.toContain("沒有掛牌期權。");
     expect(body).not.toContain("本輪封存資料沒有此掛牌的期權觀察");  // the covered-market sentence is not reused for an uncovered market
     expect(body).not.toContain("不在觀察範圍");
     expect(body).not.toContain("OPTION_DATA_NOT_ADMITTED");
     expect(await answer(env, "每月期權")).not.toContain("以其美國 ADR");  // a cycle word alone is not a company name
+  });
+
+  it("states the dated TAIFEX absence for a Taiwan stock without an option", async () => {
+    const body = await answer(await sealedEnv(), "3006.TW 每月期權");
+    expect(body).toContain("2026-11-02");
+    expect(body).toContain("期交所未列有此股個股選擇權");
+    expect(body).toContain("全球期權來源與缺口");
+    expectShortReason(body);
+  });
+
+  it("distinguishes a listed Taiwan option from a missing service quote", async () => {
+    const body = await answer(await sealedEnv(), "1303.TW 每月期權");
+    expect(body).toContain("2026-11-02");
+    expect(body).toContain("期交所列有此股個股選擇權");
+    expect(body).toContain("免費資料僅每日收盤");
+    expect(body).toContain("全球期權來源與缺口");
+    expectShortReason(body);
   });
 
   it("answers a Chinese name resolved to a US or Stockholm listing from that listing's own key", async () => {

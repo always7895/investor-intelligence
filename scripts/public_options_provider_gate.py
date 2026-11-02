@@ -40,6 +40,7 @@ ALLOWED_RIGHTS_STATUSES = {
     "review_before_enable",
     "reviewed_public_access",
     "automated_access_prohibited",
+    "licence_required",
     OPERATOR_ACCEPTED_STATUS,
 }
 ALLOWED_ADAPTER_STATUSES = {
@@ -366,6 +367,13 @@ def audit_public_options_providers(root: Path = ROOT, today: date | None = None)
                 findings.append(f"{provider_id}: prohibited source requires a review date")
             if adapter_status != "not_permitted":
                 findings.append(f"{provider_id}: prohibited source adapter must be not_permitted")
+        elif rights_status == "licence_required":
+            if automation_allowed is not False:
+                findings.append(f"{provider_id}: licence-required source cannot allow unlicensed automated access")
+            if not _review_date(reviewed_at):
+                findings.append(f"{provider_id}: licence-required source requires a review date")
+            if adapter_status != "not_permitted":
+                findings.append(f"{provider_id}: licence-required source adapter must be not_permitted")
         elif rights_status == "reviewed_public_access":
             reviewed_access_count += 1
             if automation_allowed is not True:

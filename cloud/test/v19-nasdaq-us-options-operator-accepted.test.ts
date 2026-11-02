@@ -1,9 +1,9 @@
 // V19 A1 on the Worker: the operator-accepted (unlicensed) Nasdaq US option chain (the Yahoo fallback), a third pinned provider beside Yahoo and Nasdaq
 // Nordic, through the REAL callers: admitPublicOption, validateCoveredCallCycle, loadDetailedOptionObservation, the renderer and processAuthorizedLineEvent
 // on a sealed MemoryKv snapshot. The sealed options object is a slice of what the real Python producer and sealer emit
-// (cloud/test/fixtures/v19-nasdaq-us-options.json, byte-pinned by tests/test_v19_nasdaq_us_options_operator_accepted.py). The catalog is the REPOSITORY
-// catalog (vi.doMock, since the Worker imports it at build time) with mutations applied per row; clocks lie after the decision day 2026-10-19.
-// Synthetic LINE credentials; every other network call throws.
+// (cloud/test/fixtures/v19-nasdaq-us-options.json, byte-pinned by tests/test_v19_nasdaq_us_options_operator_accepted.py). October-clock cases
+// use the pre-V30 catalog fixture (vi.doMock); a separate parity row checks the repository catalog. Synthetic LINE credentials; every other
+// network call throws.
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -13,6 +13,7 @@ import { SNAPSHOT_SEAL_KEY } from "../src/v213/snapshot-seal";
 
 const CATALOG_MODULE = "../../config/public-options-provider-candidates.json";
 const repository = JSON.parse(readFileSync(resolve(__dirname, CATALOG_MODULE), "utf-8")) as Doc;
+const historical = JSON.parse(readFileSync(resolve(__dirname, "fixtures/options-provider-catalog-pre-v30.json"), "utf-8")) as Doc;
 const fixture = JSON.parse(readFileSync(resolve(__dirname, "fixtures/v19-nasdaq-us-options.json"), "utf-8")) as Doc;
 type Doc = Record<string, any>;
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
@@ -35,9 +36,9 @@ const RUN = "20261019T140000Z-abcdefabcde4";
 const NQ = "SYNTHNQ00";
 
 const entry = (doc: Doc, id: string): Doc => doc.providers.find((item: Doc) => item.id === id)!;
-/** The repository catalog with optional per-row mutations (a deep copy). */
+/** The historical catalog with optional per-row mutations (a deep copy). */
 function catalogWith(mutate?: (nasdaq: Doc, yahoo: Doc, doc: Doc) => void): Doc {
-  const doc = clone(repository);
+  const doc = clone(historical); // The fixture clocks precede the 2026-11-02 catalog review.
   mutate?.(entry(doc, NASDAQ_ID), entry(doc, YAHOO_ID), doc);
   return doc;
 }
@@ -185,7 +186,7 @@ describe("admission: the pinned Nasdaq US decision, through the catalog", () => 
   it("a second provider claiming the Nasdaq US id or the operator status invalidates the catalog, whatever it copies", async () => {
     const duplicate = await world(catalogWith((nasdaq, _yahoo, doc) => { doc.providers.push(clone(nasdaq)); }));
     expect(duplicate.admission.admitPublicOption(NASDAQ_CLAIM, NOW)).toEqual(DENIED);
-    const others = repository.providers.map((item: Doc) => item.id as string).filter((id: string) => ![NASDAQ_ID, NORDIC_ID, YAHOO_ID].includes(id));
+    const others = historical.providers.map((item: Doc) => item.id as string).filter((id: string) => ![NASDAQ_ID, NORDIC_ID, YAHOO_ID].includes(id));
     expect(others.length).toBeGreaterThanOrEqual(10);
     for (const id of others) {
       const doc = catalogWith((nasdaq, _yahoo, root) => {

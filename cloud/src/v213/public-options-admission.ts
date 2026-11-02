@@ -47,7 +47,7 @@ const REQUIRED_FIELDS = ["id", "name", "authority", "jurisdictions", "data_roles
   "line_quote_eligible"];
 const ALL_FIELDS = new Set([...REQUIRED_FIELDS, "admitted_scopes", "review_valid_through", "operator_decision"]);
 const OPERATOR_ACCEPTED_STATUS = "operator_accepted_unlicensed";
-const RIGHTS_STATUSES = new Set(["review_before_enable", "reviewed_public_access", "automated_access_prohibited", OPERATOR_ACCEPTED_STATUS]);
+const RIGHTS_STATUSES = new Set(["review_before_enable", "reviewed_public_access", "automated_access_prohibited", "licence_required", OPERATOR_ACCEPTED_STATUS]);
 const ADAPTER_STATUSES = new Set(["not_implemented", "candidate_implemented", "adapter_reviewed", "not_permitted"]);
 const PROHIBITED_IDS = ["cboe_public_options_market_data", "marketdata_app_free_forever", "occ_public_market_data",
   "tradier_broker_market_data_api"];
@@ -199,6 +199,8 @@ function checkProvider(provider: Record<string, unknown>, today: number): Provid
   if (status === "review_before_enable") {
     if (automation !== null || reviewedAt !== null || adapter === "not_permitted") return null;
   } else if (status === "automated_access_prohibited") {
+    if (automation !== false || reviewedDay === null || reviewedDay > today || adapter !== "not_permitted") return null;
+  } else if (status === "licence_required") {
     if (automation !== false || reviewedDay === null || reviewedDay > today || adapter !== "not_permitted") return null;
   } else if (status === OPERATOR_ACCEPTED_STATUS) {
     // Operator decision, not a rights review (mirror of the Python audit): only the pinned id, the exact pinned decision and a subset of

@@ -3,9 +3,9 @@
  *
  * Sealed lazy object `v213:options-coverage:v1`, produced by scripts/publish_sealed_snapshot.py and bound by the same seal. Nothing in the body
  * is authority. The loader (1) rejects a raw body over 200000 UTF-8 bytes BEFORE JSON.parse, (2) validates the strict bounded shape,
- * (3) DERIVES every declared section itself from the SAME canonical catalog and the SAME unchanged ADR routing map this Worker imports
- * (provider rows including name, the jurisdiction -> unique provider-id relation with the literal declared codes only, and the local
- * covered-call routing markets from the covered_markets KEYS) and requires exact equality, and the page prints only that derived projection;
+ * (3) DERIVES every displayed declared section from either the bundled current catalog or its pinned predecessor, plus the unchanged ADR map
+ * (provider rows including name, the jurisdiction -> unique provider-id relation with literal codes, and local covered-call routing markets),
+ * requires exact equality to one whole projection, and prints only that projection;
  * (4) rechecks the options link by sha256 and byte length of the sealed options body and recomputes every observed row under the SAME rules
  * as the real public loader (loadDetailedOptionObservation: canonical document clock, at most 5 minutes in the future and 6 hours old,
  * v2 shape, ONLY weekly and monthly, producer-unavailable stays unavailable, validateCoveredCallCycle with its period) plus the canonical
@@ -21,6 +21,7 @@
  * broadened to EOD, index or Delta data. No private, raw strike/bid/ask, settlement, Delta or premium field exists in this DTO. */
 import adrMap from "../../../config/option-adr-map-v1.json";
 import catalog from "../../../config/public-options-provider-candidates.json";
+import predecessorCatalog from "./options-provider-catalog-4065fbe.json";
 import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
 import { isValidUtcIsoInstant, validateCoveredCallCycle } from "./covered-call";
 import { OPTIONS_KEY } from "./market-observations";
@@ -42,7 +43,7 @@ const COVERAGE_NOTES = new Set([
   "CATALOG_COUNT_IS_NOT_INDEPENDENT_CONFIRMATION", "DECLARED_IS_NOT_COLLECTED_OR_LIVE", "EOD_INDEX_AND_DELTA_NOT_ADMITTED_BY_THIS_VIEW",
   "NO_RAW_QUOTES_IN_THIS_OBJECT", "ORIGIN_LINEAGE_UNKNOWN_NO_CORROBORATION_METRIC", "UNCATALOGUED_JURISDICTIONS_ARE_NOT_COVERAGE",
 ]);
-const RIGHTS_STATUSES = new Set(["review_before_enable", "reviewed_public_access", "automated_access_prohibited", "operator_accepted_unlicensed"]);
+const RIGHTS_STATUSES = new Set(["review_before_enable", "reviewed_public_access", "automated_access_prohibited", "licence_required", "operator_accepted_unlicensed"]);
 const ADAPTER_STATUSES = new Set(["not_implemented", "candidate_implemented", "adapter_reviewed", "not_permitted"]);
 const ID_RE = /^[a-z0-9_]{1,64}$/;
 const CODE_RE = /^[A-Z0-9_]{1,12}$/;
@@ -201,9 +202,8 @@ interface Derived {
   providers: CoverageProvider[]; jurisdictions: CoverageJurisdiction[]; local_markets: string[]; production_selected: boolean;
 }
 
-/** Everything the page may declare, derived ONLY from the canonical catalog JSON and the ADR map keys imported by this Worker. */
-function deriveFromCanonical(): Derived | null {
-  const root: unknown = catalog;
+/** Derive the complete displayed projection from one bundled catalog and the unchanged ADR map. */
+function deriveFromCatalog(root: unknown): Derived | null {
   if (!isRecord(root) || !Array.isArray(root.providers) || root.providers.length > MAX_PROVIDERS || typeof root.production_quote_provider_selected !== "boolean") return null;
   const providers: CoverageProvider[] = [];
   const byCode = new Map<string, string[]>();
@@ -322,8 +322,14 @@ export async function loadOptionsCoverage(view: PublicSnapshotView, now: number 
   let raw: unknown;
   try { raw = JSON.parse(text); } catch { return plain("COVERAGE_SCHEMA_INVALID"); }
   const valid = validateOptionsCoverage(raw);
-  const derived = deriveFromCanonical();
-  if (!valid || !derived || !matchesDerived(valid, derived)) return plain("COVERAGE_SCHEMA_INVALID");
+  const current = deriveFromCatalog(catalog);
+  if (!valid || !current) return plain("COVERAGE_SCHEMA_INVALID");
+  // Rollout is new Worker first, then catalog sync and sealed publication. Old Worker + new catalog is unsupported.
+  // Accept exactly one whole projection, never a mixture; observed quote admission still uses the current policy.
+  const currentMatches = matchesDerived(valid, current);
+  const predecessor = currentMatches ? null : deriveFromCatalog(predecessorCatalog);
+  const derived = currentMatches ? current : predecessor && matchesDerived(valid, predecessor) ? predecessor : null;
+  if (!derived) return plain("COVERAGE_SCHEMA_INVALID");
   const generated = Date.parse(valid.generated_at);
   if (generated - now > FUTURE_SKEW_MS) return plain("COVERAGE_SCHEMA_INVALID");
   if (now - generated > MAX_AGE_MS) return plain("COVERAGE_STALE", valid.generated_at);

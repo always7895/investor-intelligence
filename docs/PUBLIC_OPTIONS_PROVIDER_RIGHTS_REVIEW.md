@@ -6,6 +6,14 @@ Dating note (D1 closure): `Last reviewed` dates only the four reviewed provider 
 
 This document records provider-admission decisions for the shared public LINE Bot. A page being viewable without payment does **not** establish permission for automated collection, API use, republishing or redistribution. Catalog membership never activates a provider.
 
+## 2026-11-02 global review
+
+The reviewed Eurex, JPX/OSE, HKEX and ASX market-data candidates require a licence for automated public display. KRX's registered free API is non-commercial and prohibits redistribution; ICE/LSE, TMX/Montreal and NSE also require licensed public distribution. These declarations remain disabled and do not permit an adapter or LINE quotes. Cboe and OCC retain their existing, evidenced automation prohibitions. NYSE and CME retain their previous pending-review declarations because this review did not supply evidence for them.
+
+TAIFEX government dataset 11320 is free with attribution only for daily end-of-day observations; it is not a current or executable quote, and the candidate remains disabled for publication and LINE. The dated [TAIFEX single-stock option listing snapshot](../config/taifex-stock-option-underlyings-v1.json) supports Taiwan gap descriptions as of 2026-11-02, not an assertion about later listings. Yahoo, Nasdaq US and Nasdaq Nordic remain under their unchanged operator-accepted decisions; this review grants no licence.
+
+For the coverage-page transition, deploy the new Worker first, then synchronize the installed catalog and publish the next sealed snapshot. The new Worker accepts only the exact displayed projection of its current bundled catalog or the pinned `4065fbe` predecessor; observed quote admission remains governed by the current catalog. An old Worker with the new catalog is unsupported, so reversing this order can make the page unavailable. This ordering is a deployment requirement, not authorization to deploy.
+
 ## Mandatory admission conditions
 
 A production public option BID/ASK provider must satisfy all of the following at the same reviewed revision:

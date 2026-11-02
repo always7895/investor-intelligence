@@ -110,7 +110,7 @@ export interface OptionContractQuote {
   readonly provenance: string;
   readonly currency: "USD" | "SEK";
   readonly multiplier: 100;
-  readonly rights_status: "reviewed_public_access" | "candidate_local_review" | "unadmitted_third_party" | "review_before_enable" | "automated_access_prohibited";
+  readonly rights_status: "reviewed_public_access" | "candidate_local_review" | "unadmitted_third_party" | "review_before_enable" | "automated_access_prohibited" | "licence_required";
   readonly admission_status: "ADMITTED" | "NOT_ADMITTED";
   /** Producer-CLAIMED join identity (never authority): only the trusted catalog in public-options-admission.ts admits. */
   readonly provider_id?: string;
@@ -690,6 +690,7 @@ export function validateOptionContractQuote(
     "unadmitted_third_party",
     "review_before_enable",
     "automated_access_prohibited",
+    "licence_required",
   ] as const;
   const rights_status = obj.rights_status as typeof validRights[number];
   if (!validRights.includes(rights_status)) {

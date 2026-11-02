@@ -272,7 +272,7 @@ describe("OPTIONS-NONUS-02 bridge: exact Python-emitted bodies through the Worke
     vi.setSystemTime(FIXED_NOW + 7 * 3600_000);
     expect(textOf(await reply(await sealedEnv("retained_sive_sept30"), "VOLV-B.ST 每月期權"))).toContain("期權快照已逾時");
     vi.setSystemTime(FIXED_NOW);
-    expect(textOf(await reply(await sealedEnv("retained_sive_sept30"), "IQE 每月期權"))).toContain("尚未採用此市場");
+    expect(textOf(await reply(await sealedEnv("retained_sive_sept30"), "IQE 每月期權"))).toContain("尚無可免費自動公開散布的授權個股期權報價來源");
   });
 
   it("serves a depleted candidate's RETAINED old file at its original age and never the rejected candidate", async () => {
