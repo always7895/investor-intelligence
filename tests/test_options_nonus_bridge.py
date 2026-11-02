@@ -72,9 +72,6 @@ class BridgeFixtureTests(unittest.TestCase):
                 generator.seal(result.output, generator.NOW, synthetic_tickers=tickers | {"OUTSIDE-SCENARIO"})
             self.assertIs(generator.option_rights.public_option_cycle_admission, real_admission)
 
-    def test_policy_constants_agree_with_the_validator_and_worker_windows(self):
-        self.assertEqual(builder.CYCLES, {"weekly": (0, 14), "monthly": (21, 45)})  # weekly: outer bound of the calendar-week rule
-
     def test_every_body_hash_matches_its_exact_string_and_provenance_is_embedded(self):
         self.assertEqual(self.doc["schema"], generator.BRIDGE_SCHEMA)
         prov = self.doc["provenance"]["retained_source_samples"]
@@ -99,13 +96,8 @@ class BridgeFixtureTests(unittest.TestCase):
                 self.assertEqual(json.loads(case["retained_old_bodies"]["options"])["generated_at"], case["retained_old_generated_at"])
         self.assertEqual(kinds, {"ADMITTED", "REJECTED"})
 
-    def test_sive_cutoff_case_is_listed_but_out_of_policy_beside_healthy_siblings(self):
+    def test_sive_weekly_is_out_of_policy_beside_healthy_siblings(self):
         options = self.options("retained_sive_sept30")
-        monthly = options["SIVE.ST"]["monthly"]["unavailable"]
-        self.assertIn("本次回應有上市買權；所列到期不在21–45天策略範圍", monthly)
-        self.assertIn("2026-10-16（16天）", monthly)
-        self.assertIn("2026-11-20（51天）", monthly)
-        self.assertNotIn("年化權利金", monthly)
         self.assertIn("所列到期不在本週或下週策略範圍", options["SIVE.ST"]["weekly"]["unavailable"])
         for key, currency in (("VOLV-B.ST", "SEK"), ("AZN.ST", "SEK"), ("AZN", "USD"), ("SYNTHUS00", "USD")):
             cycle = options[key]["monthly"]
@@ -208,7 +200,7 @@ class BridgeFixtureTests(unittest.TestCase):
             options = self.options(case)
             for key in keys:
                 dte = int(re.search(r"(\d+)", key.split(".")[0]).group(1))
-                for cycle, (low, high) in (("weekly", generator.WEEKLY_DTE_RANGE), ("monthly", (21, 45))):
+                for cycle, (low, high) in (("weekly", generator.WEEKLY_DTE_RANGE), ("monthly", (14, 60))):
                     emitted = "unavailable" not in options[key][cycle]
                     self.assertEqual(emitted, low <= dte <= high, f"{case} {key} {cycle}")
                     if emitted:

@@ -41,8 +41,6 @@ const texts = (node: unknown, out: string[] = []): string[] => {
   return out;
 };
 const joined = (node: unknown) => texts(node).join("\n").replace(/\s+/g, " ");
-const disclosureNodes = (bubble: Json): Json[] => (bubble.footer.contents as Json[]).filter(node => node.type === "text" && Array.isArray(node.contents));
-const disclosureLines = (bubble: Json): string[] => disclosureNodes(bubble).map(node => (node.contents as Json[]).map(span => span.text).join(""));
 const unavailable = { unavailable: STRATEGY_DEGRADED_TEXT };
 /** The full cycle with its covered call removed (the shape the producer emits when only the put side qualifies). */
 const withoutCoveredCall = (): Json => {
@@ -146,9 +144,9 @@ describe("V21 validator: a bad block degrades alone", () => {
     const cycle = clone("yahoo_monthly_full");
     cycle.strategies.csp.suggestions[0].premium_per_contract = 1;
     const list = bubbles(render(cycle));
-    expect(list).toHaveLength(3);  // overview, covered call, collar
+    expect(list).toHaveLength(4);  // overview, covered call, collar, disclosure
     expect(joined(list[0])).toContain("無資料");
-    expect(joined(list[0])).toContain(STRATEGY_DEGRADED_TEXT);  // V25-FIX1 restores the qualifier beside the Flex no-data status.
+    expect(joined(list.at(-1))).toContain(STRATEGY_DEGRADED_TEXT);
     expect(joined(list[1])).toContain("建議一：高履約價");
     expect(joined(list[2])).toContain("領口策略");
     // V25-FIX3 inspects the actual joined reply, so a leaked CSP cash requirement cannot pass through an empty traversal.
@@ -161,23 +159,23 @@ describe("V21 validator: a bad block degrades alone", () => {
 describe("V21 card", () => {
   const full = () => render(clone("yahoo_monthly_full"));
 
-  it("is one flex message of four bubbles: overview, covered call, cash-secured put, collar; each ordered conservative first", () => {
+  it("is one flex message of five bubbles: overview, three strategies and shared disclosure", () => {
     const messages = full();
     expect(messages).toHaveLength(1);
     expect(messages[0]!.type).toBe("flex");
     const list = bubbles(messages);
-    expect(list).toHaveLength(4);
+    expect(list).toHaveLength(5);
     const headers = list.map(bubble => texts(bubble.header)[0]!);
     expect(headers[0]).toContain("三種保守期權策略");
     expect(headers[1]).toContain("備兌買權");
     expect(headers[2]).toContain("現金擔保賣權");
     expect(headers[3]).toContain("領口策略");
+    expect(joined(list[4]!.header)).toContain("資料來源與說明");
     // overview: covered call, then the put, then the collar
     const overview = joined(list[0]);
-    expect(overview.indexOf("備兌買權｜")).toBeLessThan(overview.indexOf("現金擔保賣權"));
+    expect(overview.indexOf("備兌買權")).toBeLessThan(overview.indexOf("現金擔保賣權"));
     expect(overview.indexOf("現金擔保賣權")).toBeLessThan(overview.indexOf("領口策略"));
-    // V25 retains the original conservative-first recommendation mark in the compact comparison.
-    for (const marker of ["備兌買權｜建議一：", "現金擔保賣權｜建議一：", "領口策略｜建議一："]) expect(overview).toContain(marker);
+    expect(overview).toContain("可用策略");
     // conservative first inside each detail
     const csp = joined(list[2]);
     expect(csp.indexOf("保守型")).toBeLessThan(csp.indexOf("平衡型"));
@@ -185,29 +183,26 @@ describe("V21 card", () => {
     expect(collar.indexOf("保守型")).toBeLessThan(collar.indexOf("平衡型"));
   });
 
-  it("keeps the overview compact and preserves same-bubble qualifiers plus text-edition details", () => {
+  it("keeps compact strategy figures and preserves complete same-reply qualifications", () => {
     const list = bubbles(full());
     const overview = joined(list[0]);
-    // V25 moves quote bands into the overview body as individual short lines.
-    for (const expected of ["$94.00", "$1.00", "$100.00", "$9400.00", "年化", "$92.00", "$107.00", "+$46.00",
-      "以備妥現金計", "買進 Put", "賣出 Call", "買賣相抵", "Bid/Mid/Ask 備兌 $0.36/$0.38/$0.40",
-      "Bid/Mid/Ask 賣沽 $0.98/$1.00/$1.02", "領口 Put Bid/Mid/Ask $0.59/$0.61/$0.63",
-      "Call Bid/Mid/Ask $1.05/$1.07/$1.09"]) {
-      expect(overview, expected).toContain(expected);
+    const disclosure = joined(list[4]);
+    for (const expected of ["$94.00", "年化", "$107.00", "+$46.00", "以備妥現金計"]) expect(overview).toContain(expected);
+    for (const expected of ["$1.00", "$100.00", "$9400.00", "$9600.00", "$92.00", "$107.00",
+      "Bid/Mid/Ask 備兌 $0.36/$0.38/$0.40", "Bid/Mid/Ask 賣沽 $0.98/$1.00/$1.02",
+      "領口 Put Bid/Mid/Ask $0.59/$0.61/$0.63", "Call Bid/Mid/Ask $1.05/$1.07/$1.09",
+      "年化 13.9%（以備妥現金計）", "損益兩平 $93.00", "Delta 0.20", "Bid $0.98",
+      "Bid $0.59", "Bid $1.05", "$754.00", "$746.00", "$99.54", "模型值，依報價隱含波動率"]) {
+      expect(disclosure, expected).toContain(expected);
     }
-    // V25-FIX3: the command lives in the returned action, not the visible button-label text.
     expect(JSON.stringify(list[0])).toContain("AAA 每月期權 文字");
     expect(overview).not.toContain("後續頁面");
-    const csp = joined(list[2]);
-    for (const expected of ["履約 $94.00", "限價 $1.00", "$9400.00（100股）", "$9600.00（100股）", "年化 13.9%（以備妥現金計）",
-      "損平 $93.00", "Delta 0.20", "Bid $0.98", "模型值，依報價隱含波動率"]) expect(csp, expected).toContain(expected);
-    const collar = joined(list[3]);
-    for (const expected of ["保護賣權", "$92.00", "$0.61", "$107.00", "$1.07", "+$46.00（買賣相抵）", "$754.00", "$746.00", "$99.54",
-      "Bid $0.59", "Bid $1.05", "模型值，依報價隱含波動率"]) expect(collar, expected).toContain(expected);
+    expect(joined(list[2])).toContain("以備妥現金計");
+    expect(joined(list[3])).toContain("買賣相抵");
     const cc = joined(list[1]);
     expect(cc).toContain("Bid $0.36");
-    expect(cc).toContain("年化收益＝期間收益×365÷DTE");
-    expect(cc).toContain("模型值，依報價隱含波動率 30%");
+    expect(joined(list[4])).toContain("年化收益＝期間收益×365÷DTE");
+    expect(joined(list[4])).toContain("模型值，依報價隱含波動率 30%");
     const text = joined(render(clone("yahoo_monthly_full"), "text"));
     for (const expected of ["$94.00", "$96.00", "$9400.00", "$9600.00", "損益兩平 $93.00", "$92.00", "$107.00",
       "每口淨權利金（收入）$46.00", "最大損失 $754.00／口", "最大獲利 $746.00／口", "保護賣權（買進）履約價 $92.00"]) {
@@ -215,7 +210,7 @@ describe("V21 card", () => {
     }
   });
 
-  it("keeps each strategy's loss warning, unit basis and expiry-estimate basis on its own payoff bubble", () => {
+  it("keeps immediate warnings on each strategy and complete qualifications in the shared disclosure", () => {
     const cycle = clone("yahoo_monthly_full");
     admitSyntheticTickers(cycle.ticker);
     vi.mocked(admission.admitPublicOption).mockImplementation(() => ({ ok: true, provider_id: "synthetic-test-only-not-in-catalog", operator_accepted: true }) as never);
@@ -226,35 +221,31 @@ describe("V21 card", () => {
       return joined(found[0]);
     };
     expect(byEyebrow("備兌買權")).toContain("正股仍有下跌風險");
-    expect(byEyebrow("現金擔保賣權")).toContain("損失可大於權利金");
+    expect(byEyebrow("現金擔保賣權")).toContain("損失可超過權利金");
     const collar = byEyebrow("領口策略");
-    for (const required of ["每組100股＋買1口Put＋賣1口Call", "最大盈虧為到期估算", "買進Put取Ask－四分之一價差", "最大損失"])
+    for (const required of ["每組100股＋買1口Put＋賣1口Call", "下跌有界、上漲封頂", "最大損失"])
       expect(collar).toContain(required);
+    const disclosure = joined(list[list.length - 1]);
+    for (const required of ["正股仍有下跌風險", "損失可大於權利金", "最大盈虧為到期估算", "買進Put取Ask－四分之一價差"])
+      expect(disclosure).toContain(required);
   });
 
-  it("every bubble carries source, rights, quote basis and capture time in at most three labelled disclosure lines", () => {
+  it("shares source, rights, capture time and quote rules in one final disclosure", () => {
     const cycle = clone("yahoo_monthly_full");
     admitSyntheticTickers(cycle.ticker);
     vi.mocked(admission.admitPublicOption).mockImplementation(() => ({ ok: true, provider_id: "synthetic-test-only-not-in-catalog", operator_accepted: true }) as never);
     const list = bubbles(buildCoveredCallMessages(check(cycle) as never, "每月期權", "flex"));
-    for (const bubble of list) {
-      const lines = disclosureLines(bubble);
-      expect(lines).toHaveLength(3);
-      expect(lines.join("\n")).toContain("Yahoo Finance 期權鏈（非官方，延遲）");
-      expect(lines.join("\n")).toContain(STAMP);
-      expect(lines.join("\n")).toContain("擷取時間");
-      expect(lines.join("\n")).toContain("依營運者決定顯示；本資料未取得再散布授權");
-      expect(lines.join("\n")).toContain("非投資建議");
-      expect(lines.join("\n")).toContain("不下單");
-      // A bubble showing the bought protective put also states the buy-leg rule; the sell rule alone never covers it.
-      if (/Put限價|保護賣權/.test(joined(bubble.body))) {
-        expect(lines.join("\n")).toContain("價差25%內取中間價；較寬時賣出腿取Bid＋四分之一價差、買進Put取Ask－四分之一價差");
-        expect(lines.join("\n")).not.toContain("價差25%內取中間價，較寬時取Bid＋四分之一價差");
-      } else expect(lines.join("\n")).toContain("價差25%內取中間價，較寬時取Bid＋四分之一價差");
-      const nodes = disclosureNodes(bubble);
-      expect(nodes.every(node => node.size === "xxs" && Array.from((node.contents as Json[]).map(span => span.text).join("")).length <= 110
-        && (node.contents as Json[])[0]?.weight === "bold")).toBe(true);
-      expect(lines.filter(text => text.includes("Yahoo Finance 期權鏈（非官方，延遲）"))).toHaveLength(1);
+    const disclosure = joined(list[list.length - 1]);
+    for (const required of ["資料來源與說明", "Yahoo Finance 期權鏈（非官方，延遲）", STAMP, "擷取時間",
+      "依營運者決定顯示；本資料未取得再散布授權", "非投資建議", "不下單",
+      "價差25%內取中間價；較寬時賣出腿取Bid＋四分之一價差、買進Put取Ask－四分之一價差"])
+      expect(disclosure).toContain(required);
+    expect(list.filter(bubble => joined(bubble.header).includes("資料來源與說明"))).toHaveLength(1);
+    for (const bubble of list.slice(0, -1)) {
+      const footer = joined(bubble.footer);
+      expect(footer).toContain("非投資建議");
+      expect(footer).toContain("不下單");
+      expect(footer).not.toContain(STAMP);
     }
     const text = joined(render(cycle, "text"));
     expect(text).toContain("被指派時需以履約價買進正股");
@@ -272,7 +263,7 @@ describe("V21 card", () => {
   });
 
   it("density budget: bulleted, one disclosure line, no maxLines, specific button labels", () => {
-    const list = bubbles(full());
+    const list = bubbles(full()).slice(0, -1);
     const metrics = list.map(bubble => {
       let bullets = 0; let textCount = 0; let chars = 0; let maxLines = 0; let xxs = 0;
       const buttons: string[] = [];
@@ -311,13 +302,13 @@ describe("V21 card", () => {
   it("an old cycle keeps the covered call summary and exposes no-data reasons in text", () => {
     const old = clone("yahoo_monthly_full"); delete old.strategies;
     const list = bubbles(render(old));
-    expect(list).toHaveLength(2);
+    expect(list).toHaveLength(3);
     const overview = joined(list[0]);
-    // V25 keeps each reason beside its existing row without repeating the "無資料" label.
     expect(overview.match(/無資料/g)).toHaveLength(2);
-    expect(overview).toContain("現金擔保賣權原因：此筆為舊版資料，未含此策略報價");
-    expect(overview).toContain("領口策略原因：此筆為舊版資料，未含此策略報價");
-    expect(overview).toContain("備兌買權｜");
+    const disclosure = joined(list.at(-1));
+    expect(disclosure).toContain("現金擔保賣權（備足現金賣出賣權）】無資料：此筆為舊版資料，未含此策略報價");
+    expect(disclosure).toContain("領口策略（持股＋買保護賣權＋賣買權）】無資料：此筆為舊版資料，未含此策略報價");
+    expect(overview).toContain("備兌買權");
     expect(joined(list[1])).toContain("建議一：高履約價（不易被賣掉）");
     const text = joined(render(old, "text"));
     expect(text.match(/無資料：此筆為舊版資料，未含此策略報價/g)).toHaveLength(2);
@@ -327,22 +318,22 @@ describe("V21 card", () => {
   it("a cycle without a covered call keeps the no-data label, with details reachable in the text edition", () => {
     const cycle = withoutCoveredCall();
     const list = bubbles(render(cycle));
-    expect(list).toHaveLength(3);  // overview, put, collar
+    expect(list).toHaveLength(4);  // overview, put, collar, disclosure
     const overview = joined(list[0]);
     expect(overview).toContain("備兌買權");
     expect(overview).toContain("無資料");
-    expect(overview).toContain("備兌買權原因：本次回應有效買權不足");
-    expect(overview).toContain("現金 $");
+    expect(joined(list.at(-1))).toContain("備兌買權】無資料：本次回應有效買權不足");
+    expect(joined(list[1])).toContain("需備現金 $");
     expect(joined(list[2])).toContain("最大損失");
     expect(joined(render(cycle, "text"))).toContain("無資料：本次回應有效買權不足");
   });
 
   it("the Nordic SEK cycle prices every figure in SEK", () => {
     const list = bubbles(render(clone("nordic_monthly_sek")));
-    expect(list).toHaveLength(4);
+    expect(list).toHaveLength(5);
     expect(joined(list[2])).toContain("9400.00 SEK");
     expect(joined(list[3])).toContain("754.00 SEK");
-    expect(joined(list[0])).toContain("Nasdaq Nordic");
+    expect(joined(list[4])).toContain("Nasdaq Nordic");
   });
 
   it("the text edition lists all three strategies untruncated, with the standing disclaimers", () => {

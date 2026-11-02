@@ -1,0 +1,152 @@
+[
+  {
+    "dte": -1,
+    "period": "weekly",
+    "expected": false
+  },
+  {
+    "dte": -1,
+    "period": "monthly",
+    "expected": false
+  },
+  {
+    "dte": 0,
+    "period": "weekly",
+    "expected": true
+  },
+  {
+    "dte": 0,
+    "period": "monthly",
+    "expected": false
+  },
+  {
+    "dte": 1,
+    "period": "weekly",
+    "expected": true
+  },
+  {
+    "dte": 1,
+    "period": "monthly",
+    "expected": false
+  },
+  {
+    "dte": 6,
+    "period": "weekly",
+    "expected": true
+  },
+  {
+    "dte": 6,
+    "period": "monthly",
+    "expected": false
+  },
+  {
+    "dte": 7,
+    "period": "weekly",
+    "expected": true
+  },
+  {
+    "dte": 7,
+    "period": "monthly",
+    "expected": false
+  },
+  {
+    "dte": 13,
+    "period": "weekly",
+    "expected": true
+  },
+  {
+    "dte": 13,
+    "period": "monthly",
+    "expected": false
+  },
+  {
+    "dte": 14,
+    "period": "weekly",
+    "expected": false
+  },
+  {
+    "dte": 14,
+    "period": "monthly",
+    "expected": true
+  },
+  {
+    "dte": 18,
+    "period": "weekly",
+    "expected": false
+  },
+  {
+    "dte": 18,
+    "period": "monthly",
+    "expected": true
+  },
+  {
+    "dte": 20,
+    "period": "weekly",
+    "expected": false
+  },
+  {
+    "dte": 20,
+    "period": "monthly",
+    "expected": true
+  },
+  {
+    "dte": 21,
+    "period": "weekly",
+    "expected": false
+  },
+  {
+    "dte": 21,
+    "period": "monthly",
+    "expected": true
+  },
+  {
+    "dte": 30,
+    "period": "weekly",
+    "expected": false
+  },
+  {
+    "dte": 30,
+    "period": "monthly",
+    "expected": true
+  },
+  {
+    "dte": 45,
+    "period": "weekly",
+    "expected": false
+  },
+  {
+    "dte": 45,
+    "period": "monthly",
+    "expected": true
+  },
+  {
+    "dte": 46,
+    "period": "weekly",
+    "expected": false
+  },
+  {
+    "dte": 46,
+    "period": "monthly",
+    "expected": true
+  },
+  {
+    "dte": 60,
+    "period": "weekly",
+    "expected": false
+  },
+  {
+    "dte": 60,
+    "period": "monthly",
+    "expected": true
+  },
+  {
+    "dte": 61,
+    "period": "weekly",
+    "expected": false
+  },
+  {
+    "dte": 61,
+    "period": "monthly",
+    "expected": false
+  }
+]

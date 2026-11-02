@@ -11,7 +11,7 @@ screener and every Nasdaq Stockholm Large Cap share in SEK with listed exchange 
 - US-listed options: Yahoo Finance option chains (unofficial, delayed); a cycle Yahoo cannot read falls back to the
   Nasdaq US option chain (operator 2026-09-26: Nasdaq data stays in use). Alpha Vantage option chains are premium-only.
 - Nasdaq Stockholm options (for example SIVE.ST): the exchange's public option-chain API (api.nasdaq.com/api/nordic).
-Per underlying and cycle (weekly = the CURRENT calendar week's expiry, monthly 21-45 DTE): up to three covered-call sell
+Per underlying and cycle (weekly = the CURRENT calendar week's expiry, monthly prefers 21-45 DTE, else 14-60): up to three covered-call sell
 suggestions for a holder of 100 shares (operator 2026-09-26: collect premium, keep the strike as high as possible so the
 shares are not called away; operator 2026-10-11: a middle tier and the current-week weekly):
 - HIGH_STRIKE: the highest out-of-the-money strike whose bid still pays at least MIN_ANNUALIZED_YIELD with delta <=
@@ -110,8 +110,8 @@ _CARRY: list[Any] = [None]  # the run's previous-session carry-forward state (op
 # A run that finished fewer underlyings than this is not published: the previous file stays (the sealer bounds its age).
 MIN_COMPLETED_SHARE = 0.5
 # weekly: the current-week rule of option_recommendation_rules (the window is only the fetch/validator outer bound, 0-14 DTE);
-# monthly: the expiry nearest 30 days within 21-45 DTE
-CYCLES = {"weekly": rules.WEEKLY_DTE_BUCKET, "monthly": rules.MONTHLY_DTE_BUCKET}
+# monthly: prefer 21-45 DTE nearest 30; only without a preferred expiry use 14-60 DTE
+CYCLES = {"weekly": rules.WEEKLY_DTE_BUCKET, "monthly": rules.MONTHLY_FALLBACK_DTE_BUCKET}
 RISK_FREE = 0.04
 MIN_ANNUALIZED_YIELD = 0.02   # premium worth collecting versus cash (annualized, on the current price; operator 2026-10-19: 6% -> 2%)
 MAX_HIGH_STRIKE_DELTA = 0.20  # the high-strike suggestion keeps the model assignment reference low
@@ -690,7 +690,7 @@ def _cycles_from_calls(calls: list[dict[str, Any]], ticker: str, spot: float, st
                        today: date | None = None, week_expiries: Iterable[str] | None = None,
                        identity: dict[str, str] | None = None, puts: list[dict[str, Any]] | None = None) -> CyclesResult:
     """Weekly: the current calendar week's earliest listed expiry (the next week's only when this week has none left; see
-    option_recommendation_rules); monthly: the expiry nearest 30 days within 21-45 DTE. Standard 100-share contracts only.
+    option_recommendation_rules); monthly: shared preferred/fallback expiry selection. Standard 100-share contracts only.
     today is the exchange-local as-of date (derived from the rows' expiry and dte when absent); week_expiries lets the caller
     decide the week from every listed expiry, so a contract with refused terms is never silently skipped for the next week. A
     cycle without a qualifying expiry takes its reason and health status from no_window(cycle, low, high) when the caller
@@ -708,14 +708,17 @@ def _cycles_from_calls(calls: list[dict[str, Any]], ticker: str, spot: float, st
             week = choice.week if choice else None
             window = [row for row in calls if choice and row["expiry"] == choice.expiry.isoformat() and row["strike"] and row["size"] == 100]
         else:
-            window = [row for row in calls if low <= row["dte"] <= high and row["strike"] and row["size"] == 100]
+            monthly = rules.select_monthly_expiry(
+                (date.fromisoformat(expiry) for expiry in (week_expiries if week_expiries is not None else [row["expiry"] for row in calls])),
+                today) if today is not None else None
+            window = [row for row in calls if monthly and row["expiry"] == monthly.isoformat() and row["strike"] and row["size"] == 100]
         if not window:
             message, status = no_window(cycle, low, high) if no_window else (_missing_text(missing, cycle, low, high), "NO_EXPIRY")
             health_records.append({"venue": venue, "underlying": und, "expiry": None, "cycle": cycle,
                                    "status": status, "read": False, "two_sided": False})
             out[cycle] = {"unavailable": _diag(message)}
             continue
-        target = window[0]["dte"] if cycle == "weekly" else min({row["dte"] for row in window}, key=lambda days: abs(days - 30))
+        target = window[0]["dte"]
         chosen = [row for row in window if row["dte"] == target]
         chosen_expiry = chosen[0]["expiry"]
         eligible = [r for r in chosen if _is_finite_positive(r.get("strike")) and r.get("size") == 100]
@@ -970,14 +973,15 @@ def us_options(symbol: str, spot: float, today: date, stamp: str) -> CyclesResul
                 week = choice.week
                 candidates = [(choice.expiry.isoformat(), (choice.expiry - today).days)]
         else:
-            candidates = [(expiry, (date.fromisoformat(expiry) - today).days) for expiry in expiries]
-            candidates = [item for item in candidates if low <= item[1] <= high]
+            monthly = rules.select_monthly_expiry((date.fromisoformat(expiry) for expiry in expiries), today)
+            if monthly:
+                candidates = [(monthly.isoformat(), (monthly - today).days)]
         if not candidates:
             health_records.append({"venue": "US", "underlying": symbol, "expiry": None, "cycle": cycle,
                                    "status": "NO_EXPIRY", "read": False, "two_sided": False})
             out[cycle] = {"unavailable": _missing_text("無 {low}-{high} 天到期的上市期權（Yahoo Finance 期權到期日清單）", cycle, low, high)}
             continue
-        expiry, dte = candidates[0] if cycle == "weekly" else min(candidates, key=lambda item: abs(item[1] - 30))
+        expiry, dte = candidates[0]
         try:
             option_chain = ticker.option_chain(expiry)
             chain = option_chain.calls

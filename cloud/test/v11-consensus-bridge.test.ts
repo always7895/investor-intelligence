@@ -32,6 +32,17 @@ function visibleText(value: any): string {
   return Object.entries(value).filter(([key]) => key !== "action")
     .map(([key, child]) => key === "text" && typeof child === "string" ? child : visibleText(child)).join(" ");
 }
+/** Require one final disclosure in this reply and select only notes attributed to the requested card. */
+function scopedDisclosure(pages: unknown[], scope: string): string {
+  const bubbles = pages as { header: unknown; body: { contents: unknown[] } }[];
+  const disclosures = bubbles.filter(page => visibleText(page.header).includes("資料來源與說明"));
+  expect(disclosures).toHaveLength(1);
+  expect(bubbles.at(-1)).toBe(disclosures[0]);
+  const notes = disclosures[0]!.body.contents.map(visibleText)
+    .filter(text => text.split("｜", 1)[0]!.split("、").some(subject => subject.trim() === scope || subject.trim().startsWith(`${scope} · `)));
+  expect(notes.length).toBeGreaterThan(0);
+  return notes.join(" ");
+}
 const noWhitespace = (value: string) => value.replace(/\\n|\s/g, "");
 const END = "2026-09-30";
 const warningText = (ends: string, capturedAt: string) =>
@@ -227,11 +238,16 @@ describe("consensus post-quarter-end bridge through the real LINE callers", () =
   it("keeps the compact consensus disclosure and the full warning in existing detail/text routes", () => {
     const parsed = parseBottleneckV3(rawDoc(), cutoffMs + HOUR)!;
     const flex = JSON.stringify(buildBottleneckTop20Messages(parsed, "flex"));
-    const consensusFlex = visibleText(bubblesFromReply(flex).find(bubble => visibleText(bubble).includes("000660.KS"))).replace(/\s+/g, " ");
+    const flexPages = bubblesFromReply(flex);
+    const consensusCard = visibleText(flexPages.find(bubble => visibleText(bubble.header).includes("000660.KS")));
+    const consensusFlex = `${consensusCard} ${scopedDisclosure(flexPages, "000660.KS")}`.replace(/\s+/g, " ");
     const text = JSON.stringify(buildBottleneckTop20Messages(parsed, "text"));
     const detailFlex = JSON.stringify(buildBottleneckDetail(parsed, "000660.KS", "flex"));
+    const detailPages = bubblesFromReply(detailFlex);
+    expect(visibleText(detailPages[1].header)).toContain("000660.KS");
+    expect(scopedDisclosure(detailPages, "訂單與情境")).toContain(`${LABEL_PREFIX}2026-10-13`);
     const detailText = JSON.stringify(buildBottleneckDetail(parsed, "000660.KS", "text"));
-    // V25-FIX3: the forecast-bearing Top20 bubble keeps source/date and the exact warning; detail Flex has no consensus figure, while text retains full attribution.
+    // The forecast card and its issuer-scoped final disclosure together retain source, dates and warning.
     expect(noWhitespace(consensusFlex)).toContain(noWhitespace(TEXT));
     expect(consensusFlex).toContain("非實績");
     expect(noWhitespace(consensusFlex)).toContain(noWhitespace(`若約6個月（2財季）達成${CONSENSUS_PRICE_LABEL}營收推估 → 股價情境`));
@@ -258,16 +274,49 @@ describe("consensus post-quarter-end bridge through the real LINE callers", () =
     financial.market.cross_check = structuredClone((raw.top as any[])[0].market.cross_check);
     const env = await sealedEnv(raw);
     const financePages = bubblesFromReply(await lineReply(env, "瓶頸詳情 5351.TWO"));
-    const finance = visibleText(financePages[0]);
+    expect(visibleText(financePages[0].header)).toContain("5351.TWO");
+    const finance = `${visibleText(financePages[0])} ${scopedDisclosure(financePages, "財報與市場")}`;
     for (const required of ["Yahoo Finance 季度損益表（非官方）", "2026-06-30", "鈺創官方合併季報",
       "稀釋加權平均股數", "正常交易以來年化 +64%（非2年）", "2025-02-21",
       "官方月營收：櫃買中心 2026-08", "交易所收盤交叉比對"]) expect.soft(finance.replace(/\s+/g, " ")).toContain(required);
   });
 
+  it("attributes missing and present cross-checks and prior-quarter bases to each issuer through TOP20 and detail callers", async () => {
+    const raw = doc(Date.now());
+    const verified = raw.top[2] as any;
+    const official = structuredClone((officialRevenueFixture as any).fundamentals);
+    official.cross_check = { source_id: "TPEX", source_url: "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap05_O",
+      period: "2026-08", revenue_yoy: 0.525, cumulative_yoy: 4.89, currency: "TWD" };
+    verified.symbol = "5351.TWO";
+    verified.fundamentals = official;
+    verified.market.cross_check = structuredClone((raw.top as any[])[0].market.cross_check);
+    const env = await sealedEnv(raw);
+    const top = bubblesFromReply(await lineReply(env, "TOP20"));
+    for (const [symbol, missing] of [["S1", true], ["5351.TWO", false]] as const) {
+      const detail = bubblesFromReply(await lineReply(env, `瓶頸詳情 ${symbol}`));
+      for (const pages of [top, detail]) {
+        const notes = scopedDisclosure(pages, symbol);
+        if (missing) {
+          expect(notes).toContain("未取得官方營收交叉比對");
+          expect(notes).toContain("未取得交易所收盤交叉比對");
+          expect(notes).toContain("沿用可比來源");
+        } else {
+          expect(notes).toContain("官方月營收：櫃買中心 2026-08");
+          expect(notes).toContain("交易所收盤交叉比對");
+          expect(notes).toContain("前一季年增來源");
+          expect(notes).not.toContain("未取得官方營收交叉比對");
+          expect(notes).not.toContain("未取得交易所收盤交叉比對");
+          expect(notes).not.toContain("沿用可比來源");
+        }
+      }
+    }
+  });
+
   it("keeps RPO amount status, revenue-growth calculation, coverage and distinct dates on the actual orders bubble", async () => {
     const env = await sealedEnv(doc(Date.now()));
     const orderPages = bubblesFromReply(await lineReply(env, "瓶頸詳情 S1"));
-    const orders = visibleText(orderPages[1]);
+    expect(visibleText(orderPages[1].header)).toContain("S1");
+    const orders = `${visibleText(orderPages[1])} ${scopedDisclosure(orderPages, "訂單與情境")}`;
     for (const required of ["RPO 2026-07-26 年增+68%", "已簽約營收成長支撐", "分期已簽約認列金額÷目前營收−1",
       "40%", "133%", "股價 2026-09-25", "認列基準 2026-06-30"]) expect.soft(orders).toContain(required);
   });
@@ -299,9 +348,11 @@ describe("consensus post-quarter-end bridge through the real LINE callers", () =
     const env = await sealedEnv(raw);
     const carousel = await lineReply(env, "TOP20");
     expect(carousel).toContain('"type":"flex"');
-    const consensusBubble = bubblesFromReply(carousel).find(bubble => visibleText(bubble).includes("000660.KS"));
-    const consensusText = visibleText(consensusBubble);
-    // V25-FIX3: compare the same returned Top20 bubble after line wrapping; every horizon keeps its own window and basis.
+    const pages = bubblesFromReply(carousel);
+    const consensusBubble = pages.find(bubble => visibleText(bubble.header).includes("000660.KS"));
+    const consensusNotes = scopedDisclosure(pages, "000660.KS");
+    const consensusText = `${visibleText(consensusBubble)} ${consensusNotes}`;
+    // Horizon windows and basis remain attached to this issuer in the card or final shared disclosure.
     expect(noWhitespace(consensusText)).toContain(noWhitespace(TEXT));
     expect(consensusText).toContain("非實績");
     expect(noWhitespace(consensusText)).toContain(noWhitespace(`${LABEL_PREFIX}2026-10-13`));
@@ -315,11 +366,14 @@ describe("consensus post-quarter-end bridge through the real LINE callers", () =
       expect(noWhitespace(consensusText)).toContain(noWhitespace(horizon.basis_label!));
     }
     for (const token of ["非目標價", "非投資建議", "非今日起", "非保證", "不自動下單"]) {
-      const count = consensusText.split(token).length - 1;
+      const count = consensusNotes.split(token).length - 1;
       expect(count, token).toBe(1);
     }
     expect(carousel).toContain("瓶頸詳情 000660.KS");
     const detail = await lineReply(env, "瓶頸詳情 000660.KS");
+    const detailPages = bubblesFromReply(detail);
+    expect(visibleText(detailPages[1].header)).toContain("000660.KS");
+    expect(scopedDisclosure(detailPages, "訂單與情境")).toContain(`${LABEL_PREFIX}2026-10-13`);
     expect(noWhitespace(visibleText(bubblesFromReply(detail)))).toContain(noWhitespace(TEXT));
     expect(detail).not.toContain("財測時效警示");
     const detailText = await lineReply(env, "瓶頸詳情 000660.KS 文字");
@@ -334,11 +388,13 @@ describe("consensus post-quarter-end bridge through the real LINE callers", () =
     (raw.top[1] as any).outlook = clone(guidance.outlooks.NVDA);
     const env = await sealedEnv(raw);
     const reply = await lineReply(env, "TOP20");
-    const bubble = bubblesFromReply(reply).find(item => visibleText(item).includes("NVDA"));
-    const text = visibleText(bubble);
-    // V25-FIX3: required scenario caveats must be present exactly once, not merely free of duplicates.
+    const pages = bubblesFromReply(reply);
+    const bubble = pages.find(item => visibleText(item.header).includes("NVDA"));
+    const notes = scopedDisclosure(pages, "NVDA");
+    const text = `${visibleText(bubble)} ${notes}`;
+    // Required scenario caveats occur exactly once in the issuer-scoped shared notes.
     for (const token of ["非目標價", "非投資建議", "非今日起", "非保證", "不自動下單"]) {
-      const count = text.split(token).length - 1;
+      const count = notes.split(token).length - 1;
       expect.soft(count, token).toBe(1);
     }
     const forecast = parseBottleneckV3(raw, Date.parse(guidance.cutoff) + HOUR)!.top[1]!.forecast!;

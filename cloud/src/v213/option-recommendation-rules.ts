@@ -4,12 +4,14 @@
  *
  * WEEKLY (calendar week, exchange local, Monday-Sunday): the earliest listed expiry from the as-of date through that week's
  * Sunday; only when none remains (weekend, after the week's last weekly, the expiry day after the session close) the earliest
- * listed expiry of the NEXT calendar week; nothing later is ever a weekly. Monthly is unchanged (21-45 DTE, nearest 30).
+ * listed expiry of the NEXT calendar week; nothing later is ever a weekly. Monthly prefers 21-45 DTE nearest 30;
+ * only when no preferred expiry exists, use a listed 14-60 DTE expiry nearest 30 (ties earlier).
  * ANNUALIZATION: days = max(dte, 1), so DTE 0 never divides by zero and is never annualized over under one day; DTE 0-2 is
  * labelled on the card. MIDDLE tier: a strike strictly between the HIGH_STRIKE and BALANCED strikes. */
 
 export const WEEKLY_DTE_BUCKET: readonly [number, number] = [0, 14];   // outer bound; the exact rule is the calendar-week rule
 export const MONTHLY_DTE_BUCKET: readonly [number, number] = [21, 45];
+export const MONTHLY_FALLBACK_DTE_BUCKET: readonly [number, number] = [14, 60];
 export const MONTHLY_TARGET_DTE = 30;
 export const MIN_ANNUALIZATION_DAYS = 1;
 export const SHORT_DTE_NOTICE_MAX = 2;
@@ -114,6 +116,38 @@ export function selectWeeklyExpiry(expiries: readonly string[], asOf: string, ex
     if (e > currentEnd && e <= currentEnd + 7 * DAY_MS) return { expiry: day, week: "NEXT" };
   }
   return null;
+}
+
+/** Prefer listed 21-45 DTE nearest 30; otherwise listed 14-60 DTE nearest 30. Ties go to the earlier expiry. */
+export function selectMonthlyExpiry(expiries: readonly string[], asOf: string): string | null {
+  const asOfMs = dayMs(asOf);
+  if (asOfMs === null) return null;
+  let preferred: string | null = null, fallback: string | null = null;
+  let preferredDistance = Infinity, fallbackDistance = Infinity;
+  for (const expiry of expiries) {
+    const expiryMs = dayMs(expiry);
+    if (expiryMs === null) continue;
+    const dte = (expiryMs - asOfMs) / DAY_MS;
+    if (dte < MONTHLY_FALLBACK_DTE_BUCKET[0] || dte > MONTHLY_FALLBACK_DTE_BUCKET[1]) continue;
+    const distance = Math.abs(dte - MONTHLY_TARGET_DTE);
+    if (distance < fallbackDistance || (distance === fallbackDistance && (fallback === null || expiry < fallback))) {
+      fallback = expiry;
+      fallbackDistance = distance;
+    }
+    if (dte >= MONTHLY_DTE_BUCKET[0] && dte <= MONTHLY_DTE_BUCKET[1]
+      && (distance < preferredDistance || (distance === preferredDistance && (preferred === null || expiry < preferred)))) {
+      preferred = expiry;
+      preferredDistance = distance;
+    }
+  }
+  return preferred ?? fallback;
+}
+
+/** A disclosure derived from actual DTE, never a producer-supplied fallback flag. Preferred-expiry labels stay unchanged. */
+export function monthlyFallbackNoticeZh(dte: number): string | null {
+  if (!Number.isInteger(dte) || dte < MONTHLY_FALLBACK_DTE_BUCKET[0] || dte > MONTHLY_FALLBACK_DTE_BUCKET[1]
+    || (dte >= MONTHLY_DTE_BUCKET[0] && dte <= MONTHLY_DTE_BUCKET[1])) return null;
+  return `月期權延伸到期：DTE ${dte}，超出偏好 ${MONTHLY_DTE_BUCKET[0]}-${MONTHLY_DTE_BUCKET[1]} 天區間（上市到期備選範圍 ${MONTHLY_FALLBACK_DTE_BUCKET[0]}-${MONTHLY_FALLBACK_DTE_BUCKET[1]} 天）。`;
 }
 
 /** The middle-tier row among usable candidates (strike and optional delta): strictly between the balanced and the high strike;

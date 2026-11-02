@@ -210,7 +210,13 @@ def serialize(bridge: dict) -> str:
 
 
 def main() -> int:
-    text = serialize(generate_bridge())
+    # CLI generation opts into exactly the same synthetic-only seam as the reproducibility test.
+    # generate_bridge itself keeps real rights-NONE behavior for the denial regressions.
+    if str(ROOT) not in sys.path:
+        sys.path.insert(0, str(ROOT))
+    from tests.synthetic_option_admission import synthetic_option_admission
+    with synthetic_option_admission({"TSM", "GOOD"}):
+        text = serialize(generate_bridge())
     FIXTURE_PATH.parent.mkdir(parents=True, exist_ok=True)
     FIXTURE_PATH.write_text(text, encoding="utf-8", newline="\n")
     print(f"WROTE {FIXTURE_PATH} ({len(text.encode('utf-8'))} bytes)")

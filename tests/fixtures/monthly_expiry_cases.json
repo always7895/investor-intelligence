@@ -1,0 +1,102 @@
+[
+  {
+    "name": "sive-gap",
+    "as_of": "2026-11-02",
+    "expiries": [
+      "2026-11-20",
+      "2026-12-18"
+    ],
+    "expected": "2026-11-20"
+  },
+  {
+    "name": "preferred",
+    "as_of": "2026-11-02",
+    "expiries": [
+      "2026-11-20",
+      "2026-11-30",
+      "2026-12-18"
+    ],
+    "expected": "2026-11-30"
+  },
+  {
+    "name": "preferred-priority",
+    "as_of": "2026-11-02",
+    "expiries": [
+      "2026-11-22",
+      "2026-12-17"
+    ],
+    "expected": "2026-12-17"
+  },
+  {
+    "name": "preferred-tie",
+    "as_of": "2026-11-02",
+    "expiries": [
+      "2026-11-30",
+      "2026-12-04"
+    ],
+    "expected": "2026-11-30"
+  },
+  {
+    "name": "fallback-tie",
+    "as_of": "2026-11-02",
+    "expiries": [
+      "2026-11-16",
+      "2026-12-18"
+    ],
+    "expected": "2026-11-16"
+  },
+  {
+    "name": "fallback-lower",
+    "as_of": "2026-11-02",
+    "expiries": [
+      "2026-11-16"
+    ],
+    "expected": "2026-11-16"
+  },
+  {
+    "name": "fallback-upper",
+    "as_of": "2026-11-02",
+    "expiries": [
+      "2027-01-01"
+    ],
+    "expected": "2027-01-01"
+  },
+  {
+    "name": "fallback-longer",
+    "as_of": "2026-11-02",
+    "expiries": [
+      "2026-12-18"
+    ],
+    "expected": "2026-12-18"
+  },
+  {
+    "name": "lower-refused",
+    "as_of": "2026-11-02",
+    "expiries": [
+      "2026-11-15"
+    ],
+    "expected": null
+  },
+  {
+    "name": "upper-refused",
+    "as_of": "2026-11-02",
+    "expiries": [
+      "2027-01-02"
+    ],
+    "expected": null
+  },
+  {
+    "name": "expired",
+    "as_of": "2026-11-02",
+    "expiries": [
+      "2026-11-01"
+    ],
+    "expected": null
+  },
+  {
+    "name": "empty",
+    "as_of": "2026-11-02",
+    "expiries": [],
+    "expected": null
+  }
+]

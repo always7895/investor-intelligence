@@ -10,7 +10,7 @@ WEEKLY (calendar week, exchange local, Monday-Sunday):
   no remaining listed expiry (weekend, after the last weekly of the week, or the expiry day after the session close) is it the
   EARLIEST listed expiry of the NEXT calendar week (Monday..Sunday after). Nothing beyond the next week is ever a weekly.
 - Expiry day (DTE 0) counts only while the venue's regular session has not closed (EXPIRY_DAY_CLOSE_LOCAL_MINUTES).
-- Monthly is unchanged: the expiry nearest 30 days inside MONTHLY_DTE_BUCKET.
+- Monthly prefers the expiry nearest 30 days inside MONTHLY_DTE_BUCKET; only without one, use MONTHLY_FALLBACK_DTE_BUCKET.
 
 ANNUALIZATION for tiny DTE: days = max(dte, 1) (MIN_ANNUALIZATION_DAYS). A same-day or next-day expiry therefore never
 divides by zero and is never annualized over less than one day; a cycle with dte <= SHORT_DTE_NOTICE_MAX is labelled on the
@@ -31,6 +31,7 @@ from typing import Any, Iterable, Sequence
 
 WEEKLY_DTE_BUCKET = (0, 14)      # outer validator tolerance; the exact rule is the calendar-week rule above
 MONTHLY_DTE_BUCKET = (21, 45)
+MONTHLY_FALLBACK_DTE_BUCKET = (14, 60)
 MONTHLY_TARGET_DTE = 30
 MIN_ANNUALIZATION_DAYS = 1
 SHORT_DTE_NOTICE_MAX = 2         # dte 0-2: the annualized yield is labelled as amplified
@@ -139,6 +140,16 @@ def select_weekly_expiry(expiries: Iterable[date], as_of: date, *, expiry_day_op
     for day in listed:
         if current_end < day <= current_end + timedelta(days=7):
             return WeeklyChoice(day, WEEK_NEXT)
+    return None
+
+
+def select_monthly_expiry(expiries: Iterable[date], as_of: date) -> date | None:
+    """Prefer 21-45 DTE; otherwise use listed 14-60 DTE. Nearest 30 wins, with earlier expiry breaking ties."""
+    listed = set(expiries)
+    for low, high in (MONTHLY_DTE_BUCKET, MONTHLY_FALLBACK_DTE_BUCKET):
+        candidates = [day for day in listed if low <= (day - as_of).days <= high]
+        if candidates:
+            return min(candidates, key=lambda day: (abs((day - as_of).days - MONTHLY_TARGET_DTE), day))
     return None
 
 

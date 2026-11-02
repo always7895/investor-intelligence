@@ -341,10 +341,31 @@ describe("history block through the real handlers (20 entries)", () => {
     const flex = buildBottleneckTop20Messages(parsed, "flex");
     expect(() => assertLineMessages(flex)).not.toThrow();
     expect(() => assertLineMessages(buildBottleneckTop20Messages(parsed, "text"))).not.toThrow();
-    // Every blocked/deferred card carries the model block (the compact card, or the lean card when twenty full cards do not fit).
-    const serialized = JSON.stringify(flex);
-    expect(serialized.split(HISTORY_HEADING).length - 1).toBe(BLOCKED.length + DEFERRED.length);
-    expect(stripNegation(serialized.split(HISTORY_HEADING).slice(1).map(s => s.slice(0, 700)).join(""))).not.toContain("預計認列");
+    expect(flex.length).toBeLessThanOrEqual(5);
+    for (const message of flex) expect(new TextEncoder().encode(JSON.stringify(message)).length).toBeLessThanOrEqual(46_000);
+    const bubbles = flex.flatMap(message => {
+      if (message.type !== "flex") return [];
+      const carousel = message.contents as unknown as { contents: unknown[] };
+      return carousel.contents;
+    });
+    expect(bubbles).toHaveLength(21);
+    const shared = JSON.stringify(bubbles.pop());
+    expect(shared).toContain("資料來源與說明");
+    const disclosure: { body: { contents: { text: string }[] } } = JSON.parse(shared);
+    const historyRows = disclosure.body.contents.filter(row => row.text.includes(HISTORY_HEADING));
+    const historyFor = (sym: string) => historyRows.filter(row => row.text.split("｜", 1)[0]!.split("、").includes(sym));
+    for (const sym of [...BLOCKED, ...DEFERRED]) {
+      const stock = bubbles.find(bubble => JSON.stringify(bubble).includes(`${sym}｜`));
+      expect(stock, sym).toBeTruthy();
+      expect(JSON.stringify(stock), sym).toContain("未揭露");
+      expect(historyFor(sym), sym).toHaveLength(1);
+      expect(stripNegation(historyFor(sym)[0]!.text), sym).not.toContain("預計認列");
+    }
+    for (const entry of parsed.top) expect(bubbles.filter(bubble => JSON.stringify(bubble).includes(`${entry.symbol}｜`)), entry.symbol).toHaveLength(1);
+    for (const sym of ORDER.slice(BLOCKED.length + DEFERRED.length)) {
+      expect(parseGolden(sym).revenueStatus, sym).toBe("AVAILABLE");
+      expect(historyFor(sym), sym).toHaveLength(0);
+    }
     for (const entry of parsed.top) {
       for (const mode of ["flex", "text"] as const) {
         const detail = buildBottleneckDetail(parsed, entry.symbol, mode);

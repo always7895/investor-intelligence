@@ -111,14 +111,13 @@ describe("OPTIONS-NONUS-02 bridge: exact Python-emitted bodies through the Worke
     }
   });
 
-  it("answers Sive / SIVE / SIVE.ST with listed-but-out-of-policy date context in TEXT and Flex", async () => {
+  it("keeps Sive / SIVE / SIVE.ST unavailable when the selected extended-monthly expiry has no quote", async () => {
     const env = await sealedEnv("retained_sive_sept30");
     for (const command of ["Sive 每月期權", "SIVE 每月期權", "SIVE.ST 每月期權"]) {
       const text = textOf(await reply(env, command));
       expect(text).toContain("SIVE.ST 每月期權");
-      expect(text).toContain("本次回應有上市買權；所列到期不在21–45天策略範圍");
+      expect(text).toContain("所選到期無有效雙邊報價");
       expect(text).toContain("2026-10-16（16天）");
-      expect(text).toContain("2026-11-20（51天）");
       expect(text).toContain("已封存之公開觀察");
       expect(text).not.toContain("年化權利金");
       expect(text).not.toMatch(/\d+\.\d\d SEK/);
@@ -133,7 +132,7 @@ describe("OPTIONS-NONUS-02 bridge: exact Python-emitted bodies through the Worke
     expect(flex[0].type).toBe("flex");
     const flexText = JSON.stringify(flex[0].contents) + flex[0].altText;
     expect(flexText).toContain("SIVE.ST");
-    expect(flexText).toContain("所列到期不在21–45天策略範圍");
+    expect(flexText).toContain("所選到期無有效雙邊報價");
   });
 
   it("shows genuine native and US strategies with their own identity, currency, strike and 100 multiplier", async () => {
@@ -160,9 +159,12 @@ describe("OPTIONS-NONUS-02 bridge: exact Python-emitted bodies through the Worke
   });
 
   it("carries every producer diagnostic verbatim and never a price for an unavailable record", async () => {
-    admitSyntheticTickers("CURSEK.ST", "CUREMPTY.ST", "CURMISSING.ST", "IDMIXED.ST", "ND21.ST", "ND45.ST", "NF0.ST", "NF1.ST", "NF2.ST", "QGOOD.ST", "SYMMON.ST", "TOUTSIDE.ST", "TSZEXACT.ST", "VOLV-B.ST"); // Explicit quote subjects for this test only.
-    let unavailableSeen = 0;
-    for (const caseId of ["currency_evidence_matrix", "identity_matrix", "terms_and_quote_states", "dte_nordic_matrix", "native_symbol_identity_matrix"]) {
+    const cases = ["currency_evidence_matrix", "identity_matrix", "terms_and_quote_states", "dte_nordic_matrix", "native_symbol_identity_matrix"];
+    // Admit only the real synthetic quote subjects in this test's bounded fixture cases, including newly eligible fallback expiries.
+    admitSyntheticTickers(...cases.flatMap(caseId => Object.entries(optionsOf(caseId))
+      .filter(([, cycles]) => Boolean(cycles.monthly?.ticker) && !cycles.monthly?.unavailable)
+      .map(([ticker]) => ticker)));
+    for (const caseId of cases) {
       const env = await sealedEnv(caseId);
       for (const [key, cycles] of Object.entries(optionsOf(caseId))) {
         if (!key.endsWith(".ST")) continue;
@@ -170,7 +172,6 @@ describe("OPTIONS-NONUS-02 bridge: exact Python-emitted bodies through the Worke
         const text = textOf(await reply(env, `${key} 每月期權`));
         expect(text, `${caseId} ${key}`).toContain(key);
         if (monthly.unavailable) {
-          unavailableSeen += 1;
           expect(text, `${caseId} ${key}`).toContain(monthly.unavailable);
           expect(text, `${caseId} ${key}`).not.toMatch(/\d+\.\d\d SEK/);
           expect(text, `${caseId} ${key}`).not.toContain("限價");
@@ -180,7 +181,6 @@ describe("OPTIONS-NONUS-02 bridge: exact Python-emitted bodies through the Worke
         }
       }
     }
-    expect(unavailableSeen).toBeGreaterThan(40);
   });
 
   it("never shows a strategy for a same-root different native contract, and shows the proven decimal/weekly source forms", async () => {

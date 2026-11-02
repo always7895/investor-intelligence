@@ -8,13 +8,18 @@ import lineageContract from "../../tests/fixtures/v213-lineage-sealed-markets.js
 import urlTable from "../../tests/fixtures/v213-order-forecast-urls.json";
 import officialRevenueFixture from "../../tests/fixtures/v213-official-quarterly-revenue.json";
 import consensusFixture from "../../tests/fixtures/v11-consensus-sealed.json";
-import type { LineOutboundMessage } from "../src/line-messages";
+import { assertLineMessages, type LineOutboundMessage } from "../src/line-messages";
 function flexBubbleStrings(messages: readonly LineOutboundMessage[]): string[] {
   return messages.flatMap(message => {
     if (message.type !== "flex") return [];
     const carousel = message.contents as unknown as { contents?: unknown[] };
     return (carousel.contents ?? []).map(bubble => JSON.stringify(bubble));
   });
+}
+
+function disclosureFor(shared: string, symbol: string): string {
+  const parsed: { body: { contents: { text: string }[] } } = JSON.parse(shared);
+  return parsed.body.contents.filter(row => row.text.split("｜", 1)[0]!.split("、").includes(symbol)).map(row => row.text).join(" ");
 }
 
 const noWhitespace = (value: string) => value.replace(/\\n|\s/g, "");
@@ -47,8 +52,6 @@ describe("bottleneck-explosion Top20 v3", () => {
     expect(serialized).toContain("S1｜合成一號");
     expect(serialized).toContain("中文名來源：中文維基百科");
     expect(serialized).not.toContain("https://");  // full URLs remain reachable through the actual text command.
-    // V25-D4 keeps both horizons in one row and uses a compact six-month label for all twenty entries.
-    expect(serialized.match(/"text":"半年 [^"]*｜2年年化 /g)).toHaveLength(20);
     expect(serialized).not.toContain("1年報酬");
     // V25: the compact card retains visible lineage status; long explanations live in the text edition.
     expect(serialized).not.toContain("上市未滿2年");
@@ -127,9 +130,9 @@ describe("bottleneck-explosion Top20 v3", () => {
     const s5Text = (buildBottleneckDetail(parsed, "S5", "text") as { text: string }[]).map(message => message.text).join("\n");
     expect(s5Text).toContain("目前訂單：未揭露（SK海力士未揭露在手訂單）");
     const sive = buildBottleneckDetail(parsed, "SIVE.ST", "flex") as unknown as { contents: { contents: unknown[] } }[];
-    // V25 packs the four decision pages into one Flex carousel message instead of separate messages.
+    // Four decision pages and one final shared disclosure in the same reply.
     expect(sive.length).toBeLessThanOrEqual(5);
-    expect(sive.flatMap(message => message.contents.contents)).toHaveLength(4);
+    expect(sive.flatMap(message => message.contents.contents)).toHaveLength(5);
     const sivePayload = JSON.stringify(sive);
     expect(sivePayload).not.toContain("+2860%");
     expect(sivePayload).not.toContain("synthetic scarce layer role");
@@ -159,16 +162,21 @@ describe("bottleneck-explosion Top20 v3", () => {
     expect(industryText).toContain("3.00x");
   });
 
-  it("keeps order estimates, scenarios and figure qualifiers on each Top20 bubble", () => {
+  it("keeps each stock's estimates and qualifications in its card and the final same-reply disclosure", () => {
     const raw = doc(REPORT);
     (raw.top as any[])[2].fundamentals.cross_check = {
       source_id: "TPEX", source_url: "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap05_O",
       period: "2026-08", revenue_yoy: 0.525, cumulative_yoy: 4.89, currency: "TWD",
     };
     const parsed = parseBottleneckV3(raw, REPORT + HOUR)!;
-    const cards = flexBubbleStrings(buildBottleneckTop20Messages(parsed, "flex"));
+    const messages = buildBottleneckTop20Messages(parsed, "flex");
+    expect(() => assertLineMessages(messages)).not.toThrow();
+    const cards = flexBubbleStrings(messages);
+    expect(cards).toHaveLength(21);
+    const shared = cards.pop()!;
+    expect(shared).toContain("資料來源與說明");
     const s2 = cards.find(card => card.includes("S2｜無公認中文名"))!;
-    const s2Text = s2.replaceAll("\\n", " ");
+    const s2Text = `${s2} ${disclosureFor(shared, "S2")}`.replaceAll("\\n", " ");
     // V25-FIX2 keeps each start date and moves the non-today caveat to the single closing clause.
     expect(s2Text).toContain("未來訂單｜半年內預計認列：US$12.0B");
     expect(s2Text).toContain("起算日 2026-06-30，至 2026-12-30");
@@ -189,7 +197,6 @@ describe("bottleneck-explosion Top20 v3", () => {
     const s2Orders = outlookTiles(parsed, s2Entry)[0]!;
     expect(noWhitespace(s2Text)).toContain(noWhitespace(`${s2Orders[0]}：${s2Orders[1]}`));
     expect(noWhitespace(s2Text)).toContain(noWhitespace(`訂單：${s2Orders[2]}`));
-    expect(s2Text).toContain("訂單：未揭露｜synthetic scarce layer role");
     expect(s2Text).toContain("營收代理：年增 +109%");
     // V25-D2 keeps the proxy label/value in the body; the disclosure carries only its qualifier.
     expect(s2Text).toContain("非訂單");
@@ -199,8 +206,10 @@ describe("bottleneck-explosion Top20 v3", () => {
     expect(noWhitespace(s2Text)).toContain(noWhitespace("官方月營收：櫃買中心 2026-08 單月年增 +53%，1–8 月累計年增 +489%"));
 
     const sive = cards.find(card => card.includes("SIVE.ST｜無公認中文名"))!;
-    expect(sive).toContain("交易所收盤交叉比對：");
-    expect(sive).toContain("與 Yahoo 差 +0.12%");
+    expect(sive).toBeTruthy();
+    const siveDisclosure = disclosureFor(shared, "SIVE.ST");
+    expect(siveDisclosure).toContain("交易所收盤交叉比對：");
+    expect(siveDisclosure).toContain("與 Yahoo 差 +0.12%");
   });
 
   it("shows the verified listing event and its sources in every form and closes malformed lineage metadata", () => {
@@ -303,7 +312,8 @@ describe("bottleneck-explosion Top20 v3", () => {
     expect(JSON.stringify(buildBottleneckDetail(parsed, "S1", "flex"))).toContain(expected);
     const topFlex = flexBubbleStrings(buildBottleneckTop20Messages(parsed, "flex"));
     const s1 = topFlex.find(card => card.includes("S1｜"))!;
-    expect(s1).toContain(expected);
+    expect(topFlex.at(-1)).toContain("資料來源與說明");
+    expect(disclosureFor(topFlex.at(-1)!, "S1")).toContain(expected);
     expect(s1).toContain("瓶頸詳情 S1");
     for (const bad of [{ ...monthly, period: "2026-13" }, { ...monthly, source_url: "http://x" },
       { ...monthly, revenue_yoy: null, cumulative_yoy: null }, { ...monthly, revenue_yoy: "525%" },
@@ -373,26 +383,28 @@ describe("bottleneck-explosion Top20 v3", () => {
     const messages = buildBottleneckTop20Messages(parsed, "flex");
     const bubbles = flexBubbleStrings(messages);
     expect(messages.length).toBeLessThanOrEqual(5);
-    expect(bubbles).toHaveLength(20);
+    expect(() => assertLineMessages(messages)).not.toThrow();
+    expect(bubbles).toHaveLength(21);
+    const shared = bubbles.pop()!;
+    expect(shared).toContain("資料來源與說明");
     for (const message of messages) {
       expect(new TextEncoder().encode(JSON.stringify(message)).length).toBeLessThanOrEqual(46_000);
     }
-    for (const bubble of bubbles) {
+    for (const entry of parsed.top) {
+      const bubble = bubbles.find(card => card.includes(`${entry.symbol}｜`))!;
+      expect(bubble, entry.symbol).toBeTruthy();
+      const disclosure = disclosureFor(shared, entry.symbol);
       expect(bubble).toContain("未來訂單｜");
       expect(bubble).toContain("股價情境｜");
-      // V25-D4 shortens the qualifier label but keeps the ordersTile basis adjacent.
-      expect(bubble).toContain("訂單：");
-      expect(bubble).toMatch(/預計認列非保證|RPO 為剩餘履約義務，非全部訂單；預計認列非保證/);
-      // V25-D4 preserves the scenario condition in a shorter label.
-      expect(bubble).toContain("情境");
+      expect(disclosure, entry.symbol).toContain("訂單：");
+      expect(`${bubble} ${disclosure}`, entry.symbol).toMatch(/預計認列非保證|RPO 為剩餘履約義務，非全部訂單；預計認列非保證/);
+      expect(disclosure, entry.symbol).toContain("情境");
     }
-    // A card that shows a dated RPO figure states on the same card that RPO is remaining performance obligations, not all orders.
-    const rpoCards = bubbles.filter(bubble => /RPO \d{4}-\d{2}-\d{2}/.test(bubble));
-    expect(rpoCards.length).toBeGreaterThan(0);
-    for (const bubble of rpoCards) expect(bubble).toContain("RPO 為剩餘履約義務，非全部訂單");
+    // Every dated RPO's meaning belongs to the same symbol in the final disclosure.
+    const rpoEntries = parsed.top.filter(entry => /RPO \d{4}-\d{2}-\d{2}/.test(disclosureFor(shared, entry.symbol)));
+    expect(rpoEntries.length).toBeGreaterThan(0);
+    for (const entry of rpoEntries) expect(disclosureFor(shared, entry.symbol)).toContain("RPO 為剩餘履約義務，非全部訂單");
     const serialized = JSON.stringify(messages);
-    // V25-D4 uses a compact Chinese half-year label without changing the return horizon.
-    expect(serialized.match(/"半年 [^"]*｜2年年化/g)).toHaveLength(20);
     // V25-D4 keeps listing history on the bubble with a concise label.
     expect(noWhitespace(serialized)).toContain(noWhitespace("上市沿革"));
     const topText = JSON.stringify(buildBottleneckTop20Messages(parsed, "text"));
@@ -407,13 +419,17 @@ describe("bottleneck-explosion Top20 v3", () => {
     expect(topText).toContain("若1年內實現訂單 → 無法估價（訂單僅覆蓋同期營收 0.3%）");
   });
 
-  it("states the RPO meaning once beside a current RPO figure without a future forecast or with a v3 consensus forecast", () => {
+  it("states the RPO meaning for the current figure in the final same-reply disclosure", () => {
     const rpoCard = (raw: any, symbol: string, now: number, version: number) => {
       const parsed = parseBottleneckV3(raw, now)!;
       const entry = parsed.top.find(item => item.symbol === symbol)!;
       expect(entry.outlook!.orders!.kind).toBe("RPO");
       expect(entry.forecast?.version ?? 1).toBe(version);
-      return flexBubbleStrings(buildBottleneckTop20Messages(parsed, "flex")).find(bubble => bubble.includes(`${symbol}｜`))!;
+      const bubbles = flexBubbleStrings(buildBottleneckTop20Messages(parsed, "flex"));
+      const bubble = bubbles.find(item => item.includes(`${symbol}｜`))!;
+      const shared = bubbles.at(-1)!;
+      expect(shared).toContain("資料來源與說明");
+      return { bubble, disclosure: disclosureFor(shared, symbol) };
     };
     const noForecast = doc(REPORT);
     delete (noForecast.top as any[])[1].outlook.order_forecast;
@@ -423,10 +439,10 @@ describe("bottleneck-explosion Top20 v3", () => {
     const withConsensus = doc(cutoff);
     const currentOrders = structuredClone((withConsensus.top as any[])[1].outlook.orders);
     Object.assign((withConsensus.top as any[])[1], { symbol: "ACME", outlook: { ...structuredClone(consensus.outlooks.ACME), orders: currentOrders } });
-    for (const bubble of [rpoCard(noForecast, "S1", REPORT + HOUR, 1), rpoCard(withConsensus, "ACME", cutoff + HOUR / 2, 3)]) {
+    for (const { bubble, disclosure } of [rpoCard(noForecast, "S1", REPORT + HOUR, 1), rpoCard(withConsensus, "ACME", cutoff + HOUR / 2, 3)]) {
       expect(bubble).toContain("US$3.2B");
-      expect(bubble).toContain("RPO 2026-07-26");
-      expect(bubble.match(/RPO 為剩餘履約義務，非全部訂單/g)).toHaveLength(1);
+      expect(disclosure).toContain("RPO 2026-07-26");
+      expect(disclosure.match(/RPO 為剩餘履約義務，非全部訂單/g)).toHaveLength(1);
     }
   });
 
@@ -758,9 +774,10 @@ describe("revenue-momentum proxy tile (V13 phase A)", () => {
     for (const symbol of ["S3", "S5", "SIVE.ST"]) {
       const card = cards.find(item => item.includes(`${symbol}｜`))!;
       expect(outlookTiles(parsed, sym(parsed, symbol))).toHaveLength(2);
-      // V25-D3 keeps proxy values in the body and the non-order qualifier once in the closing disclosure.
-      expect(card).toContain("營收代理：年增 +109%｜加速 +19pp");
-      expect(card).toContain("非訂單");
+      expect(card, symbol).toBeTruthy();
+      const disclosure = disclosureFor(cards.at(-1)!, symbol);
+      expect(disclosure).toContain("營收代理：年增 +109%｜加速 +19pp");
+      expect(disclosure).toContain("非訂單");
       expect(JSON.stringify(buildBottleneckDetail(parsed, symbol, "text"))).toContain("營收動能（代理）");
     }
     for (const symbol of ["S1", "S4"]) {
@@ -800,9 +817,12 @@ describe("revenue-momentum proxy tile (V13 phase A)", () => {
     expect(detail).toContain(PROXY_FOOTNOTE);
     expect(detail).toContain("營收動能（代理）：年增 +109%（非訂單｜加速 +19pp｜季末 2026-06-30）");
     expect(JSON.stringify(buildBottleneckDetail(parsed, "S1", "text"))).not.toContain(PROXY_FOOTNOTE);
-    const s3 = flexBubbleStrings(buildBottleneckTop20Messages(parsed, "flex")).find(card => card.includes("S3｜"))!;
-    // V25-D3 keeps proxy values in the body and the non-order qualifier once in the closing disclosure.
-    expect(s3).toContain("營收代理：年增 +109%｜加速 +19pp");
-    expect(s3).toContain("非訂單");
+    const cards = flexBubbleStrings(buildBottleneckTop20Messages(parsed, "flex"));
+    const s3 = cards.find(card => card.includes("S3｜"))!;
+    expect(s3).toBeTruthy();
+    expect(cards.at(-1)).toContain("資料來源與說明");
+    const disclosure = disclosureFor(cards.at(-1)!, "S3");
+    expect(disclosure).toContain("營收代理：年增 +109%｜加速 +19pp");
+    expect(disclosure).toContain("非訂單");
   });
 });

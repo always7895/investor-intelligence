@@ -1,5 +1,5 @@
 import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
-import { effectiveDays, MONTHLY_DTE_BUCKET, SHORT_DTE_NOTICE_MAX, WEEKLY_DTE_BUCKET } from "./option-recommendation-rules";
+import { effectiveDays, MONTHLY_DTE_BUCKET, monthlyFallbackNoticeZh, SHORT_DTE_NOTICE_MAX, WEEKLY_DTE_BUCKET } from "./option-recommendation-rules";
 import { LINE_THEME as T, chip, disclosureLine, footerStyle, menuAction, productHeader, uiBox, uiText, verdictLine } from "./line-theme";
 
 /**
@@ -19,8 +19,8 @@ export type OptionCycle = "WEEKLY" | "MONTHLY";
 export type DteWindowStatus = "WITHIN_CYCLE_WINDOW" | "OUTSIDE_CYCLE_WINDOW";
 
 /** DTE windows shared with option-recommendation-rules.ts and market-product-schema.ts (weekly 0-14: the current calendar
- * week's expiry, or next week's when this week has none left; monthly 21-45). A correct current-week expiry (DTE 0-2 included)
- * is therefore never reported as outside the standard window. */
+ * week's expiry, or next week's when this week has none left; monthly preferred 21-45, with 14-60 fallback admission).
+ * These remain the preferred display windows; an admitted monthly fallback is explicitly labelled outside that window. */
 export const OPTION_CYCLE_DTE_WINDOW: Readonly<Record<OptionCycle, readonly [number, number]>> = Object.freeze({
   WEEKLY: WEEKLY_DTE_BUCKET, MONTHLY: MONTHLY_DTE_BUCKET,
 });
@@ -251,7 +251,8 @@ function cycleLine(guidance: OptionsOrderGuidance): string {
   const alsoMonthly = guidance.requested_cycle === "WEEKLY" && guidance.expiry_cycle === "MONTHLY" && guidance.cycle_matches_request
     ? "｜本週到期，同時是標準月選到期日" : "";
   const short = guidance.dte <= SHORT_DTE_NOTICE_MAX ? "｜到期日極近，年化收益以至少 1 天換算而被放大" : "";
-  return `${CYCLE_LABEL[guidance.requested_cycle && guidance.cycle_matches_request ? guidance.requested_cycle : guidance.expiry_cycle]}｜DTE ${guidance.dte}（標準區間 ${low}-${high} 天，${WINDOW_LABEL[guidance.dte_window_status]}）${mismatch}${alsoMonthly}${short}`;
+  const monthly = (guidance.requested_cycle ?? guidance.expiry_cycle) === "MONTHLY" ? monthlyFallbackNoticeZh(guidance.dte) : null;
+  return `${CYCLE_LABEL[guidance.requested_cycle && guidance.cycle_matches_request ? guidance.requested_cycle : guidance.expiry_cycle]}｜DTE ${guidance.dte}（標準區間 ${low}-${high} 天，${WINDOW_LABEL[guidance.dte_window_status]}）${mismatch}${alsoMonthly}${short}${monthly ? `｜${monthly}` : ""}`;
 }
 
 /** One-line flex form of CAVEAT_DISCLAIMER (the text edition keeps the full text); the full risk teaching is one button away. */
@@ -288,7 +289,8 @@ function optionsGuidanceBubble(guidance: OptionsOrderGuidance): Record<string, u
     ? "本週到期，同時為標準月選" : null;
   const dteCaveat = guidance.dte <= SHORT_DTE_NOTICE_MAX ? "極短 DTE 按至少1日換算，年化放大" : null;
   const cycleLabel = CYCLE_LABEL[guidance.requested_cycle && guidance.cycle_matches_request ? guidance.requested_cycle : guidance.expiry_cycle];
-  const cycleSummary = `${cycleLabel}｜標準 ${windowLow}-${windowHigh}天｜${WINDOW_LABEL[guidance.dte_window_status]}`;
+  const monthly = (guidance.requested_cycle ?? guidance.expiry_cycle) === "MONTHLY" ? monthlyFallbackNoticeZh(guidance.dte) : null;
+  const cycleSummary = monthly ?? `${cycleLabel}｜標準 ${windowLow}-${windowHigh}天｜${WINDOW_LABEL[guidance.dte_window_status]}`;
   return {
     type: "bubble", size: "mega",
     header: productHeader("韭菜守護者 · 期權掛單參數 / Order parameters", guidance.ticker, [

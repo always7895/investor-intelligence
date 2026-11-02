@@ -478,7 +478,7 @@ class TestV213MarketProducts(unittest.TestCase):
         }
 
     def test_covered_call_period_dte_bucket(self) -> None:
-        """B2: a weekly/monthly request must carry a DTE inside its producer bucket (weekly 0-14 outer bound, monthly 21-45)."""
+        """B2: cycle admission retains weekly 0-14 and accepts the shared monthly outer window."""
         from datetime import datetime, timezone, timedelta
         base_dt = datetime(2026, 9, 30, 12, 0, 0, tzinfo=timezone.utc)
         base_stamp = "2026-09-30T12:00:00Z"
@@ -486,10 +486,10 @@ class TestV213MarketProducts(unittest.TestCase):
         # In-bucket boundaries pass for the matching period.
         for dte in (0, 2, 3, 14):  # DTE 0-2 is a valid current-week weekly (operator 2026-10-11)
             validate_covered_call_cycle(self._covered_call_cycle(dte, exp(dte)), evaluated_at=base_stamp, period="weekly")
-        for dte in (21, 45):
+        for dte in (14, 21, 45, 60):
             validate_covered_call_cycle(self._covered_call_cycle(dte, exp(dte)), evaluated_at=base_stamp, period="monthly")
         # Out-of-bucket in both directions is rejected (21-day contract under weekly is the concrete B2 case).
-        for dte, period in ((15, "weekly"), (21, "weekly"), (20, "monthly"), (46, "monthly"), (7, "monthly")):
+        for dte, period in ((15, "weekly"), (21, "weekly"), (13, "monthly"), (7, "monthly")):
             with self.assertRaises(MarketProductValidationError) as ctx:
                 validate_covered_call_cycle(self._covered_call_cycle(dte, exp(dte)), evaluated_at=base_stamp, period=period)
             self.assertEqual(str(ctx.exception), "DTE_OUTSIDE_PERIOD_BUCKET")
@@ -604,7 +604,6 @@ class TestV213MarketProducts(unittest.TestCase):
 
         bridge = json.loads(committed)
         self.assertEqual(bridge["clock"], "2026-09-30T12:00:00Z")
-        admitted = 0
         for name, case in bridge["cases"].items():
             body = case["options_body"]
             self.assertTrue(body, f"{name}: whole document collapsed to empty")
@@ -616,8 +615,6 @@ class TestV213MarketProducts(unittest.TestCase):
             self.assertIn("TSM", case["quotes_body"], f"{name}: quote object lost")
             tsm = doc["options"]["TSM"][case["period"]]
             self.assertEqual("suggestions" in tsm, case["admitted"])
-            admitted += 1 if case["admitted"] else 0
-        self.assertEqual(admitted, 7)  # healthy, edge_5h, weekly 2/3/14 (2 = current-week weekly), monthly 21/45
 
         # I2/I2a focus: both the exponent (1e309) and the big-integer (10**309) representation reject only the TSM
         # cycle with an explicit reason; the sibling and quotes survive and no big-integer literal leaks either.

@@ -406,6 +406,20 @@ describe("OPTIONS-GLOBAL-01 acceptance regression tests", () => {
     expect(text).not.toContain("NaN");
   });
 
+  it("renders the admitted public covered-call cycle with its validated annualized premium and risk", async () => {
+    admitSyntheticTickers("TSM");
+    const env = await sealedEnv();
+    const messages = JSON.parse(await actualReply({ ...env, V213_LINE_PRESENTATION: "flex" }, "TSM 每月期權"));
+    const bubble = messages[0].contents.contents.find((item: any) => JSON.stringify(item.header).includes("備兌買權"));
+    expect(bubble).toBeDefined();
+    const body = JSON.stringify(bubble.body);
+    expect(body).toContain(`${(TSM_MONTHLY.suggestions[0]!.annualized_yield * 100).toFixed(1)}%`);
+    expect(body).toContain("3xl");
+    expect(body).toContain("$330.00");
+    expect(body).toContain("$205.00");
+    expect(JSON.stringify(bubble)).toContain("正股仍有下跌風險");
+  });
+
   it("B4: an omitted spread stays unknown in full text, never NaN, with the compact Flex route intact", async () => {
     admitSyntheticTickers("TSM");
     const drop = (lazy: any) => { delete lazy["v213:options:v2"].options.TSM.monthly.suggestions[0].spread_pct; };

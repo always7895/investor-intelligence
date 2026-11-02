@@ -249,7 +249,7 @@ MAX_HIGH_STRIKE_DELTA = 0.20
 # must carry a DTE inside its own bucket (weekly 0-14 is the outer bound; with asof_date the exact calendar-week rule of
 # option_recommendation_rules applies: this week's remaining expiry or, only when none, next week's). Not a third-Friday
 # calendar classification.
-PERIOD_DTE_BUCKETS = {"weekly": rules.WEEKLY_DTE_BUCKET, "monthly": rules.MONTHLY_DTE_BUCKET}
+PERIOD_DTE_BUCKETS = {"weekly": rules.WEEKLY_DTE_BUCKET, "monthly": rules.MONTHLY_FALLBACK_DTE_BUCKET}
 
 
 # The previous-session carry-forward basis (scripts/options_carry_forward.py; Worker twin PREVIOUS_SESSION_BASIS in covered-call.ts):

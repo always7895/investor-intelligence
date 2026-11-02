@@ -20,7 +20,8 @@ export const LINE_THEME = Object.freeze({ ink: "#111418", muted: "#4A5058", pape
   button: "#ECEEF1", onAccent: "#111418", onInk: "#FFFFFF",
   // Option cycle outside its DTE window: the original yellow pill (operator 2026-09-25: red read as an error).
   cycleCaution: "#FDE68A", cycleCautionText: "#78350F",
-  negative: "#B42318", paleNegative: "#FEF3F2", caution: "#9A3412", paleCaution: "#FFF7ED" });
+  negative: "#B42318", paleNegative: "#FEF3F2", caution: "#9A3412", paleCaution: "#FFF7ED",
+  accent: "#344F70", accentTint: "#EEF3F8" });
 
 export const menuText = (text: string, size = "sm", color: string = LINE_THEME.ink) => ({ type: "text", text, size, color, wrap: true });
 export const menuBox = (contents: unknown[], extra: Record<string, unknown> = {}) => ({ type: "box", layout: "vertical", spacing: "md", contents, ...extra });
@@ -72,6 +73,30 @@ export const kpiTile = (label: string, value: string, color: string = signColor(
   uiText(label, "xxs", T.subtle),
   uiText(value, value.length > 8 ? "sm" : "xl", color, { weight: "bold" }),
 ], { flex: 1, spacing: "xs", backgroundColor: T.soft, cornerRadius: "md", paddingAll: "md" });
+
+/** Two-column cards use a cool slate tint; numeric contrast remains on the ink scale. */
+export const accentKpiTile = (label: string, value: string) => {
+  const color = /^≥[-−]\d/.test(value) ? T.negative : /^(?:≥[+\d]|(?:US)?[$€£]\d)/.test(value) ? T.ink : signColor(value);
+  const missing = ["未揭露", "需新訂單"].includes(value);
+  return uiBox(missing ? [
+    uiText(label, "xs", T.subtle),
+    uiBox([uiBox([uiText(value, "xs", T.ink, { weight: "bold", wrap: false })], {
+      flex: 0, backgroundColor: T.paper, cornerRadius: "xxl",
+      paddingStart: "sm", paddingEnd: "sm", paddingTop: "xs", paddingBottom: "xs",
+    })], { layout: "horizontal" }),
+  ] : [{
+    type: "text", size: "sm", wrap: true, contents: [
+      { type: "span", text: `${label}\n`, size: "xs", color: T.subtle },
+      { type: "span", text: value, size: value.length > 8 ? "sm" : "lg", color, weight: "bold" },
+    ],
+  }], { flex: 1, spacing: "xs", backgroundColor: T.accentTint, cornerRadius: "md", paddingAll: "sm" });
+};
+
+/** Compact section label with the brand accent rail. */
+export const accentHeading = (title: string) => uiBox([
+  uiBox([], { width: "3px", height: "16px", flex: 0, backgroundColor: T.accent }),
+  uiText(title, "xs", T.ink, { weight: "bold" }),
+], { layout: "horizontal", spacing: "sm" });
 
 /** Information levels by lightness: key (ink strip with a short gradient), detail (grey), forward/context (pale). */
 const SECTION_TONES = Object.freeze({
@@ -136,7 +161,7 @@ const clampPct = (value: number) => Math.max(0, Math.min(100, Math.round(value))
 export const meter = (value: number, max = 100, fill: string = T.ink, grow = false) => ({
   type: "box", layout: "vertical", backgroundColor: T.border, height: "6px", cornerRadius: "3px", ...(grow ? { flex: 1 } : {}),
   contents: [{ type: "box", layout: "vertical", contents: [], width: `${Math.max(2, clampPct((value / max) * 100))}%`,
-    height: "6px", cornerRadius: "3px", background: { type: "linearGradient", angle: "90deg", startColor: T.strongEnd, endColor: fill }, backgroundColor: fill }],
+    height: "6px", cornerRadius: "3px", backgroundColor: fill }],
 });
 
 /** Square rank badge: the leader is solid ink, the rest graphite outline. */
@@ -262,7 +287,7 @@ export function kvRow(label: string, value: string, options: { emphasis?: boolea
 export const barRow = (label: string, value: number, display: string, max = 100) => uiBox([
   uiText(label, "xs", T.subtle, { flex: 2 }),
   uiBox([meter(value, max, T.ink, true)], { flex: 3, justifyContent: "center" }),
-  uiText(display, "xs", T.ink, { flex: 2, align: "end", weight: "bold" }),
+  uiText(display, "xs", signColor(display), { flex: 2, align: "end", weight: "bold" }),
 ], { layout: "horizontal", spacing: "sm", alignItems: "center" });
 
 /** ONE xxs line for every required disclosure and source label, parts joined by "｜". Not clamped: the long form of each

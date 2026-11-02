@@ -12,11 +12,12 @@
  */
 
 import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
-import { LINE_THEME as T, altSummary, disclosureGroups, disclosureLine, menuAction, menuBox, menuText, headerStyle, footerStyle, uiBox, uiText } from "./line-theme";
+import { LINE_THEME as T, altSummary, chip, disclosureLine, menuAction, menuBox, headerStyle, footerStyle, uiBox, uiText } from "./line-theme";
 import type { OptionContractQuote } from "./market-product-schema";
 import { validateOptionContractQuote } from "./market-product-schema";
 import { admitPublicOption, OptionRightsNotAdmittedError } from "./public-options-admission";
 import { quoteBasisZh, rightsZh, sourceZh } from "./source-labels";
+import { monthlyFallbackNoticeZh } from "./option-recommendation-rules";
 
 export const OPTIONS_PRODUCT_KEY = "v213:options-chain:latest";
 
@@ -31,30 +32,58 @@ function requireAdmitted(quote: OptionContractQuote): void {
   if (!admitPublicOption(quote).ok) throw new OptionRightsNotAdmittedError();
 }
 
-export function buildOptionContractBubble(quote: OptionContractQuote) {
+/** Multiple quoted facts share one tile without inventing a strategy or a recommendation. */
+function quoteTile(pairs: readonly (readonly [string, string])[]) {
+  const valueText = pairs.map(([, value]) => value).join("/");
+  return uiBox([{ type: "text", size: "xs", wrap: true, contents: [
+    { type: "span", text: `${pairs.map(([label]) => label).join("/")}\n`, color: T.subtle, size: "xs" },
+    { type: "span", text: valueText, color: pairs.every(([, value]) => value === "未取得" || value === "未取得 / 未取得") ? T.subtle : T.ink, size: valueText.length > 14 ? "xs" : "sm", weight: "bold" },
+  ] }], { flex: 1, backgroundColor: T.accentTint, cornerRadius: "md", paddingAll: "sm" });
+}
+
+export function buildOptionContractBubble(quote: OptionContractQuote, period: "weekly" | "monthly" | undefined) {
   requireAdmitted(quote);
   const nonexecTag = quote.quote_basis !== "realtime"
-    ? "【非即時可執行報價 · 僅供參考】"
+    ? "【非即時可執行報價】"
     : "【即時參考報價】";
+  const monthlyNotice = period === "monthly" ? monthlyFallbackNoticeZh(quote.dte) : null;
 
   return {
     type: "bubble",
     size: "mega",
-    header: menuBox([
-      menuText(`公開期權報價 · 逐約核驗 ${nonexecTag}`, "xs", T.headerMuted),
-      { ...menuText(`${quote.ticker} ${quote.expiry} ${quote.strike}${quote.type.toUpperCase()}`, "lg", T.headerText), weight: "bold" },
-      menuText(`DTE: ${quote.dte} 天｜基準：${quote.quote_basis}｜幣別：${quote.currency}（乘數 ${quote.multiplier} 股/口）`, "xs", T.headerSubtle),
-    ], { ...headerStyle }),
+    header: menuBox([{ type: "text", size: "xs", wrap: true, contents: [
+      { type: "span", text: `公開期權${nonexecTag}\n`, size: "xs", color: T.headerMuted },
+      { type: "span", text: `${quote.ticker} ${quote.expiry} ${quote.strike}${quote.type.toUpperCase()}`, size: "lg", color: T.headerText, weight: "bold" },
+      { type: "span", text: `\nDTE ${quote.dte}｜基準：${quote.quote_basis}｜${quote.currency}（${quote.multiplier}股/口）`, size: "xs", color: T.headerSubtle },
+    ] }, ...(monthlyNotice ? [chip(monthlyNotice, T.cycleCaution, T.cycleCautionText)] : [])], { ...headerStyle }),
     body: uiBox([
-      uiText(`Bid ${formatMoney(quote.bid, quote.currency)}｜中價 ${formatMoney(quote.mid, quote.currency)}｜Ask ${formatMoney(quote.ask, quote.currency)}\nSpread ${formatMoney(quote.spread, quote.currency)}｜Delta ${quote.delta !== null ? quote.delta.toFixed(3) : "UNAVAILABLE"}`, "xs", T.ink),
-      uiText(`IV ${quote.iv !== null ? `${(quote.iv * 100).toFixed(1)}%` : "UNAVAILABLE"}｜OI ${quote.oi !== null ? quote.oi : "UNAVAILABLE"}｜量 ${quote.volume !== null ? quote.volume : "UNAVAILABLE"}`, "xs", T.subtle),
+      uiBox([
+      { type: "text", size: "3xl", weight: "bold", wrap: true, contents: [
+        { type: "span", text: "年化報酬\n", size: "xs", color: T.subtle, weight: "regular" },
+        { type: "span", text: "未提供", size: "3xl", color: T.subtle, weight: "bold" },
+        { type: "span", text: "\n未提供策略報酬", size: "xs", color: T.subtle, weight: "regular" },
+      ] },
+      uiBox([uiBox([], { width: "3px", height: "16px", flex: 0, backgroundColor: T.accent }),
+        { type: "text", size: "xs", wrap: true, contents: [
+          { type: "span", text: "履約價｜中價｜年化\n", size: "xs", color: T.muted, weight: "bold" },
+          { type: "span", text: `${quote.strike}｜${formatMoney(quote.mid, quote.currency)}｜—`, size: "sm", color: T.ink, weight: "bold" },
+        ] }], { layout: "horizontal", spacing: "sm", backgroundColor: T.accentTint, paddingAll: "sm", cornerRadius: "md" }),
+      ], { spacing: "sm" }),
+      uiBox([quoteTile([["Bid", formatMoney(quote.bid, quote.currency)], ["Spread", formatMoney(quote.spread, quote.currency)]]),
+        quoteTile([["Ask", formatMoney(quote.ask, quote.currency)]])], { layout: "horizontal", spacing: "sm" }),
+      uiBox([quoteTile([["Delta", quote.delta !== null ? quote.delta.toFixed(3) : "未取得"],
+        ["IV", quote.iv !== null ? `${(quote.iv * 100).toFixed(1)}%` : "未取得"]]),
+      quoteTile([["OI / 量", `${quote.oi ?? "未取得"} / ${quote.volume ?? "未取得"}`]])], { layout: "horizontal", spacing: "sm" }),
     ], { paddingAll: "lg", spacing: "sm", backgroundColor: T.paper }),
     footer: uiBox([
-      ...disclosureGroups([
-        { label: "來源", text: `時間 ${quote.timestamp}｜${sourceZh(quote.source)}` },
-        { label: "權利", text: `${rightsZh(quote.rights_status)}｜出處 ${quote.provenance}` },
-        { label: "風險", text: `指派：${quote.assignment_risk}；流動性：${quote.liquidity_warning}；報價不保證委託成交；非投資建議、不下單` },
-      ]),
+      { type: "text", size: "xxs", color: T.subtle, wrap: true, contents: [
+        { type: "span", text: "來源｜", color: T.subtle, weight: "bold" },
+        { type: "span", text: `${quote.timestamp}｜${sourceZh(quote.source)}\n`, color: T.subtle },
+        { type: "span", text: "權利｜", color: T.subtle, weight: "bold" },
+        { type: "span", text: `${rightsZh(quote.rights_status)}｜出處 ${quote.provenance}\n`, color: T.subtle },
+        { type: "span", text: "風險｜", color: T.subtle, weight: "bold" },
+        { type: "span", text: `指派：${quote.assignment_risk}；流動性：${quote.liquidity_warning}；成交不保證；非投資建議、不下單`, color: T.subtle },
+      ] },
       menuAction("查看期權策略教學", "期權教學"),
       menuAction("回功能選單", "選單"),
     ], { ...footerStyle }),
@@ -64,7 +93,7 @@ export function buildOptionContractBubble(quote: OptionContractQuote) {
 export function buildOptionContractFlex(quote: OptionContractQuote, validationOptions?: Parameters<typeof validateOptionContractQuote>[1]): LineOutboundMessage[] {
   const validated = validateOptionContractQuote(quote, validationOptions);
   requireAdmitted(validated);
-  const bubble = buildOptionContractBubble(validated);
+  const bubble = buildOptionContractBubble(validated, validationOptions?.period);
   const messages: LineOutboundMessage[] = [{
     type: "flex",
     altText: altSummary({ topic: `${validated.ticker} ${validated.expiry} ${validated.strike}${validated.type.toUpperCase()} 期權報價`,
@@ -85,10 +114,12 @@ export function buildOptionContractText(quote: OptionContractQuote, validationOp
     ? "【非即時可執行報價 · 僅供參考】"
     : "【即時參考報價】";
 
+  const monthlyNotice = validationOptions?.period === "monthly" ? monthlyFallbackNoticeZh(validated.dte) : null;
   const text = [
     `【公開期權合約報價】${validated.ticker} ${validated.expiry} ${validated.strike}${validated.type.toUpperCase()}`,
     `報價性質：${nonexecTag}`,
     `DTE：${validated.dte} 天｜基準：${quoteBasisZh(validated.quote_basis)}｜來源：${sourceZh(validated.source)}｜幣別：${validated.currency}（乘數 ${validated.multiplier}）`,
+    ...(monthlyNotice ? [monthlyNotice] : []),
     `行情：Bid ${formatMoney(validated.bid, validated.currency)} ｜ Mid ${formatMoney(validated.mid, validated.currency)} ｜ Ask ${formatMoney(validated.ask, validated.currency)}`,
     `Spread：${formatMoney(validated.spread, validated.currency)}`,
     `Greeks：Delta ${validated.delta !== null ? validated.delta.toFixed(3) : "UNAVAILABLE"} ｜ IV ${validated.iv !== null ? (validated.iv * 100).toFixed(1) + "%" : "UNAVAILABLE"}`,
@@ -105,6 +136,13 @@ export function buildOptionContractText(quote: OptionContractQuote, validationOp
   return messages;
 }
 
+// A diagnostic can exceed LINE's hard payload limits. Mark truncation; the text route retains more detail.
+function clipDiagnostic(text: string, limit: number): string {
+  if (text.length <= limit) return text;
+  const chars = Array.from(text);
+  return chars.length <= limit ? text : `${chars.slice(0, limit - 1).join("")}…`;
+}
+
 export function optionsUnavailableReport(
   ticker: string,
   period: "weekly" | "monthly" | null,
@@ -112,10 +150,15 @@ export function optionsUnavailableReport(
   isText = false,
 ): LineOutboundMessage[] {
   const periodLabel = period === "weekly" ? "每週期權" : period === "monthly" ? "每月期權" : "期權";
+  // Only explicit expiry diagnostics; a date/age elsewhere is not an expiry.
+  const expiryContext = reason.includes("最近到期") ? reason.slice(reason.indexOf("最近到期"))
+    : /本次回應有 \d{4}-\d{2}-\d{2}\s*[（(]\s*\d{1,4}\s*天\s*[）)](?:週選)?(?:上市)?買權/.exec(reason)?.[0] ?? "";
+  const listedExpiries = [...expiryContext.matchAll(/(\d{4}-\d{2}-\d{2})\s*[（(]\s*(\d{1,4})\s*天\s*[）)]/g)]
+    .slice(0, 6).map(match => `${match[1]} · DTE ${match[2]}`);
   const title = `期權報價不可用 · ${ticker} ${periodLabel}`;
   const lines = [
     `OPTION_DATA_UNAVAILABLE：查詢標的 ${ticker} 之 ${periodLabel} 目前無已封存驗收之公開報價。`,
-    `原因說明：${reason}`,
+    `原因說明：${clipDiagnostic(reason, 9000)}`,
     "系統嚴格拒絕使用模型推估、Black-Scholes 定價模型猜測或舊殘留快照冒充市場即時行情。",
     "無合格真實雙邊報價時，Strike、Bid/Mid/Ask、Delta、OI、Volume 等欄位維持 UNAVAILABLE。",
     "您可使用下方「期權教學」查看標準策略教學卡片，或使用「期權試算說明」進行無持倉算術試算。",
@@ -140,7 +183,14 @@ export function optionsUnavailableReport(
       "快捷指令：",
       ...actions.map(([label, cmd]) => `• ${label}：${cmd}`),
     ].join("\n");
-    const messages: LineOutboundMessage[] = [{ type: "text", text }];
+    // Keep long diagnostics readable across LINE's text-message limit.
+    const messages: LineOutboundMessage[] = [];
+    for (let start = 0; start < text.length;) {
+      let end = Math.min(start + 4800, text.length);
+      if (end < text.length && /[\uD800-\uDBFF]/.test(text[end - 1]!)) end--;
+      messages.push({ type: "text", text: text.slice(start, end) });
+      start = end;
+    }
     assertLineMessages(messages);
     return messages;
   }
@@ -153,16 +203,30 @@ export function optionsUnavailableReport(
       contents: [{
         type: "bubble",
         size: "mega",
-        header: menuBox([
-          menuText("韭菜守護者 · 期權查詢", "xs", T.headerMuted),
-          { ...menuText("期權報價不可用", "xl", T.headerText), weight: "bold" },
-          menuText(`${ticker} ${periodLabel}｜嚴格無猜測`, "xs", T.headerAlert),
-        ], { ...headerStyle }),
+        header: menuBox([{ type: "text", size: "xs", wrap: true, contents: [
+          { type: "span", text: "韭菜守護者 · 期權查詢\n", size: "xs", color: T.headerMuted },
+          { type: "span", text: "期權報價不可用", size: "xl", color: T.headerText, weight: "bold" },
+          { type: "span", text: `\n${ticker} ${periodLabel}｜嚴格無猜測`, size: "xs", color: T.headerAlert },
+        ] }], { ...headerStyle }),
         body: uiBox([
-          uiText("OPTION_DATA_UNAVAILABLE\n無合格封存報價；不推估、不回退舊快照\n拒用模型／Black-Scholes 猜價", "xs", T.ink, { weight: "bold" }),
+          uiBox([
+            uiBox([uiText("!", "xl", T.caution, { weight: "bold", align: "center" })],
+              { width: "36px", height: "36px", cornerRadius: "18px", backgroundColor: T.paleCaution, justifyContent: "center", flex: 0 }),
+            uiBox([{ type: "text", size: "sm", wrap: true, contents: [
+              { type: "span", text: `暫無${period === "weekly" ? "每週" : period === "monthly" ? "每月" : ""}報價`, size: "lg", color: T.ink, weight: "bold" },
+              { type: "span", text: "\n無已驗收的封存報價", size: "xs", color: T.muted },
+            ] }], { flex: 1, spacing: "xs" }),
+          ], { layout: "horizontal", spacing: "md", alignItems: "center" }),
+          uiText("OPTION_DATA_UNAVAILABLE", "xxs", T.subtle),
+          ...(listedExpiries.length ? [
+            uiText("已列到期（非報價）", "xxs", T.subtle),
+            ...Array.from({ length: Math.ceil(listedExpiries.length / 2) }, (_, index) =>
+              uiBox(listedExpiries.slice(index * 2, index * 2 + 2).map(value => chip(value, T.soft, T.ink)),
+                { layout: "horizontal", spacing: "sm" })),
+          ] : []),
         ], { backgroundColor: T.paper, paddingAll: "lg", spacing: "sm" }),
         footer: menuBox([
-          disclosureLine([`原因：${reason}`, "缺值欄位維持 UNAVAILABLE", "非投資建議、不下單"]),
+          disclosureLine([`原因：${clipDiagnostic(reason, 2000)}`, "拒用模型／Black-Scholes 猜價", "缺值欄位維持 UNAVAILABLE", "非投資建議、不下單"]),
           ...actions.slice(0, 2).map(([label, cmd]) => menuAction(label, cmd)),
         ], { ...footerStyle }),
       }],

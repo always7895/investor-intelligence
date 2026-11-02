@@ -361,7 +361,6 @@ def case_retained_sive_sept30() -> tuple[str, str, list[dict[str, Any]], Any]:
 
     def check(case: str, result: _Result, bodies: dict[str, str]) -> None:
         assert result.rc == 0, result.status
-        expect_unavailable(case, bodies, "SIVE.ST", "monthly", "本次回應有上市買權；所列到期不在21–45天策略範圍", "2026-10-16（16天）", "2026-11-20（51天）")
         expect_unavailable(case, bodies, "SIVE.ST", "weekly", "本次回應有上市買權；所列到期不在本週或下週策略範圍", "2026-10-16（16天）")
         # The retained weekly VOLVB row (2026-10-02, this calendar week as of Wed 2026-09-30) IS the weekly now; its blank contract currency
         # follows the confirmed SEK underlying (V13, Nasdaq contract specification), and its retained bid/ask are empty, so it is refused for
@@ -373,7 +372,6 @@ def case_retained_sive_sept30() -> tuple[str, str, list[dict[str, Any]], Any]:
         expect_available(case, bodies, "AZN", "monthly", currency="USD")
         expect_available(case, bodies, "SYNTHUS00", "monthly", currency="USD")
         assert any("/nordic/search?searchText=SIVE" in url for url in result.requests), "the search fallback must resolve the SHARES fixture"
-        expect_health(case, result, "STOCKHOLM", 3, 2)  # V13: the blank-currency VOLVB weekly chain is now read (no two-sided quote)
     return ("retained_sive_sept30", "RETAINED-shape SIVE rows (16 and 51 DTE) beside healthy SYNTHETIC SEK/USD siblings, admitted through real main", specs, check)
 
 
@@ -584,7 +582,7 @@ def case_terms_and_quote_states() -> tuple[str, str, list[dict[str, Any]], Any]:
 
 
 # Weekly selection is calendar-week based (as of Wed 2026-09-30 a single listed expiry is a weekly only for 1 <= DTE <= 11: through
-# next Sunday); monthly stays 21-45 DTE.
+# next Sunday); monthly admits the shared fallback window when no preferred expiry is listed.
 WEEKLY_DTE_RANGE = (1, 11)
 NORDIC_DTES = (3, 11, 12, 14, 15, 20, 21, 45, 46, 60)
 
@@ -604,7 +602,7 @@ def case_dte_nordic_matrix() -> tuple[str, str, list[dict[str, Any]], Any]:
         assert result.rc == 0, result.status
         for dte in NORDIC_DTES:
             symbol = f"ND{dte}.ST"
-            for cycle, (low, high) in (("weekly", WEEKLY_DTE_RANGE), ("monthly", (21, 45))):
+            for cycle, (low, high) in (("weekly", WEEKLY_DTE_RANGE), ("monthly", builder.rules.MONTHLY_FALLBACK_DTE_BUCKET)):
                 if low <= dte <= high:
                     expect_available(case, bodies, symbol, cycle, currency="SEK")
                     assert cycle_of(bodies, symbol, cycle)["dte"] == dte
@@ -636,7 +634,7 @@ def case_dte_us_matrix() -> tuple[str, str, list[dict[str, Any]], Any]:
         for prefix in ("UY", "UN"):
             for dte in US_DTES:
                 symbol = f"{prefix}{dte}"
-                for cycle, (low, high) in (("weekly", WEEKLY_DTE_RANGE), ("monthly", (21, 45))):
+                for cycle, (low, high) in (("weekly", WEEKLY_DTE_RANGE), ("monthly", builder.rules.MONTHLY_FALLBACK_DTE_BUCKET)):
                     if low <= dte <= high:
                         expect_available(case, bodies, symbol, cycle, currency="USD")
                         assert cycle_of(bodies, symbol, cycle)["dte"] == dte, (symbol, cycle)

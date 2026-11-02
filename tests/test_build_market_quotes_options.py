@@ -1825,9 +1825,6 @@ class NonUsTypedEvidenceTests(unittest.TestCase):
         self.assertNotIn("未確認", only_malformed["monthly"]["unavailable"])
         mixed = self.nordic([None, "x", self.call(28)])
         self.assertNotIn("unavailable", mixed["monthly"], "a valid chain survives malformed siblings")
-        outside_with_malformed = self.nordic([None, self.call(16)])
-        self.assertIn("無法確認 21–45 天是否有買權", outside_with_malformed["monthly"]["unavailable"])
-        self.assertNotIn("所列到期不在", outside_with_malformed["monthly"]["unavailable"])
 
     def test_each_cycle_distinguishes_out_of_policy_from_unusable_in_window_terms(self):
         standard16_nonstandard28 = self.nordic([self.call(16), self.call(28, contractSize="50")])
@@ -1844,15 +1841,15 @@ class NonUsTypedEvidenceTests(unittest.TestCase):
         self.assertEqual({h["status"] for h in mixed_terms.health if h["cycle"] == "monthly"}, {"TERMS_REFUSED"})
         standard_beside_bad = self.nordic([self.call(28), self.call(40, contractSize="50")])
         self.assertNotIn("unavailable", standard_beside_bad["monthly"])
-        only_outside = self.nordic([self.call(16), self.call(51)])
-        text = only_outside["monthly"]["unavailable"]
-        self.assertIn("本次回應有上市買權；所列到期不在21–45天策略範圍", text)
-        self.assertIn("2026-10-16（16天）", text)
-        self.assertIn("2026-11-20（51天）", text)
-        self.assertLessEqual(len(text), 180)
-        self.assertEqual({h["status"] for h in only_outside.health}, {"NO_EXPIRY"})
-        many = self.nordic([self.call(dte) for dte in (50, 55, 60, 65, 70)])
-        self.assertLessEqual(many["monthly"]["unavailable"].count("天）"), 2)
+
+    def test_out_of_window_diagnostics_list_at_most_two_distinct_nearest_expiries(self):
+        result = self.nordic([self.call(day) for day in (80, 62, 61, 63, 61)])
+        reason = result["monthly"]["unavailable"]
+        for day in (61, 62):
+            self.assertEqual(reason.count((self.TODAY + timedelta(days=day)).isoformat()), 1)
+        for day in (63, 80):
+            self.assertNotIn((self.TODAY + timedelta(days=day)).isoformat(), reason)
+
 
     def test_quote_states_are_distinct_and_last_sale_settlement_oi_are_never_quotes(self):
         states = {"no bid/ask": dict(bid="", ask=""), "bid only": dict(bid="0.50", ask=""), "ask only": dict(bid="", ask="0.60"), "zero": dict(bid="0.00", ask="0.00"),
@@ -1869,25 +1866,30 @@ class NonUsTypedEvidenceTests(unittest.TestCase):
         self.assertEqual([(h["read"], h["two_sided"]) for h in miss.health if h["cycle"] == "monthly"], [(True, True)])
 
     def test_nordic_policy_window_boundaries_and_native_identity(self):
-        for dte in (3, 11, 12, 14, 15, 20, 21, 45, 46, 60):
+        for dte in (3, 11, 12, 13, 14, 15, 20, 21, 45, 46, 60, 61):
             out = self.nordic([self.call(dte, bid="1.06" if dte > 10 else "0.80", ask="1.13" if dte > 10 else "0.90")])
             weekly, monthly = "unavailable" not in out["weekly"], "unavailable" not in out["monthly"]
             # calendar-week rule as of Wed 2026-09-30 after the Stockholm close: a single listed expiry is a weekly for 1 <= DTE <= 11
             self.assertEqual(weekly, 1 <= dte <= 11, f"weekly {dte}")
-            self.assertEqual(monthly, 21 <= dte <= 45, f"monthly {dte}")
+            self.assertEqual(monthly, 14 <= dte <= 60, f"monthly {dte}")
             for cycle in ("weekly", "monthly"):
                 if "unavailable" not in out[cycle]:
                     self.assertEqual(out[cycle]["ticker"], "SIVE.ST")
                     self.assertEqual(out[cycle]["currency"], "SEK")
 
     def test_diagnostics_are_bounded_fixed_label_text(self):
-        self.assertEqual(builder._diag("x" * 500), "x" * 180)
-        for out in (self.nordic([self.call(16), self.call(51)]), self.nordic([None]), self.nordic([])):
+        for out in (self.nordic([self.call(16, bid="", ask=""), self.call(51, bid="", ask="")]), self.nordic([None]), self.nordic([])):
             for cycle in ("weekly", "monthly"):
                 text = out[cycle]["unavailable"]
                 self.assertLessEqual(len(text), 180)
                 self.assertFalse(any(ord(ch) < 32 for ch in text))
                 self.assertFalse(any(ch in text for ch in "<>{}"))
+
+    def test_diagnostic_truncation_preserves_the_first_180_characters(self):
+        for length in (179, 180, 181, 500):
+            with self.subTest(length=length):
+                diagnostic = "R" * (length - 1) + "尾"
+                self.assertEqual(builder._diag(diagnostic), diagnostic[:180])
 
     RETAINED_A = {"fullName": "SIVE 16OCT26 15.50C", "orderbookId": "TX7555268", "isin": "SE0030140737", "symbol": "SIVE6J15.50",
                   "expirationDate": "2026-10-16", "strikePrice": "15.50", "contractSize": "100", "bidPrice": "", "askPrice": "",
@@ -1981,7 +1983,6 @@ class NonUsTypedEvidenceTests(unittest.TestCase):
             builder.http_json = saved
         weekly = {h["cycle"]: h for h in out.health}["weekly"]
         self.assertEqual((weekly["status"], weekly["read"], weekly["two_sided"], weekly["expiry"]), ("READ", True, True, "2026-10-02"))
-        self.assertIn("所列到期不在21–45天策略範圍", out["monthly"]["unavailable"])
         self.assertIn("2026-10-02（4天）", out["monthly"]["unavailable"])
         self.assertNotIn("無法解析", out["monthly"]["unavailable"])
 

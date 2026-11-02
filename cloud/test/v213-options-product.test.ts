@@ -118,10 +118,15 @@ describe("Options Product Contract and Validation", () => {
 
     const flex = buildOptionContractFlex(validated, { evaluatedAt: "2026-09-14T12:00:00Z" });
     assertLineMessages(flex);
-    const bodyStr = JSON.stringify(flex);
-    // V25: the compact numeric row keeps the same null semantics without legacy punctuation.
-    expect(bodyStr).toContain("Delta UNAVAILABLE");
-    expect(bodyStr).toContain("OI UNAVAILABLE");
+    // In-process output from this renderer has the known Flex card shape.
+    type Tile = { contents?: { contents?: { text: string }[] }[] };
+    type Rendered = { contents: { contents: { body: { contents: { layout: string; contents?: Tile[] }[] } }[] } };
+    const rendered = flex[0] as unknown as Rendered;
+    const tiles = rendered.contents.contents[0]!.body.contents.flatMap(row => row.layout === "horizontal" ? row.contents ?? [] : []);
+    const spans = tiles.flatMap(tile => tile.contents?.[0]?.contents ?? []);
+    const tileValue = (label: string) => spans[spans.findIndex(span => span.text.trim() === label) + 1]?.text;
+    expect(tileValue("Delta/IV")).toBe("未取得/未取得");
+    expect(tileValue("OI / 量")).toBe("未取得 / 未取得");
   });
 
   it("rejects future timestamps beyond allowable tolerance", () => {
@@ -147,7 +152,11 @@ describe("Options Product Contract and Validation", () => {
     const flexStr = JSON.stringify(flex);
     expect(flexStr).toContain("NVDA 2026-09-25 125CALL");
     expect(flexStr).not.toContain("UNAVAILABLE（無定義策略）");
-    expect(flexStr).toContain("Bid $4.20");
+    expect(flexStr).toContain("$4.20");
+    expect(flexStr).toContain("年化報酬");
+    expect(flexStr).toContain("未提供策略報酬");
+    expect(flexStr).toContain("125｜$4.35｜—");
+    expect(flexStr).not.toContain("推薦");
     // V25-FIX3 keeps source/date, rights, provenance and both risk operands in three labelled rows on this bubble.
     for (const qualifier of [validQuote.timestamp, "來源｜", "權利｜", "出處 OP_TEST_SUITE", "風險｜", validQuote.assignment_risk, validQuote.liquidity_warning]) {
       expect(flexStr).toContain(qualifier);

@@ -1,6 +1,6 @@
 # Weekly and Monthly Option BID/ASK Analysis
 
-_Last reconciled: 2026-08-25 Asia/Taipei_
+_Last reconciled: 2026-11-02_
 
 ## Normative boundary
 
@@ -106,10 +106,15 @@ Annualized figures use at least one day (`max(DTE, 1)`), so a same-day expiry ne
 ### Monthly
 
 - target: 30 DTE;
-- accepted range: 21–45 DTE;
-- select the expiration nearest the target inside the range.
+- preferred range: 21–45 DTE; choose the listed expiration nearest 30, with earlier expiry breaking ties;
+- only when no preferred expiration is listed, use the nearest listed expiration inside the inclusive bounded fallback range 14–60 DTE, with the same earlier-expiry tie-break;
+- 14–60 spans at least two weeks and no more than roughly two months: it admits the standard November expiry at 18 DTE when the following monthly is 46 DTE, without treating a near-expiry or long-dated contract as the preferred monthly observation;
+- every fallback text/Flex card explicitly states its actual DTE and that it is outside the preferred 21–45-day window; preferred-window labels stay unchanged. Standalone contract quote cards require explicit monthly period context for this disclosure; weekly and periodless quotes are not labelled monthly from DTE alone;
+- no listed expiration inside the bounded range, or no valid real two-sided quote for the selected expiration, remains unavailable. A preferred expiration without quotes is not silently replaced by a different expiration.
 
-If no expiration qualifies, return `NO_EXPIRATION_IN_WINDOW` (for the weekly: no listed expiration this week or next). Never relabel another expiration as weekly or monthly. Use actual DTE for every calculation. When the current week's expiry is also the standard third-Friday monthly expiry, a weekly request still shows it as the week's weekly and notes that it is also the monthly expiry; the monthly request is unchanged.
+The shared definitions are `scripts/option_recommendation_rules.py` and `cloud/src/v213/option-recommendation-rules.ts`; the cross-language behavioral test consumes `tests/fixtures/monthly_expiry_cases.json` for selection and `tests/fixtures/options_window_cases.json` for executable collector/Python-validator/Worker admission parity. Collection/fetch bounds, sealed-product validators, selected-row Worker admission and manual/generic quote labels use those definitions. Selection never fabricates an expiration or quote and adds no Black-Scholes price fallback; pre-existing Greek estimation is unchanged.
+
+If no expiration qualifies, return `NO_EXPIRATION_IN_WINDOW` (for the weekly: no listed expiration this week or next). Never borrow another period's sealed row. Use actual DTE for every calculation. When the current week's expiry is also the standard third-Friday monthly expiry, a weekly request still shows it as the week's weekly and notes that it is also the monthly expiry. A navigation button to another period is not evidence that its quote exists.
 
 ## Quote fields and calculations
 

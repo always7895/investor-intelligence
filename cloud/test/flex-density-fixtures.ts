@@ -150,9 +150,14 @@ export const coveredCycle = () => ({ ticker: "NVDA", strategy: "COVERED_CALL", e
   suggestions: [tierItem("HIGH_STRIKE", 112, 0.10, 0.12, 0.08, 100, 2), tierItem("BALANCED", 106, 0.60, 0.66, 0.28, 100, 2)],
   middle_suggestion: tierItem("MIDDLE", 108, 0.35, 0.40, 0.20, 100, 2) });
 
+// The shared source page is intentionally long; budgets below apply to every primary card.
+// Separate tests validate its presence, preservation and LINE byte limit.
+const primaryCards = (bubbles: Node[]) => bubbles.filter(bubble =>
+  !JSON.stringify(bubble.header).includes('"text":"資料來源與說明"'));
+
 export const v20Surfaces: Record<string, () => Promise<Node[]> | Node[]> = {
   "top20-presentation": () => bubblesOf(buildV213Top20Messages(parseV213Top20Report(top20Report() as never)!)),
-  "bottleneck Top20 card": () => bubblesOf(buildBottleneckTop20Messages(parseBottleneckV3(bottleneckDoc(REPORT - 3600_000), REPORT)!, "flex")),
+  "bottleneck Top20 card": () => primaryCards(bubblesOf(buildBottleneckTop20Messages(parseBottleneckV3(bottleneckDoc(REPORT - 3600_000), REPORT)!, "flex"))),
   "bottleneck detail page 1": () => {
     const parsed = parseBottleneckV3(bottleneckDoc(REPORT - 3600_000), REPORT)!;
     return parsed.top.flatMap(entry => {
@@ -163,7 +168,7 @@ export const v20Surfaces: Record<string, () => Promise<Node[]> | Node[]> = {
   "bottleneck industry": () => bubblesOf(buildIndustryExplosionMessages(parseBottleneckV3(bottleneckDoc(REPORT - 3600_000), REPORT)!, "flex")),
   "covered-call (3 tiers)": () => {
     admitSyntheticTickers("NVDA");
-    return bubblesOf(buildCoveredCallMessages(validateCoveredCallCycle(coveredCycle())!, "每週期權", "flex"));
+    return primaryCards(bubblesOf(buildCoveredCallMessages(validateCoveredCallCycle(coveredCycle())!, "每週期權", "flex")));
   },
   "options-guidance order": () => {
     const guidance = generateOptionsOrderGuidance({ ticker: "nvda", strategy: "covered_call", underlyingPrice: 128.4, strike: 135, expiry: "2026-12-18",
@@ -202,7 +207,7 @@ const optionsCycleComparison = () => {
 const bottleneckDetailAllPages = () => {
   const parsed = parseBottleneckV3(bottleneckDoc(REPORT - 3600_000), REPORT)!;
   const detail = buildBottleneckDetail(parsed, "S1", "flex");
-  return typeof detail === "string" ? [] : bubblesOf(detail);
+  return typeof detail === "string" ? [] : primaryCards(bubblesOf(detail));
 };
 
 export const v25Surfaces = {
@@ -224,7 +229,7 @@ export function v3D1Surfaces(): Record<string, Node[]> {
     raw.top[1]!.symbol = symbol;
     raw.top[1]!.outlook = structuredClone(scenario.outlooks[symbol]);
     const parsed = parseBottleneckV3(raw, generated + 3600_000);
-    return [name, parsed ? bubblesOf(buildBottleneckTop20Messages(parsed, "flex")) : []];
+    return [name, parsed ? primaryCards(bubblesOf(buildBottleneckTop20Messages(parsed, "flex"))) : []];
   }));
 }
 export async function v25FlexMessages(): Promise<Extract<LineOutboundMessage, { type: "flex" }>[]> {

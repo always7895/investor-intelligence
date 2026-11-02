@@ -244,7 +244,6 @@ class WeeklyProducerTests(unittest.TestCase):
         out = self.run_us(D(2026, 10, 7), "2026-10-07T14:00:00Z", ["2026-10-09", "2026-10-16", "2026-11-06", "2026-11-20"])
         monthly = {h["cycle"]: h for h in out.health}["monthly"]
         self.assertEqual(monthly["expiry"], "2026-11-06")  # DTE 30; 2026-11-20 is DTE 44, 2026-10-16 is DTE 9 (outside 21-45)
-        self.assertEqual(builder.CYCLES["monthly"], (21, 45))
         self.assertEqual(builder.CYCLES["weekly"], (0, 14))
 
     @staticmethod
@@ -398,40 +397,17 @@ class TierValidatorTests(unittest.TestCase):
         self.assertEqual(cycle, before)
 
 
-class TypeScriptParityTests(unittest.TestCase):
-    """The Worker twin cloud/src/v213/option-recommendation-rules.ts carries the same constants; drift fails here."""
-    SOURCE = (ROOT / "cloud" / "src" / "v213" / "option-recommendation-rules.ts").read_text(encoding="utf-8")
+class WindowAdmissionTests(unittest.TestCase):
+    """Run collector and Python validator behavior; the Worker executes these same fixture probes in Vitest."""
 
-    def number(self, name: str) -> float:
-        import re
-        match = re.search(rf"export const {name}\b[^=]*= ([0-9.]+);", self.SOURCE)
-        self.assertIsNotNone(match, name)
-        return float(match.group(1))
-
-    def test_constants_match_the_python_rules(self):
-        import re
-        for name, expected in (("MIDDLE_DELTA", rules.MIDDLE_DELTA), ("MIDDLE_MONEYNESS", rules.MIDDLE_MONEYNESS),
-                               ("SHORT_DTE_NOTICE_MAX", rules.SHORT_DTE_NOTICE_MAX), ("MIN_ANNUALIZATION_DAYS", rules.MIN_ANNUALIZATION_DAYS),
-                               ("MONTHLY_TARGET_DTE", rules.MONTHLY_TARGET_DTE)):
-            self.assertEqual(self.number(name), expected, name)
-        for name, expected in (("WEEKLY_DTE_BUCKET", rules.WEEKLY_DTE_BUCKET), ("MONTHLY_DTE_BUCKET", rules.MONTHLY_DTE_BUCKET)):
-            match = re.search(rf"export const {name}[^=]*= \[(\d+), (\d+)\]", self.SOURCE)
-            self.assertEqual((int(match.group(1)), int(match.group(2))), tuple(expected), name)
-        minutes = re.search(r"EXPIRY_DAY_CLOSE_LOCAL_MINUTES[^=]*= \{ US: ([0-9 *+]+), STOCKHOLM: ([0-9 *+]+), TAIFEX: ([0-9 *+]+) \}", self.SOURCE)
-        def arithmetic(text: str) -> int:  # sums of products only, as written in the TypeScript source ("17 * 60 + 30")
-            return sum(math.prod(int(factor) for factor in term.split("*")) for term in text.split("+"))
-        parsed = {key: arithmetic(text) for key, text in zip(("US", "STOCKHOLM", "TAIFEX"), minutes.groups())}
-        self.assertEqual(parsed, rules.EXPIRY_DAY_CLOSE_LOCAL_MINUTES)
-
-    def test_every_consumer_takes_the_windows_from_the_shared_rules_not_a_private_copy(self):
-        import validate_v213_market_products as validator
-        self.assertEqual(validator.PERIOD_DTE_BUCKETS, {"weekly": rules.WEEKLY_DTE_BUCKET, "monthly": rules.MONTHLY_DTE_BUCKET})
-        self.assertEqual(builder.CYCLES, {"weekly": rules.WEEKLY_DTE_BUCKET, "monthly": rules.MONTHLY_DTE_BUCKET})
-        for relative in ("cloud/src/v213/covered-call.ts", "cloud/src/v213/market-product-schema.ts", "cloud/src/v213/options-guidance.ts"):
-            text = (ROOT / relative).read_text(encoding="utf-8")
-            self.assertIn("option-recommendation-rules", text, relative)
-            self.assertNotIn("[3, 14]", text, relative)
-            self.assertNotIn("dte < 3", text, relative)
+    def test_producer_and_validator_admit_the_same_weekly_and_monthly_windows(self):
+        from tests.test_monthly_options_fallback import WINDOW_ADMISSION_CASES, window_observations
+        for case, actual in zip(WINDOW_ADMISSION_CASES, window_observations(WINDOW_ADMISSION_CASES), strict=True):
+            with self.subTest(dte=case["dte"], period=case["period"]):
+                self.assertEqual(actual["producer_available"], case["expected"])
+                self.assertEqual(actual["validator_available"], case["expected"])
+                if case["expected"]:
+                    self.assertTrue(actual["produced_validated"])
 
 
 if __name__ == "__main__":

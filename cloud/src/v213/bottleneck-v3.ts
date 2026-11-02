@@ -15,8 +15,8 @@ import { sourceZh } from "./source-labels";
 import { PRICE_SOURCE_LABEL } from "./market-observations";
 import { buildCompanyDataReportFlex, buildCompanyDataReportMessages, validateCompanyDataReport } from "./deep-analysis";
 import {
-  LINE_THEME as T, altSummary, chip, detailsButton, disclosureGroups, disclosureLine, footerStyle, footnote, menuAction, packCarousels,
-  productHeader, rankBadge, statTile, uiBox, uiText,
+  LINE_THEME as T, accentHeading, accentKpiTile, altSummary, barRow, chip, detailsButton, disclosureLine, footerStyle, footnote, headerStyle, kpiTile, kvRow, menuAction, meter, packCarousels,
+  productHeader, rankBadge, signColor, statTile, uiBox, uiText,
 } from "./line-theme";
 
 export const BOTTLENECK_V3_KEY = "v213:bottleneck-top20:v3";
@@ -842,18 +842,74 @@ function wrapForecastRow(text: string, splitQualifier = false): string {
   }
   return lines.join("\n");
 }
-function forecastDisplayRows(prefix: string, rows: readonly string[], splitQualifier = false): string {
-  const shown = rows.length ? rows : ["未揭露"];
-  return shown.map((row, index) => wrapForecastRow(`${index === 0 ? `${prefix}｜` : ""}${row.replaceAll("（非今日起）", "")}`, splitQualifier)).join("\n");
+
+const scoreIndicator = (score: number, prefix = "") => uiBox([
+  uiText(`${prefix}${score.toFixed(1)} 分`, "xxs", T.headerText, { weight: "bold" }),
+  score <= 0 ? uiBox([], { backgroundColor: T.border, height: "6px", cornerRadius: "3px" }) : meter(score, 100, T.accent),
+], { width: prefix ? "150px" : "70px", spacing: "xs", flex: 0 });
+const signedHero = (label: string, value: string, context?: string, compactLabel = false) => {
+  const glyph = /^[-−]\d/.test(value) ? "▼ " : /^\+\d/.test(value) ? "▲ " : "";
+  return uiBox([
+    context ? chip(`${label}${compactLabel ? "· " : " · "}${context}`, T.accentTint, T.muted) : uiText(label, "xs", T.subtle),
+    { type: "text", size: value.length > 10 ? "xl" : "3xl", weight: "bold", wrap: true, contents: [
+      ...(glyph ? [{ type: "span", text: glyph, size: "xs", color: signColor(value) }] : []),
+      { type: "span", text: value, color: signColor(value), weight: "bold" },
+    ] },
+  ], { layout: "horizontal", spacing: "sm", alignItems: "center" });
+};
+const compactDisclosures = (notes: { label: string; text: string }[]) => ({
+  type: "text", size: "xxs", color: T.subtle, wrap: true,
+  contents: notes.filter(note => note.label.trim() && note.text.trim()).flatMap(({ label, text }, index) => [
+    { type: "span", text: `${index ? "\n" : ""}${label}｜`, color: T.subtle, weight: "bold" },
+    { type: "span", text: text.replace(/[\r\n]+/g, " "), color: T.subtle },
+  ]),
+});
+
+type ReplyDisclosure = { scope: string; label: string; text: string };
+
+/** Keep positive and negative verification status attached to the issuer, including the prior-quarter basis. */
+function qualificationNotes(entry: BottleneckEntry): ReplyDisclosure[] {
+  const fund = entry.fundamentals;
+  const official = officialPrevious(fund);
+  return [
+    { scope: entry.symbol, label: "營收交叉", text: fund?.cross_check ? revenueCheck(fund.cross_check) : "未取得官方營收交叉比對" },
+    { scope: entry.symbol, label: "行情交叉", text: entry.market.cross_check ? exchangeCheck(entry.market.cross_check) : "未取得交易所收盤交叉比對" },
+    ...(fund?.revenue_yoy_prev != null ? [{ scope: entry.symbol, label: "前季", text: official?.label ?? "沿用可比來源" }] : []),
+  ];
+}
+
+/** One final same-reply card groups identical disclosures without dropping their subjects. */
+function replyDisclosureBubble(notes: ReplyDisclosure[]) {
+  const grouped = new Map<string, { label: string; text: string; scopes: string[] }>();
+  for (const { scope, label, text } of notes) {
+    if (!label.trim() || !text.trim()) continue;
+    const normalized = text.replace(/[\r\n]+/g, " ");
+    const key = `${label}\u0000${normalized}`;
+    const existing = grouped.get(key);
+    if (existing) {
+      if (!existing.scopes.includes(scope)) existing.scopes.push(scope);
+    } else grouped.set(key, { label, text: normalized, scopes: [scope] });
+  }
+  return {
+    type: "bubble", size: "mega",
+    header: productHeader("本回覆共用", "資料來源與說明"),
+    body: uiBox(Array.from(grouped.values(), ({ label, text, scopes }) =>
+      uiText(`${scopes.join("、")}｜${label}：${text}`, "xxs", T.ink)), { paddingAll: "lg", spacing: "sm" }),
+    footer: uiBox([compactDisclosures([{ label: "用途", text: "非投資建議；不自動下單" }])], footerStyle),
+  };
 }
 
 
 /** One-glance summary; complete sealed detail remains behind the text button. */
-function companyBubble(doc: BottleneckV3, entry: BottleneckEntry, lean = false) {
+function companyBubble(doc: BottleneckV3, entry: BottleneckEntry, notes: ReplyDisclosure[], lean = false) {
   const fund = entry.fundamentals;
   const long = longTerm(entry.market);
   const official = officialPrevious(fund);
   const [ordersTile, ...proxyTiles] = outlookTiles(doc, entry);
+  const proxyNotes = proxyTiles.map(([label, value, sub]) => {
+    const detail = sub.replace(/^非訂單(?:｜)?/, "").replace(/｜季末 \d{4}-\d{2}-\d{2}$/, "");
+    return `${label.replace("營收動能（代理）", "營收代理")}：${value}${detail ? `｜${detail}` : ""}｜非訂單`;
+  });
   const forecast = forecastOf(doc, entry);
   const warning = forecast.m6.warning ?? forecast.m12.warning;
   const consensusV3 = forecast.version === 3 && forecast.revenueBasis === "CONSENSUS";
@@ -880,6 +936,11 @@ function companyBubble(doc: BottleneckV3, entry: BottleneckEntry, lean = false) 
       .trim();
   };
   const orderRows = forecastRowsAfter(forecastLines, orderHeading).map(cleanForecastRow).filter(Boolean);
+  const orderWindows: string[] = [];
+  const compactOrderRows = orderRows.map((row, index) => row.replace(/（(起算日 [^）]+)）/u, (_, window: string) => {
+    orderWindows[index] = `${index === 0 ? "半年" : index === 1 ? "1年" : "期間"}${window}`;
+    return "";
+  }));
   const rawCondition = forecastLines.find(([text]) => text.startsWith("條件情境："))?.[0]
     ?? (forecast.version === 3 ? "條件情境：營收依上述推估實現，P/S與股數不變；以最新已報四季為基準，非目標價、非今日起報酬"
       : "條件情境：營收達預計認列額，P/S與股數不變；非目標價、非今日起報酬");
@@ -891,6 +952,31 @@ function companyBubble(doc: BottleneckV3, entry: BottleneckEntry, lean = false) 
   const scenarioRows = forecastRowsAfter(forecastLines, scenarioHeading)
     .filter(row => !row.startsWith("條件情境："))
     .map(cleanForecastRow).filter(Boolean);
+  const revenueCard = forecast.version === 3;
+  const unavailableRevenue = revenueCard && forecast.revenueBasis == null;
+  const unavailableRevenueNote = unavailableRevenue
+    ? forecastLines.find(([text]) => text.startsWith("營收推估："))?.[0] ?? forecast.consensusNote ?? "營收推估未取得"
+    : "";
+  const revenueRows = compactOrderRows.map(row => {
+    const colon = row.indexOf("：");
+    const basis = colon < 0 ? -1 : row.indexOf("（", colon);
+    return basis < 0 ? row : row.slice(0, basis);
+  });
+  const revenueScenarioRows = [forecast.m6, forecast.m12].map((horizon, index) => {
+    const label = index === 0 ? "半年" : "1年";
+    if (horizon.scenario.status === "AVAILABLE" && horizon.scenario.change !== undefined) return `${label}：${pct(horizon.scenario.change, 0)}`;
+    const reason = scenarioRows[index]?.match(/無法估價（([^）]+)）/u)?.[1];
+    return `${label}：無法估價${reason ? `（${reason}）` : ""}`;
+  });
+  const revenueBasis = unavailableRevenue ? unavailableRevenueNote : [forecast.m6.basis_label, forecast.m12.basis_label].find(Boolean) ?? "來源未揭露";
+  const revenueWindows = [forecast.m6, forecast.m12].flatMap((horizon, index) =>
+    horizon.start && horizon.end ? [`${index === 0 ? "約半年" : "約1年"}：${horizon.start}–${horizon.end}${horizon.basis_label && horizon.basis_label !== revenueBasis ? `；${horizon.basis_label}` : ""}`] : []);
+  const scenarioClaim = scenarioRows[0]?.includes("→ 股價情境")
+    ? `${scenarioRows[0].split("→ 股價情境")[0]}→ 股價情境` : "";
+  const analystNote = consensusV3
+    ? (!entry.outlook?.consensus || !entry.outlook.scenarios?.length
+      ? "分析師共識情境（非訂單）：無分析師共識可推算。" : "其他分析師情境見詳情")
+    : "";
   // An RPO figure keeps its meaning and coverage qualifier on this card, once: from the forecast basis when it states it,
   // otherwise from the displayed orders figure itself, with or without a future forecast and whatever its version.
   const forecastCaveat = forecast.version === 3 ? "營收推估非保證" : "預計認列非保證";
@@ -903,46 +989,85 @@ function companyBubble(doc: BottleneckV3, entry: BottleneckEntry, lean = false) 
     "非今日起",
     "非目標價、非投資建議、不自動下單",
   ].join("；");
+  const sourceNotes = revenueCard ? [
+    { label: "來源", text: `${revenueBasis}${revenueWindows.length ? `；${revenueWindows.join("；")}` : ""}${entry.outlook?.orders?.kind === "RPO" ? `；訂單：${ordersTile![2]}` : ""}` },
+    { label: "價", text: `${sourceZh(entry.market.source)}${scenarioClaim ? `；${scenarioClaim}` : ""}；${condition}${analystNote ? `；${analystNote}` : ""}` },
+    { label: "情境", text: `${condition ? closingDisclosure.replace(`${condition}；`, "") : closingDisclosure}${warning?.text ? `；${warning.text}` : ""}${!revenueBasis.includes("非訂單") && !analystNote.includes("非訂單") ? "；非訂單" : ""}` },
+    ...(historyRows.length ? [{ label: "歷史", text: historyRows[0]! }] : []),
+    ...proxyNotes.map(text => ({ label: "代理", text })),
+  ] : [
+    { label: "來源", text: `${fund ? `財報：${sourceZh(fund.source)}${official ? `（前一季採官方合併季報），季末 ${fund.quarter_end}；${official.label}` : ""}` : "財報：未取得可比季度"}${fund?.cross_check ? `；${revenueCheck(fund.cross_check)}` : ""}；股價來源 ${sourceZh(entry.market.source)}；訂單：${ordersTile![2]}${orderWindows.filter((_, index) => index % 2 === 0).map(window => `；${window}`).join("")}` },
+    { label: "行情", text: `${entry.market.cross_check ? exchangeCheck(entry.market.cross_check) : ""}${long.event ? `；上市沿革 ${long.event}` : ""}${orderWindows.filter((_, index) => index % 2 === 1).map(window => `；${window}`).join("")}` },
+    { label: "情境", text: `${closingDisclosure}${long.sub ? `；${long.sub}` : ""}` },
+    ...(historyRows.length ? [{ label: "歷史", text: historyRows[0]! }] : []),
+    ...proxyNotes.map(text => ({ label: "代理", text })),
+  ];
+  notes.push(...sourceNotes.map(note => ({ scope: entry.symbol, ...note })));
+  notes.push(...qualificationNotes(entry));
   return {
     type: "bubble", size: "mega",
-    header: productHeader(`瓶頸 TOP20 · ${entry.archetype === "EXPLOSION" ? "爆發型" : "核心複利型"}`, `${entry.symbol}｜${chineseName(entry)}`.slice(0, 60), [
+    header: uiBox([
+      { type: "text", size: "xxs", wrap: true, contents: [
+        { type: "span", text: `瓶頸 TOP20 · ${entry.archetype === "EXPLOSION" ? "爆發型" : "核心複利型"}\n`, size: "xxs", color: T.headerMuted, weight: "bold" },
+        { type: "span", text: `${entry.symbol}｜${chineseName(entry)}`.slice(0, 60), size: "xl", color: T.headerText, weight: "bold" },
+      ] },
       ...(!lean ? [uiText(entry.name.slice(0, 80), "xxs", T.headerMuted)] : []),
-      ...(entry.name_zh ? [uiText(`中文名來源：${ZH_SOURCE_LABEL[entry.name_zh_source ?? ""] ?? "來源已核對"}`, "xxs", T.headerMuted)] : []),
-      uiBox([rankBadge(entry.rank, entry.rank === 1), chip(layerName(doc, entry.layer)), chip(`${entry.score.toFixed(1)} 分`)], { layout: "horizontal", spacing: "sm" }),
-    ]),
+      { type: "text", size: "xxs", wrap: true, contents: [
+        ...(entry.name_zh ? [{ type: "span", text: `中文名來源：${ZH_SOURCE_LABEL[entry.name_zh_source ?? ""] ?? "來源已核對"}\n`, size: "xxs", color: T.headerMuted }] : []),
+        { type: "span", text: `${entry.role_zh ?? entry.role}｜股價截至 ${entry.market.asof}`, size: "xxs", color: T.headerMuted },
+        ...(fund ? [{ type: "span", text: `\n${sharesBasis(fund) ? "稀釋加權股數年增" : "股數年增率"} ${pct(fund.shares_yoy, 1)}｜毛利率 ${fund.gross_margin == null ? "未揭露" : `${(fund.gross_margin * 100).toFixed(0)}%`}`, size: "xxs", color: T.headerMuted }] : []),
+      ] },
+      uiBox([scoreIndicator(entry.score, `#${entry.rank}｜${layerName(doc, entry.layer)}｜`)], { layout: "horizontal", spacing: "sm" }),
+    ], { ...headerStyle, spacing: "sm" }),
     body: uiBox([
       uiBox([
-        uiText(`${pct(fund?.revenue_yoy ?? null, 0)}營收年增｜毛利變化 ${ppShort(fund?.gross_margin_change)}`, "xs", T.ink),
-        uiText(wrapForecastRow(fund
-          ? `財報：${sourceZh(fund.source)}${official ? "（前一季採官方合併季報）" : ""}，季末 ${fund.quarter_end}`
-          : "財報：未取得可比季度"), "xs", T.ink),
-        ...(official ? [uiText(wrapForecastRow(official.label), "xs", T.ink)] : []),
-      ], { spacing: "xs" }),
+        signedHero("營收年增", pct(fund?.revenue_yoy ?? null, 0), fund ? `季末 ${fund.quarter_end}` : undefined, true),
+        uiBox([accentKpiTile("毛利變化", ppShort(fund?.gross_margin_change)), accentKpiTile("6個月", pct(entry.market.ret_6m, 0))], { layout: "horizontal", spacing: "sm" }),
+        uiBox([accentKpiTile("2年年化", long.value), accentKpiTile("市值", cap(entry.market_cap_usd))], { layout: "horizontal", spacing: "sm" }),
+      ]),
       uiBox([
-        uiText(wrapForecastRow(`半年 ${pct(entry.market.ret_6m, 0)}｜2年年化 ${long.value}｜市值${cap(entry.market_cap_usd)}${long.sub ? `｜${long.sub}` : ""}${long.event ? `｜上市沿革 ${long.event}` : ""}｜股價來源 ${sourceZh(entry.market.source)}，至 ${entry.market.asof}`), "xs", T.ink),
-        uiText(wrapForecastRow(`${ordersTile![0]}：${ordersTile![1]}｜${entry.role_zh ?? entry.role}｜訂單：${ordersTile![2]}`), "xs", T.ink),
-        ...proxyTiles.map(([label, value, sub]) => {
-          const detail = sub.replace(/^非訂單(?:｜)?/, "").replace(/｜季末 \d{4}-\d{2}-\d{2}$/, "");
-          const displayLabel = label.replace("營收動能（代理）", "營收代理");
-          return uiText(wrapForecastRow(`${displayLabel}：${value}${detail ? `｜${detail}` : ""}｜非訂單`), "xs", T.ink);
-        }),
-      ], { spacing: "xs" }),
+        uiBox([uiBox([], { width: "3px", height: "16px", flex: 0, backgroundColor: T.accent }), chip(`${ordersTile![0]}：${ordersTile![1]}`, T.soft, T.ink),
+          ...(revenueCard && warning ? [chip("財季已結束，仍為推估非實績", T.paleCaution, T.caution)]
+            : unavailableRevenue ? [chip("營收推估暫不可用", T.paleCaution, T.caution)] : [])], { layout: "horizontal", spacing: "xs" }),
+      ]),
       uiBox([
-        uiText([
-          forecastDisplayRows("未來訂單", orderRows, true),
-          ...forecastWarningRows.map(row => wrapForecastRow(row)),
-          ...historyRows.map(row => wrapForecastRow(row)),
-        ].filter(Boolean).join("\n"), "xs", T.ink),
-        uiText(forecastDisplayRows("股價情境", scenarioRows), "xs", T.ink),
-        ...(consensusV3 ? [uiBox(scenarioBlocks(entry.outlook, true), { spacing: "xs" })] : []),
+        ...(revenueCard ? [
+          uiBox((unavailableRevenue ? [forecast.m6, forecast.m12] : revenueRows).map((row, index) => {
+            const horizon = [forecast.m6, forecast.m12][index]!;
+            const recognition = unavailableRevenue && horizon.status === "AVAILABLE" && horizon.basis === "RECOGNITION" && horizon.amount !== undefined;
+            const label = `${index === 0 ? "約半年" : "約1年"}${recognition ? "訂單認列" : "營收推估"}`;
+            const source = typeof row === "string" ? row : "";
+            const colon = source.indexOf("：");
+            const value = recognition ? money(horizon.amount!, horizon.currency) : unavailableRevenue ? "未揭露" : colon < 0 ? source : source.slice(colon + 1);
+            return kvRow(label, value, { color: value === "未揭露" ? T.subtle : T.ink });
+          }), { spacing: "xs" }),
+          uiBox([forecast.m6, forecast.m12].map((horizon, index) => {
+            const label = index === 0 ? "約半年" : "約1年";
+            return horizon.scenario.status === "AVAILABLE" && horizon.scenario.change !== undefined
+              ? barRow(label, Math.abs(horizon.scenario.change * 100), pct(horizon.scenario.change, 0), 150)
+              : uiBox([uiText(label, "xs", T.subtle), chip(revenueScenarioRows[index]!.split("：").slice(1).join("："), T.soft, T.subtle)],
+                { layout: "horizontal", spacing: "sm" });
+          }), { spacing: "xs" }),
+        ] : [
+          uiBox([forecast.m6, forecast.m12].map((horizon, index) => {
+            const row = `${index === 0 ? "未來訂單｜" : ""}${compactOrderRows[index] ?? "未揭露"}`;
+            return horizon.status === "AVAILABLE" ? uiText(row, "xs", T.ink, { weight: "bold" }) : chip(row, T.soft, T.subtle);
+          }), { spacing: "xs" }),
+          uiBox([forecast.m6, forecast.m12].map((horizon, index) => {
+            const row = `${index === 0 ? "股價情境｜" : ""}${(scenarioRows[index] ?? "無法估價").replace(/訂單僅覆蓋同期營收 ([^)）]+)/u, "覆蓋$1")}`;
+            const change = horizon.scenario.status === "AVAILABLE" ? horizon.scenario.change : undefined;
+            return change === undefined ? chip(row, T.soft, T.subtle)
+              : uiBox([uiText(row, "xs", change < 0 ? T.negative : T.ink, { weight: "bold" }),
+                ...(change === 0 ? [] : [uiBox([meter(Math.abs(change) * 100, 150, T.accent)], { width: "30px", flex: 0 })])],
+                { layout: "horizontal", spacing: "xs", alignItems: "center" });
+          }), { spacing: "xs" }),
+        ]),
+        ...(!revenueCard ? forecastWarningRows.map(row => uiText(wrapForecastRow(row), "xxs", T.ink)) : []),
+        // Full historical model inputs and estimates remain on the complete-data route.
       ], { spacing: "xs" }),
     ], { paddingAll: "lg", spacing: "sm" }),
     footer: uiBox([
-      ...disclosureGroups([
-        { label: "營收交叉", text: fund?.cross_check ? revenueCheck(fund.cross_check) : "未取得官方營收交叉比對" },
-        { label: "行情交叉", text: entry.market.cross_check ? exchangeCheck(entry.market.cross_check) : "未取得交易所收盤交叉比對" },
-        { label: "情境", text: closingDisclosure },
-      ]),
+      compactDisclosures([{ label: "提醒", text: `${forecastCaveat}；非目標價；非投資建議；不自動下單` }]),
       detailsButton(`${entry.symbol} 瓶頸詳情`, `瓶頸詳情 ${entry.symbol}`),
       ...(!lean ? [menuAction("產業爆發榜", "產業爆發榜")] : []),
     ], footerStyle),
@@ -975,12 +1100,17 @@ export function buildBottleneckTop20Messages(doc: BottleneckV3, style: "flex" | 
     return messages;
   }
   const alt = (index: number, total: number) => `瓶頸爆發 TOP20（${index + 1}/${total}）`;
+  const build = (lean: boolean) => {
+    const notes: ReplyDisclosure[] = [];
+    const cards = doc.top.map(entry => companyBubble(doc, entry, notes, lean));
+    return packCarousels([...cards, replyDisclosureBubble(notes)], alt);
+  };
   try {
-    return packCarousels(doc.top.map(entry => companyBubble(doc, entry)), alt);
+    return build(false);
   } catch (error) {
     if (!(error instanceof Error) || !["LINE_MESSAGE_COUNT_INVALID", "LINE_FLEX_CAROUSEL_TOO_LARGE", "LINE_FLEX_BUBBLE_INVALID"].includes(error.message)) throw error;
     // Retry only LINE packing limits; keep every F1/F2 field, dropping optional English names and the industry button.
-    return packCarousels(doc.top.map(entry => companyBubble(doc, entry, true)), alt);
+    return build(true);
   }
 }
 
@@ -994,82 +1124,103 @@ const ppShort = (value: number | null | undefined) => value === null || value ==
 function detailBubbles(doc: BottleneckV3, entry: BottleneckEntry) {
   const fund = entry.fundamentals;
   const long = longTerm(entry.market);
-  const accel = fund ? ppShort(accelOf(fund)) : "未揭露";
   const official = officialPrevious(fund);
-  const { orders, filer } = ordersOf(doc, entry.symbol);
+  const { orders, rpoYoy, filer } = ordersOf(doc, entry.symbol);
   const outlook = entry.outlook;
   const forecast = forecastOf(doc, entry);
   const warning = forecast.m6.warning ?? forecast.m12.warning;
   const kind = entry.archetype === "EXPLOSION" ? "爆發型（市值<US$10B）" : "核心複利型";
   const buttons = [detailsButton(`${entry.symbol} 完整數據與網址`, `瓶頸詳情 ${entry.symbol} 文字`), menuAction("回瓶頸 TOP20", "TOP20")];
-  const page = (eyebrow: string, body: unknown[], notes: { label: string; text: string }[]) => ({
+  const sharedNotes: ReplyDisclosure[] = qualificationNotes(entry);
+  const page = (eyebrow: string, body: unknown[], notes: { label: string; text: string }[], compact = false) => {
+    sharedNotes.push(...notes.map(note => ({ scope: eyebrow, ...note })));
+    return {
     type: "bubble", size: "mega",
-    header: productHeader(`瓶頸詳情 · #${entry.rank} · ${eyebrow}`, `${entry.symbol}｜${chineseName(entry)}`.slice(0, 60), [
-      uiText(entry.name.slice(0, 80), "xxs", T.headerMuted),
-      uiBox([chip(layerName(doc, entry.layer)), chip(`${entry.score.toFixed(1)} 分`), chip(entry.archetype === "EXPLOSION" ? "爆發型" : "核心複利型")], { layout: "horizontal", spacing: "sm" }),
+    header: compact ? uiBox([
+      { type: "text", size: "xxs", wrap: true, contents: [
+        { type: "span", text: `瓶頸詳情 · #${entry.rank} · ${eyebrow}\n`, size: "xxs", color: T.headerMuted, weight: "bold" },
+        { type: "span", text: `${entry.symbol}｜${chineseName(entry)}`.slice(0, 60), size: "xl", color: T.headerText, weight: "bold" },
+        { type: "span", text: `\n${entry.name.slice(0, 80)}｜${layerName(doc, entry.layer)}｜${entry.score.toFixed(1)} 分｜股價至 ${entry.market.asof}${fund ? `｜股數 ${pct(fund.shares_yoy, 1)}${sharesBasis(fund) ? `（${sharesBasis(fund)}）` : ""}` : ""}`, size: "xxs", color: T.headerMuted },
+      ] },
+      uiBox([entry.score <= 0 ? uiBox([], { backgroundColor: T.border, height: "6px", cornerRadius: "3px" }) : meter(entry.score, 100, T.accent)],
+        { width: "70px" }),
+    ], { ...headerStyle, spacing: "sm" }) : productHeader(`瓶頸詳情 · #${entry.rank} · ${eyebrow}`, `${entry.symbol}｜${chineseName(entry)}`.slice(0, 60), [
+      uiText(`${entry.name.slice(0, 80)}｜${entry.archetype === "EXPLOSION" ? "爆發型" : "核心複利型"}`, "xxs", T.headerMuted),
+      uiBox([chip(layerName(doc, entry.layer)), scoreIndicator(entry.score)], { layout: "horizontal", spacing: "sm" }),
     ]),
     body: uiBox(body, { paddingAll: "lg", spacing: "sm" }),
-    footer: uiBox([...disclosureGroups(notes), ...buttons], footerStyle),
-  });
+    footer: uiBox([compactDisclosures([{ label: "提醒", text: `${eyebrow === "訂單與情境" ? "投資有風險" : forecast.version === 2 ? "預計認列非保證" : "營收推估非保證"}；非投資建議；不自動下單` }]), ...buttons], footerStyle),
+    };
+  };
 
-  const financeRows = fund ? [
-    `營收 ${pct(fund.revenue_yoy, 0)}｜前季 ${pct(fund.revenue_yoy_prev, 0)}｜加速 ${accel}`,
-    `毛利 ${gmText(fund.gross_margin)}（${ppShort(fund.gross_margin_change)}）｜RPO ${pct(fund.rpo_yoy, 0)}｜股數 ${pct(fund.shares_yoy, 1)}${sharesBasis(fund) ? `（${sharesBasis(fund)}）` : ""}`,
-    `6個月 ${pct(entry.market.ret_6m, 0)}｜2年年化 ${long.value}｜市值 ${cap(entry.market_cap_usd)}`,
-    `財報來源：${sourceZh(fund.source)}；季末 ${fund.quarter_end}`,
-    ...(official ? [official.label] : []),
-    `股價來源：${sourceZh(entry.market.source)}；至 ${entry.market.asof}`,
-    ...(long.sub ? [`長期口徑：${long.sub}`] : []),
-    ...(long.event ? [`上市沿革：${long.event}`] : []),
-    "非投資建議；不自動下單",
-  ] : [
-    `財報未取得可比季度；6個月 ${pct(entry.market.ret_6m, 0)}｜2年年化 ${long.value}｜市值 ${cap(entry.market_cap_usd)}`,
-    `股價來源：${sourceZh(entry.market.source)}；至 ${entry.market.asof}`,
-    ...(long.sub ? [`長期口徑：${long.sub}`] : []),
-    ...(long.event ? [`上市沿革：${long.event}`] : []),
-    "非投資建議；不自動下單",
-  ];
-  const financeSummary = financeRows.map(row => wrapForecastRow(row)).join("\n");
   const page1 = page(`財報與市場 · ${kind}`, [
-    uiText(financeSummary, "xs", T.ink),
+    uiBox([
+      signedHero("營收年增", pct(fund?.revenue_yoy ?? null, 0), fund ? `季末 ${fund.quarter_end}` : undefined),
+    uiBox([accentKpiTile("毛利率", gmText(fund?.gross_margin)), accentKpiTile("毛利率變化", ppShort(fund?.gross_margin_change))], { layout: "horizontal", spacing: "sm" }),
+    ], { spacing: "sm" }),
+    uiBox([accentKpiTile("6個月", pct(entry.market.ret_6m, 0)), accentKpiTile("2年年化", long.value)], { layout: "horizontal", spacing: "sm" }),
+    uiBox([accentKpiTile("前季營收年增", pct(fund?.revenue_yoy_prev ?? null, 0)),
+      accentKpiTile("營收加速度", ppShort(fund ? accelOf(fund) : null))], { layout: "horizontal", spacing: "sm" }),
   ], [
-    { label: "營收交叉", text: fund?.cross_check ? revenueCheck(fund.cross_check) : "未取得官方營收交叉比對" },
-    { label: "行情交叉", text: entry.market.cross_check ? exchangeCheck(entry.market.cross_check) : "未取得交易所收盤交叉比對" },
-    ...(!official ? [{ label: "前季", text: "沿用可比來源" }] : []),
-  ]);
+    { label: "財報", text: `${fund ? `${sourceZh(fund.source)}；季末 ${fund.quarter_end}` : "未取得可比季度"}${official ? `；${official.label}` : ""}${fund?.cross_check ? `；${revenueCheck(fund.cross_check)}` : ""}` },
+    { label: "行情", text: `${sourceZh(entry.market.source)}${long.sub ? `；${long.sub}` : ""}` },
+    ...(entry.market.cross_check ? [{ label: "交叉", text: exchangeCheck(entry.market.cross_check) }] : []),
+    ...(long.event ? [{ label: "沿革", text: `上市沿革：${long.event}` }] : []),
+    { label: "用途", text: "非投資建議；不自動下單" },
+  ], true);
 
   const [ordersTile] = outlookTiles(doc, entry);
   const floorValue = (value: number | null | undefined) => value === null || value === undefined ? "需新訂單" : `≥${value >= 0 ? "+" : ""}${value.toFixed(0)}%`;
-  const coverageValue = (value: number | null | undefined) => value === null || value === undefined ? "未揭露" : `${value.toFixed(0)}%`;
-  const floorSummary = orders ? [
-    "已簽約營收成長支撐（RPO認列時程）",
-    `6個月 ${floorValue(orders.floor.m6)}（覆蓋 ${coverageValue(orders.coverage.m6)}）｜1年 ${floorValue(orders.floor.m12)}（覆蓋 ${coverageValue(orders.coverage.m12)}）`,
-    `2年 ${floorValue(orders.floor.m24)}（覆蓋 ${coverageValue(orders.coverage.m24)}）`,
-    "計算：分期已簽約認列金額÷目前營收−1",
-  ].map(row => wrapForecastRow(row)).join("\n") : "RPO 認列時程未披露";
   const scenario = outlook?.scenarios?.[0];
-  const scenarioSummary = scenario && outlook?.consensus
-    ? "分析師共識情境：詳見文字版"
-    : "分析師共識情境：無資料可推算";
+  const annualRecognition = forecast.m12.contracted_recognition ?? (forecast.m12.status === "AVAILABLE"
+    && forecast.m12.basis === "RECOGNITION" && forecast.m12.amount !== undefined
+    ? { amount: forecast.m12.amount, currency: forecast.m12.currency, rpo: forecast.m12.rpo,
+      start: forecast.m12.start, end: forecast.m12.end } : null);
+  const disclosedRpoYoy = outlook?.orders?.kind === "RPO" ? outlook.orders.yoy : rpoYoy;
+  const orderValueRow = (label: string, value: string | null) => uiBox([
+    uiText(label, "xs", T.subtle),
+    value === null ? chip("未揭露", T.soft, T.subtle) : uiText(value, "sm", T.ink, { align: "end", weight: "bold" }),
+  ], { layout: "horizontal", spacing: "sm", alignItems: "center" });
   const forecastConsensusLabel = [forecast.m6.basis_label, forecast.m12.basis_label]
     .find((label): label is string => typeof label === "string" && label.startsWith("分析師共識（非公司財測、非官方）"));
-  const consensusAnalysts = outlook?.consensus?.revenue_analysts;
   const consensusSourceLine = forecastConsensusLabel ?? (scenario && outlook?.consensus
-    ? `分析師共識（非公司財測、非官方）｜${outlook.consensus.source ?? "來源未揭露"}，${consensusAnalysts == null ? "數量未揭露" : `${consensusAnalysts} 位`}分析師，截至 ${(outlook.consensus.asof ?? "").slice(0, 10) || "日期未揭露"}`
+    ? `分析師共識（非公司財測、非官方）｜${outlook.consensus.source ?? "來源未揭露"}，${outlook.consensus.revenue_analysts == null ? "數量未揭露" : `${outlook.consensus.revenue_analysts} 位`}分析師，截至 ${(outlook.consensus.asof ?? "").slice(0, 10) || "日期未揭露"}`
     : "");
   const floorNote = orders ? `RPO ${orders.form}（申報 ${orders.filed}），認列基準 ${orders.as_of}；營收下限非股價下限，未計新訂單、取消或遞延`
     : !filer ? "非 SEC 定期申報公司，無 RPO 認列時程" : "最新財報未揭露認列時程，不推估實現金額";
-  const stockRecognitionDates = orders
-    ? `股價 ${entry.market.asof}；認列基準 ${orders.as_of}；申報 ${orders.filed}`
-    : `股價 ${entry.market.asof}；RPO 認列基準未揭露`;
+  const history = historyOf(doc, entry);
   const page2 = page("訂單與情境", [
-    uiText(wrapForecastRow(`${ordersTile![0]}：${ordersTile![1]}｜${ordersTile![2]}`), "xs", T.ink),
-    uiText(floorSummary, "xs", T.ink),
-    uiText([stockRecognitionDates, scenarioSummary, consensusSourceLine].filter(Boolean).map(row => wrapForecastRow(row)).join("\n"), "xs", T.ink),
+    uiBox([
+      signedHero(ordersTile![0], ordersTile![1], annualRecognition ? "預計認列非保證" : orders ? `認列基準 ${orders.as_of}` : undefined),
+      uiBox([accentKpiTile("半年認列支撐", floorValue(orders?.floor.m6)), accentKpiTile("1年認列支撐", floorValue(orders?.floor.m12))], { layout: "horizontal", spacing: "sm" }),
+    ]),
+    uiBox([
+      orderValueRow("RPO 年增", disclosedRpoYoy == null ? null : pct(disclosedRpoYoy, 0)),
+      orderValueRow("預計1年內認列", annualRecognition ? money(annualRecognition.amount, annualRecognition.currency) : null),
+      ...(annualRecognition?.rpo && annualRecognition.amount <= annualRecognition.rpo
+        ? [annualRecognition.amount === 0 ? orderValueRow("認列進度", "0%")
+          : barRow("認列進度", annualRecognition.amount, `${(annualRecognition.amount / annualRecognition.rpo * 100).toFixed(0)}%`, annualRecognition.rpo)] : []),
+    ], { spacing: "xs" }),
+    uiBox(history?.status === "ESTIMATE" ? [
+      accentHeading("歷史模型股價情境"),
+      barRow("6M", Math.abs(history.change6 * 100), pct(history.change6, 0)),
+      barRow("1Y", Math.abs(history.change12 * 100), pct(history.change12, 0)),
+    ] : [forecast.m6, forecast.m12].map((horizon, index) => {
+      const label = index === 0 ? "半年股價" : "1年";
+      const change = horizon.scenario.status === "AVAILABLE" ? horizon.scenario.change : undefined;
+      if (change !== undefined) return change === 0 ? orderValueRow(label, "0%") : barRow(label, Math.abs(change * 100), pct(change, 0), 150);
+      const reason = horizon.scenario.status === "INSUFFICIENT_COVERAGE" ? "覆蓋不足"
+        : horizon.scenario.reason === "NO_MATCHING_REVENUE" ? "缺同期營收"
+        : horizon.scenario.reason === "SCOPE_PARTIAL" ? "範圍不符"
+        : horizon.scenario.reason === "NO_REVENUE_HISTORY" ? "缺營收歷史"
+        : horizon.scenario.reason === "NO_REVENUE_BASIS" ? "缺營收依據"
+        : horizon.scenario.reason === "INVALID_BASELINE" ? "基準無效" : "缺認列時程";
+      return uiBox([uiText(`${label}${reason}`, "xs", T.subtle), chip("無法估價", T.soft, T.subtle)], { layout: "horizontal", spacing: "sm" });
+    }), { spacing: "xs" }),
   ], [
-    { label: "來源", text: orders ? `${orders.form}，申報 ${orders.filed}` : floorNote },
-    { label: "認列", text: orders ? floorNote : "無可用 RPO 認列時程；不推估實現金額" },
-    { label: "用途", text: "非投資建議；不自動下單" },
+    { label: "來源", text: `${ordersTile![2]}；股價 ${entry.market.asof}；${orders ? "分期已簽約認列金額÷目前營收−1" : annualRecognition ? "認列資料見文字版" : floorNote}${annualRecognition ? `；期間${outlook?.orders && outlook.orders.kind !== "NOT_DISCLOSED" && annualRecognition.start === outlook.orders.as_of ? "訂單日" : annualRecognition.start ?? "起日未揭露"}–${annualRecognition.end ?? "迄日未揭露"}（非今日起）` : ""}` },
+    { label: "認列", text: orders ? `已簽約營收成長支撐；半年/1年覆蓋${orders.coverage.m6 == null ? "未揭露" : `${orders.coverage.m6.toFixed(0)}%`}/${orders.coverage.m12 == null ? "未揭露" : `${orders.coverage.m12.toFixed(0)}%`}；${floorNote}` : annualRecognition ? "已簽約認列非保證；未計新訂單、取消或遞延" : "無可用 RPO 認列時程；不推估實現金額" },
+    { label: "用途", text: `${consensusSourceLine ? `${consensusSourceLine}；` : ""}${history?.status === "ESTIMATE" || [forecast.m6, forecast.m12].some(h => h.scenario.status === "AVAILABLE") ? "P/S與股數不變；非目標價；" : ""}非投資建議；不自動下單` },
   ]);
   const evidenceLabel = orders ? `RPO ${orders.form}｜申報 ${orders.filed}｜認列基準 ${orders.as_of}`
     : !filer ? "非 SEC 定期申報公司；無 RPO 認列時程" : "最新申報未揭露 RPO 認列時程";
@@ -1101,7 +1252,7 @@ function detailBubbles(doc: BottleneckV3, entry: BottleneckEntry) {
     { label: "行情", text: `${sourceZh(entry.market.source)}；${entry.market.asof}` },
     { label: "連結", text: "完整來源網址及逐項交叉比對見文字版" },
   ]);
-  return [page1, page2, page3, page4];
+  return { cards: [page1, page2, page3, page4], disclosure: replyDisclosureBubble(sharedNotes) };
 }
 
 function detailText(doc: BottleneckV3, entry: BottleneckEntry): string {
@@ -1110,18 +1261,22 @@ function detailText(doc: BottleneckV3, entry: BottleneckEntry): string {
   const outlook = entry.outlook;
   const scenarios = (outlook?.scenarios ?? []).map(row => `${SCENARIO_LABEL[row.kind]} ${pct(row.change, 0)}（${scenarioSample(outlook, row.kind)}）`).join("、");
   const official = officialPrevious(fund);
+  const { orders } = ordersOf(doc, entry.symbol);
+  const floorValue = (value: number | null | undefined) => value === null || value === undefined ? "需新訂單" : `≥${value >= 0 ? "+" : ""}${value.toFixed(0)}%`;
+  const coverageValue = (value: number | null | undefined) => value === null || value === undefined ? "未揭露" : `${value.toFixed(0)}%`;
   return [
     `【瓶頸詳情｜#${entry.rank} ${entry.symbol} ${chineseName(entry)}（${entry.name}）】`,
     `型態：${entry.archetype === "EXPLOSION" ? "瓶頸爆發型（市值<US$10B）" : "核心複利型"}；市值 ${cap(entry.market_cap_usd)}`,
     `瓶頸位置：${entry.role_zh ?? entry.role}${entry.role_zh ? `（原文：${entry.role}）` : ""}`,
     `分數構成：層級熱度 ${entry.parts.layer_heat}｜公司捕獲 ${entry.parts.capture}｜市場確認 ${entry.parts.confirmation}｜爆發性 ${entry.parts.size}${entry.parts.penalty !== 0 ? `｜條件式稀釋／融資扣分 -${entry.parts.penalty}` : ""}`,
     fund ? `財報（${sourceZh(fund.source)}${official ? "；前一季年增採官方合併季報" : ""}，季末 ${fund.quarter_end}）：營收年增 ${pct(fund.revenue_yoy)}，前一季年增 ${pct(fund.revenue_yoy_prev)}（加速度 ${pp(accelOf(fund))}）；毛利率 ${gmText(fund.gross_margin)}（年變化 ${pp(fund.gross_margin_change)}）；剩餘履約義務年增 ${pct(fund.rpo_yoy)}；股數年增 ${pct(fund.shares_yoy)}${sharesBasis(fund) ? `（${sharesBasis(fund)}）` : ""}\n來源：${fund.source_url}${official ? `\n${official.label}\n前一季來源：${official.url}` : ""}` : "財報：未取得可比季度（不以估計替代）。",
-    ...(fund?.cross_check ? [`${revenueCheck(fund.cross_check)}\n來源：${fund.cross_check.source_url}`] : []),
+    fund?.cross_check ? `${revenueCheck(fund.cross_check)}\n來源：${fund.cross_check.source_url}` : "官方營收未交叉比對",
     `股價（${sourceZh(entry.market.source)}，至 ${entry.market.asof}）：6個月 ${pct(entry.market.ret_6m)}、2年年化 ${long.value}${long.sub ? `（${long.sub}）` : ""}\n來源：${entry.market.source_url}`,
     ...(long.event ? [`上市沿革：${long.event}\n沿革來源：${long.sources.join("；")}`] : []),
-    ...(entry.market.cross_check ? [exchangeCheck(entry.market.cross_check)] : []),
+    entry.market.cross_check ? exchangeCheck(entry.market.cross_check) : "交易所收盤未交叉比對",
     currentOrders(outlook, ordersOf(doc, entry.symbol).filer || fund?.source === "SEC EDGAR XBRL companyfacts", doc.generated_at.slice(0, 10))
       + (outlook?.orders && outlook.orders.kind !== "NOT_DISCLOSED" ? `\n來源：${outlook.orders.source_url}` : ""),
+    ...(orders ? [`已簽約營收成長支撐（RPO認列時程）：6個月 ${floorValue(orders.floor.m6)}（覆蓋 ${coverageValue(orders.coverage.m6)}）；1年 ${floorValue(orders.floor.m12)}（覆蓋 ${coverageValue(orders.coverage.m12)}）；2年 ${floorValue(orders.floor.m24)}（覆蓋 ${coverageValue(orders.coverage.m24)}）。計算：分期已簽約認列金額÷目前營收−1；RPO ${orders.form}（申報 ${orders.filed}），認列基準 ${orders.as_of}；營收下限非股價下限，未計新訂單、取消或遞延。`] : ["RPO 認列時程未披露"]),
     ...proxyDetailLines(doc, entry),
     ...forecastLines(forecastOf(doc, entry), money, historyOf(doc, entry)),
     ...futureOutlook(outlook, doc.generated_at.slice(0, 10)),
@@ -1162,13 +1317,19 @@ export function buildBottleneckDetail(doc: BottleneckV3, symbol: string, style: 
   // realization) when one is sealed.
   const raw = Object.hasOwn(doc.deep_reports, entry.symbol) ? doc.deep_reports[entry.symbol] : undefined;
   const report = raw ? validateCompanyDataReport(raw, entry.symbol) : null;
-  const detail: LineOutboundMessage[] = style === "flex"
-    ? packCarousels(detailBubbles(doc, entry), () => altSummary({ topic: `${entry.symbol} ${chineseName(entry)} 瓶頸詳情`,
-      status: `第 ${entry.rank} 名，財報、訂單、依據與來源 4 頁`, next: "左右滑動；完整網址按文字版" }))
-    : pagesAtLineBoundary(detailText(doc, entry), 4900).map(text => ({ type: "text" as const, text }));
   const reportMessages = report ? (style === "flex" ? buildCompanyDataReportFlex(report, doc.generated_at, ["回瓶頸 TOP20", "TOP20"])
     : buildCompanyDataReportMessages(report, doc.generated_at)) : [];
-  const messages = [...detail, ...reportMessages].slice(0, 5);
+  let messages: LineOutboundMessage[];
+  if (style === "flex") {
+    const { cards, disclosure } = detailBubbles(doc, entry);
+    const alt = () => altSummary({ topic: `${entry.symbol} ${chineseName(entry)} 瓶頸詳情`,
+      status: `第 ${entry.rank} 名，財報、訂單、依據與來源`, next: "左右滑動；完整網址按文字版" });
+    const detail = packCarousels(reportMessages.length ? cards : [...cards, disclosure], alt);
+    messages = reportMessages.length ? [...detail, ...reportMessages, ...packCarousels([disclosure], alt)] : detail;
+  } else {
+    const detail = pagesAtLineBoundary(detailText(doc, entry), 4900).map(text => ({ type: "text" as const, text }));
+    messages = [...detail, ...reportMessages].slice(0, 5);
+  }
   assertLineMessages(messages);
   return messages;
 }
