@@ -1,4 +1,4 @@
-import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
+import { assertLineMessages, LINE_CAROUSEL_FRAME_BYTES, type LineOutboundMessage } from "../line-messages";
 
 /** Ink monochrome palette, matched to the bot's black-and-white line-art identity.
  * Hierarchy comes from lightness, not hue: a three-stop black-to-graphite
@@ -327,14 +327,25 @@ export function altSummary(parts: { topic: string; status: string; next: string 
   return clampText(`${parts.topic}｜${parts.status}｜${parts.next}`, 120);
 }
 
-/** Carousels of at most five bubbles and 46 KB each (LINE caps a carousel at 50 KB); validated before return. */
+/** Carousels of at most five bubbles and 46 KB each (LINE caps a carousel at 50 KB); validated before return.
+ * Count ordinary bubble JSON once per call. No retained counts, reply cache, snapshot or user state. */
 export function packCarousels(bubbles: readonly unknown[], altText: (index: number, total: number) => string): LineOutboundMessage[] {
   const size = (value: unknown) => new TextEncoder().encode(JSON.stringify(value)).length;
   const groups: unknown[][] = [];
+  const additive = bubbles.every(bubble => bubble && typeof bubble === "object" && !("toJSON" in bubble));
+  let lastBytes = 0;
   for (const bubble of bubbles) {
     const last = groups[groups.length - 1];
-    if (last && last.length < 5 && size({ type: "carousel", contents: [...last, bubble] }) <= 46_000) last.push(bubble);
-    else groups.push([bubble]);
+    const bubbleBytes = additive ? size(bubble) : 0;
+    if (last && last.length < 5 && (additive
+      ? lastBytes + 1 + bubbleBytes <= 46_000
+      : size({ type: "carousel", contents: [...last, bubble] }) <= 46_000)) {
+      last.push(bubble);
+      lastBytes += 1 + bubbleBytes;
+    } else {
+      groups.push([bubble]);
+      lastBytes = LINE_CAROUSEL_FRAME_BYTES + bubbleBytes;
+    }
   }
   const messages: LineOutboundMessage[] = groups.map((contents, index) => ({ type: "flex", altText: altText(index, groups.length),
     contents: { type: "carousel", contents } }));
