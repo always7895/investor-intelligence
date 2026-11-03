@@ -1,4 +1,4 @@
-import { assertLineMessages, LINE_CAROUSEL_FRAME_BYTES, type LineOutboundMessage } from "../line-messages";
+import { assertLineMessages, LINE_CAROUSEL_FRAME_BYTES, plainBubbleArray, type LineOutboundMessage } from "../line-messages";
 
 /** Ink monochrome palette, matched to the bot's black-and-white line-art identity.
  * Hierarchy comes from lightness, not hue: a three-stop black-to-graphite
@@ -332,20 +332,25 @@ export function altSummary(parts: { topic: string; status: string; next: string 
 export function packCarousels(bubbles: readonly unknown[], altText: (index: number, total: number) => string): LineOutboundMessage[] {
   const size = (value: unknown) => new TextEncoder().encode(JSON.stringify(value)).length;
   const groups: unknown[][] = [];
-  const additive = bubbles.every(bubble => bubble && typeof bubble === "object" && !("toJSON" in bubble));
-  let lastBytes = 0;
-  for (const bubble of bubbles) {
+  const additive = plainBubbleArray(bubbles);
+  let lastBytes: number | null = null;
+  const append = (bubble: unknown) => {
     const last = groups[groups.length - 1];
-    const bubbleBytes = additive ? size(bubble) : 0;
+    let bubbleBytes = 0;
     if (last && last.length < 5 && (additive
-      ? lastBytes + 1 + bubbleBytes <= 46_000
+      ? ((lastBytes ??= LINE_CAROUSEL_FRAME_BYTES + size(last[0])), (bubbleBytes = size(bubble)), lastBytes + 1 + bubbleBytes <= 46_000)
       : size({ type: "carousel", contents: [...last, bubble] }) <= 46_000)) {
       last.push(bubble);
-      lastBytes += 1 + bubbleBytes;
+      if (lastBytes !== null) lastBytes += 1 + bubbleBytes;
     } else {
       groups.push([bubble]);
-      lastBytes = LINE_CAROUSEL_FRAME_BYTES + bubbleBytes;
+      lastBytes = null;
     }
+  };
+  if (additive) {
+    for (let i = 0; i < bubbles.length; i++) append(bubbles[i]);
+  } else {
+    for (const bubble of bubbles) append(bubble);
   }
   const messages: LineOutboundMessage[] = groups.map((contents, index) => ({ type: "flex", altText: altText(index, groups.length),
     contents: { type: "carousel", contents } }));
