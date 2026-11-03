@@ -15,6 +15,8 @@
 # scripts/revenue_guidance_orchestration.psm1 when GuidanceAutoUpdateEnabled is set; both feature options default to
 # $false and the default GuidanceProvider is $null. Explicit normal-entry opt-in builds the protected
 # private-pipe backend/P1 provider and same-owner ranking adapter; prerequisite absence is nonzero.
+# The default-off -D2ForceGuidanceRankingPair switch (D2 rebuild) runs that legacy pair with --if-older-than-hours 0
+# (never skip) in disabled mode only; every other step and argument is unchanged.
 [CmdletBinding()]
 param(
     [double]$IfOlderThanHours = 20,
@@ -22,7 +24,8 @@ param(
     [switch]$GuidanceDirtyRebuildEnabled,
     [switch]$GuidanceMachinePublicationEnabled,
     [string]$GuidancePublicRunId=$null,
-    [ValidateRange(1,600000)][long]$GuidanceBudgetMilliseconds = 600000
+    [ValidateRange(1,600000)][long]$GuidanceBudgetMilliseconds = 600000,
+    [switch]$D2ForceGuidanceRankingPair
 )
 
 # Definition-time setup only (safe to dot-source): pure path computations and module load. No contact lookup,
@@ -48,7 +51,11 @@ function Invoke-DailyDataRefresh {
         # credential or environment.
         [scriptblock]$WithSecContact,
         # Narrowly documented provider object (Acquire scriptblock member) or $null (the shipped default, unavailable).
-        [AllowNull()][object]$GuidanceProvider = $null
+        [AllowNull()][object]$GuidanceProvider = $null,
+        # D2 rebuild only, default off. Disabled-orchestration mode only: runs the legacy guidance_release_check and
+        # bottleneck_v3 steps with --if-older-than-hours 0 (never skip) instead of 0.9 and 3. No effect when
+        # GuidanceAutoUpdateEnabled is set (that branch owns the pair); no other step or argument changes.
+        [bool]$ForceGuidanceRankingPair = $false
     )
 
     if ($GuidanceMachinePublicationEnabled -and (-not $GuidanceAutoUpdateEnabled -or -not $GuidanceDirtyRebuildEnabled)) {
@@ -112,9 +119,16 @@ function Invoke-DailyDataRefresh {
                 else {
                     # Disabled mode: the legacy release-check 0.9h and ranking 3h steps run exactly once, in the old
                     # location. The B2 result stays the DISABLED default (neither a provider is acquired nor any
-                    # automatic state examined).
-                    Invoke-DailyStep 'guidance_release_check' @('scripts\revenue_guidance_release_check.py', '--if-older-than-hours', '0.9') | Out-Null
-                    Invoke-DailyStep 'bottleneck_v3' @('scripts\bottleneck_top20_v3.py', '--if-older-than-hours', '3') | Out-Null
+                    # automatic state examined). The default cadences are 0.9h and 3h; the default-off D2 force switch
+                    # makes both '0' (never skip; both Python steps test the hours value > 0 before skipping).
+                    $guidanceCheckHours = '0.9'
+                    $rankingHours = '3'
+                    if ($ForceGuidanceRankingPair) {
+                        $guidanceCheckHours = '0'
+                        $rankingHours = '0'
+                    }
+                    Invoke-DailyStep 'guidance_release_check' @('scripts\revenue_guidance_release_check.py', '--if-older-than-hours', $guidanceCheckHours) | Out-Null
+                    Invoke-DailyStep 'bottleneck_v3' @('scripts\bottleneck_top20_v3.py', '--if-older-than-hours', $rankingHours) | Out-Null
                 }
             }
             else {
@@ -282,7 +296,8 @@ else {
         -GuidanceDirtyRebuildEnabled ([bool]$GuidanceDirtyRebuildEnabled) `
         -GuidanceMachinePublicationEnabled ([bool]$GuidanceMachinePublicationEnabled) `
         -GuidanceProvider $realProvider -RunGuidanceRanking $realRanking `
-        -RunStep $realRunStep -WithSecContact $realWithSecContact
+        -RunStep $realRunStep -WithSecContact $realWithSecContact `
+        -ForceGuidanceRankingPair ([bool]$D2ForceGuidanceRankingPair)
     if ($GuidanceMachinePublicationEnabled) {
         try {
             if ($result.ExitCode -ne 0 -or $null -eq $bundle) { throw 'MACHINE_EXPORT_UNAVAILABLE' }

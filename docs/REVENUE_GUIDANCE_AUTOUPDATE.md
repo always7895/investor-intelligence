@@ -351,6 +351,7 @@ review pending. At that snapshot tests/imports/dot-source/AST/parser/compile/gat
   finally retains unresolved graphs AFTER reporting/continuation, so an unknown task never reports completed
   maintenance or exits as settled. Disabled native command operands/legacy pair remain unchanged; compatibility
   is source intent, NOT executed F01 preservation acceptance.
+- The normal daily entry also has a default-off `-D2ForceGuidanceRankingPair` switch (D2 rebuild use): in disabled mode only, it runs the legacy `guidance_release_check` and `bottleneck_v3` steps with `--if-older-than-hours 0` (never skip) instead of `0.9` and `3`; it changes no other step and has no effect when `-GuidanceAutoUpdateEnabled` is set.
 - The parent requires PowerShell **7.4+**, freshly checks protected HKLM64 approval/installation/enrollment,
   actual runtime principal, held protected interpreter/code/import ancestry, DACLs, full inventory and exact
   bytes. It launches only the fixed protected CPython **3.12.10 x64** bootstrap with `-I -S -B host`; no
