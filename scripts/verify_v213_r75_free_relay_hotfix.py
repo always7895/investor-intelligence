@@ -112,6 +112,7 @@ ALWAYS_FIXTURES = (
     "tests/fixtures/v11-consensus-sealed.json", "tests/fixtures/v11-guidance-v3-outlooks.json",
     "tests/fixtures/partial-analyst-outlook.json",
     "tests/fixtures/tsm-guidance-channel-v1.json",
+    "tests/fixtures/monthly_expiry_cases.json", "tests/fixtures/options_window_cases.json",
 )
 
 
