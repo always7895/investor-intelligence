@@ -1,13 +1,18 @@
-"""Per-market delayed price shards from official bulk feeds: parsing, stated dates, failure isolation, sealing. No
-network."""
+"""Per-market delayed price shards from official bulk feeds: parsing, stated dates, failure isolation, the optional London
+feeds and the exit status, sealing. No network."""
 from __future__ import annotations
 
+import contextlib
+import io
 import json
 import sys
 import tempfile
 import unittest
+import urllib.error
 from datetime import datetime, timedelta, timezone
+from email.message import Message
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -56,9 +61,42 @@ def fetch(url: str) -> bytes:
     return next(BODIES[feed] for feed, (_, feed_url) in prices.FEEDS.items() if feed_url == url)
 
 
+def http_error() -> urllib.error.HTTPError:
+    return urllib.error.HTTPError("https://api.londonstockexchange.com/api/v1/components/refresh", 503, "Service Unavailable", Message(), None)
+
+
+def fetch_with(overrides: dict):
+    """fetch() with per-feed overrides keyed by feed id: bytes replace that feed's body, an Exception instance is raised.
+    Nothing global is mutated."""
+    by_url = {prices.FEEDS[feed][1]: value for feed, value in overrides.items()}
+
+    def inner(url: str) -> bytes:
+        value = by_url.get(url)
+        if isinstance(value, BaseException):
+            raise value
+        return fetch(url) if value is None else value
+    return inner
+
+
+REAL_BUILD = prices.build
+LONDON = ("lse-main-market", "lse-aim")
+
+
+def run_main(output: Path, fetch_fn) -> tuple[int, dict]:
+    """prices.main() against an injected fetch: no network, no Yahoo, the output in a temp directory."""
+    def build(fetch_arg=None, now=None):  # main() calls build(now=now)
+        return REAL_BUILD(fetch_fn, now)
+    out = io.StringIO()
+    with mock.patch.object(prices, "build", build), mock.patch.object(prices, "yahoo_symbols", return_value={}), \
+            contextlib.redirect_stdout(out):
+        code = prices.main(["--output", str(output)])
+    return code, json.loads(out.getvalue())
+
+
 class PriceShardTests(unittest.TestCase):
     def test_rows_dates_and_keys(self):
         document = prices.build(fetch, datetime(2026, 9, 26, 1, tzinfo=timezone.utc))
+        self.assertEqual((document["failed"], document["skipped_optional_feeds"]), ([], []))
         shards = document["shards"]
         self.assertEqual(shards["US"]["rows"]["NVDA"], [224.58, -0.412, "2026-09-24", "USD", 0])  # stated date, not today
         self.assertIn("BRK.B", shards["US"]["rows"])
@@ -80,6 +118,7 @@ class PriceShardTests(unittest.TestCase):
         self.assertNotIn("TAIWAN", document["shards"])  # never half a market
         self.assertIn("US", document["shards"])
         self.assertEqual(document["failed"], ["tpex-daily-close:JSONDecodeError"])
+        self.assertEqual(document["skipped_optional_feeds"], [])
 
     def test_publisher_seals_fresh_markets_as_lazy_objects(self):
         now = datetime.now(timezone.utc).replace(microsecond=0)
@@ -91,6 +130,111 @@ class PriceShardTests(unittest.TestCase):
             bodies = publisher.lazy_price_bodies(path, now)
         self.assertEqual(sorted(bodies), ["v213:prices:v1:SWEDEN", "v213:prices:v1:TAIWAN", "v213:prices:v1:UK", "v213:prices:v1:US"])
         self.assertEqual(json.loads(bodies["v213:prices:v1:TAIWAN"])["rows"]["2059"][0], 12350.0)
+
+    def test_publisher_and_cross_checks_ignore_the_top_level_skipped_key(self):
+        now = datetime.now(timezone.utc).replace(microsecond=0)
+        document = prices.build(fetch_with({feed: http_error() for feed in LONDON}), now)
+        self.assertEqual(document["skipped_optional_feeds"], ["lse-main-market:HTTPError", "lse-aim:HTTPError"])
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "prices.json"
+            path.write_text(json.dumps(document), encoding="utf-8")
+            bodies = publisher.lazy_price_bodies(path, now)
+            checks = publisher._exchange_cross_checks(["NVDA", "IQE.L"], {"NVDA": {"price": 224.58, "currency": "USD"}}, path)
+        self.assertEqual(sorted(bodies), ["v213:prices:v1:EUROPE", "v213:prices:v1:SWEDEN", "v213:prices:v1:TAIWAN", "v213:prices:v1:US"])
+        self.assertTrue(all("skipped_optional_feeds" not in json.loads(body) for body in bodies.values()))  # per-market bodies only
+        self.assertEqual(sorted(checks), ["NVDA"])  # the dropped UK market gives no exchange close, nothing else changes
+        self.assertEqual(checks["NVDA"]["diff"], 0.0)
+
+
+class OptionalLondonFeedTests(unittest.TestCase):
+    NOW = datetime(2026, 9, 26, 1, tzinfo=timezone.utc)
+
+    def test_london_failure_is_skipped_not_failed(self):
+        document = prices.build(fetch_with({feed: http_error() for feed in LONDON}), self.NOW)
+        self.assertEqual(document["failed"], [])
+        self.assertEqual(document["skipped_optional_feeds"], ["lse-main-market:HTTPError", "lse-aim:HTTPError"])
+        self.assertNotIn("UK", document["shards"])
+        self.assertEqual(sorted(document["shards"]), ["EUROPE", "SWEDEN", "TAIWAN", "US"])
+
+    def test_one_london_feed_down_drops_the_whole_uk_market_and_a_small_one_is_skipped_too(self):
+        down = prices.build(fetch_with({"lse-aim": http_error()}), self.NOW)
+        self.assertEqual((down["failed"], down["skipped_optional_feeds"]), ([], ["lse-aim:HTTPError"]))
+        self.assertNotIn("UK", down["shards"])  # never half a market, optional or not
+        small = prices.build(fetch_with({"lse-main-market": lse(10)}), self.NOW)
+        self.assertEqual((small["failed"], small["skipped_optional_feeds"]), ([], ["lse-main-market:TOO_SMALL:10"]))
+        self.assertNotIn("UK", small["shards"])
+
+    def test_required_failure_stays_failed_beside_a_skipped_london_feed(self):
+        document = prices.build(fetch_with({"tpex-daily-close": b"not json", "lse-aim": http_error()}), self.NOW)
+        self.assertEqual(document["failed"], ["tpex-daily-close:JSONDecodeError"])
+        self.assertEqual(document["skipped_optional_feeds"], ["lse-aim:HTTPError"])
+        self.assertNotIn("TAIWAN", document["shards"])
+        self.assertNotIn("UK", document["shards"])
+
+    def test_every_feed_failing_still_raises_and_names_the_optional_ones(self):
+        down = fetch_with({feed: http_error() for feed in prices.FEEDS})
+        with self.assertRaises(prices.PriceShardError) as caught:
+            prices.build(down, self.NOW)
+        self.assertIn("PRICE_FEEDS_ALL_FAILED", str(caught.exception))
+        self.assertIn("lse-aim:HTTPError", str(caught.exception))
+        self.assertIn("nasdaq-us-screener:HTTPError", str(caught.exception))
+
+
+class MainExitStatusTests(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.output = Path(self._tmp.name) / "data" / "cache" / "price_shards_latest.json"
+
+    def written(self) -> dict:
+        return json.loads(self.output.read_bytes().decode("utf-8"))
+
+    def test_all_feeds_ok_exits_0(self):
+        code, summary = run_main(self.output, fetch)
+        self.assertEqual((code, summary["status"], summary["failed"], summary["skipped_optional_feeds"]), (0, "OK", [], []))
+        document = self.written()
+        self.assertEqual((document["failed"], document["skipped_optional_feeds"]), ([], []))
+        self.assertEqual(sorted(document["shards"]), ["EUROPE", "SWEDEN", "TAIWAN", "UK", "US"])
+        self.assertFalse(self.output.with_name(self.output.name + ".tmp").exists())
+
+    def test_only_london_failed_exits_0_with_the_file_written(self):
+        code, summary = run_main(self.output, fetch_with({feed: http_error() for feed in LONDON}))
+        self.assertEqual(code, 0)
+        self.assertEqual((summary["status"], summary["failed"]), ("OK", []))
+        self.assertEqual(summary["skipped_optional_feeds"], ["lse-main-market:HTTPError", "lse-aim:HTTPError"])
+        document = self.written()
+        self.assertEqual(document["failed"], [])
+        self.assertEqual(document["skipped_optional_feeds"], ["lse-main-market:HTTPError", "lse-aim:HTTPError"])
+        self.assertEqual(sorted(document["shards"]), ["EUROPE", "SWEDEN", "TAIWAN", "US"])  # UK dropped, nothing estimated
+
+    def test_london_outage_carries_the_previous_uk_shard_forward_as_before(self):
+        previous = REAL_BUILD(fetch, datetime.now(timezone.utc) - timedelta(days=2))
+        self.output.parent.mkdir(parents=True)
+        self.output.write_bytes(json.dumps(previous).encode("utf-8"))
+        code, _ = run_main(self.output, fetch_with({"lse-aim": http_error()}))  # one of the two feeds is enough to drop the market
+        self.assertEqual(code, 0)
+        document = self.written()
+        self.assertEqual(document["failed"], [])
+        self.assertEqual(document["skipped_optional_feeds"], ["lse-aim:HTTPError"])
+        self.assertEqual(document["shards"]["UK"], previous["shards"]["UK"])  # old shard, old generated_at, both London sources
+        self.assertGreater(document["shards"]["US"]["generated_at"], document["shards"]["UK"]["generated_at"])
+
+    def test_a_required_feed_failed_exits_2_even_beside_a_skipped_london_feed(self):
+        code, summary = run_main(self.output, fetch_with({"tpex-daily-close": b"not json"}))
+        self.assertEqual((code, summary["failed"], summary["skipped_optional_feeds"]), (2, ["tpex-daily-close:JSONDecodeError"], []))
+        self.assertTrue(self.output.is_file())
+        code, summary = run_main(self.output, fetch_with({"tpex-daily-close": b"not json", "lse-aim": http_error()}))
+        self.assertEqual((code, summary["failed"], summary["skipped_optional_feeds"]),
+                         (2, ["tpex-daily-close:JSONDecodeError"], ["lse-aim:HTTPError"]))
+        self.assertEqual(self.written()["failed"], ["tpex-daily-close:JSONDecodeError"])
+
+    def test_every_feed_failing_exits_1_and_keeps_the_previous_file(self):
+        self.output.parent.mkdir(parents=True)
+        self.output.write_bytes(b'{"previous":true}')
+        code, summary = run_main(self.output, fetch_with({feed: http_error() for feed in prices.FEEDS}))
+        self.assertEqual((code, summary["status"]), (1, "FAILED"))
+        self.assertIn("PRICE_FEEDS_ALL_FAILED", summary["error"])
+        self.assertEqual(self.output.read_bytes(), b'{"previous":true}')  # the last good file keeps serving
 
 
 class YahooShardTests(unittest.TestCase):

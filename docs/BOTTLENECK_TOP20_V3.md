@@ -342,7 +342,9 @@ the Worker ignores a shard older than 4 days. Japan and Korea have no free offic
 stocks get Yahoo Finance daily closes once a day (labelled unofficial, each row with its own date). London Main
 Market and AIM equities (for example IQE) come from the exchange's public price-explorer API, both as identities and
 as last prices (no trade date in the response, so the retrieval time is shown); they are optional feeds, so an
-outage there never blocks the other markets.
+outage there never blocks the other markets. In `build_price_shards.py` an outage of either London feed is recorded in
+the file's `skipped_optional_feeds` (not `failed`), drops the UK shard until the next good run (the previous UK shard
+keeps serving) and leaves the exit status 0; only a required feed failing exits 2, and every feed failing exits 1.
 
 `TOP20` (v3 when sealed and fresh, else the seven-field Top20), `瓶頸詳情 代號`, `產業爆發榜`, `七欄Top20`.
 The Worker refuses a v3 document older than the report bound (14 h) and falls back rather than showing stale data.
