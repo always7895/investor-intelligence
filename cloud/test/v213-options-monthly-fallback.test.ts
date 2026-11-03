@@ -90,13 +90,15 @@ function messageActions(value: unknown): string[] {
   const own = row.type === "message" && typeof row.text === "string" ? [row.text] : [];
   return own.concat(Object.values(row).flatMap(messageActions));
 }
+/** The amber caution chip: since 2026-11-03 it carries only the short-DTE (0-2) amplified-yield notice; no monthly is an "extended fallback". */
 function hasMonthlyCaution(value: unknown): boolean {
   if (!value || typeof value !== "object") return false;
   if (Array.isArray(value)) return value.some(hasMonthlyCaution);
   const node = value as Record<string, unknown>;
   return (node.type === "box" && node.backgroundColor === "#FDE68A"
-    && JSON.stringify(node).includes("超出偏好 21-45 天區間")) || Object.values(node).some(hasMonthlyCaution);
+    && JSON.stringify(node).includes("年化收益以至少 1 天換算")) || Object.values(node).some(hasMonthlyCaution);
 }
+const NO_FALLBACK_WORDING = ["超出偏好", "月期權延伸到期", "延伸觀察區間"];
 
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date"] });
@@ -106,35 +108,62 @@ beforeEach(() => {
 });
 afterEach(() => { resetAdmissionToReal(); vi.useRealTimers(); vi.unstubAllGlobals(); });
 
-describe("V29 monthly fallback: sealed consumer regressions", () => {
-  // Existing APIs ONLY: on base these tests reach the loader's missing-fallback assertion, not an import failure.
-  it.each([18, 46])("loads SIVE.ST %i DTE and reaches the actual text/Flex card plus detail button", async dte => {
+describe("nearest standard monthly (operator 2026-11-03): sealed consumer regressions", () => {
+  // The monthly DTE bucket is 0-60: the nearest standard monthly is shown whatever its DTE, and no monthly is labelled an extended fallback.
+  it.each([0, 2, 18, 46])("loads SIVE.ST %i DTE and reaches the actual text/Flex card plus detail button", async dte => {
     admitSyntheticTickers("SIVE.ST");
     const env = await sealed(cycle(dte));
     const loaded = await loadDetailedOptionObservation(await pinPublicSnapshot(env as never), "SIVE.ST", "monthly", NOW);
-    expect(loaded.status, "selected listed 14-60 DTE monthly fallback must survive the sealed loader").toBe("FOUND");
+    expect(loaded.status, "the nearest standard monthly (any DTE 0-60) must survive the sealed loader").toBe("FOUND");
     expect(loaded.quote?.expiry).toBe(day(dte));
     expect(loaded.quote?.dte).toBe(dte);
     const body = text(await answer(env, "SIVE.ST 每月期權"));
     expect(body).toContain(day(dte));
     expect(body).toContain("33.00 SEK");
-    expect(body).toContain(`DTE ${dte}`);
-    expect(body).toContain("超出偏好 21-45 天區間");
+    expect(body).toContain(dte === 0 ? "今日到期" : `${dte} 天`);
+    for (const wording of NO_FALLBACK_WORDING) expect(body).not.toContain(wording);
     expect(body).not.toContain("OPTION_DATA_UNAVAILABLE");
+    expect(body.includes("年化收益以至少 1 天換算"), "only DTE 0-2 carries the amplified-yield notice").toBe(dte <= 2);
     const flexEnv = await sealed(cycle(dte), undefined, "flex");
     const flex = await answer(flexEnv, "SIVE.ST 每月期權");
     expect(flex[0]?.type).toBe("flex");
-    expect(text(flex)).toContain("超出偏好 21-45 天區間");
-    expect(hasMonthlyCaution(flex)).toBe(true);
+    for (const wording of NO_FALLBACK_WORDING) expect(text(flex)).not.toContain(wording);
+    expect(hasMonthlyCaution(flex)).toBe(dte <= 2);
     const detail = messageActions(flex).find(command => command === "SIVE.ST 每月期權 文字");
     expect(detail).toBeDefined();
     const detailBody = text(await answer(flexEnv, detail!));
     expect(detailBody).toContain(day(dte));
     expect(detailBody).toContain("33.00 SEK");
-    expect(detailBody).toContain(`DTE ${dte}`);
+    expect(detailBody).toContain(dte === 0 ? "今日到期" : `${dte} 天`);
   });
 
-  it("routes the actual Worker event to the fallback card without invoking a model", async () => {
+  it("shows the monthly_rule note only for the rows that took a later or shifted monthly", async () => {
+    admitSyntheticTickers("SIVE.ST");
+    for (const [rule, expiryDte, wording] of [["HOLIDAY_SHIFT", 17, "該月第三個星期五無到期日"], ["LATER_LISTED", 46, "下一個標準月選"]] as const) {
+      const row = { ...cycle(expiryDte), monthly_rule: rule };  // day(17) is Thursday 2026-11-19, the shifted monthly of the week of 2026-11-20
+      const body = text(await answer(await sealed(row), "SIVE.ST 每月期權"));
+      expect(body, rule).toContain(wording);
+    }
+    const plain = text(await answer(await sealed({ ...cycle(18), monthly_rule: "THIRD_FRIDAY" }), "SIVE.ST 每月期權"));
+    expect(plain).not.toContain("下一個標準月選");
+    expect(plain).not.toContain("該月第三個星期五無到期日");
+  });
+
+  it("rejects an inconsistent or misplaced monthly_rule marker", async () => {
+    admitSyntheticTickers("SIVE.ST");
+    const friday = { ...cycle(18) };  // 2026-11-20 is a third Friday
+    for (const [label, row, period] of [
+      ["unknown rule", { ...friday, monthly_rule: "NEAREST" }, "monthly"],
+      ["shift claimed on a Friday", { ...friday, monthly_rule: "HOLIDAY_SHIFT" }, "monthly"],
+      ["marker on a weekly request", { ...friday, monthly_rule: "THIRD_FRIDAY" }, "weekly"],
+      ["non-string marker", { ...friday, monthly_rule: 3 }, "monthly"],
+    ] as const) expect(validateCoveredCallCycle(row, NOW, STAMP, period), label).toBeNull();
+    const notAMonthly = { ...cycle(31), monthly_rule: "LATER_LISTED" };  // 2026-12-03 is neither a third Friday nor in its week
+    expect(validateCoveredCallCycle(notAMonthly, NOW, STAMP, "monthly")).toBeNull();
+    for (const rule of ["THIRD_FRIDAY", "LATER_LISTED"] as const) expect(validateCoveredCallCycle({ ...friday, monthly_rule: rule }, NOW, STAMP, "monthly")).not.toBeNull();
+  });
+
+  it("routes the actual Worker event to the nearest-monthly card without invoking a model", async () => {
     admitSyntheticTickers("SIVE.ST");
     const env = await sealed();
     let replies: LineOutboundMessage[] = [];
@@ -153,7 +182,7 @@ describe("V29 monthly fallback: sealed consumer regressions", () => {
     expect(network).toHaveBeenCalledTimes(1);
     assertLineMessages(replies);
     expect(text(replies)).toContain("2026-11-20");
-    expect(text(replies)).toContain("超出偏好 21-45 天區間");
+    for (const wording of NO_FALLBACK_WORDING) expect(text(replies)).not.toContain(wording);
     expect(text(replies)).toContain("33.00 SEK");
   });
 
@@ -182,24 +211,24 @@ describe("V29 monthly fallback: sealed consumer regressions", () => {
     expect(absent).not.toContain("33.00 SEK");
   });
 
-  it.each([14, 60])("admits the inclusive monthly %i DTE bound through the sealed card", async dte => {
+  it.each([0, 14, 60])("admits the inclusive monthly %i DTE bound through the sealed card", async dte => {
     admitSyntheticTickers("SIVE.ST");
     const env = await sealed(cycle(dte));
     const loaded = await loadDetailedOptionObservation(await pinPublicSnapshot(env as never), "SIVE.ST", "monthly", NOW);
     expect(loaded.status).toBe("FOUND");
     const body = text(await answer(env, "SIVE.ST 每月期權"));
     expect(body).toContain("33.00 SEK");
-    expect(body).toContain(`DTE ${dte}`);
-    expect(body).toContain("超出偏好 21-45 天區間");
+    expect(body).toContain(dte === 0 ? "今日到期" : `${dte} 天`);
+    for (const wording of NO_FALLBACK_WORDING) expect(body).not.toContain(wording);
   });
 
-  it("keeps preferred expiry labels unchanged", async () => {
+  it("never labels a monthly of any DTE as an extended fallback", async () => {
     admitSyntheticTickers("SIVE.ST");
-    for (const dte of [21, 30, 45]) {
+    for (const dte of [0, 1, 2, 14, 21, 30, 45, 46, 60]) {
       const env = await sealed(cycle(dte));
       const body = text(await answer(env, "SIVE.ST 每月期權"));
       expect(body).toContain("33.00 SEK");
-      expect(body).not.toContain("月期權延伸到期");
+      for (const wording of NO_FALLBACK_WORDING) expect(body).not.toContain(wording);
     }
   });
 
@@ -212,7 +241,7 @@ describe("V29 monthly fallback: sealed consumer regressions", () => {
     const badNumeric = cycle(); badNumeric.suggestions[0]!.annualized_yield = 999;
     const stale = { ...cycle(), timestamp: "2026-11-02T04:00:00Z" };
     const foreign = { ...cycle(), ticker: "FOREIGN.ST" };
-    for (const raw of [cycle(13), cycle(61), badQuote, badNumeric, stale, foreign, { ...cycle(), suggestions: [] }, {}]) {
+    for (const raw of [cycle(61), cycle(-1), badQuote, badNumeric, stale, foreign, { ...cycle(), suggestions: [] }, {}]) {
       const env = await sealed(raw);
       expect((await loadDetailedOptionObservation(await pinPublicSnapshot(env as never), "SIVE.ST", "monthly", NOW)).status).toBe("QUOTE_INVALID_OR_STALE");
       expect(text(await answer(env, "SIVE.ST 每月期權"))).not.toContain("33.00 SEK");
@@ -223,37 +252,54 @@ describe("V29 monthly fallback: sealed consumer regressions", () => {
   });
 });
 
-describe("V29 shared TS monthly selection and guidance", () => {
-  it("keeps preferred constants and selects preferred-first, nearest30 with earlier ties", () => {
-    expect(rules.selectMonthlyExpiry([day(46), day(18)], asOf)).toBe(day(18));
-    expect(rules.selectMonthlyExpiry([day(20), day(45)], asOf)).toBe(day(45));
-    expect(rules.selectMonthlyExpiry([day(31), day(29), day(29)], asOf)).toBe(day(29));
-    expect(rules.selectMonthlyExpiry([day(46), day(14)], asOf)).toBe(day(14));
-    for (const dte of [14, 60]) expect(rules.selectMonthlyExpiry([day(dte)], asOf)).toBe(day(dte));
-    for (const expiries of [[], [day(13), day(61)], ["invalid", "2026-02-30"]]) {
-      expect(rules.selectMonthlyExpiry(expiries, asOf)).toBeNull();
+describe("shared TS monthly selection and guidance (nearest standard monthly)", () => {
+  it("pins the constants and selects the nearest standard monthly with the expiry-day rule", () => {
+    expect(rules.MONTHLY_DTE_BUCKET).toEqual([0, 60]);
+    expect("MONTHLY_FALLBACK_DTE_BUCKET" in rules).toBe(false);
+    expect(rules.selectMonthlyExpiry(["2026-12-18", "2026-11-20"], "2026-11-03")).toBe("2026-11-20");
+    expect(rules.selectMonthlyExpiry(["2026-11-20", "2026-12-18"], "2026-11-20", true)).toBe("2026-11-20");
+    expect(rules.selectMonthlyExpiry(["2026-11-20", "2026-12-18"], "2026-11-20", false)).toBe("2026-12-18");
+    expect(rules.selectMonthly(["2026-12-18"], "2026-11-03")).toEqual({ expiry: "2026-12-18", rule: "LATER_LISTED" });
+    expect(rules.selectMonthly(["2026-06-18", "2026-07-17"], "2026-06-01")).toEqual({ expiry: "2026-06-18", rule: "HOLIDAY_SHIFT" });
+    for (const expiries of [[], ["2026-11-06", "2026-11-13"], ["2027-01-15"], ["invalid", "2026-02-30"]]) {
+      expect(rules.selectMonthlyExpiry(expiries, "2026-11-03")).toBeNull();
     }
-    expect(rules.selectMonthlyExpiry([day(30)], "invalid")).toBeNull();
+    expect(rules.selectMonthlyExpiry(["2026-11-20"], "invalid")).toBeNull();
   });
 
-  it.each([14, 18, 46, 60])("migrates selected bare-contract validation and guidance notices for %i DTE", dte => {
+  it("replaces the extended-monthly notice by the amplified-yield notice for DTE 0-2 only", () => {
+    expect("monthlyFallbackNoticeZh" in rules).toBe(false);
+    for (const dte of [0, 1, 2]) expect(rules.shortDteNoticeZh(dte)).toContain("年化收益以至少 1 天換算");
+    for (const dte of [3, 14, 18, 46, 60, -1, 1.5, Number.NaN]) expect(rules.shortDteNoticeZh(dte)).toBeNull();
+    expect(rules.shortDteNoticeZh(0)).toContain("今日到期");
+  });
+
+  it.each([0, 2, 14, 18, 46, 60])("validates bare-contract quotes and guidance for a monthly at %i DTE without a fallback label", dte => {
     admitSyntheticTickers("SIVE.ST");
     const bare = bareQuote(dte);
     const validation = { evaluatedAt: new Date(NOW).toISOString(), period: "monthly" as const };
     const validated = validateOptionContractQuote(bare, validation);
     expect(validated.dte).toBe(dte);
-    expect(JSON.stringify(buildOptionContractText(validated, validation))).toContain("超出偏好 21-45 天區間");
+    const contractText = JSON.stringify(buildOptionContractText(validated, validation));
     const flex = buildOptionContractFlex(validated, validation);
-    expect(JSON.stringify(flex)).toContain("超出偏好 21-45 天區間");
-    expect(hasMonthlyCaution(flex)).toBe(true);
+    for (const wording of NO_FALLBACK_WORDING) {
+      expect(contractText).not.toContain(wording);
+      expect(JSON.stringify(flex)).not.toContain(wording);
+    }
+    expect(contractText.includes("年化收益以至少 1 天換算")).toBe(dte <= 2);
+    expect(hasMonthlyCaution(flex)).toBe(dte <= 2);
     const guidance = generateOptionsOrderGuidance({ ticker: "SIVE.ST", strategy: "covered_call", underlyingPrice: 30,
       strike: 33, expiry: day(dte), dte, delta: 0.18, bid: 0.3, mid: 0.31, ask: 0.32, openInterest: 900, volume: 50, cycle: "monthly" });
-    expect(guidance.dte_window).toEqual([21, 45]);
-    expect(guidance.dte_window_status).toBe("OUTSIDE_CYCLE_WINDOW");
+    expect(guidance.dte_window).toEqual([0, 60]);
+    expect(guidance.dte_window_status).toBe("WITHIN_CYCLE_WINDOW");
     expect(buildOptionsGuidanceText(guidance)).toContain(`DTE ${dte}`);
-    expect(buildOptionsGuidanceText(guidance)).toContain("超出偏好 21-45 天區間");
-    expect(JSON.stringify(buildOptionsGuidanceFlexBubble(guidance))).toContain("超出偏好 21-45 天區間");
+    for (const wording of NO_FALLBACK_WORDING) {
+      expect(buildOptionsGuidanceText(guidance)).not.toContain(wording);
+      expect(JSON.stringify(buildOptionsGuidanceFlexBubble(guidance))).not.toContain(wording);
+    }
     expect(validateCoveredCallCycle(cycle(dte), NOW, STAMP, "monthly")).not.toBeNull();
+    expect(() => validateOptionContractQuote(bareQuote(61), validation)).toThrow("QUOTE_PERIOD_MISMATCH");
+    expect(() => validateOptionContractQuote(bareQuote(-1), validation)).toThrow();
   });
 
   it.each([{ dte: 14, period: "weekly" as const }, { dte: 18, period: undefined }, { dte: 14, period: undefined }])(
@@ -282,12 +328,18 @@ describe("V29 shared TS monthly selection and guidance", () => {
     }
   });
 
-  it.each([18, 46])("keeps manual %i DTE input unverified with an explicit extended-monthly notice", dte => {
+  it.each([18, 46, 60])("keeps manual %i DTE input unverified and labelled as a plain monthly range", dte => {
     const body = manualOptionQuoteAnswer(`期權試算 ticker=SIVE.ST type=call spot=30 strike=33 bid=0.30 ask=0.32 dte=${dte} currency=SEK`);
     expect(body).toContain("USER_SUPPLIED_NOT_VERIFIED");
-    expect(body).toContain("每月延伸觀察區間");
-    expect(body).toContain("超出偏好 21-45 天區間");
+    expect(body).toContain("每月觀察區間");
+    for (const wording of NO_FALLBACK_WORDING) expect(body).not.toContain(wording);
     expect(body).toContain(`DTE ${dte}`);
     expect(body).not.toContain("已封存");
+  });
+
+  it("gives a manual DTE 0-2 input the amplified-yield notice and a longer one none", () => {
+    const manual = (dte: number) => manualOptionQuoteAnswer(`期權試算 ticker=SIVE.ST type=call spot=30 strike=33 bid=0.30 ask=0.32 dte=${dte} currency=SEK`);
+    expect(manual(2)).toContain("年化收益以至少 1 天換算");
+    expect(manual(18)).not.toContain("年化收益以至少 1 天換算");
   });
 });

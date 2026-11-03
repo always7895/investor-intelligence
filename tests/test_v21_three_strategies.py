@@ -1,4 +1,4 @@
-"""V21 (operator 2026-10-19): covered call + cash-secured put + collar on every weekly and monthly cycle, conservative first; floor 2%.
+"""V21 (operator 2026-10-19): covered call + cash-secured put + collar on every weekly and monthly cycle, conservative first; no annualized-yield floor (removed 2026-11-03).
 
 PRODUCER half: put parsing for the three providers (Yahoo option_chain().puts, Nasdaq US p_* fields, Nasdaq Nordic put rows), the
 strategy selection and arithmetic, fail-closed negatives, the Python validators, carry-forward, block-level degradation in the sealer and the
@@ -54,17 +54,17 @@ def nordic_cycle(rows, spot: float = SPOT):
 
 
 class FloorTests(unittest.TestCase):
-    def test_the_floor_is_two_percent_and_the_boundary_is_inclusive_on_the_bid(self) -> None:
-        self.assertEqual(builder.MIN_ANNUALIZED_YIELD, 0.02)
-        # spot 100, 30 DTE: a bid of 0.16 pays 1.947% annualized (refused), 0.17 pays 2.068% (accepted); the old floor refused both
-        for bid, ask, expected in ((0.16, 0.17, 0), (0.17, 0.18, 1)):
+    def test_there_is_no_annualized_yield_floor_any_more(self) -> None:
+        self.assertFalse(hasattr(builder, "MIN_ANNUALIZED_YIELD"))
+        # spot 100, 30 DTE: bids of 0.01 / 0.16 / 0.17 pay 0.12% / 1.947% / 2.068% annualized; every one is now listed (the 2% floor refused the first two)
+        for bid, ask in ((0.01, 0.02), (0.16, 0.17), (0.17, 0.18)):
             row = {"strike": 110.0, "bid": bid, "ask": ask, "delta": 0.10, "iv": None, "oi": 1, "volume": 1}
-            self.assertEqual(len(builder.covered_call_suggestions([row], 100.0, 30)), expected, bid)
-        exact = {"strike": 110.0, "bid": 0.1644, "ask": 0.17, "delta": 0.10, "iv": None, "oi": 1, "volume": 1}
-        self.assertEqual(len(builder.covered_call_suggestions([exact], 100.0, 30)), 1)  # 0.1644 / 100 * 365 / 30 = 2.0003%
+            suggestions = builder.covered_call_suggestions([row], 100.0, 30)
+            self.assertEqual(len(suggestions), 1, bid)
+            self.assertLess(suggestions[0]["annualized_yield"], 0.021)  # a sub-2% strike is selected and its yield is still reported
 
-    def test_dte_zero_and_a_wide_spread_keep_their_rules_under_the_new_floor(self) -> None:
-        for bid, ask, expected in ((0.01, 0.011, 1), (0.005, 0.006, 0)):  # DTE 0 annualizes over one day: 0.01 -> 3.65%, 0.005 -> 1.825%
+    def test_dte_zero_and_a_wide_spread_keep_their_rules(self) -> None:
+        for bid, ask, expected in ((0.01, 0.011, 1), (0.005, 0.006, 1)):  # DTE 0 annualizes over one day: 0.01 -> 3.65%, 0.005 -> 1.825% (no floor)
             row = {"strike": 105.0, "bid": bid, "ask": ask, "delta": 0.10, "iv": None, "oi": 1, "volume": 1}
             self.assertEqual(len(builder.covered_call_suggestions([row], 100.0, 0)), expected, bid)
         wide = {"strike": 105.0, "bid": 0.30, "ask": 0.60, "delta": 0.10, "iv": None, "oi": 1, "volume": 1}  # spread 67% of mid: still tradeable
@@ -187,15 +187,15 @@ class SelectionTests(unittest.TestCase):
         self.assertEqual(items, [])
         self.assertIn("0.20–0.30", reason)
 
-    def test_the_csp_floor_applies_to_the_bid_on_the_cash(self) -> None:
-        # strike 91, 28 DTE: bid 0.13 -> 0.13 / 91 * 365 / 28 = 1.862% (refused); bid 0.14 -> 2.005% (accepted)
-        for bid, expected in ((0.13, 0), (0.14, 1)):
+    def test_the_csp_has_no_yield_floor(self) -> None:
+        # strike 91, 28 DTE: bid 0.05 -> 0.8% and bid 0.01 -> 0.14% were refused by the old 2% floor; both are now listed
+        for bid in (0.01, 0.05):
             puts = [{"strike": 91.0, "bid": bid, "ask": bid + 0.02, "iv": None, "oi": 1, "volume": 1, "size": 100}]
             with self.with_deltas({91.0: 0.25}):
                 items, reason = builder.cash_secured_put_tiers(puts, SPOT, 28)
-            self.assertEqual(len(items), expected, bid)
-            if not expected:
-                self.assertIn("2%", reason)
+            self.assertIsNone(reason, bid)
+            self.assertEqual(len(items), 1, bid)
+            self.assertLess(items[0]["annualized_yield"], 0.02, bid)
 
     def test_collar_credit_and_debit_cases_are_signed_and_recomputable(self) -> None:
         calls = [{"strike": 107.0, "bid": 0.25, "ask": 0.29, "iv": None, "delta": None, "oi": 1, "volume": 1, "size": 100}]
@@ -272,18 +272,25 @@ class FailClosedTests(unittest.TestCase):
         self.assertEqual(cycle["suggestions"], [])
         self.assertIn(carry.NO_TWO_SIDED_REASON, cycle["strategies"]["cc"]["unavailable"])
         self.assertIn("suggestions", cycle["strategies"]["csp"])
-        # the floor case: a covered call that no strike qualifies for keeps the existing reason text, now at 2%
+        # a covered call that no strike qualifies for (the only strike's delta 0.347 is above the 0.20 cap) names the delta cap, not a yield floor
+        too_close = [(104.0, 1.83, 1.87)]
+        cycle = yahoo_cycle(chains.yahoo_chain(calls=too_close))
+        validate(cycle)
+        self.assertIn("沒有 Delta 不超過 0.20", cycle["strategies"]["cc"]["unavailable"])
+        self.assertNotIn("%", cycle["strategies"]["cc"]["unavailable"])
+        # a strike paying under 2% a year is no longer refused
         low_yield = [(112.0, 0.01, 0.02)]
         cycle = yahoo_cycle(chains.yahoo_chain(calls=low_yield))
         validate(cycle)
-        self.assertIn("沒有年化權利金達 2%", cycle["strategies"]["cc"]["unavailable"])
+        self.assertEqual([item["strike"] for item in cycle["suggestions"]], [112.0])
+        self.assertLess(cycle["suggestions"][0]["annualized_yield"], 0.02)
         self.assertEqual(list(cycle["strategies"]["collar"]), ["unavailable"])  # no call in the band for the collar either
 
     def test_everything_unavailable_stays_the_plain_cycle_unavailable(self) -> None:
         both = yahoo_cycle(chains.yahoo_chain(calls=[(k, None, a) for k, b, a in chains.CALLS], puts=[(k, None, a) for k, b, a in chains.PUTS]))
         self.assertEqual(list(both), ["unavailable"])
         self.assertIn(carry.NO_TWO_SIDED_REASON, both["unavailable"])  # the carry-forward trigger keeps its exact shape
-        no_puts_no_strike = yahoo_cycle(chains.yahoo_chain(calls=[(112.0, 0.01, 0.02)], puts=[]))
+        no_puts_no_strike = yahoo_cycle(chains.yahoo_chain(calls=[(104.0, 1.83, 1.87)], puts=[]))  # delta 0.347 is above the 0.20 cap
         self.assertEqual(list(no_puts_no_strike), ["unavailable"])
 
 
@@ -425,7 +432,7 @@ class ValidatorTests(unittest.TestCase):
 
 
 class SealingTests(unittest.TestCase):
-    NOW = datetime(2026, 9, 30, 17, 5, tzinfo=UTC)
+    NOW = datetime(2026, 10, 23, 17, 5, tzinfo=UTC)
 
     def test_yahoo_nonstandard_unknown_or_mismatched_contract_terms_never_publish_strategies(self):
         for size, currency in (("MINI", "USD"), ("REGULAR", "EUR"), (None, "USD"), ("REGULAR", None), ("UNKNOWN", "USD"),
@@ -570,7 +577,7 @@ class SizeAndSealKeyTests(unittest.TestCase):
         self.assertEqual(rules.CONSERVATIVE_DELTA_BAND, (0.20, 0.30))
         self.assertEqual(rules.PROTECTIVE_PUT_DELTA, 0.15)
         self.assertEqual(builder.MAX_HIGH_STRIKE_DELTA, 0.20)  # master ruling O1
-        self.assertEqual(builder.MIN_ANNUALIZED_YIELD, 0.02)
+        self.assertFalse(hasattr(builder, "MIN_ANNUALIZED_YIELD"))  # the floor was removed on 2026-11-03
 
 
 if __name__ == "__main__":

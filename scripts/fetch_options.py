@@ -47,7 +47,7 @@ DEFAULT_POLICY: dict[str, Any] = {
         # (annualized over one day, max(DTE, 1)).
         "weekly": {"selection": "calendar_week", "target_dte": 7, "minimum_dte": 0, "maximum_dte": 14},
         "monthly": {"selection": "monthly", "target_dte": rules.MONTHLY_TARGET_DTE,
-                    "minimum_dte": rules.MONTHLY_FALLBACK_DTE_BUCKET[0], "maximum_dte": rules.MONTHLY_FALLBACK_DTE_BUCKET[1]},
+                    "minimum_dte": rules.MONTHLY_DTE_BUCKET[0], "maximum_dte": rules.MONTHLY_DTE_BUCKET[1]},
     },
     "covered_call": {
         "enabled": True,
@@ -240,7 +240,7 @@ def select_expiration(
                 listed.setdefault(parse_expiration(value), value)
             except (TypeError, ValueError):
                 continue
-        expiry = rules.select_monthly_expiry(listed, current)
+        expiry = rules.select_monthly_expiry(listed, current, expiry_day_open_now=day_open)
         return (listed[expiry], (expiry - current).days, "OK") if expiry else (None, None, "NO_EXPIRATION_IN_WINDOW")
     target = int(period.get("target_dte", 7))
     minimum = int(period.get("minimum_dte", 1))

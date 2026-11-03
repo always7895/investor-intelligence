@@ -184,7 +184,7 @@ class BridgeFixtureTests(unittest.TestCase):
         self.assertNotIn("unavailable", ident["IDMIXED.ST"]["monthly"])
         terms = self.options("terms_and_quote_states")
         self.assertIn("合約單位非標準100股", terms["TSIZE50.ST"]["monthly"]["unavailable"])
-        self.assertNotIn("所列到期不在21", terms["TSIZE50.ST"]["monthly"]["unavailable"])
+        self.assertNotIn("所列到期無標準月選", terms["TSIZE50.ST"]["monthly"]["unavailable"])
         self.assertIn("所選到期無有效雙邊報價", terms["QLASTSALE.ST"]["monthly"]["unavailable"])
         self.assertNotIn("unavailable", terms["TSZEXACT.ST"]["monthly"], "100.00 is a validated exact-100 representation")
         self.assertIn("合約單位非標準100股", terms["TSZPREC.ST"]["monthly"]["unavailable"])  # 100.000000000000000001 is not 100
@@ -192,7 +192,9 @@ class BridgeFixtureTests(unittest.TestCase):
         for key in ("TSZLEADING.ST", "TSZEXP.ST", "TSZLONG.ST"):
             self.assertIn("合約單位或幣別來源未確認", terms[key]["monthly"]["unavailable"])
             self.assertNotIn("非標準", terms[key]["monthly"]["unavailable"])
-        self.assertIn("沒有年化權利金達 2%", terms["QMISS.ST"]["monthly"]["unavailable"])
+        self.assertIn("沒有 Delta 不超過 0.20 且有雙邊報價的履約價", terms["QMISS.ST"]["monthly"]["unavailable"])
+        self.assertNotIn("年化權利金", terms["QMISS.ST"]["monthly"]["unavailable"])
+        self.assertNotIn("unavailable", terms["QCHEAP.ST"]["monthly"], "no yield floor: a 0.01 bid is listed")
 
     def test_dte_matrices_follow_the_policy_windows_for_every_selector(self):
         for case, keys in (("dte_nordic_matrix", [f"ND{d}.ST" for d in generator.NORDIC_DTES]),
@@ -200,9 +202,9 @@ class BridgeFixtureTests(unittest.TestCase):
             options = self.options(case)
             for key in keys:
                 dte = int(re.search(r"(\d+)", key.split(".")[0]).group(1))
-                for cycle, (low, high) in (("weekly", generator.WEEKLY_DTE_RANGE), ("monthly", (14, 60))):
+                for cycle in ("weekly", "monthly"):
                     emitted = "unavailable" not in options[key][cycle]
-                    self.assertEqual(emitted, low <= dte <= high, f"{case} {key} {cycle}")
+                    self.assertEqual(emitted, generator.in_cycle(cycle, dte), f"{case} {key} {cycle}")
                     if emitted:
                         self.assertEqual(options[key][cycle]["dte"], dte)
 

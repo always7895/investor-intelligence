@@ -32,7 +32,7 @@ from validate_v213_market_products import MarketProductValidationError, validate
 
 UTC = timezone.utc
 STAMP_IN = "2026-10-13T15:00:00Z"
-WEEKLY, MONTHLY = "2026-10-16", "2026-11-13"
+WEEKLY, MONTHLY = "2026-10-16", "2026-10-16"  # as of Tue 2026-10-13 the weekly and the nearest standard monthly (third Friday) are the same expiry
 
 
 class Harness(unittest.TestCase):
@@ -127,13 +127,13 @@ class CarryThroughTheProducerTests(Harness):
 
     def test_never_carried_another_expiry_a_capture_older_than_four_days_or_one_that_is_expired(self) -> None:
         self.in_session_run()
-        # Saturday exactly four days after the capture: the monthly expiry is still the selected one and is carried; the weekly choice has
-        # rolled to next week's expiry, so the capture (another expiry) is not carried.
+        # Saturday exactly four days after the capture: the weekly choice has rolled to next week's expiry and the nearest standard monthly
+        # to 2026-11-20 (the October monthly has passed), so the capture (another expiry) is carried for neither.
         saturday = datetime(2026, 10, 17, 15, 0, tzinfo=UTC)
         _, _, document = self.run_main(saturday, chains(ZERO_ROWS, GOOD0=ITM_ROWS, GOOD1=ITM_ROWS))
-        self.assertEqual(document["options"]["T00"]["monthly"]["quote_basis"], "previous_session_last")
-        self.assertIn("unavailable", document["options"]["T00"]["weekly"])
-        self.assertNotEqual(document["options"]["T00"]["weekly"].get("expiry"), WEEKLY)
+        for period in ("weekly", "monthly"):
+            self.assertIn("unavailable", document["options"]["T00"][period])
+            self.assertNotEqual(document["options"]["T00"][period].get("expiry"), WEEKLY)
         # Six hours later the capture is older than four days: nothing is carried.
         _, _, document = self.run_main(saturday + timedelta(hours=6), chains(ZERO_ROWS, GOOD0=ITM_ROWS, GOOD1=ITM_ROWS))
         for period in ("weekly", "monthly"):
@@ -345,7 +345,7 @@ class CarryUnitTests(unittest.TestCase):
         state = carry.CarryForward(Path(tempfile.gettempdir()) / "v11-unused-state.json", policy=self.policy)
         state.cycles, state._loaded = {"T00": {"weekly": cycle}}, True
         health = [{"venue": "US", "underlying": "T00", "expiry": "2026-10-16", "cycle": "weekly", "status": "READ", "read": True, "two_sided": False}]
-        for entry in ({"unavailable": "2026-10-16 到期的價外買權中，沒有年化權利金達 2% 且有雙邊報價的履約價"},   # a live "no strike qualifies" answer
+        for entry in ({"unavailable": "2026-10-16 到期的價外買權中，沒有 Delta 不超過 0.20 且有雙邊報價的履約價"},   # a live "no strike qualifies" answer
                       {"unavailable": "期權鏈讀取失敗"},                                                       # a read failure
                       copy.deepcopy(cycle)):                                                                    # a live valid cycle
             options = {"T00": {"weekly": entry}}

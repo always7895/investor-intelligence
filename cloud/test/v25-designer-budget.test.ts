@@ -57,8 +57,8 @@ const V25_FLOORS: Record<string, { texts: number | null; chars: number | null; r
   },
   "options-guidance order": {
     texts: 12,
-    chars: 339,
-    reason: "The inherited 35% target is 318 characters. The 339-character floor preserves LIMIT/Mid and Bid/Mid/Ask, underlying/strike/expiry/DTE, Delta target, annualized yield and its out-of-range warning, wide-spread status, avoid-market rule, annualization formula, and the non-broker/non-execution/non-advice/self-order/full-premium-loss boundary.",
+    chars: 338,
+    reason: "The inherited 35% target is 318 characters. The 338-character floor (the monthly window now reads 0-60, one character shorter than 21-45) preserves LIMIT/Mid and Bid/Mid/Ask, underlying/strike/expiry/DTE, Delta target, annualized yield and its out-of-range warning, wide-spread status, avoid-market rule, annualization formula, and the non-broker/non-execution/non-advice/self-order/full-premium-loss boundary.",
   },
   "educational-options": {
     texts: 9,

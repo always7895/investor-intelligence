@@ -24,7 +24,7 @@ The calculator performs arithmetic only:
 - annualized premium observations using spot for calls and strike for puts;
 - call effective-sale-price observations;
 - put break-even and one-standard-contract cash-requirement observations;
-- weekly (0–14 DTE as typed; the calculator only labels the DTE you supply and never picks an expiry), monthly (21–45 DTE) or custom DTE classification.
+- weekly (0–14 DTE as typed; the calculator only labels the DTE you supply and never picks an expiry), monthly (15–60 DTE; a typed DTE of 0–14 is labelled weekly first) or custom DTE classification. A DTE of 0–2 also gets the amplified-annualized-yield notice.
 
 It does not fetch or verify a quote, infer Delta, use open interest or volume, recommend a trade, guarantee execution or place an order. Every response is marked `USER_SUPPLIED_NOT_VERIFIED`.
 

@@ -38,8 +38,8 @@ FIXTURE_TICKERS = (SIVE, US_SIBLING)
 
 
 def specs() -> list[dict[str, Any]]:
-    """SIVE.ST with a weekly (4 DTE) and a monthly (28 DTE) qualifying call, plus ten healthy US siblings (the producer needs at least ten quotes) (Yahoo identity)."""
-    sive = nonus.st(SIVE, [nonus.qualifying_row("SIVE", 4, 13.7), nonus.qualifying_row("SIVE", 28, 13.7)], spot=13.7)
+    """SIVE.ST with a weekly (4 DTE) and a monthly (32 DTE: the third Friday 2026-11-20) qualifying call, plus ten healthy US siblings (the producer needs at least ten quotes) (Yahoo identity)."""
+    sive = nonus.st(SIVE, [nonus.qualifying_row("SIVE", 4, 13.7), nonus.qualifying_row("SIVE", 32, 13.7)], spot=13.7)
     return [sive, *nonus.healthy_us(10)]
 
 

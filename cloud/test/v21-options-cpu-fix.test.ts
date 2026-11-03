@@ -266,11 +266,11 @@ describe("loadDetailedOptionObservation: single-member read equals the full-pars
 
   it("document-level states are decided before the ticker, as before", async () => {
     admitSyntheticTickers(...tickers);
-    const stale = await sealed({ [OPTIONS_KEY]: JSON.stringify({ schema: "v213-options-v2", generated_at: "2026-09-29T00:00:00Z", options: options() }) });
+    const stale = await sealed({ [OPTIONS_KEY]: JSON.stringify({ schema: "v213-options-v2", generated_at: new Date(Date.parse(STAMP) - 36 * 3_600_000).toISOString().replace(".000Z", "Z"), options: options() }) });
     expect((await loadDetailedOptionObservation(await pinPublicSnapshot(scopePublicSnapshot(stale.env, "owner")), "NOPE", "monthly", NOW)).status).toBe("DOCUMENT_STALE");
     const wrongSchema = await sealed({ [OPTIONS_KEY]: JSON.stringify({ schema: "v213-options-v1", generated_at: STAMP, options: options() }) });
     expect((await loadDetailedOptionObservation(await pinPublicSnapshot(scopePublicSnapshot(wrongSchema.env, "owner")), "AAA", "monthly", NOW)).status).toBe("DOCUMENT_INVALID_OR_UNREADABLE");
-    const future = await sealed({ [OPTIONS_KEY]: JSON.stringify({ schema: "v213-options-v2", generated_at: "2026-09-30T18:00:00Z", options: options() }) });
+    const future = await sealed({ [OPTIONS_KEY]: JSON.stringify({ schema: "v213-options-v2", generated_at: new Date(Date.parse(STAMP) + 3_600_000).toISOString().replace(".000Z", "Z"), options: options() }) });
     expect((await loadDetailedOptionObservation(await pinPublicSnapshot(scopePublicSnapshot(future.env, "owner")), "AAA", "monthly", NOW)).status).toBe("DOCUMENT_INVALID_OR_UNREADABLE");
   });
 });

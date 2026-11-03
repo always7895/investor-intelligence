@@ -6,8 +6,8 @@
 import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
 import { sourceZh } from "./source-labels";
 import {
-  effectiveDays, dayMs, exchangeDate, expiryDayOpen, MONTHLY_FALLBACK_DTE_BUCKET, monthlyFallbackNoticeZh, SHORT_DTE_NOTICE_MAX, usRegularSessionOpen, WEEKLY_DTE_BUCKET, weeklyWeekFor,
-  type WeeklyWeek,
+  effectiveDays, dayMs, exchangeDate, expiryDayOpen, MONTHLY_DTE_BUCKET, monthlyRuleConsistent, shortDteNoticeZh, SHORT_DTE_NOTICE_MAX, usRegularSessionOpen, WEEKLY_DTE_BUCKET, weeklyWeekFor,
+  type MonthlyRule, type WeeklyWeek,
 } from "./option-recommendation-rules";
 import { admitPublicOption, OptionRightsNotAdmittedError } from "./public-options-admission";
 import {
@@ -62,6 +62,8 @@ export interface CoveredCallCycle {
   /** Exchange-local date (YYYY-MM-DD) the expiry rule was applied on, and for weekly cycles whether the expiry is in the
    * CURRENT calendar week or (only when this week has no remaining weekly) the NEXT; both absent in older sealed rows. */
   asof_date?: string; weekly_week?: WeeklyWeek;
+  /** Monthly cycles only: which branch of the standard-monthly rule chose the expiry (THIRD_FRIDAY, HOLIDAY_SHIFT or LATER_LISTED); absent in older rows. */
+  monthly_rule?: MonthlyRule;
 }
 
 const finite = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
@@ -82,8 +84,9 @@ export function isValidUtcIsoInstant(raw: unknown): raw is string {
 
 /** Producer DTE buckets (scripts/build_market_quotes_options.py): the selected cycle window a row must fall in. Not a
  * third-Friday calendar classification; weekly 0-14 is the outer bound (with asof_date the exact current-week rule of
- * option-recommendation-rules.ts applies), monthly 14-60 admits a producer-selected preferred or fallback expiry. */
-const PERIOD_DTE_BUCKETS: Record<string, readonly [number, number]> = { weekly: WEEKLY_DTE_BUCKET, monthly: MONTHLY_FALLBACK_DTE_BUCKET };
+ * option-recommendation-rules.ts applies), monthly 0-60 admits the nearest standard monthly of the current producer (DTE 0 is the expiry
+ * day) and the 14-60 rows of the previous producer that are still sealed. */
+const PERIOD_DTE_BUCKETS: Record<string, readonly [number, number]> = { weekly: WEEKLY_DTE_BUCKET, monthly: MONTHLY_DTE_BUCKET };
 
 /** UTC midnight epoch ms of a YYYY-MM-DD calendar date, or null for an impossible date (e.g. 2026-02-30) that the shape
  * regex alone would admit. */
@@ -124,8 +127,8 @@ export function validateCoveredCallCycle(raw: unknown, now?: number, documentGen
     if (Number.isFinite(docTime) && rowTime - docTime > 300_000) return null;
   }
 
-  // Selected rows have already passed the producer's preferred-first expiry selector. Admit monthly 14-60 DTE without
-  // requiring an untrusted fallback marker; keep weekly bounds and period binding unchanged.
+  // Selected rows have already passed the producer's expiry selector. Admit monthly 0-60 DTE (the previous producer's 14-60 rows
+  // are inside it) without requiring any marker; keep weekly bounds and period binding unchanged.
   if (period) {
     const bucket = PERIOD_DTE_BUCKETS[period];
     if (bucket && !(cycle.dte >= bucket[0] && cycle.dte <= bucket[1])) return null;
@@ -164,6 +167,9 @@ export function validateCoveredCallCycle(raw: unknown, now?: number, documentGen
   }
   if (cycle.weekly_week !== undefined && cycle.weekly_week !== null
     && ((cycle.weekly_week !== "CURRENT" && cycle.weekly_week !== "NEXT") || period === "monthly")) return null;
+  // Optional additive monthly_rule (never required, never weekly): the expiry must sit where the named branch says.
+  if (cycle.monthly_rule !== undefined && cycle.monthly_rule !== null
+    && (period === "weekly" || typeof cycle.monthly_rule !== "string" || !monthlyRuleConsistent(cycle.expiry, cycle.monthly_rule))) return null;
 
   const roles = cycle.suggestions.map((item: any) => item?.role).join(",");
   if (roles !== "" && roles !== "HIGH_STRIKE" && roles !== "HIGH_STRIKE,BALANCED") return null;
@@ -336,7 +342,7 @@ function deltaBasisZh(item: CoveredCallSuggestion): string | null {
 /** Role label and note. The visible title is numbered by display position (一／二／三) so numbering never has a gap: the middle
  * tier is shown only when it exists, and without it the two original titles are unchanged. */
 const ROLE = {
-  HIGH_STRIKE: ["高履約價（不易被賣掉）", "在年化權利金至少 2% 的前提下選最高履約價；股價需上漲超過右側幅度才會被指派。"],
+  HIGH_STRIKE: ["高履約價（不易被賣掉）", "價外、有雙邊報價且 Delta 不高於 0.20 的最高履約價（不設年化收益下限）；股價需上漲超過右側幅度才會被指派。"],
   MIDDLE: ["中間型（權利金與被指派機率居中）", "履約價與權利金介於高履約價與平衡型之間；被指派機率也居中。"],
   BALANCED: ["平衡型（收較多權利金）", "履約價較低、權利金較高；被指派機率也較高。"],
 } as const;
@@ -349,17 +355,14 @@ function displayTiers(cycle: CoveredCallCycle): CoveredCallSuggestion[] {
 }
 const tierTitle = (item: CoveredCallSuggestion, index: number) => `建議${ORDINAL_ZH[index] ?? String(index + 1)}：${ROLE[item.role][0]}`;
 
-/** Weekly marker: only rows that carry weekly_week (current producer) say which calendar week the expiry is in. */
+/** Period marker: rows that carry weekly_week say which calendar week the expiry is in; rows that carry monthly_rule say when the
+ * monthly is not the plain third Friday of the nearest month. */
 function weekNoteZh(cycle: CoveredCallCycle): string | null {
   if (cycle.weekly_week === "CURRENT") return "本週到期";
   if (cycle.weekly_week === "NEXT") return "本週已無剩餘週選，顯示下週最早到期日";
+  if (cycle.monthly_rule === "HOLIDAY_SHIFT") return "該月第三個星期五無到期日，顯示當週最後一個上市到期日";
+  if (cycle.monthly_rule === "LATER_LISTED") return "本月標準月選已到期或未上市，顯示下一個標準月選";
   return null;
-}
-
-/** DTE 0-2: the annualized yield is computed over at least one day and is strongly amplified; say so on the card. */
-function shortDteNoticeZh(cycle: CoveredCallCycle): string | null {
-  if (cycle.dte > SHORT_DTE_NOTICE_MAX) return null;
-  return `${cycle.dte === 0 ? "今日到期" : `距到期僅 ${cycle.dte} 天`}：年化收益以至少 1 天換算，數字被大幅放大，只供比較，不代表可持續收益。`;
 }
 
 
@@ -413,7 +416,7 @@ interface CardContext {
 function cardContext(cycle: CoveredCallCycle, periodLabel: string): CardContext {
   const carried = cycle.quote_basis === PREVIOUS_SESSION_BASIS;
   return { cycle, periodLabel, carried, carriedLabel: carried ? previousSessionLabelZh(cycle.timestamp) : null,
-    monthlyNotice: periodLabel === "每月期權" ? monthlyFallbackNoticeZh(cycle.dte) : null,
+    monthlyNotice: periodLabel === "每月期權" ? shortDteNoticeZh(cycle.dte) : null,
     operatorNotice: null, dteZh: carried ? `擷取時 ${cycle.dte} 天` : cycle.dte === 0 ? "今日到期" : `${cycle.dte} 天`, spotLabel: carried ? "前一時段現價" : "現價" };
 }
 
@@ -615,7 +618,7 @@ function disclosureBubble(ctx: CardContext) {
     ...(tiers.length ? [
       ...(deltaBases.length === 1 ? [`Delta ${deltaBases[0]}，僅供指派機率參考`] : deltaBases.length > 1 ? ["Delta 僅供指派機率參考"] : []),
       "期間收益＝限價÷現價；年化收益＝期間收益×365÷DTE",
-      "最高履約價須達年化權利金至少 2%；超履約可能被指派、上漲收益封頂；正股仍有下跌風險",
+      "最高履約價為價外、Delta 不高於 0.20 且有雙邊報價者，不設年化收益下限；超履約可能被指派、上漲收益封頂；正股仍有下跌風險",
       ...tiers.map((item, index) => [
         tierTitle(item, index),
         `履約價 ${money(item.strike, cycle.currency)}（距現價 +${pct(item.upside_to_strike)}）｜建議賣出限價 ${money(item.limit_price, cycle.currency)}（Bid ${money(item.bid, cycle.currency)}／中價 ${money(item.mid, cycle.currency)}／Ask ${money(item.ask, cycle.currency)}）`,
@@ -685,8 +688,7 @@ export function buildCoveredCallMessages(cycle: CoveredCallCycle, periodLabel: s
       `【${cycle.suggestions.length > 0 ? "備兌買權建議" : "期權策略"}｜${cycle.ticker} ${periodLabel}】到期 ${cycle.expiry}（${carried ? dteZh : `${cycle.dte} 天`}）｜${spotLabel} ${money(cycle.spot, cycle.currency)}（計價 ${cycle.currency}）`,
       ...(carriedLabel ? [carriedLabel] : []),
       ...(weekNoteZh(cycle) ? [`${weekNoteZh(cycle)}${cycle.asof_date ? `（以交易所當地日期 ${cycle.asof_date} 判斷）` : ""}`] : []),
-      ...(shortDteNoticeZh(cycle) ? [shortDteNoticeZh(cycle)!] : []),
-      ...(ctx.monthlyNotice ? [ctx.monthlyNotice] : []),
+      ...(shortDteNoticeZh(cycle.dte) ? [shortDteNoticeZh(cycle.dte)!] : []),
       ...("block" in collarShown(cycle) ? [TWO_SIDED_LIMIT_RULE] : []),
       ...(cycle.suggestions.length > 0 ? [`【${CC_TITLE}】前提：持有 100 股、賣出 1 口買權；股價超過履約價時可能被指派，上漲收益封頂於履約價。`, `限價選取：${LIMIT_SELECTION_RULE}`, "期間收益＝限價÷現價；年化收益＝期間收益×365÷DTE"] : []),
       ...displayTiers(cycle).map((item, index) => [

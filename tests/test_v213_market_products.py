@@ -486,13 +486,18 @@ class TestV213MarketProducts(unittest.TestCase):
         # In-bucket boundaries pass for the matching period.
         for dte in (0, 2, 3, 14):  # DTE 0-2 is a valid current-week weekly (operator 2026-10-11)
             validate_covered_call_cycle(self._covered_call_cycle(dte, exp(dte)), evaluated_at=base_stamp, period="weekly")
-        for dte in (14, 21, 45, 60):
+        for dte in (0, 2, 7, 13, 14, 21, 45, 60):  # the monthly bucket is 0-60 (operator 2026-11-03: the nearest standard monthly, no minimum DTE)
             validate_covered_call_cycle(self._covered_call_cycle(dte, exp(dte)), evaluated_at=base_stamp, period="monthly")
-        # Out-of-bucket in both directions is rejected (21-day contract under weekly is the concrete B2 case).
-        for dte, period in ((15, "weekly"), (21, "weekly"), (13, "monthly"), (7, "monthly")):
+        # Out-of-bucket is rejected (21-day contract under weekly is the concrete B2 case).
+        for dte, period in ((15, "weekly"), (21, "weekly")):
             with self.assertRaises(MarketProductValidationError) as ctx:
                 validate_covered_call_cycle(self._covered_call_cycle(dte, exp(dte)), evaluated_at=base_stamp, period=period)
             self.assertEqual(str(ctx.exception), "DTE_OUTSIDE_PERIOD_BUCKET")
+        # A monthly above 60 DTE (or below 0) is no valid DTE at all.
+        for dte in (61, -1):
+            with self.assertRaises(MarketProductValidationError) as ctx:
+                validate_covered_call_cycle(self._covered_call_cycle(dte, exp(dte)), evaluated_at=base_stamp, period="monthly")
+            self.assertEqual(str(ctx.exception), "INVALID_DTE")
         # Without period context the bucket is not enforced (existing callers stay compatible).
         validate_covered_call_cycle(self._covered_call_cycle(7, exp(7)), evaluated_at=base_stamp)
         validate_covered_call_cycle(self._covered_call_cycle(30, exp(30)), evaluated_at=base_stamp)

@@ -17,7 +17,7 @@ import type { OptionContractQuote } from "./market-product-schema";
 import { validateOptionContractQuote } from "./market-product-schema";
 import { admitPublicOption, OptionRightsNotAdmittedError } from "./public-options-admission";
 import { quoteBasisZh, rightsZh, sourceZh } from "./source-labels";
-import { monthlyFallbackNoticeZh } from "./option-recommendation-rules";
+import { shortDteNoticeZh } from "./option-recommendation-rules";
 
 export const OPTIONS_PRODUCT_KEY = "v213:options-chain:latest";
 
@@ -46,7 +46,7 @@ export function buildOptionContractBubble(quote: OptionContractQuote, period: "w
   const nonexecTag = quote.quote_basis !== "realtime"
     ? "【非即時可執行報價】"
     : "【即時參考報價】";
-  const monthlyNotice = period === "monthly" ? monthlyFallbackNoticeZh(quote.dte) : null;
+  const monthlyNotice = period === "monthly" ? shortDteNoticeZh(quote.dte) : null;
 
   return {
     type: "bubble",
@@ -114,7 +114,7 @@ export function buildOptionContractText(quote: OptionContractQuote, validationOp
     ? "【非即時可執行報價 · 僅供參考】"
     : "【即時參考報價】";
 
-  const monthlyNotice = validationOptions?.period === "monthly" ? monthlyFallbackNoticeZh(validated.dte) : null;
+  const monthlyNotice = validationOptions?.period === "monthly" ? shortDteNoticeZh(validated.dte) : null;
   const text = [
     `【公開期權合約報價】${validated.ticker} ${validated.expiry} ${validated.strike}${validated.type.toUpperCase()}`,
     `報價性質：${nonexecTag}`,

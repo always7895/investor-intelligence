@@ -35,7 +35,7 @@ SEAL_AT = RUN_AT + timedelta(minutes=5)
 NASDAQ_TICKER = "SYNTHNQ00"                                # Yahoo fails here: the Nasdaq US chain answers
 US_SIBLING = "SYNTHUS00"                                   # Yahoo answers
 FIXTURE_TICKERS = (NASDAQ_TICKER, US_SIBLING)
-WEEKLY_DTE, MONTHLY_DTE = 4, 28
+WEEKLY_DTE, MONTHLY_DTE = 4, 32  # 2026-11-20, the third Friday: the nearest standard monthly of the Monday 2026-10-19 world
 
 
 def last_trade(day: date) -> str:
@@ -62,7 +62,8 @@ def nasdaq_spec(symbol: str = NASDAQ_TICKER, **extra: Any) -> dict[str, Any]:
 
 def specs(extra: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     """One Nasdaq-fallback ticker plus ten healthy Yahoo siblings (the producer needs at least ten quotes)."""
-    return [nasdaq_spec(**(extra or {})), *nonus.healthy_us(10)]
+    with mock.patch.object(nonus, "TODAY", WORLD_TODAY):  # the siblings' monthly DTE is the one of this world, not of the 2026-09-30 default
+        return [nasdaq_spec(**(extra or {})), *nonus.healthy_us(10)]
 
 
 def run_producer(spec_list: list[dict[str, Any]], directory: Path) -> tuple[int, Path]:

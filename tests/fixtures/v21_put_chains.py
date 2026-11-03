@@ -2,7 +2,7 @@
 
 The prices are SYNTHETIC: Black-Scholes at spot 100, 28 days, volatility 0.30, rounded to the cent with a 0.04 spread (the literals are pinned here
 so a test does not re-derive them from the code under test). The shape of each provider is the retained one (tests/fixtures/v19_nasdaq_us_options_cases.py,
-tests/test_build_market_quotes_options.py). Run date 2026-09-30, monthly expiry 2026-10-28 (28 DTE).
+tests/test_build_market_quotes_options.py). Run date 2026-10-23 (a Friday), monthly expiry 2026-11-20 (28 DTE): the third Friday, i.e. the nearest standard monthly of the run date.
 """
 from __future__ import annotations
 
@@ -13,10 +13,10 @@ from datetime import date, timedelta
 from typing import Any
 
 SPOT = 100.0
-TODAY = date(2026, 9, 30)
-STAMP = "2026-09-30T17:00:00Z"
+TODAY = date(2026, 10, 23)
+STAMP = "2026-10-23T17:00:00Z"
 DTE = 28
-EXPIRY = (TODAY + timedelta(days=DTE)).isoformat()   # 2026-10-28
+EXPIRY = (TODAY + timedelta(days=DTE)).isoformat()   # 2026-11-20, the third Friday (the nearest standard monthly)
 IV = 0.30
 
 # (strike, bid, ask): absolute put delta 0.029 .. 0.374 and call delta 0.347 .. 0.099 (see the module note).

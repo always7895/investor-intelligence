@@ -65,7 +65,7 @@ def _cycle(ticker: str, dte: int, expiry: str, timestamp: str = BASE_ROW_STAMP) 
         "suggestions": [{
             "role": "HIGH_STRIKE", "strike": STRIKE, "bid": 2.0, "ask": 2.1, "mid": 2.05, "limit_price": LIMIT,
             "premium_per_contract": LIMIT * 100, "period_yield": LIMIT / SPOT,
-            "annualized_yield": LIMIT / SPOT * 365 / dte, "upside_to_strike": STRIKE / SPOT - 1,
+            "annualized_yield": LIMIT / SPOT * 365 / max(dte, 1), "upside_to_strike": STRIKE / SPOT - 1,
             "delta": 0.18, "delta_basis": "QUOTED_IV", "iv": 0.4, "oi": 900, "volume": 50, "spread_pct": 0.0488,
         }],
     }
@@ -150,9 +150,9 @@ def _cases():
     for name, patch in base:
         out.append((name, "monthly", patched(**patch), BASE_GENERATED_AT, None, BASE_ROW_STAMP))
 
-    # Period DTE bucket boundaries (weekly 0-14 outer bound, monthly 21-45): just inside and just outside both ends. weekly dte 2 is now
+    # Period DTE bucket boundaries (weekly 0-14 outer bound, monthly 0-60 since 2026-11-03): just inside and just outside both ends. weekly dte 2 is now
     # inside (a Friday expiry seen on a Wednesday is the current-week weekly); the committed JSON is regenerated from the real publisher.
-    for period, dtes in (("weekly", (2, 3, 14, 15, 21)), ("monthly", (7, 20, 21, 45, 46))):
+    for period, dtes in (("weekly", (2, 3, 14, 15, 21)), ("monthly", (0, 7, 20, 21, 45, 46, 60, 61))):
         for dte in dtes:
             out.append((f"{period}_dte_{dte}", period, _cycle("TSM", dte, _expiry(dte)), BASE_GENERATED_AT, None, BASE_ROW_STAMP))
 

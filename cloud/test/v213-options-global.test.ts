@@ -359,9 +359,9 @@ describe("OPTIONS-GLOBAL-01 acceptance regression tests", () => {
     const monthlyReply = await actualReply(await sealedEnv(lazy => {
       const cycle = structuredClone(TSM_MONTHLY);
       cycle.ticker = "NVDA";
-      cycle.dte = 7;
-      cycle.expiry = new Date(FIXED_NOW + 7 * 86400000).toISOString().slice(0, 10);
-      cycle.suggestions[0]!.annualized_yield = cycle.suggestions[0]!.limit_price / cycle.spot * 365 / 7;
+      cycle.dte = 61;  // the monthly bucket is 0-60
+      cycle.expiry = new Date(FIXED_NOW + 61 * 86400000).toISOString().slice(0, 10);
+      cycle.suggestions[0]!.annualized_yield = cycle.suggestions[0]!.limit_price / cycle.spot * 365 / 61;
       lazy["v213:options:v2"].options.NVDA = { monthly: cycle };
     }), "NVDA 每月期權");
     expect(monthlyReply).not.toContain("330.00");

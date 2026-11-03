@@ -33,8 +33,9 @@ describe("full public strategy replies", () => {
     const cycle: any = structuredClone(fixture.cases.yahoo_monthly_full);
     if (period === "weekly") {
       cycle.dte = 7;
-      cycle.expiry = "2026-10-07";
+      cycle.expiry = "2026-10-30";  // the fixture run date is Friday 2026-10-23: next week's Friday
       cycle.weekly_week = "NEXT";
+      delete cycle.monthly_rule;    // the marker rides monthly rows only
       for (const item of [...cycle.suggestions, cycle.middle_suggestion]) item.annualized_yield = item.period_yield * 365 / 7;
       for (const item of cycle.strategies.csp.suggestions) item.annualized_yield = item.limit_price / item.strike * 365 / 7;
     }

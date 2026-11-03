@@ -4,15 +4,22 @@
  *
  * WEEKLY (calendar week, exchange local, Monday-Sunday): the earliest listed expiry from the as-of date through that week's
  * Sunday; only when none remains (weekend, after the week's last weekly, the expiry day after the session close) the earliest
- * listed expiry of the NEXT calendar week; nothing later is ever a weekly. Monthly prefers 21-45 DTE nearest 30;
- * only when no preferred expiry exists, use a listed 14-60 DTE expiry nearest 30 (ties earlier).
+ * listed expiry of the NEXT calendar week; nothing later is ever a weekly.
+ * MONTHLY (operator 2026-11-03, no minimum DTE and no yield floor): the NEAREST standard monthly expiry on or after the as-of date.
+ * A standard monthly is, per calendar month, the listed expiry on the third Friday; when none is listed that day (a holiday), the
+ * latest listed expiry of that Monday-Thursday before it. The as-of day counts only while the session is open (the weekly's expiry-day
+ * rule); otherwise, and when the month has no listed monthly, the earliest later standard monthly within 60 DTE (rule LATER_LISTED).
  * ANNUALIZATION: days = max(dte, 1), so DTE 0 never divides by zero and is never annualized over under one day; DTE 0-2 is
  * labelled on the card. MIDDLE tier: a strike strictly between the HIGH_STRIKE and BALANCED strikes. */
 
 export const WEEKLY_DTE_BUCKET: readonly [number, number] = [0, 14];   // outer bound; the exact rule is the calendar-week rule
-export const MONTHLY_DTE_BUCKET: readonly [number, number] = [21, 45];
-export const MONTHLY_FALLBACK_DTE_BUCKET: readonly [number, number] = [14, 60];
+/** Outer bound only (validators, fetch windows): the exact rule is the standard-monthly rule above. */
+export const MONTHLY_DTE_BUCKET: readonly [number, number] = [0, 60];
+/** Identifies the monthly period in a policy file; no longer a selection target. */
 export const MONTHLY_TARGET_DTE = 30;
+/** Which branch of the monthly rule chose the expiry (the producer's additive cycle key monthly_rule). */
+export const MONTHLY_RULES = ["THIRD_FRIDAY", "HOLIDAY_SHIFT", "LATER_LISTED"] as const;
+export type MonthlyRule = typeof MONTHLY_RULES[number];
 export const MIN_ANNUALIZATION_DAYS = 1;
 export const SHORT_DTE_NOTICE_MAX = 2;
 export const MIDDLE_DELTA = 0.25;
@@ -118,36 +125,65 @@ export function selectWeeklyExpiry(expiries: readonly string[], asOf: string, ex
   return null;
 }
 
-/** Prefer listed 21-45 DTE nearest 30; otherwise listed 14-60 DTE nearest 30. Ties go to the earlier expiry. */
-export function selectMonthlyExpiry(expiries: readonly string[], asOf: string): string | null {
-  const asOfMs = dayMs(asOf);
-  if (asOfMs === null) return null;
-  let preferred: string | null = null, fallback: string | null = null;
-  let preferredDistance = Infinity, fallbackDistance = Infinity;
-  for (const expiry of expiries) {
-    const expiryMs = dayMs(expiry);
-    if (expiryMs === null) continue;
-    const dte = (expiryMs - asOfMs) / DAY_MS;
-    if (dte < MONTHLY_FALLBACK_DTE_BUCKET[0] || dte > MONTHLY_FALLBACK_DTE_BUCKET[1]) continue;
-    const distance = Math.abs(dte - MONTHLY_TARGET_DTE);
-    if (distance < fallbackDistance || (distance === fallbackDistance && (fallback === null || expiry < fallback))) {
-      fallback = expiry;
-      fallbackDistance = distance;
-    }
-    if (dte >= MONTHLY_DTE_BUCKET[0] && dte <= MONTHLY_DTE_BUCKET[1]
-      && (distance < preferredDistance || (distance === preferredDistance && (preferred === null || expiry < preferred)))) {
-      preferred = expiry;
-      preferredDistance = distance;
-    }
-  }
-  return preferred ?? fallback;
+/** The third Friday of a month (month 1-12) as UTC-midnight ms: the nominal standard-monthly expiry day. */
+export const thirdFridayMs = (year: number, month: number): number => nthWeekday(year, month, 4, 3);
+
+/** True when the expiry sits where the rule says: THIRD_FRIDAY on the third Friday, HOLIDAY_SHIFT in the Monday-Thursday before it,
+ * LATER_LISTED on either. Dates are YYYY-MM-DD. */
+export function monthlyRuleConsistent(expiry: string, rule: string): boolean {
+  const e = dayMs(expiry);
+  if (e === null || !(MONTHLY_RULES as readonly string[]).includes(rule)) return false;
+  const friday = thirdFridayMs(new Date(e).getUTCFullYear(), new Date(e).getUTCMonth() + 1);
+  const onFriday = e === friday, shifted = e >= friday - 4 * DAY_MS && e < friday;
+  return rule === "THIRD_FRIDAY" ? onFriday : rule === "HOLIDAY_SHIFT" ? shifted : onFriday || shifted;
 }
 
-/** A disclosure derived from actual DTE, never a producer-supplied fallback flag. Preferred-expiry labels stay unchanged. */
-export function monthlyFallbackNoticeZh(dte: number): string | null {
-  if (!Number.isInteger(dte) || dte < MONTHLY_FALLBACK_DTE_BUCKET[0] || dte > MONTHLY_FALLBACK_DTE_BUCKET[1]
-    || (dte >= MONTHLY_DTE_BUCKET[0] && dte <= MONTHLY_DTE_BUCKET[1])) return null;
-  return `月期權延伸到期：DTE ${dte}，超出偏好 ${MONTHLY_DTE_BUCKET[0]}-${MONTHLY_DTE_BUCKET[1]} 天區間（上市到期備選範圍 ${MONTHLY_FALLBACK_DTE_BUCKET[0]}-${MONTHLY_FALLBACK_DTE_BUCKET[1]} 天）。`;
+/** The listed standard monthly of a calendar month: the third Friday, else the latest listed expiry of that week's Monday-Thursday. */
+function standardMonthly(listed: ReadonlySet<string>, year: number, month: number): { expiry: string; rule: MonthlyRule } | null {
+  const friday = thirdFridayMs(year, month);
+  if (listed.has(isoDay(friday))) return { expiry: isoDay(friday), rule: "THIRD_FRIDAY" };
+  let latest: string | null = null;
+  for (const day of listed) {
+    const e = dayMs(day)!;
+    if (e >= friday - 4 * DAY_MS && e < friday && (latest === null || day > latest)) latest = day;
+  }
+  return latest === null ? null : { expiry: latest, rule: "HOLIDAY_SHIFT" };
+}
+
+/** The monthly rule on listed expiry dates: the nearest standard monthly on or after asOf. The expiry day (asOf itself) counts only
+ * while expiryDayOpenNow. Null when no standard monthly within MONTHLY_DTE_BUCKET is listed. Twin of select_monthly in Python. */
+export function selectMonthly(expiries: readonly string[], asOf: string, expiryDayOpenNow = true): { expiry: string; rule: MonthlyRule } | null {
+  const a = dayMs(asOf);
+  if (a === null) return null;
+  const listed = new Set(expiries.filter(day => dayMs(day) !== null));
+  const start = new Date(a);
+  let expected: string | null = null;  // the first month whose nominal third Friday is still ahead
+  for (let offset = 0; offset < 4; offset++) {  // asOf plus 60 days spans at most four calendar months
+    const monthIndex = start.getUTCFullYear() * 12 + start.getUTCMonth() + offset;
+    const year = Math.floor(monthIndex / 12), month = (monthIndex % 12) + 1;
+    const nominal = thirdFridayMs(year, month);
+    if (expected === null && (nominal > a || (nominal === a && expiryDayOpenNow))) expected = `${year}-${month}`;
+    const found = standardMonthly(listed, year, month);
+    if (found === null) continue;
+    const e = dayMs(found.expiry)!;
+    if (e < a || (e === a && !expiryDayOpenNow)) continue;
+    const dte = (e - a) / DAY_MS;
+    if (dte < MONTHLY_DTE_BUCKET[0] || dte > MONTHLY_DTE_BUCKET[1]) return null;
+    return { expiry: found.expiry, rule: expected === `${year}-${month}` ? found.rule : "LATER_LISTED" };
+  }
+  return null;
+}
+
+/** The expiry of selectMonthly (the nearest standard monthly), or null. */
+export function selectMonthlyExpiry(expiries: readonly string[], asOf: string, expiryDayOpenNow = true): string | null {
+  return selectMonthly(expiries, asOf, expiryDayOpenNow)?.expiry ?? null;
+}
+
+/** DTE 0-2: the annualized yield is computed over at least one day and is strongly amplified; say so (null for a longer or invalid DTE).
+ * Replaces the former monthly "extended fallback" disclosure: no monthly cycle is labelled as a fallback any more. */
+export function shortDteNoticeZh(dte: number): string | null {
+  if (!Number.isInteger(dte) || dte < 0 || dte > SHORT_DTE_NOTICE_MAX) return null;
+  return `${dte === 0 ? "今日到期" : `距到期僅 ${dte} 天`}：年化收益以至少 1 天換算，數字被大幅放大，只供比較，不代表可持續收益。`;
 }
 
 /** The middle-tier row among usable candidates (strike and optional delta): strictly between the balanced and the high strike;

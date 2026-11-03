@@ -240,11 +240,12 @@ class WeeklyProducerTests(unittest.TestCase):
         after = self.run_us(D(2026, 10, 9), "2026-10-09T21:00:00Z", ["2026-10-09", "2026-10-16"])["weekly"]  # 17:00 New York
         self.assertEqual((after["expiry"], after["dte"], after["weekly_week"]), ("2026-10-16", 7, "NEXT"))
 
-    def test_monthly_is_unchanged_nearest_thirty_days_inside_21_to_45(self):
+    def test_monthly_is_the_nearest_standard_monthly_whatever_its_dte(self):
         out = self.run_us(D(2026, 10, 7), "2026-10-07T14:00:00Z", ["2026-10-09", "2026-10-16", "2026-11-06", "2026-11-20"])
         monthly = {h["cycle"]: h for h in out.health}["monthly"]
-        self.assertEqual(monthly["expiry"], "2026-11-06")  # DTE 30; 2026-11-20 is DTE 44, 2026-10-16 is DTE 9 (outside 21-45)
+        self.assertEqual(monthly["expiry"], "2026-10-16")  # the third Friday, DTE 9; 2026-11-06 (DTE 30) is not a monthly, 2026-11-20 is the next one
         self.assertEqual(builder.CYCLES["weekly"], (0, 14))
+        self.assertEqual(builder.CYCLES["monthly"], (0, 60))
 
     @staticmethod
     def call(expiry: str, dte: int, strike=110.0, bid=0.20, ask=0.24, delta=0.12):
@@ -359,6 +360,7 @@ class TierValidatorTests(unittest.TestCase):
         zero = tier_cycle(dte=0, expiry="2026-10-07", asof="2026-10-07")
         validate_covered_call_cycle(zero, period="weekly", **EVAL)
         self.reject(tier_cycle(dte=61, expiry="2026-12-07", asof="2026-10-07"), "INVALID_DTE", period="monthly")
+        validate_covered_call_cycle(tier_cycle(dte=0, expiry="2026-10-07", asof="2026-10-07", week=None), period="monthly", **EVAL)
 
     def test_a_dte_zero_row_is_rejected_after_the_us_session_close(self):
         def zero(stamp):
@@ -377,8 +379,9 @@ class TierValidatorTests(unittest.TestCase):
         self.reject(tier_cycle(asof="2026-02-30"), "INVALID_ASOF_DATE")
         self.reject(tier_cycle(asof=20261007), "INVALID_ASOF_DATE")
         self.reject(tier_cycle(asof="2026-10-08"), "ASOF_DTE_INCONSISTENT")
-        # the same expiry as a monthly request is outside the monthly bucket, with or without the as-of date
-        self.reject(tier_cycle(), "DTE_OUTSIDE_PERIOD_BUCKET", period="monthly")
+        # the monthly bucket is 0-60: a 2-DTE expiry is inside it, but a weekly marker never rides a monthly row
+        self.reject(tier_cycle(), "INVALID_WEEKLY_WEEK", period="monthly")
+        validate_covered_call_cycle(tier_cycle(week=None), period="monthly", **EVAL)
 
     def test_the_weekly_week_marker_is_weekly_only_and_two_valued(self):
         self.reject(tier_cycle(asof=None, week="LATER"), "INVALID_WEEKLY_WEEK")

@@ -18,7 +18,7 @@ import json
 import math
 import re
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import option_recommendation_rules as rules
@@ -250,7 +250,7 @@ MAX_HIGH_STRIKE_DELTA = 0.20
 # must carry a DTE inside its own bucket (weekly 0-14 is the outer bound; with asof_date the exact calendar-week rule of
 # option_recommendation_rules applies: this week's remaining expiry or, only when none, next week's). Not a third-Friday
 # calendar classification.
-PERIOD_DTE_BUCKETS = {"weekly": rules.WEEKLY_DTE_BUCKET, "monthly": rules.MONTHLY_FALLBACK_DTE_BUCKET}
+PERIOD_DTE_BUCKETS = {"weekly": rules.WEEKLY_DTE_BUCKET, "monthly": rules.MONTHLY_DTE_BUCKET}
 
 
 # The previous-session carry-forward basis (scripts/options_carry_forward.py; Worker twin PREVIOUS_SESSION_BASIS in covered-call.ts):
@@ -553,6 +553,18 @@ def validate_covered_call_cycle(cycle: dict, evaluated_at: str | datetime | None
     if week_raw is not None:
         if week_raw not in (rules.WEEK_CURRENT, rules.WEEK_NEXT) or period == "monthly":
             raise MarketProductValidationError("INVALID_WEEKLY_WEEK")
+    monthly_rule = cycle.get("monthly_rule")
+    if monthly_rule is not None:
+        # Optional, additive: which branch of the standard-monthly rule chose the expiry (never required, never weekly). The expiry
+        # must sit where the branch says: THIRD_FRIDAY on the month's third Friday, HOLIDAY_SHIFT in the Monday-Thursday before it.
+        if monthly_rule not in rules.MONTHLY_RULES or period == "weekly":
+            raise MarketProductValidationError("INVALID_MONTHLY_RULE")
+        friday = rules.third_friday(expiry.year, expiry.month)
+        shifted = friday - timedelta(days=4) <= expiry.date() < friday
+        on_friday = expiry.date() == friday
+        if (not (on_friday or shifted) or (monthly_rule == rules.MONTHLY_RULE_THIRD_FRIDAY and not on_friday)
+                or (monthly_rule == rules.MONTHLY_RULE_HOLIDAY_SHIFT and not shifted)):
+            raise MarketProductValidationError("MONTHLY_RULE_INCONSISTENT")
     spot = finite(cycle.get("spot"), "spot")
     annual_days = rules.effective_days(dte)  # annualized over at least one day: a DTE-0 contract never divides by zero
     suggestions = cycle.get("suggestions")

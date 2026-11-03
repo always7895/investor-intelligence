@@ -360,9 +360,9 @@ describe("V21 card", () => {
     expect(() => buildCoveredCallMessages(check(clone("yahoo_monthly_full")) as never, "每月期權", "flex")).toThrow();
   });
 
-  it("the producer's 2% floor wording replaces the 6% note", () => {
+  it("no card claims an annualized-yield floor (the 6% and then 2% floors were removed on 2026-11-03)", () => {
     const text = JSON.stringify(full());
-    expect(text).toContain("至少 2%");
-    expect(text).not.toContain("至少 6%");
+    expect(text).toContain("不設年化收益下限");
+    for (const stale of ["至少 2%", "至少 6%", "年化權利金至少"]) expect(text).not.toContain(stale);
   });
 });

@@ -10,7 +10,15 @@ WEEKLY (calendar week, exchange local, Monday-Sunday):
   no remaining listed expiry (weekend, after the last weekly of the week, or the expiry day after the session close) is it the
   EARLIEST listed expiry of the NEXT calendar week (Monday..Sunday after). Nothing beyond the next week is ever a weekly.
 - Expiry day (DTE 0) counts only while the venue's regular session has not closed (EXPIRY_DAY_CLOSE_LOCAL_MINUTES).
-- Monthly prefers the expiry nearest 30 days inside MONTHLY_DTE_BUCKET; only without one, use MONTHLY_FALLBACK_DTE_BUCKET.
+
+MONTHLY (operator 2026-11-03: list the nearest monthly, no minimum DTE, no yield floor): the NEAREST standard monthly expiry on or
+after the as-of date. A standard monthly is, per calendar month, the listed expiry on that month's third Friday; when the chain
+lists none on that day (an exchange holiday), the LATEST listed expiry of that Monday-Friday week before the Friday. As-of
+2026-11-03 therefore selects 2026-11-20 (DTE 17), and a viewer on 2026-11-20 before the close gets DTE 0. The as-of day counts only
+while its regular session is open (the weekly's expiry-day rule); afterwards, and when the current month has no listed monthly, the
+earliest later standard monthly is taken (rule LATER_LISTED). Only monthlies within MONTHLY_DTE_BUCKET (0-60 DTE) are considered
+(the validators' outer bound). No other expiry (a weekly, or any date that is not that month's standard monthly) is ever a monthly,
+and no minimum DTE is required.
 
 ANNUALIZATION for tiny DTE: days = max(dte, 1) (MIN_ANNUALIZATION_DAYS). A same-day or next-day expiry therefore never
 divides by zero and is never annualized over less than one day; a cycle with dte <= SHORT_DTE_NOTICE_MAX is labelled on the
@@ -30,9 +38,13 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Any, Iterable, Sequence
 
 WEEKLY_DTE_BUCKET = (0, 14)      # outer validator tolerance; the exact rule is the calendar-week rule above
-MONTHLY_DTE_BUCKET = (21, 45)
-MONTHLY_FALLBACK_DTE_BUCKET = (14, 60)
-MONTHLY_TARGET_DTE = 30
+MONTHLY_DTE_BUCKET = (0, 60)     # outer bound only (validators, fetch windows); the exact rule is the standard-monthly rule above
+MONTHLY_TARGET_DTE = 30          # identifies the monthly period in a policy file; no longer a selection target
+# Which branch of the monthly rule produced the expiry (recorded in the cycle as monthly_rule; additive, old readers ignore it).
+MONTHLY_RULE_THIRD_FRIDAY = "THIRD_FRIDAY"      # the listed expiry on the third Friday of the nearest eligible month
+MONTHLY_RULE_HOLIDAY_SHIFT = "HOLIDAY_SHIFT"    # no expiry on that Friday; the latest listed expiry of that week before it
+MONTHLY_RULE_LATER_LISTED = "LATER_LISTED"      # the nearest eligible month has no listed monthly (or its day is past): a later month
+MONTHLY_RULES = (MONTHLY_RULE_THIRD_FRIDAY, MONTHLY_RULE_HOLIDAY_SHIFT, MONTHLY_RULE_LATER_LISTED)
 MIN_ANNUALIZATION_DAYS = 1
 SHORT_DTE_NOTICE_MAX = 2         # dte 0-2: the annualized yield is labelled as amplified
 MIDDLE_DELTA = 0.25
@@ -63,6 +75,11 @@ def _nth_weekday(year: int, month: int, weekday: int, nth: int) -> date:
         return first + timedelta(days=(weekday - first.weekday()) % 7 + 7 * (nth - 1))
     last = (date(year + (month == 12), month % 12 + 1, 1) - timedelta(days=1))
     return last - timedelta(days=(last.weekday() - weekday) % 7)
+
+
+def third_friday(year: int, month: int) -> date:
+    """The third Friday of a calendar month (the nominal standard-monthly expiry day)."""
+    return _nth_weekday(year, month, 4, 3)
 
 
 def _utc_offset_hours(now_utc: datetime, venue: str) -> int:
@@ -143,14 +160,49 @@ def select_weekly_expiry(expiries: Iterable[date], as_of: date, *, expiry_day_op
     return None
 
 
-def select_monthly_expiry(expiries: Iterable[date], as_of: date) -> date | None:
-    """Prefer 21-45 DTE; otherwise use listed 14-60 DTE. Nearest 30 wins, with earlier expiry breaking ties."""
-    listed = set(expiries)
-    for low, high in (MONTHLY_DTE_BUCKET, MONTHLY_FALLBACK_DTE_BUCKET):
-        candidates = [day for day in listed if low <= (day - as_of).days <= high]
-        if candidates:
-            return min(candidates, key=lambda day: (abs((day - as_of).days - MONTHLY_TARGET_DTE), day))
+@dataclass(frozen=True)
+class MonthlyChoice:
+    expiry: date
+    rule: str  # one of MONTHLY_RULES
+
+
+def _standard_monthly(listed: set[date], year: int, month: int) -> tuple[date, str] | None:
+    """The listed standard monthly of a calendar month: the third Friday, else the latest listed expiry of that week's Monday-Thursday."""
+    friday = third_friday(year, month)
+    if friday in listed:
+        return friday, MONTHLY_RULE_THIRD_FRIDAY
+    earlier = [day for day in listed if friday - timedelta(days=4) <= day < friday]
+    return (max(earlier), MONTHLY_RULE_HOLIDAY_SHIFT) if earlier else None
+
+
+def select_monthly(expiries: Iterable[date], as_of: date, *, expiry_day_open_now: bool = True) -> MonthlyChoice | None:
+    """The nearest standard monthly on or after as_of (see MONTHLY above). The expiry day (as_of itself) counts only while
+    expiry_day_open_now. None when no standard monthly within MONTHLY_DTE_BUCKET is listed."""
+    listed = {day for day in expiries if isinstance(day, date) and not isinstance(day, datetime)}
+    expected: tuple[int, int] | None = None  # the first month whose nominal third Friday is still ahead
+    for offset in range(4):  # as_of plus 60 days spans at most four calendar months
+        month_index = as_of.year * 12 + as_of.month - 1 + offset
+        year, month = divmod(month_index, 12)
+        month += 1
+        nominal = third_friday(year, month)
+        if expected is None and (nominal > as_of or (nominal == as_of and expiry_day_open_now)):
+            expected = (year, month)
+        found = _standard_monthly(listed, year, month)
+        if found is None:
+            continue
+        day, rule = found
+        if day < as_of or (day == as_of and not expiry_day_open_now):
+            continue
+        if not MONTHLY_DTE_BUCKET[0] <= (day - as_of).days <= MONTHLY_DTE_BUCKET[1]:
+            return None
+        return MonthlyChoice(day, rule if expected == (year, month) else MONTHLY_RULE_LATER_LISTED)
     return None
+
+
+def select_monthly_expiry(expiries: Iterable[date], as_of: date, *, expiry_day_open_now: bool = True) -> date | None:
+    """The expiry of select_monthly (the nearest standard monthly), or None."""
+    choice = select_monthly(expiries, as_of, expiry_day_open_now=expiry_day_open_now)
+    return choice.expiry if choice else None
 
 
 def weekly_week_for(expiry: date, as_of: date) -> str | None:

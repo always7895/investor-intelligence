@@ -217,13 +217,13 @@ describe("Weekly and monthly option cycles (週期權／月期權)", () => {
   });
 
   it("uses the collector's DTE windows and reports whether the contract fits", () => {
-    expect(OPTION_CYCLE_DTE_WINDOW).toEqual({ WEEKLY: [0, 14], MONTHLY: [21, 45] });
+    expect(OPTION_CYCLE_DTE_WINDOW).toEqual({ WEEKLY: [0, 14], MONTHLY: [0, 60] });
     const weekly = gd({ expiry: "2026-10-09", dte: 7, cycle: "weekly" });
     expect(weekly.expiry_cycle).toBe("WEEKLY");
     expect(weekly.cycle_matches_request).toBe(true);
     expect(weekly.dte_window_status).toBe("WITHIN_CYCLE_WINDOW");
     const monthly = gd({ expiry: "2026-10-16", dte: 30, cycle: "monthly" });
-    expect(monthly.dte_window).toEqual([21, 45]);
+    expect(monthly.dte_window).toEqual([0, 60]);
     expect(monthly.dte_window_status).toBe("WITHIN_CYCLE_WINDOW");
     expect(gd({ expiry: "2026-12-18", dte: 94 }).dte_window_status).toBe("OUTSIDE_CYCLE_WINDOW");
     expect(gd({ expiry: "2026-12-18", dte: 94 }).requested_cycle).toBeNull();

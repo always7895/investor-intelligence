@@ -17,7 +17,7 @@
   {
     "dte": 0,
     "period": "monthly",
-    "expected": false
+    "expected": true
   },
   {
     "dte": 1,
@@ -27,7 +27,7 @@
   {
     "dte": 1,
     "period": "monthly",
-    "expected": false
+    "expected": true
   },
   {
     "dte": 6,
@@ -37,7 +37,7 @@
   {
     "dte": 6,
     "period": "monthly",
-    "expected": false
+    "expected": true
   },
   {
     "dte": 7,
@@ -47,7 +47,7 @@
   {
     "dte": 7,
     "period": "monthly",
-    "expected": false
+    "expected": true
   },
   {
     "dte": 13,
@@ -57,7 +57,7 @@
   {
     "dte": 13,
     "period": "monthly",
-    "expected": false
+    "expected": true
   },
   {
     "dte": 14,
@@ -126,6 +126,16 @@
   },
   {
     "dte": 46,
+    "period": "monthly",
+    "expected": true
+  },
+  {
+    "dte": 59,
+    "period": "weekly",
+    "expected": false
+  },
+  {
+    "dte": 59,
     "period": "monthly",
     "expected": true
   },
