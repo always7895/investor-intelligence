@@ -45,6 +45,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 import listing_lineage  # noqa: E402
 import official_quarterly_revenue  # noqa: E402
+import revenue_trend  # noqa: E402
 
 LAYERS = ROOT / "config" / "bottleneck-layers-v3.json"
 KOREA_ORDERS = ROOT / "config" / "korea-ir-orders-v1.json"
@@ -377,6 +378,8 @@ def sec_fundamentals(ticker: str, cik: int, facts: dict[str, Any]) -> dict[str, 
                 prior = diluted[min(candidates, key=lambda end: abs((date.fromisoformat(end) - target).days))]
                 shares_yoy = _shares_yoy(diluted[latest]["val"], prior["val"])
                 shares_basis = "DILUTED_WEIGHTED_AVERAGE" if shares_yoy is not None else None
+    # TREND_YOY_V1 input (scripts/revenue_trend.py): the last four contiguous filed quarters in one unit; local only.
+    trend_quarters = revenue_trend.quarters_of({end: row["val"] for end, row in revenue.items() if row.get("unit") == current["unit"]}, latest)
     return {"source": "SEC EDGAR XBRL companyfacts", "source_url": COMPANYFACTS.format(cik=cik), "revenue_tag": tag,
             "quarter": current.get("fp"), "quarter_end": current.get("end"), "filed": current.get("filed"), "form": current.get("form"),
             "revenue": current["val"], "revenue_unit": current["unit"], "revenue_yoy": yoy, "revenue_yoy_prev": yoy_prev,
@@ -387,7 +390,8 @@ def sec_fundamentals(ticker: str, cik: int, facts: dict[str, Any]) -> dict[str, 
             "rpo_end": rpo[-1]["end"] if rpo else None,
             "rpo_filed": rpo[-1]["filed"] if rpo else None,
             "rpo_prior_filed": rpo_prior["filed"] if rpo_prior else None,
-            "rpo_prior": rpo_prior["val"] if rpo_prior else None, "rpo_prior_end": rpo_prior["end"] if rpo_prior else None}
+            "rpo_prior": rpo_prior["val"] if rpo_prior else None, "rpo_prior_end": rpo_prior["end"] if rpo_prior else None,
+            **({"revenue_quarters": trend_quarters} if trend_quarters else {})}
 
 
 # ---------------------------------------------------------------- order visibility and growth scenarios
@@ -536,6 +540,15 @@ def outlook(symbol: str, fund: dict[str, Any] | None, consensus: dict[str, Any] 
 
 
 # ---------------------------------------------------------------- Yahoo Finance
+def _yahoo_trend_quarters(revenue: dict[str, float], latest_end: str, financial_currency: Any, quote_currency: Any) -> dict[str, Any]:
+    """The TREND_YOY_V1 input (scripts/revenue_trend.py) from a Yahoo quarterly statement: the key is absent unless the
+    statement currency is known and equals the quote currency the revenue unit is labelled with (fail closed)."""
+    if not isinstance(financial_currency, str) or financial_currency != quote_currency:
+        return {}
+    quarters = revenue_trend.quarters_of(revenue, latest_end)
+    return {"revenue_quarters": quarters} if quarters else {}
+
+
 def yahoo_data(symbol: str, lineage: dict[str, Any] | None = None, *, config_path: Path | None = None, as_of: datetime | None = None) -> dict[str, Any]:
     import yfinance as yf
     requested_from = listing_lineage.request_start(datetime.now(timezone.utc).date())
@@ -629,7 +642,10 @@ def yahoo_data(symbol: str, lineage: dict[str, Any] | None = None, *, config_pat
                                        "revenue_yoy_prev_basis": prev_basis, "revenue_yoy_prev_source": prev_source,
                                        **({"revenue_yoy_prev_reason": prev_reason} if prev_reason else {}),  # local only
                                        "gross_margin": gm, "gross_margin_change": (gm - gm_prior) if gm is not None and gm_prior is not None else None,
-                                       "rpo_yoy": None, "shares_yoy": shares_yoy, "shares_basis": shares_basis}
+                                       "rpo_yoy": None, "shares_yoy": shares_yoy, "shares_basis": shares_basis,
+                                       **_yahoo_trend_quarters({str(end.date()): float(value) for end, value in revenue.items()},
+                                                               str(latest_end.date()), info.get("financialCurrency") if isinstance(info, dict) else None,
+                                                               out["market"].get("currency"))}
     except Exception:
         pass
     return out
@@ -744,7 +760,9 @@ def captured_yahoo_data(symbol, captured, lineage, as_of):
                     **({"revenue_yoy_prev_reason": reason} if reason else {}),
                     "gross_margin": gm, "gross_margin_change": gm - gm_prior if gm is not None and gm_prior is not None else None,
                     "rpo_yoy": None, "shares_yoy": dilution,
-                    "shares_basis": "DILUTED_WEIGHTED_AVERAGE" if dilution is not None else None}
+                    "shares_basis": "DILUTED_WEIGHTED_AVERAGE" if dilution is not None else None,
+                    **_yahoo_trend_quarters({day.isoformat(): amount for day, amount in revenue.items()}, end.isoformat(),
+                                            financial.get("financialCurrency"), currency)}
     except (KeyError, ValueError, TypeError, IndexError):
         # No substitute rows/numbers; whatever independent admitted channel was
         # obtained remains visible, matching existing graceful Yahoo availability.

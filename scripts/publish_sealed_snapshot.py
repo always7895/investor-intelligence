@@ -46,6 +46,7 @@ import listing_lineage  # noqa: E402
 import order_forecast  # noqa: E402
 import order_claims  # noqa: E402
 import revenue_guidance  # noqa: E402
+import revenue_trend  # noqa: E402
 import revenue_guidance_overlay  # noqa: E402
 import revenue_guidance_wire  # noqa: E402
 import revenue_consensus_quarterly  # noqa: E402
@@ -873,6 +874,10 @@ def captured_bottleneck_v3_body(raw: bytes, now: datetime, effective_inputs=None
                     machine_inputs=machine_inputs, consumption=consumption),
                 "parts": {key: round(float(parts[key]), 2) for key in ("layer_heat", "capture", "lead", "confirmation", "size", "penalty")},
                 "fundamentals": sealed_fund,
+                # V33b: the optional TREND_YOY_V1 estimate (scripts/revenue_trend.py), only when the collector kept four
+                # contiguous quarters beside the sealed fundamentals; the Worker re-validates it and applies it only where
+                # no revenue basis exists. Absent otherwise, so older inputs seal byte-identically.
+                **({"revenue_trend": trend} if sealed_fund and (trend := revenue_trend.build(fund, generated.date())) else {}),
                 # The long-term fields travel validated and consistent (scripts/listing_lineage.py); malformed ones fail closed.
                 "market": {**pick(entry["market"], ("source", "source_url", "asof", "ret_6m", "ret_1y", "history_start", "currency")),
                            **listing_lineage.clean_market_lineage(entry["market"], generated.date()),

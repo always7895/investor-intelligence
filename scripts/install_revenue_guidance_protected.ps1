@@ -195,7 +195,7 @@ try {
         'scripts/listing_lineage.py', 'scripts/order_forecast.py', 'scripts/order_claims.py',
         'scripts/revenue_consensus_quarterly.py', 'scripts/revenue_guidance_wire.py',
         'scripts/top20_carry_forward.py', 'scripts/v213_evidence_policy.py',
-        'scripts/official_quarterly_revenue.py', 'config/bottleneck-layers-v3.json',
+        'scripts/official_quarterly_revenue.py', 'scripts/revenue_trend.py', 'config/bottleneck-layers-v3.json',
         'config/listing-lineage-v1.json', 'config/official-quarterly-revenue-v1.json',
         'config/company-zh-names-v1.json', 'config/order-claims-v2.json',
         'config/korea-ir-orders-v1.json', 'config/korea-ir-fundamentals-v1.json')

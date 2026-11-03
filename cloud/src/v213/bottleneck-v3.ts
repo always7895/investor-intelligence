@@ -6,6 +6,7 @@
  */
 import { forecastCard, forecastLines, forecastText, parseOrderForecast, parseOrderForecastV3, parseOrderForecastV3Machine, RPO_MEANING, type OrderForecast } from "./order-forecast";
 import { historyBlockLines, historyViewOf, type HistoryView } from "./revenue-history-model";
+import { TREND_CHIP, TREND_LABEL, trendBasisText, trendBlockLines, trendHorizonFor, validTrend, type TrendEstimate } from "./revenue-trend";
 import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
 import type { PublicSnapshotView } from "./public-snapshot";
 import { v213ReportAgeFresh } from "./report-age";
@@ -127,6 +128,10 @@ export interface BottleneckEntry {
   role_zh?: string | null; outlook?: Outlook | null;
   /** The validated order forecast (set by parseBottleneckV3; unavailable when missing or invalid). */
   forecast?: OrderForecast;
+  /** V33b: the validated TREND_YOY_V1 estimate (sealed optional field `revenue_trend`, scripts/revenue_trend.py), set by
+   * parseBottleneckV3 only when it recomputes from its own quarters; absent for older documents. It applies only where
+   * no existing revenue basis does (revenue-trend.ts). */
+  trend?: TrendEstimate;
   parts: { layer_heat: number; capture: number; lead: number; confirmation: number; size: number; penalty: number };
   fundamentals: Fundamentals | null; market: Market; market_cap_usd: number | null;
   serenity: SerenityLead | null; leopold: LeopoldLead | null;
@@ -456,8 +461,11 @@ export function parseBottleneckV3(raw: unknown, now = Date.now(), options: Bottl
   const leopold = doc.leopold_filing && https(doc.leopold_filing.url) ? doc.leopold_filing : null;
   const deep = doc.deep_reports && typeof doc.deep_reports === "object" && !Array.isArray(doc.deep_reports) ? doc.deep_reports : {};
   const reportDay = doc.generated_at.slice(0, 10);
-  const top = doc.top.map((entry: BottleneckEntry) => ({ ...entry, market: closeLongTerm(entry.market, reportDay),
-    forecast: parseOutlookForecast(entry.outlook, reportDay, entry.symbol, doc.generated_at, options) }));
+  const top = doc.top.map((entry: BottleneckEntry) => {
+    const trend = validTrend((entry as any).revenue_trend, entry.fundamentals, reportDay);
+    return { ...entry, market: closeLongTerm(entry.market, reportDay),
+      forecast: parseOutlookForecast(entry.outlook, reportDay, entry.symbol, doc.generated_at, options), ...(trend ? { trend } : {}) };
+  });
   return { generated_at: doc.generated_at, serenity_source: serenity, leopold_filing: leopold, top, industries: doc.industries, deep_reports: deep };
 }
 
@@ -729,7 +737,9 @@ function proxyDetailLines(doc: BottleneckV3, entry: BottleneckEntry): string[] {
 /** The future order block of every Top20 card, line by line ([text, heading]): 半年 and 1年 realization rows with their
  * windows, the conditional price rows, the data dates and later disclosures (Astra contract ORDERS-V2-01). */
 export function outlookForecast(doc: BottleneckV3, entry: BottleneckEntry): [string, boolean][] {
-  return forecastCard(forecastOf(doc, entry), money, historyOf(doc, entry));
+  const forecast = forecastOf(doc, entry);
+  const trend = trendBlockLines(entry.trend, money, forecast);
+  return [...forecastCard(forecast, money, historyOf(doc, entry)), ...trend.map((text, index): [string, boolean] => [text, index === 0])];
 }
 
 /** Reader order (Astra contract ORDERS-V3-01 section 6):
@@ -957,6 +967,10 @@ function companyBubble(doc: BottleneckV3, entry: BottleneckEntry, notes: ReplyDi
   const unavailableRevenueNote = unavailableRevenue
     ? forecastLines.find(([text]) => text.startsWith("營收推估："))?.[0] ?? forecast.consensusNote ?? "營收推估未取得"
     : "";
+  // V33b: the lowest-priority trend estimate fills only a horizon that has no existing figure (revenue-trend.ts).
+  const trend = unavailableRevenue ? entry.trend : undefined;
+  const trendOf = (index: number) => trendHorizonFor(trend, forecast, index === 0 ? "m6" : "m12");
+  const trendShown = trendOf(0) !== null || trendOf(1) !== null;
   const revenueRows = compactOrderRows.map(row => {
     const colon = row.indexOf("：");
     const basis = colon < 0 ? -1 : row.indexOf("（", colon);
@@ -968,7 +982,9 @@ function companyBubble(doc: BottleneckV3, entry: BottleneckEntry, notes: ReplyDi
     const reason = scenarioRows[index]?.match(/無法估價（([^）]+)）/u)?.[1];
     return `${label}：無法估價${reason ? `（${reason}）` : ""}`;
   });
-  const revenueBasis = unavailableRevenue ? unavailableRevenueNote : [forecast.m6.basis_label, forecast.m12.basis_label].find(Boolean) ?? "來源未揭露";
+  const revenueBasis = unavailableRevenue
+    ? `${unavailableRevenueNote}${trendShown ? `；${TREND_LABEL}，截至已申報季末 ${trend!.anchor}，${trendBasisText(trend!)}` : ""}`
+    : [forecast.m6.basis_label, forecast.m12.basis_label].find(Boolean) ?? "來源未揭露";
   const revenueWindows = [forecast.m6, forecast.m12].flatMap((horizon, index) =>
     horizon.start && horizon.end ? [`${index === 0 ? "約半年" : "約1年"}：${horizon.start}–${horizon.end}${horizon.basis_label && horizon.basis_label !== revenueBasis ? `；${horizon.basis_label}` : ""}`] : []);
   const scenarioClaim = scenarioRows[0]?.includes("→ 股價情境")
@@ -1028,21 +1044,25 @@ function companyBubble(doc: BottleneckV3, entry: BottleneckEntry, notes: ReplyDi
       uiBox([
         uiBox([uiBox([], { width: "3px", height: "16px", flex: 0, backgroundColor: T.accent }), chip(`${ordersTile![0]}：${ordersTile![1]}`, T.soft, T.ink),
           ...(revenueCard && warning ? [chip("財季已結束，仍為推估非實績", T.paleCaution, T.caution)]
-            : unavailableRevenue ? [chip("營收推估暫不可用", T.paleCaution, T.caution)] : [])], { layout: "horizontal", spacing: "xs" }),
+            : unavailableRevenue ? [chip(trendShown ? TREND_CHIP : "營收推估暫不可用", T.paleCaution, T.caution)] : [])], { layout: "horizontal", spacing: "xs" }),
       ]),
       uiBox([
         ...(revenueCard ? [
           uiBox((unavailableRevenue ? [forecast.m6, forecast.m12] : revenueRows).map((row, index) => {
             const horizon = [forecast.m6, forecast.m12][index]!;
             const recognition = unavailableRevenue && horizon.status === "AVAILABLE" && horizon.basis === "RECOGNITION" && horizon.amount !== undefined;
-            const label = `${index === 0 ? "約半年" : "約1年"}${recognition ? "訂單認列" : "營收推估"}`;
+            const estimate = !recognition ? trendOf(index) : null;
+            const label = `${index === 0 ? "約半年" : "約1年"}${recognition ? "訂單認列" : estimate ? "趨勢推估" : "營收推估"}`;
             const source = typeof row === "string" ? row : "";
             const colon = source.indexOf("：");
-            const value = recognition ? money(horizon.amount!, horizon.currency) : unavailableRevenue ? "未揭露" : colon < 0 ? source : source.slice(colon + 1);
+            const value = recognition ? money(horizon.amount!, horizon.currency) : estimate ? money(estimate.amount, trend!.currency)
+              : unavailableRevenue ? "未揭露" : colon < 0 ? source : source.slice(colon + 1);
             return kvRow(label, value, { color: value === "未揭露" ? T.subtle : T.ink });
           }), { spacing: "xs" }),
           uiBox([forecast.m6, forecast.m12].map((horizon, index) => {
             const label = index === 0 ? "約半年" : "約1年";
+            const estimate = horizon.scenario.status === "AVAILABLE" ? null : trendOf(index);
+            if (estimate) return barRow(`${label}趨勢`, Math.abs(estimate.change * 100), pct(estimate.change, 0), 150);
             return horizon.scenario.status === "AVAILABLE" && horizon.scenario.change !== undefined
               ? barRow(label, Math.abs(horizon.scenario.change * 100), pct(horizon.scenario.change, 0), 150)
               : uiBox([uiText(label, "xs", T.subtle), chip(revenueScenarioRows[index]!.split("：").slice(1).join("："), T.soft, T.subtle)],
@@ -1067,7 +1087,7 @@ function companyBubble(doc: BottleneckV3, entry: BottleneckEntry, notes: ReplyDi
       ], { spacing: "xs" }),
     ], { paddingAll: "lg", spacing: "sm" }),
     footer: uiBox([
-      compactDisclosures([{ label: "提醒", text: `${forecastCaveat}；非目標價；非投資建議；不自動下單` }]),
+      compactDisclosures([{ label: "提醒", text: `${trendShown ? `${TREND_LABEL}，截至 ${trend!.anchor} 季末；` : ""}${forecastCaveat}；非目標價；非投資建議；不自動下單` }]),
       detailsButton(`${entry.symbol} 瓶頸詳情`, `瓶頸詳情 ${entry.symbol}`),
       ...(!lean ? [menuAction("產業爆發榜", "產業爆發榜")] : []),
     ], footerStyle),
@@ -1189,6 +1209,7 @@ function detailBubbles(doc: BottleneckV3, entry: BottleneckEntry) {
   const floorNote = orders ? `RPO ${orders.form}（申報 ${orders.filed}），認列基準 ${orders.as_of}；營收下限非股價下限，未計新訂單、取消或遞延`
     : !filer ? "非 SEC 定期申報公司，無 RPO 認列時程" : "最新財報未揭露認列時程，不推估實現金額";
   const history = historyOf(doc, entry);
+  const trendRows = (["m6", "m12"] as const).map(key => trendHorizonFor(entry.trend, forecast, key));
   const page2 = page("訂單與情境", [
     uiBox([
       signedHero(ordersTile![0], ordersTile![1], annualRecognition ? "預計認列非保證" : orders ? `認列基準 ${orders.as_of}` : undefined),
@@ -1205,6 +1226,9 @@ function detailBubbles(doc: BottleneckV3, entry: BottleneckEntry) {
       accentHeading("歷史模型股價情境"),
       barRow("6M", Math.abs(history.change6 * 100), pct(history.change6, 0)),
       barRow("1Y", Math.abs(history.change12 * 100), pct(history.change12, 0)),
+    ] : trendRows.some(row => row !== null) ? [
+      accentHeading("趨勢推估股價情境"),
+      ...trendRows.flatMap((row, index) => row ? [barRow(index === 0 ? "6M" : "1Y", Math.abs(row.change * 100), pct(row.change, 0))] : []),
     ] : [forecast.m6, forecast.m12].map((horizon, index) => {
       const label = index === 0 ? "半年股價" : "1年";
       const change = horizon.scenario.status === "AVAILABLE" ? horizon.scenario.change : undefined;
@@ -1220,7 +1244,7 @@ function detailBubbles(doc: BottleneckV3, entry: BottleneckEntry) {
   ], [
     { label: "來源", text: `${ordersTile![2]}；股價 ${entry.market.asof}；${orders ? "分期已簽約認列金額÷目前營收−1" : annualRecognition ? "認列資料見文字版" : floorNote}${annualRecognition ? `；期間${outlook?.orders && outlook.orders.kind !== "NOT_DISCLOSED" && annualRecognition.start === outlook.orders.as_of ? "訂單日" : annualRecognition.start ?? "起日未揭露"}–${annualRecognition.end ?? "迄日未揭露"}（非今日起）` : ""}` },
     { label: "認列", text: orders ? `已簽約營收成長支撐；半年/1年覆蓋${orders.coverage.m6 == null ? "未揭露" : `${orders.coverage.m6.toFixed(0)}%`}/${orders.coverage.m12 == null ? "未揭露" : `${orders.coverage.m12.toFixed(0)}%`}；${floorNote}` : annualRecognition ? "已簽約認列非保證；未計新訂單、取消或遞延" : "無可用 RPO 認列時程；不推估實現金額" },
-    { label: "用途", text: `${consensusSourceLine ? `${consensusSourceLine}；` : ""}${history?.status === "ESTIMATE" || [forecast.m6, forecast.m12].some(h => h.scenario.status === "AVAILABLE") ? "P/S與股數不變；非目標價；" : ""}非投資建議；不自動下單` },
+    { label: "用途", text: `${consensusSourceLine ? `${consensusSourceLine}；` : ""}${trendRows.some(row => row !== null) ? `${TREND_LABEL}，截至 ${entry.trend!.anchor} 季末；` : ""}${history?.status === "ESTIMATE" || trendRows.some(row => row !== null) || [forecast.m6, forecast.m12].some(h => h.scenario.status === "AVAILABLE") ? "P/S與股數不變；非目標價；" : ""}非投資建議；不自動下單` },
   ]);
   const evidenceLabel = orders ? `RPO ${orders.form}｜申報 ${orders.filed}｜認列基準 ${orders.as_of}`
     : !filer ? "非 SEC 定期申報公司；無 RPO 認列時程" : "最新申報未揭露 RPO 認列時程";
@@ -1279,6 +1303,7 @@ function detailText(doc: BottleneckV3, entry: BottleneckEntry): string {
     ...(orders ? [`已簽約營收成長支撐（RPO認列時程）：6個月 ${floorValue(orders.floor.m6)}（覆蓋 ${coverageValue(orders.coverage.m6)}）；1年 ${floorValue(orders.floor.m12)}（覆蓋 ${coverageValue(orders.coverage.m12)}）；2年 ${floorValue(orders.floor.m24)}（覆蓋 ${coverageValue(orders.coverage.m24)}）。計算：分期已簽約認列金額÷目前營收−1；RPO ${orders.form}（申報 ${orders.filed}），認列基準 ${orders.as_of}；營收下限非股價下限，未計新訂單、取消或遞延。`] : ["RPO 認列時程未披露"]),
     ...proxyDetailLines(doc, entry),
     ...forecastLines(forecastOf(doc, entry), money, historyOf(doc, entry)),
+    ...trendBlockLines(entry.trend, money, forecastOf(doc, entry), true),
     ...futureOutlook(outlook, doc.generated_at.slice(0, 10)),
     scenarios ? `分析師共識情境（非訂單）：${scenarios}${outlook?.consensus ? `\n來源：${outlook.consensus.source_url}` : ""}` : "分析師共識情境（非訂單）：無分析師共識可推算。",
     `${SCENARIO_NOTE}不自動下單。`,
