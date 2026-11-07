@@ -7,6 +7,7 @@ import { pinPublicSnapshot } from "./public-snapshot";
 import { LINE_THEME as T, altSummary, chip, detailsButton, disclosureLine, divider, footnote, headerStyle, kpiTile, labelValue, uiBox, uiText } from "./line-theme";
 import { parseResearchProductRequest, unavailableResearchProduct } from "./research-product-request";
 import { getTwoYearTotalReturnDisplay } from "./top20-return-evidence";
+import { formatTaipeiTimestamp } from "./line-formatters";
 import {
   getV213ReportReference, loadV213FreshTop20Report, parseV213BoundedTop20Report, parseV213Top20Report, v213FieldLocale,
   v213EvidenceWithinWindow, v213AdmissionDisclosure, V213_STALE_RECORDS_MESSAGE,
@@ -30,7 +31,7 @@ export function buildV213Top20Messages(report: V213Top20Report, locale: FieldLoc
   if (!parsed) throw new Error("V213_PRESENTATION_REPORT_INVALID");
   const reference = getV213ReportReference(report);
   const labels = v213Top20DisplayHeader(locale);
-  const localTime = new Intl.DateTimeFormat("zh-TW", { timeZone: "Asia/Taipei", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(report.generated_at));
+  const localTime = formatTaipeiTimestamp(report.generated_at);
   const generated = `報告產生 / Generated (台北 / Taipei): ${localTime}`;
   // Every Top20 surface says what the rows are (test path or research candidates) and when data was captured.
   const admission = v213AdmissionDisclosure(report, locale);
@@ -56,8 +57,8 @@ export function buildV213Top20Messages(report: V213Top20Report, locale: FieldLoc
   // the full text stays one tap away in the company text message (`Top20 公司文字 ...`). The seven label/value pairs are
   // the external presentation contract (inspectSevenFieldFlex): verbatim, unclipped, each label once, value right after.
   const disclosure = disclosureLine([
-    testOnly ? "TEST-ONLY 測試展示，尚未完成正式現況驗證" : "研究候選 LIMITED_RESEARCH_CANDIDATE，公司主張未達獨立雙來源驗證",
-    `資料擷取 ${report.evidence_capture_at ?? "-"} UTC｜報告產生 ${localTime} 台北`,
+    testOnly ? "僅供測試展示，尚未完成正式現況驗證" : "研究候選（未完成獨立核實），公司主張未達獨立雙來源驗證",
+    `資料擷取 ${report.evidence_capture_at ?? "-"} UTC｜報告產生 ${localTime}`,
     "歷史報酬，非預測；公開研究，非投資建議",
     "6個月／1年／2年情境推算尚缺逐筆訂單與估值依據，不是零成長或零風險",
     "完整免責與英文版：輸入「Top20 文字」",
@@ -70,14 +71,14 @@ export function buildV213Top20Messages(report: V213Top20Report, locale: FieldLoc
       header: uiBox([
         uiBox([
           chip(`#${record.rank}`),
-          uiText(`TOP20 · ${record.rank}/20 · 研究候選`, "xxs", T.headerMuted, { gravity: "center", flex: 1 }),
-          ...(testOnly ? [chip("TEST-ONLY", T.cycleCaution, T.cycleCautionText)] : []),
+          uiText("研究候選 · 七欄摘要", "xs", T.headerMuted, { gravity: "center", flex: 1 }),
+          ...(testOnly ? [chip("測試展示", T.cycleCaution, T.cycleCautionText)] : []),
         ], { layout: "horizontal", spacing: "md" }),
         uiBox([
-          uiText(labels[0]!, "xxs", T.headerSubtle),
-          uiText(values[0]!, "3xl", T.headerText, { weight: "bold" }),
+          uiText(labels[0]!, "xs", T.headerMuted),
+          uiText(values[0]!, "xl", T.headerText, { weight: "bold" }),
         ], { spacing: "none" }),
-        uiText(`原文：${record.name}`, "md", T.headerText, { weight: "bold" }),
+        uiText(`原文：${record.name}`, "lg", T.headerText, { weight: "bold" }),
         uiText("中文名稱：未完成來源核對", "xxs", T.headerSubtle),
         uiText("歷史報酬，非預測 / Not forecasts", "xxs", T.headerMuted, { weight: "bold" }),
       ], { ...headerStyle, spacing: "md" }),
@@ -105,7 +106,7 @@ export function buildV213Top20Messages(report: V213Top20Report, locale: FieldLoc
   for (let start = 0; start < bubbles.length; start += 5) {
     const end = Math.min(start + 5, bubbles.length);
     messages.push({ type: "flex", altText: altSummary({ topic: `Top20 第 ${start + 1}–${end} 名七欄摘要`,
-      status: "研究候選，歷史報酬非預測", next: "點公司查看深度化分析" }),
+      status: "研究候選，歷史報酬非預測", next: "點公司查看深度化分析", date: report.generated_at }),
       contents: { type: "carousel", contents: bubbles.slice(start, start + 5) } });
   }
   assertLineMessages(messages);

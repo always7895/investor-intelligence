@@ -105,12 +105,12 @@ export async function v213EvidenceWithinWindow(
 export function v213TestOnlyDisclosure(captureAt: string | null | undefined, locale: FieldLocale = "bilingual"): string {
   const stamp = captureAt ?? "-";
   if (locale === "en") {
-    return `[TEST-ONLY display] Rankings below were produced by the licensed test-qualification path; data captured ${stamp} UTC; parts of the original disclosures date from 2025 and have not undergone formal current-state verification.`;
+    return `[Test-only display] Rankings below were produced by the licensed test-qualification path; data captured ${stamp} UTC; parts of the original disclosures date from 2025 and have not undergone formal current-state verification.`;
   }
   if (locale === "zh-TW") {
-    return `【TEST-ONLY 測試展示】以下排名與分數經測試資格流程產生；資料擷取於 ${stamp} UTC，部分原始披露為 2025 年，尚未完成正式現況驗證。`;
+    return `【僅供測試展示】以下排名與分數經測試資格流程產生；資料擷取於 ${stamp} UTC，部分原始披露為 2025 年，尚未完成正式現況驗證。`;
   }
-  return `【TEST-ONLY 測試展示】以下排名經測試資格流程產生；資料擷取於 ${stamp} UTC，部分原始披露為 2025 年，尚未完成正式現況驗證。 / [TEST-ONLY display] Rankings produced by the licensed test-qualification path; captured ${stamp} UTC; parts of the original disclosures date from 2025, formal current-state verification pending.`;
+  return `【僅供測試展示】以下排名經測試資格流程產生；資料擷取於 ${stamp} UTC，部分原始披露為 2025 年，尚未完成正式現況驗證。 / [Test-only display] Rankings produced by the licensed test-qualification path; captured ${stamp} UTC; parts of the original disclosures date from 2025, formal current-state verification pending.`;
 }
 
 /** Admission disclosure shown with every Top20 surface: the licensed test-qualification path (true), or
@@ -119,7 +119,7 @@ export function v213AdmissionDisclosure(report: Pick<V213Top20Report, "records" 
   locale: FieldLocale = "bilingual"): string {
   if (report.records.some(row => row.test_only_admission === true)) return v213TestOnlyDisclosure(report.evidence_capture_at, locale);
   const stamp = report.evidence_capture_at ?? "-";
-  const zh = `【研究候選 LIMITED_RESEARCH_CANDIDATE】公開資料排名，公司主張未達獨立雙來源驗證；資料擷取 ${stamp} UTC。`;
+  const zh = `【研究候選（未完成獨立核實）】公開資料排名，公司主張未達獨立雙來源驗證；資料擷取 ${stamp} UTC。`;
   const en = `[Research candidates] Public-data ranking; company claims are not independently corroborated; data captured ${stamp} UTC.`;
   return locale === "en" ? en : locale === "zh-TW" ? zh : `${zh} / ${en}`;
 }

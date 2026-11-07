@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { humanizeStatusText } from "./status-labels";
 import { validateMachineEnvelope, machineContextIsValid, machineEffectiveReceipt,
   type MachineBindings, type MachineAdmissionContext } from "./revenue-guidance-machine";
 import { HISTORY_ELIGIBLE_REASONS, historyBlockLines, type HistoryInputs, type HistoryView } from "./revenue-history-model";
@@ -3163,7 +3164,7 @@ function forecastLinesV3(forecast: OrderForecast, money: Money, history: History
   if (lrc) {
     // The channel text follows the receipt's coverage: the official IR channel is listed only when it was checked.
     const coverageText = lrc.coverage === "SEC_WIRE_IR" ? "SEC 申報、通訊社新聞稿與官方IR" : "SEC 申報與通訊社新聞稿";
-    lines.push(`最新發布查核：${lrc.checked_at}；查核管道：${lrc.coverage}（${coverageText}）；狀態：${lrc.status}`);
+    lines.push(`最新發布查核：${lrc.checked_at}；查核管道：${lrc.coverage}（${coverageText}）；狀態：${humanizeStatusText(lrc.status)}`);
   }
 
   if (forecast.supplements?.length || forecast.superseded?.length) lines.push(...supplementLines(forecast, money, true));

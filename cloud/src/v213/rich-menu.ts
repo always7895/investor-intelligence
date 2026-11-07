@@ -14,7 +14,8 @@ import { pinPublicSnapshot } from "./public-snapshot";
 import { freshPotentialCompanyData, loadFreshMacroDocument } from "./macro-freshness";
 import { v213Top20LineAnswer } from "./top20-presentation";
 import { loadV213FreshTop20Report, v213TimesAreFresh, v213EvidenceWithinWindow, V213_STALE_RECORDS_MESSAGE, type V213Top20Env } from "./top20-report";
-import { LINE_THEME as T, altSummary, bulletRow, disclosureLine, footerStyle, menuAction, menuBox, menuText, productHeader, section, sectionTitle } from "./line-theme";
+import { LINE_THEME as T, altSummary, bulletRow, disclosureLine, footerStyle, menuAction, menuBox, menuText, productHeader, section, sectionTitle, shortAltText, noticeBanner } from "./line-theme";
+import { humanizeStatusText } from "./status-labels";
 import {
   buildEducationalStrategyFlex,
   buildEducationalStrategyText,
@@ -88,7 +89,7 @@ function panelTextMessages(
   const actionText = actions.length > 0
     ? "快捷指令：\n" + actions.map(([label, command]) => `• ${label}：${command}`).join("\n")
     : "";
-  const blocks: string[] = [header, ...paragraphs, ...(actionText ? [actionText] : [])].filter(Boolean);
+  const blocks: string[] = [header, ...paragraphs.map(humanizeStatusText), ...(actionText ? [actionText] : [])].filter(Boolean);
 
   for (const block of blocks) {
     if (block.length > 4900) throw new Error("V213_PANEL_BLOCK_TOO_LARGE");
@@ -116,6 +117,14 @@ function panelTextMessages(
   return messages;
 }
 
+function preferredNavActions(actions: readonly (readonly [string, string])[]): readonly (readonly [string, string])[] {
+  if (actions.length <= 3) return actions;
+  // Retain the data-requirements path and the exit while staying within three mobile buttons.
+  const back = actions.find(([, command]) => command === "選單");
+  const macro = actions.find(([, command]) => command === "宏觀資料說明");
+  return [actions[0]!, macro ?? actions[1]!, back ?? actions[2]!];
+}
+
 function panel(
   title: string,
   subtitle: string,
@@ -137,7 +146,7 @@ function panel(
     ], { backgroundColor: T.paper, paddingAll: "lg" }),
     footer: menuBox([
       ...(flex?.disclosure && flex.disclosureInFooter ? [disclosureLine([flex.disclosure])] : []),
-      ...(flex?.actions ?? actions).map(([label, command]) => menuAction(label, command)),
+      ...preferredNavActions(flex?.actions ?? actions).map(([label, command]) => menuAction(label, command)),
     ], { ...footerStyle }),
   }] } }];
   assertLineMessages(messages);
@@ -358,7 +367,7 @@ export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promis
         "快捷指令：",
         ...navActions.map(([label, cmd]) => `• ${label}：${cmd}`),
       ];
-      return [{ type: "text", text: fullLines.join("\n") }];
+      return [{ type: "text", text: fullLines.map(humanizeStatusText).join("\n") }];
     }
 
     return panel("宏觀產業分析", "TOP5 准入門檻未達成 · 短缺通報", lines, navActions, false);
@@ -439,7 +448,7 @@ export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promis
     const statusTextBase = view.integrity === "sealed"
       ? "保守期權三策略：備兌買權（持股賣買權）、現金擔保賣權（備現金賣賣權）、領口（持股＋買保護賣權＋賣買權）；觀察清單內美股（Yahoo Finance／Nasdaq，延遲、非官方）與 Nasdaq Stockholm（延遲）每小時更新；每週＝當週到期。清單外標的維持不可用；某策略無雙邊報價時只該策略顯示無資料。"
       : "OPTION_DATA_UNAVAILABLE：目前沒有已封存驗收的公開期權快照；舊鍵 options:latest／latest_options 殘留或存在本身不計為可用，不代表權利金為0或沒有風險。";
-    const statusText = `${statusTextBase} 各市場來源與缺口狀態：輸入「${GLOBAL_SOURCE_STATUS_COMMAND}」（僅來源說明，非即時報價）。`;
+    const statusText = humanizeStatusText(`${statusTextBase} 各市場來源與缺口狀態：輸入「${GLOBAL_SOURCE_STATUS_COMMAND}」（僅來源說明，非即時報價）。`);
 
     const navActions = [
       ["範例：NVDA 每月期權", "NVDA 每月期權"],
@@ -469,10 +478,11 @@ export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promis
       header: productHeader("韭菜守護者 · 公開研究", "期權與個股快查"),
       body: menuBox([
         sectionTitle("股票代號 → 每週／每月 → 報價與風險"),
+        ...(view.integrity === "sealed" ? [] : [noticeBanner("caution", "當輪報價未封存", "僅顯示教學與查詢入口，不把舊報價當成即時資料")]),
         menuText(statusText, "sm", T.ink),
         menuText("本入口整合逐約報價查詢與 4 種標準期權策略教學範例；請向右滑動查看教學卡片。", "xs", T.subtle),
       ], { backgroundColor: T.paper, paddingAll: "xl" }),
-      footer: menuBox(navActions.map(([label, cmd]) => menuAction(label, cmd)), { ...footerStyle }),
+      footer: menuBox(preferredNavActions(navActions).map(([label, cmd]) => menuAction(label, cmd)), { ...footerStyle }),
     };
 
     const eduFlex = buildEducationalStrategyFlex();
@@ -481,7 +491,7 @@ export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promis
 
     const messages: LineOutboundMessage[] = [{
       type: "flex",
-      altText: "期權與個股快查｜策略教學與公開報價",
+      altText: shortAltText("期權與個股快查｜策略教學與公開報價"),
       contents: {
         type: "carousel",
         contents: allBubbles,

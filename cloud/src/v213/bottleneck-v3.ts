@@ -17,7 +17,7 @@ import { PRICE_SOURCE_LABEL } from "./market-observations";
 import { buildCompanyDataReportFlex, buildCompanyDataReportMessages, validateCompanyDataReport } from "./deep-analysis";
 import {
   LINE_THEME as T, accentHeading, accentKpiTile, altSummary, barRow, chip, detailsButton, disclosureLine, footerStyle, footnote, headerStyle, kpiTile, kvRow, menuAction, meter, packCarousels,
-  productHeader, rankBadge, signColor, statTile, uiBox, uiText,
+  productHeader, rankBadge, signColor, statTile, noticeBanner, noticeText, uiBox, uiText,
 } from "./line-theme";
 
 export const BOTTLENECK_V3_KEY = "v213:bottleneck-top20:v3";
@@ -1058,25 +1058,29 @@ function companyBubble(doc: BottleneckV3, entry: BottleneckEntry, notes: ReplyDi
   return {
     type: "bubble", size: "mega",
     header: uiBox([
-      { type: "text", size: "xxs", wrap: true, contents: [
-        { type: "span", text: `瓶頸 TOP20 · ${entry.archetype === "EXPLOSION" ? "爆發型" : "核心複利型"}\n`, size: "xxs", color: T.headerMuted, weight: "bold" },
-        { type: "span", text: `${entry.symbol}｜${chineseName(entry)}`.slice(0, 60), size: "xl", color: T.headerText, weight: "bold" },
-      ] },
-      ...(!lean ? [uiText(entry.name.slice(0, 80), "xxs", T.headerMuted)] : []),
-      { type: "text", size: "xxs", wrap: true, contents: [
-        ...(entry.name_zh ? [{ type: "span", text: `中文名來源：${ZH_SOURCE_LABEL[entry.name_zh_source ?? ""] ?? "來源已核對"}\n`, size: "xxs", color: T.headerMuted }] : []),
-        { type: "span", text: `${entry.role_zh ?? entry.role}｜股價截至 ${entry.market.asof}`, size: "xxs", color: T.headerMuted },
-        ...(fund ? [{ type: "span", text: `\n${sharesBasis(fund) ? "稀釋加權股數年增" : "股數年增率"} ${pct(fund.shares_yoy, 1)}｜毛利率 ${fund.gross_margin == null ? "未揭露" : `${(fund.gross_margin * 100).toFixed(0)}%`}`, size: "xxs", color: T.headerMuted }] : []),
-      ] },
-      uiBox([scoreIndicator(entry.score, `#${entry.rank}｜${layerName(doc, entry.layer)}｜`)], { layout: "horizontal", spacing: "sm" }),
+      uiBox([chip(`#${entry.rank}`), chip(layerName(doc, entry.layer)), chip(`分數 ${entry.score.toFixed(1)}`)],
+        { layout: "horizontal", spacing: "xs" }),
+      uiBox([
+        { type: "text", size: "lg", wrap: true, contents: [
+          { type: "span", text: `${entry.symbol}｜${chineseName(entry)}`.slice(0, 60), size: "lg", color: T.headerText, weight: "bold" },
+          { type: "span", text: `\n${!lean ? `${entry.name}｜` : ""}${entry.archetype === "EXPLOSION" ? "爆發型" : "核心複利型"}｜${entry.role_zh ?? entry.role}｜截至 ${entry.market.asof}${entry.name_zh ? `｜中文名來源：${ZH_SOURCE_LABEL[entry.name_zh_source ?? ""] ?? "來源已核對"}` : ""}`.slice(0, 155),
+            size: "xs", color: T.headerMuted },
+        ] },
+        entry.score <= 0 ? uiBox([], { backgroundColor: T.border, height: "6px", cornerRadius: "3px" }) : meter(entry.score, 100, T.accent),
+      ], { layout: "horizontal", spacing: "sm" }),
     ], { ...headerStyle, spacing: "sm" }),
     body: uiBox([
-      ...(corporateActionText(entry) ? [uiText(corporateActionText(entry)!, "xxs", T.caution)] : []),
+      ...(corporateActionText(entry) ? [noticeBanner("caution", "併購進行中", corporateActionText(entry)!)] : []),
       uiBox([
-        signedHero("營收年增", pct(fund?.revenue_yoy ?? null, 0), fund ? `季末 ${fund.quarter_end}` : undefined, true),
-        uiBox([accentKpiTile("毛利變化", ppShort(fund?.gross_margin_change)), accentKpiTile("6個月", pct(entry.market.ret_6m, 0))], { layout: "horizontal", spacing: "sm" }),
-        uiBox([accentKpiTile("2年年化", long.value), accentKpiTile("市值", cap(entry.market_cap_usd))], { layout: "horizontal", spacing: "sm" }),
-      ]),
+      signedHero("營收年增", pct(fund?.revenue_yoy ?? null, 0), fund ? `季末 ${fund.quarter_end}` : undefined, true),
+      uiBox([
+        accentKpiTile("毛利變化", ppShort(fund?.gross_margin_change)),
+        accentKpiTile("6個月", pct(entry.market.ret_6m, 0)),
+        accentKpiTile("2年年化", long.value),
+      ], { layout: "horizontal", spacing: "sm" }),
+      uiText(`市值 ${cap(entry.market_cap_usd)}｜${fund && sharesBasis(fund) ? "稀釋加權股數" : "股數"} ${fund ? pct(fund.shares_yoy, 1) : "未揭露"}`, "xs", T.subtle),
+      ], { spacing: "sm" }),
+      uiBox([
       uiBox([
         uiBox([uiBox([], { width: "3px", height: "16px", flex: 0, backgroundColor: T.accent }), chip(`${ordersTile![0]}：${ordersTile![1]}`, T.soft, T.ink),
           ...(revenueCard && warning ? [chip("財季已結束，仍為推估非實績", T.paleCaution, T.caution)]
@@ -1121,7 +1125,8 @@ function companyBubble(doc: BottleneckV3, entry: BottleneckEntry, notes: ReplyDi
         ...(!revenueCard ? forecastWarningRows.map(row => uiText(wrapForecastRow(row), "xxs", T.ink)) : []),
         // Full historical model inputs and estimates remain on the complete-data route.
       ], { spacing: "xs" }),
-    ], { paddingAll: "lg", spacing: "sm" }),
+      ], { spacing: "sm" }),
+    ], { paddingAll: "lg", spacing: "md" }),
     footer: uiBox([
       compactDisclosures([{ label: "提醒", text: `${trendShown ? `${TREND_LABEL}，截至 ${trend!.anchor} 季末；` : ""}${forecastCaveat}；非目標價；非投資建議；不自動下單` }]),
       detailsButton(`${entry.symbol} 瓶頸詳情`, `瓶頸詳情 ${entry.symbol}`),
@@ -1140,18 +1145,29 @@ function longTermText(market: Market): string {
 
 export function buildBottleneckTop20Messages(doc: BottleneckV3, style: "flex" | "text"): LineOutboundMessage[] {
   if (style === "text") {
-    const lines = doc.top.map(entry => `${entry.rank}. ${entry.symbol} ${chineseName(entry)}（${entry.name}）｜${layerName(doc, entry.layer)}｜${entry.score.toFixed(1)}分｜營收年增 ${pct(entry.fundamentals?.revenue_yoy ?? null, 0)}｜6個月 ${pct(entry.market.ret_6m, 0)}｜2年年化 ${longTermText(entry.market)}｜${currentOrders(entry.outlook, ordersOf(doc, entry.symbol).filer || entry.fundamentals?.source === "SEC EDGAR XBRL companyfacts", doc.generated_at.slice(0, 10))}${corporateActionText(entry) ? `｜${corporateActionText(entry)}` : ""}｜${forecastText(forecastOf(doc, entry), money)}${entry.outlook?.consensus?.revenue_growth == null && entry.outlook?.consensus ? `｜${compactScenarioText(entry.outlook)}` : ""}`);
+    const lines = doc.top.map(entry => [
+      `${entry.rank}. ${entry.symbol} ${chineseName(entry)}（${entry.name}）`,
+      `產業層級：${layerName(doc, entry.layer)}`,
+      `分數：${entry.score.toFixed(1)}`,
+      `營收年增 ${pct(entry.fundamentals?.revenue_yoy ?? null, 0)}`,
+      `6 個月 ${pct(entry.market.ret_6m, 0)}`,
+      `2 年年化 ${longTermText(entry.market)}`,
+      `目前訂單：${currentOrders(entry.outlook, ordersOf(doc, entry.symbol).filer || entry.fundamentals?.source === "SEC EDGAR XBRL companyfacts", doc.generated_at.slice(0, 10))}`,
+      ...(corporateActionText(entry) ? [noticeText("併購進行中", corporateActionText(entry)!)] : []),
+      ...forecastText(forecastOf(doc, entry), money).split("｜"),
+      ...(entry.outlook?.consensus?.revenue_growth == null && entry.outlook?.consensus ? [compactScenarioText(entry.outlook)] : []),
+    ].join("\n"));
     // Paginated into at most five messages of whole entries (never an entry cut away by a length limit).
     const blocks = [`瓶頸爆發 TOP20（v3，產生 ${doc.generated_at}）`,
       "排序：層級熱度＋公司捕獲＋社群與機構線索＋市場確認＋爆發性；2年年化報酬為負者排除。分拆、恢復交易、IPO 或重整新股不足2年者，改用已核實正常交易首日以來年化（至少1年，非2年）；沿革未核實且價格不足2年者不列入。非投資建議。",
-      ...lines, "輸入「瓶頸詳情 代號」看逐項數據與來源；「產業爆發榜」看 Leopold 邏輯產業排序。"];
+      ...lines, "輸入「瓶頸詳情 代號」看逐項數據與來源；「產業爆發榜」看 Leopold 邏輯產業排序。", "公開研究，非投資建議；不自動下單。"];
     const pages: string[] = [];
-    for (const block of blocks.map(text => text.slice(0, 1200))) {
+    for (const block of blocks) {
       const last = pages[pages.length - 1];
-      if (last !== undefined && last.length + 1 + block.length <= 4900) pages[pages.length - 1] = `${last}\n${block}`;
+      if (last !== undefined && last.length + 2 + block.length <= 4900) pages[pages.length - 1] = `${last}\n\n${block}`;
       else pages.push(block);
     }
-    const messages: LineOutboundMessage[] = pages.slice(0, 5).map(text => ({ type: "text", text }));
+    const messages: LineOutboundMessage[] = pages.map(text => ({ type: "text", text }));
     assertLineMessages(messages);
     return messages;
   }
@@ -1159,7 +1175,7 @@ export function buildBottleneckTop20Messages(doc: BottleneckV3, style: "flex" | 
   const build = (lean: boolean) => {
     const notes: ReplyDisclosure[] = [];
     const cards = doc.top.map(entry => companyBubble(doc, entry, notes, lean));
-    return packCarousels([...cards, replyDisclosureBubble(notes)], alt);
+    return packCarousels([...cards, replyDisclosureBubble(notes)], alt, doc.generated_at);
   };
   try {
     return build(false);
@@ -1204,19 +1220,21 @@ function detailBubbles(doc: BottleneckV3, entry: BottleneckEntry) {
       uiText(`${entry.name.slice(0, 80)}｜${entry.archetype === "EXPLOSION" ? "爆發型" : "核心複利型"}`, "xxs", T.headerMuted),
       uiBox([chip(layerName(doc, entry.layer)), scoreIndicator(entry.score)], { layout: "horizontal", spacing: "sm" }),
     ]),
-    body: uiBox(body, { paddingAll: "lg", spacing: "sm" }),
+    body: uiBox([...(corporateActionText(entry) && eyebrow.startsWith("財報") ? [noticeBanner("caution", "併購進行中", corporateActionText(entry)!)] : []), ...body], { paddingAll: "lg", spacing: "md" }),
     footer: uiBox([compactDisclosures([{ label: "提醒", text: `${eyebrow === "訂單與情境" ? "投資有風險" : forecast.version === 2 ? "預計認列非保證" : "營收推估非保證"}；非投資建議；不自動下單` }]), ...buttons], footerStyle),
     };
   };
 
   const page1 = page(`財報與市場 · ${kind}`, [
+    signedHero("營收年增", pct(fund?.revenue_yoy ?? null, 0), fund ? `季末 ${fund.quarter_end}` : undefined),
+    uiBox([accentKpiTile("毛利率", gmText(fund?.gross_margin)),
+      accentKpiTile("6個月", pct(entry.market.ret_6m, 0)),
+      accentKpiTile("2年年化", long.value)], { layout: "horizontal", spacing: "sm" }),
     uiBox([
-      signedHero("營收年增", pct(fund?.revenue_yoy ?? null, 0), fund ? `季末 ${fund.quarter_end}` : undefined),
-    uiBox([accentKpiTile("毛利率", gmText(fund?.gross_margin)), accentKpiTile("毛利率變化", ppShort(fund?.gross_margin_change))], { layout: "horizontal", spacing: "sm" }),
-    ], { spacing: "sm" }),
-    uiBox([accentKpiTile("6個月", pct(entry.market.ret_6m, 0)), accentKpiTile("2年年化", long.value)], { layout: "horizontal", spacing: "sm" }),
-    uiBox([accentKpiTile("前季營收年增", pct(fund?.revenue_yoy_prev ?? null, 0)),
-      accentKpiTile("營收加速度", ppShort(fund ? accelOf(fund) : null))], { layout: "horizontal", spacing: "sm" }),
+      uiText(`毛利率變化 ${ppShort(fund?.gross_margin_change)}`, "xs", T.muted),
+      uiText(`前季營收年增 ${pct(fund?.revenue_yoy_prev ?? null, 0)}`, "xs", T.muted),
+      uiText(`營收加速度 ${ppShort(fund ? accelOf(fund) : null)}`, "xs", T.muted),
+    ], { spacing: "xs" }),
   ], [
     { label: "財報", text: `${fund ? `${sourceZh(fund.source)}；季末 ${fund.quarter_end}` : "未取得可比季度"}${official ? `；${official.label}` : ""}${fund?.cross_check ? `；${revenueCheck(fund.cross_check)}` : ""}` },
     { label: "行情", text: `${sourceZh(entry.market.source)}${long.sub ? `；${long.sub}` : ""}` },
@@ -1328,7 +1346,7 @@ function detailText(doc: BottleneckV3, entry: BottleneckEntry): string {
     `【瓶頸詳情｜#${entry.rank} ${entry.symbol} ${chineseName(entry)}（${entry.name}）】`,
     `型態：${entry.archetype === "EXPLOSION" ? "瓶頸爆發型（市值<US$10B）" : "核心複利型"}；市值 ${cap(entry.market_cap_usd)}`,
     `瓶頸位置：${entry.role_zh ?? entry.role}${entry.role_zh ? `（原文：${entry.role}）` : ""}`,
-    ...(corporateActionText(entry) ? [corporateActionText(entry)!, `併購公告來源：${entry.corporate_action!.source_url}`] : []),
+    ...(corporateActionText(entry) ? [noticeText("併購進行中", corporateActionText(entry)!), `併購公告來源：${entry.corporate_action!.source_url}`] : []),
     `分數構成：層級熱度 ${entry.parts.layer_heat}｜公司捕獲 ${entry.parts.capture}｜市場確認 ${entry.parts.confirmation}｜爆發性 ${entry.parts.size}${entry.parts.penalty !== 0 ? `｜條件式稀釋／融資扣分 -${entry.parts.penalty}` : ""}`,
     fund ? `財報（${sourceZh(fund.source)}${official ? "；前一季年增採官方合併季報" : ""}，季末 ${fund.quarter_end}）：營收年增 ${pct(fund.revenue_yoy)}，前一季年增 ${pct(fund.revenue_yoy_prev)}（加速度 ${pp(accelOf(fund))}）；毛利率 ${gmText(fund.gross_margin)}（年變化 ${pp(fund.gross_margin_change)}）；剩餘履約義務年增 ${pct(fund.rpo_yoy)}；股數年增 ${pct(fund.shares_yoy)}${sharesBasis(fund) ? `（${sharesBasis(fund)}）` : ""}\n來源：${fund.source_url}${official ? `\n${official.label}\n前一季來源：${official.url}` : ""}` : "財報：未取得可比季度（不以估計替代）。",
     fund?.cross_check ? `${revenueCheck(fund.cross_check)}\n來源：${fund.cross_check.source_url}` : "官方營收未交叉比對",
@@ -1386,8 +1404,8 @@ export function buildBottleneckDetail(doc: BottleneckV3, symbol: string, style: 
     const { cards, disclosure } = detailBubbles(doc, entry);
     const alt = () => altSummary({ topic: `${entry.symbol} ${chineseName(entry)} 瓶頸詳情`,
       status: `第 ${entry.rank} 名，財報、訂單、依據與來源`, next: "左右滑動；完整網址按文字版" });
-    const detail = packCarousels(reportMessages.length ? cards : [...cards, disclosure], alt);
-    messages = reportMessages.length ? [...detail, ...reportMessages, ...packCarousels([disclosure], alt)] : detail;
+    const detail = packCarousels(reportMessages.length ? cards : [...cards, disclosure], alt, doc.generated_at);
+    messages = reportMessages.length ? [...detail, ...reportMessages, ...packCarousels([disclosure], alt, doc.generated_at)] : detail;
   } else {
     const detail = pagesAtLineBoundary(detailText(doc, entry), 4900).map(text => ({ type: "text" as const, text }));
     messages = [...detail, ...reportMessages].slice(0, 5);
@@ -1402,14 +1420,23 @@ function industryBubble(doc: BottleneckV3, industry: IndustryEntry) {
   const secHeat = industry.news?.ratio === null || industry.news?.ratio === undefined ? "SEC申報未取得" : "SEC申報熱度已納入";
   return {
     type: "bubble", size: "mega",
-    header: productHeader(`產業爆發榜 · Leopold 因果鏈：${CHAIN_ZH[industry.chain] ?? industry.chain}`, industry.name_zh, [
-      uiBox([rankBadge(industry.rank, industry.rank === 1), chip(`爆發力 ${industry.explosiveness.toFixed(1)}`)], { layout: "horizontal", spacing: "sm" }),
-    ]),
+    header: uiBox([
+      { type: "text", size: "lg", wrap: true, contents: [
+        { type: "span", text: `產業爆發榜 · Leopold 因果鏈：${CHAIN_ZH[industry.chain] ?? industry.chain}\n`, size: "xs", color: T.headerMuted },
+        { type: "span", text: industry.name_zh, size: "lg", color: T.headerText, weight: "bold" },
+      ] },
+      chip(`#${industry.rank}`),
+    ], { ...headerStyle, spacing: "sm" }),
     body: uiBox([
-      uiText("綁定限制與成員：產業爆發榜 文字", "xs", T.ink),
-      uiText(`營收中位 ${pct(industry.median_revenue_yoy, 0)}｜加速 ${acceleration}`, "xs", T.ink),
-      uiText(`6個月 ${pct(industry.median_return_6m, 0)}｜${secHeat}`, "xs", T.ink),
-    ], { paddingAll: "lg", spacing: "sm" }),
+      { type: "text", size: "3xl", weight: "bold", wrap: true, contents: [
+        { type: "span", text: "產業爆發力\n", size: "xs", color: T.subtle, weight: "regular" },
+        { type: "span", text: industry.explosiveness.toFixed(1), size: "3xl", color: T.ink, weight: "bold" },
+      ] },
+      uiBox([accentKpiTile("營收中位", pct(industry.median_revenue_yoy, 0)),
+        accentKpiTile("加速", acceleration),
+        accentKpiTile("6個月", pct(industry.median_return_6m, 0))], { layout: "horizontal", spacing: "sm" }),
+      uiText(`${secHeat}；詳情：產業爆發榜 文字`, "xs", T.subtle),
+    ], { paddingAll: "lg", spacing: "md" }),
     footer: uiBox([disclosureLine(["非投資建議"]),
       menuAction("瓶頸爆發 TOP20", "TOP20"), menuAction("回功能選單", "選單")], footerStyle),
   };
@@ -1433,5 +1460,5 @@ export function buildIndustryExplosionMessages(doc: BottleneckV3, style: "flex" 
     assertLineMessages(messages);
     return messages;
   }
-  return packCarousels(doc.industries.slice(0, 10).map(industry => industryBubble(doc, industry)), (index, total) => `產業爆發榜（${index + 1}/${total}）`);
+  return packCarousels(doc.industries.slice(0, 10).map(industry => industryBubble(doc, industry)), (index, total) => `產業爆發榜（${index + 1}/${total}）`, doc.generated_at);
 }

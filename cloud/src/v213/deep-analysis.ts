@@ -1,4 +1,5 @@
 import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
+import { humanizeStatusText } from "./status-labels";
 import { requirePublicCitation as safeCitation } from "./public-citation";
 import { sourceZh } from "./source-labels";
 import { parseV213Top20Report, type V213Top20Report } from "./top20-report";
@@ -278,8 +279,8 @@ export function buildCompanyDataReportFlex(data: CompanyDataReport, generatedAt:
     header: uiBox([
       uiBox([chip("公司深度報告"), uiText("官方資料計算", "xxs", T.headerMuted, { weight: "bold", gravity: "center", flex: 1 })],
         { layout: "horizontal", spacing: "md" }),
-      uiText(data.ticker, "3xl", T.headerText, { weight: "bold" }),
-      uiText(data.name, "md", T.headerText, { weight: "bold" }),
+      uiText(data.ticker, "lg", T.headerText, { weight: "bold" }),
+      uiText(data.name, "xs", T.headerMuted),
       uiText(`資料計算日 ${data.as_of}｜快照 ${generatedAt}`, "xxs", T.headerSubtle),
     ], { ...headerStyle, spacing: "sm" }),
     body: uiBox([
@@ -335,7 +336,7 @@ export function buildCompanyDataReportFlex(data: CompanyDataReport, generatedAt:
     ], { ...footerStyle }),
   };
   const alt = `${data.ticker}｜公司深度報告 · 官方資料計算`;
-  return packCarousels([overview, ...sectionBubbles, sources], (index, total) => total > 1 ? `${alt}（${index + 1}/${total}）` : alt);
+  return packCarousels([overview, ...sectionBubbles, sources], (index, total) => total > 1 ? `${alt}（${index + 1}/${total}）` : alt, generatedAt);
 }
 
 /** Data report as LINE text messages (text presentation of the data-driven potential ranking). */
@@ -381,7 +382,7 @@ function chunkBlocks(blocks: string[]): LineOutboundMessage[] {
     throw new Error(`DEEP_ANALYSIS_MESSAGE_COUNT_EXCEEDED: count=${chunks.length}`);
   }
 
-  const messages: LineOutboundMessage[] = chunks.map(t => ({ type: "text", text: t }));
+  const messages: LineOutboundMessage[] = chunks.map(t => ({ type: "text", text: humanizeStatusText(t) }));
   assertLineMessages(messages);
   return messages;
 }

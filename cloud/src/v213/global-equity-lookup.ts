@@ -1,6 +1,8 @@
 import { adrRoute, marketHasOptions } from "./option-routes";
 import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
-import { LINE_THEME as T, bulletRow, disclosureLine, menuAction, menuBox, menuText, headerStyle } from "./line-theme";
+import { LINE_THEME as T, bulletRow, disclosureLine, menuAction, menuBox, menuText, headerStyle, heroStat, noticeBanner, shortAltText } from "./line-theme";
+import { humanizeStatusText } from "./status-labels";
+import { formatCurrency, formatPercent } from "./line-formatters";
 import { pinPublicSnapshot, type PublicSnapshotView } from "./public-snapshot";
 import type { V213Top20Env } from "./top20-report";
 import type { ParsedQuery } from "../core";
@@ -430,6 +432,8 @@ export function buildGlobalEquityLookupMessages(
   if (result.leadingTokenMatch && resolution?.status === "RESOLVED") statusSub = `${statusSub}\n${LEADING_TOKEN_UNIQUE_NOTE}`;
   else if (result.leadingTokenMatch && resolution?.status === "NEEDS_MARKET_SELECTION") statusSub = `${statusSub}\n${LEADING_TOKEN_MANY_NOTE}`;
 
+  // Display-only localization after the complete resolver decision; wire resolution is unchanged.
+  statusSub = humanizeStatusText(statusSub);
   const nameZh = (result.nameUnverified || !identity.canonicalNameZh)
     ? (result.admittedInSealedSnapshot && !identity.isAmbiguous
       ? (secFallback ? SEC_FALLBACK_NAME_ZH : "無公認中文名（交易所、公司官方與中文維基百科皆無，不自行翻譯）")
@@ -515,11 +519,12 @@ export function buildGlobalEquityLookupMessages(
       menuText(`${secFallback ? "市場（SEC 標示）" : "市場"}：${identity.exchange}`, "xs", T.headerMuted),
     ], { ...headerStyle }),
     body: menuBox([
-      menuBox([
-        { ...menuText(statusTitle, "sm", T.ink), weight: "bold" },
-        menuText(statusSub, "xs", T.muted),
-        ...(secFallback ? [menuText(SEC_FALLBACK_NOTICE, "xs", T.ink)] : []),
-      ], { backgroundColor: T.soft, paddingAll: "md", cornerRadius: "md", spacing: "xs" }),
+      ...(quoteStatus === "AVAILABLE" && typeof result.price === "number"
+        ? [heroStat("最近報價", formatCurrency(result.price, identity.currency),
+          typeof result.changePct === "number" ? formatPercent(result.changePct, true) : "漲跌未揭露")]
+        : [heroStat("最近報價", "未取得")]),
+      noticeBanner(resolution?.status === "UNAVAILABLE" ? "negative" : "info", statusTitle, statusSub),
+      ...(secFallback ? [menuText(SEC_FALLBACK_NOTICE, "xs", T.ink)] : []),
       menuBox([
         bulletRow(`標的：${identity.canonicalSymbol}`, { size: "sm", weight: "bold" }),
         bulletRow(`原文名稱：${nameEn}`),
@@ -536,7 +541,7 @@ export function buildGlobalEquityLookupMessages(
 
   const flexMsg: LineOutboundMessage = {
     type: "flex",
-    altText: `${headerTitle}｜${statusTitle}`,
+    altText: shortAltText(`${headerTitle}｜${statusTitle}`, result.asOf ?? undefined),
     contents: {
       type: "carousel",
       contents: [bubble],
