@@ -56,7 +56,7 @@ function option(ticker: string) {
     ticker,
     provider_symbol: ticker,
     currency: "USD",
-    current_price: 100,
+    current_price: 100 as number | null,
     retrieved_at: "2026-08-31T00:00:00Z",
     status: "NO_ELIGIBLE_LIQUID_QUOTE",
     quote_source: "yfinance",
@@ -78,10 +78,16 @@ async function digest(value: string): Promise<string> {
 }
 
 describe("v2.1.1 public snapshot ingestion", () => {
-  it("promotes Top20 plus research universe and public options under one run", async () => {
+  for (const pending of [false, true]) {
+    it(pending
+      ? "accepts DEAL_PENDING_TARGET exact-schema failure through the real v211 admin ingest parser"
+      : "promotes Top20 plus research universe and public options under one run", async () => {
     const universe = Array.from({ length: 25 }, (_, index) => record(index));
     const top20 = universe.slice(0, 20);
     const options = universe.map((item) => option(item.ticker));
+    if (pending) {
+      options[3] = { ...option(universe[3]!.ticker), status: "DEAL_PENDING_TARGET", current_price: null };
+    }
     const plan = {
       schema_version: 1,
       catalog_count: 101,
@@ -132,7 +138,12 @@ describe("v2.1.1 public snapshot ingestion", () => {
     const accepted = await ingestV211PublicSnapshot(body, env);
     expect(accepted.research_universe_count).toBe(25);
     expect(accepted.options_count).toBe(25);
+    if (pending) {
+      expect(options[3]!.status).toBe("DEAL_PENDING_TARGET");
+      expect(options[3]!.current_price).toBeNull();
+    }
     expect(publicKv.values.has("snapshot:20260831T000000Z-123456789abc:v211:universe:latest")).toBe(true);
     expect(publicKv.values.has("snapshot:20260831T000000Z-123456789abc:options:latest")).toBe(true);
-  });
+    });
+  }
 });

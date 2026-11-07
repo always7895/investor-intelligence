@@ -324,15 +324,19 @@ def to_public_record(raw: dict[str, Any], currency: str = "USD") -> dict[str, An
     }
 
 
-def pending_target_record(item: dict[str, Any]) -> dict[str, Any]:
-    """Explicit fail-closed status, with no target option chain and no publication rights."""
+def failure_record(item: dict[str, Any], status: str) -> dict[str, Any]:
+    """Worker OPTION_KEYS-compatible failure, never an executable option candidate.
+
+    line_public_eligible marks transport-schema eligibility, NOT a tradable idea.
+    The deal-withholding reason is the status itself; no extra keys are permitted.
+    """
     return {
         "schema_version": 1, "ticker": item["ticker"],
         "provider_symbol": item["market_data_ticker"], "currency": item["currency"],
-        "retrieved_at": datetime.now(timezone.utc).isoformat(),
-        "status": "DEAL_PENDING_TARGET", "withheld_reason": "DEAL_PENDING_TARGET",
-        "quote_source": "yfinance", "quote_delay_status": "THIRD_PARTY_DELAY_UNKNOWN",
-        "provider_scope": "public_only", "line_public_eligible": False,
+        "current_price": None, "retrieved_at": datetime.now(timezone.utc).isoformat(),
+        "status": status, "quote_source": "yfinance",
+        "quote_delay_status": "THIRD_PARTY_DELAY_UNKNOWN",
+        "provider_scope": "public_only", "line_public_eligible": True,
         "ibkr_connected": False, "brokerage_data_included": False,
         "account_data_included": False, "position_data_included": False,
         "owner_watchlist_inherited": False, "periods": {},
@@ -359,7 +363,7 @@ def build_public_options(
         ticker = item["ticker"]
         provider_symbol = item["market_data_ticker"]
         if ticker in pending:
-            results.append(pending_target_record(item))
+            results.append(failure_record(item, "DEAL_PENDING_TARGET"))
             continue  # do not even ask for an underlying or an option chain
         price = prices.get(ticker)
         if not price:

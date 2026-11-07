@@ -195,4 +195,7 @@ class CorporateActionLoaderTests(unittest.TestCase):
                 lite=next(item for item in result if item["ticker"]=="LITE")
                 self.assertEqual(lite["status"],"DEAL_PENDING_TARGET")
                 self.assertEqual(lite["periods"],{})
+                self.assertIsNone(lite["current_price"])
+                self.assertTrue(lite["line_public_eligible"])  # Worker transport schema, not an option recommendation
+                self.assertNotIn("withheld_reason",lite)
                 self.assertNotIn("recommended_candidates",json.dumps(lite))
