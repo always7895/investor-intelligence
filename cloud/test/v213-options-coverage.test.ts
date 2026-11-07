@@ -281,7 +281,7 @@ describe("G1A observed rows", () => {
     const { result } = await load(derivedBody("2026-09-30T17:00:00Z", await linkOf(options), [row]), options);
     expect(result.status).toBe("OK");
     const text = textOf(buildOptionsCoverageMessages(result));
-    expect(text).toContain("• synthetic_g1a_test_only｜US/SYNTHVENUE｜4 個週期、2 個代號鍵｜最新報價時間 2026-09-30T17:00:00Z");
+    expect(text).toContain("• synthetic_g1a_test_only｜US/SYNTHVENUE｜4 個週期、2 個代號鍵｜最新報價時間 10-01 01:00（台北）");
     expect(text).toContain("標的數為封存期權文件的不同代號鍵，不是原生標的");
     expect(text).not.toContain(UNKNOWN_LINE);
     // the count is a count: a different claimed count or a different quote time is a mismatch

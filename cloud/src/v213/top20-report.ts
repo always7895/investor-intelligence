@@ -13,6 +13,7 @@ import {
 } from "./bottleneck-report";
 import evidencePolicy from "../../../config/v213-serenity-evidence-freshness-policy.json";
 import { v213ReportAgeFresh } from "./report-age";
+import { formatVisibleMoment } from "./line-formatters";
 export { v213ReportAgeFresh, v213ReportMaxAgeSeconds } from "./report-age";
 
 /** Trusted ALLOWLIST (PRO review 2A/B): evidence class -> freshness-policy key.
@@ -103,14 +104,14 @@ export async function v213EvidenceWithinWindow(
  * change; rankings are not production-qualified live evidence).
  */
 export function v213TestOnlyDisclosure(captureAt: string | null | undefined, locale: FieldLocale = "bilingual"): string {
-  const stamp = captureAt ?? "-";
+  const stamp = captureAt ? formatVisibleMoment(captureAt) : "-";
   if (locale === "en") {
-    return `[Test-only display] Rankings below were produced by the licensed test-qualification path; data captured ${stamp} UTC; parts of the original disclosures date from 2025 and have not undergone formal current-state verification.`;
+    return `[Test-only display] Rankings below were produced by the licensed test-qualification path; data captured ${stamp}; parts of the original disclosures date from 2025 and have not undergone formal current-state verification.`;
   }
   if (locale === "zh-TW") {
-    return `【僅供測試展示】以下排名與分數經測試資格流程產生；資料擷取於 ${stamp} UTC，部分原始披露為 2025 年，尚未完成正式現況驗證。`;
+    return `【僅供測試展示】以下排名與分數經測試資格流程產生；資料擷取於 ${stamp}，部分原始披露為 2025 年，尚未完成正式現況驗證。`;
   }
-  return `【僅供測試展示】以下排名經測試資格流程產生；資料擷取於 ${stamp} UTC，部分原始披露為 2025 年，尚未完成正式現況驗證。 / [Test-only display] Rankings produced by the licensed test-qualification path; captured ${stamp} UTC; parts of the original disclosures date from 2025, formal current-state verification pending.`;
+  return `【僅供測試展示】以下排名經測試資格流程產生；資料擷取於 ${stamp}，部分原始披露為 2025 年，尚未完成正式現況驗證。 / [Test-only display] Rankings produced by the licensed test-qualification path; captured ${stamp}; parts of the original disclosures date from 2025, formal current-state verification pending.`;
 }
 
 /** Admission disclosure shown with every Top20 surface: the licensed test-qualification path (true), or
@@ -118,9 +119,9 @@ export function v213TestOnlyDisclosure(captureAt: string | null | undefined, loc
 export function v213AdmissionDisclosure(report: Pick<V213Top20Report, "records" | "evidence_capture_at">,
   locale: FieldLocale = "bilingual"): string {
   if (report.records.some(row => row.test_only_admission === true)) return v213TestOnlyDisclosure(report.evidence_capture_at, locale);
-  const stamp = report.evidence_capture_at ?? "-";
-  const zh = `【研究候選（未完成獨立核實）】公開資料排名，公司主張未達獨立雙來源驗證；資料擷取 ${stamp} UTC。`;
-  const en = `[Research candidates] Public-data ranking; company claims are not independently corroborated; data captured ${stamp} UTC.`;
+  const stamp = report.evidence_capture_at ? formatVisibleMoment(report.evidence_capture_at) : "-";
+  const zh = `【研究候選（未完成獨立核實）】公開資料排名，公司主張未達獨立雙來源驗證；資料擷取 ${stamp}。`;
+  const en = `[Research candidates] Public-data ranking; company claims are not independently corroborated; data captured ${stamp}.`;
   return locale === "en" ? en : locale === "zh-TW" ? zh : `${zh} / ${en}`;
 }
 

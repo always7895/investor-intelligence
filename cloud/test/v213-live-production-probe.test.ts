@@ -145,7 +145,8 @@ it("sealed snapshot replay: legacy macro without rotation basis refuses; fresh T
   // 5) SIVE / AAOI / 6508 / ENR fail-closed
   for (const ticker of ["SIVE", "AAOI", "6508", "ENR"]) {
     const out = await handleGlobalEquityLookup(e, { intent: "global_equity_lookup", ticker: null, period: "weekly", referenceId: null, normalized: ticker });
-    expect(JSON.stringify(out)).toContain("sealed_snapshot:unadmitted_symbol");
+    expect(JSON.stringify(out)).toContain("封存快照（該標的尚未准入）");
+    expect(JSON.stringify(out)).not.toContain("sealed_snapshot:unadmitted_symbol");
   }
 
   // 6) Invalid ticker -> null (routes to general_qa; not an equity hijack)

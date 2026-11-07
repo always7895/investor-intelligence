@@ -120,4 +120,43 @@ describe("UI-R3 offline preview artifacts", () => {
       "The LITE/MRVL case uses synthetic deal metadata for a renderer regression example, not a fact claim.\n" +
       "No network, Worker, brokerage or LINE send was performed. JSON files hold raw LINE Flex/text payloads.\n", "utf8");
   });
+
+  it("guards all 12 preview surfaces against duplicate labels, raw ISO instants, raw status tokens and snake_case codes", async () => {
+    const surfaces = await makePreviews();
+    const visibleText = (messages: readonly LineOutboundMessage[]): string => {
+      const lines: string[] = [];
+      const visit = (value: unknown): void => {
+        if (!value || typeof value !== "object") return;
+        if (Array.isArray(value)) { for (const child of value) visit(child); return; }
+        const node = value as Record<string, unknown>;
+        if (node.type === "text") {
+          if (typeof node.text === "string") lines.push(node.text);
+          else if (Array.isArray(node.contents)) lines.push(node.contents
+            .map(span => typeof span === "object" && span !== null && typeof (span as any).text === "string"
+              ? (span as any).text : "").join(""));
+          return;
+        }
+        for (const [key, child] of Object.entries(node)) if (key !== "action") visit(child);
+      };
+      for (const message of messages) {
+        if (message.type === "text") lines.push(message.text);
+        else { lines.push(message.altText); visit(message.contents); }
+      }
+      return lines.join("\n");
+    };
+    for (const [name, messages] of Object.entries(surfaces)) {
+      const text = visibleText(messages);
+      expect(text, name).not.toMatch(/([^：\n]{2,28})：\1：/gu);
+      expect(text, name).not.toMatch(/\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z\b/);
+      expect(text, name).not.toMatch(/(?<![A-Za-z0-9_./-])(?:[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+|[a-z][a-z0-9]*(?:_[a-z0-9]+)+)(?![A-Za-z0-9_./-])/);
+    }
+    expect(visibleText(surfaces["top20-text.json"]!)).toContain("（台北）");
+    const deal = visibleText(surfaces["lite-mrvl-deal-text.json"]!);
+    expect(deal).toContain("預計 2028 年上半年完成");
+    expect(deal).not.toContain("併購進行中：併購進行中：");
+    const options = surfaces["options-flex.json"]![0] as Extract<LineOutboundMessage, {type:"flex"}>;
+    expect(options.altText).toMatch(/^期權掛單參數｜SYN 月期權｜\d{4}-\d{2}-\d{2}$/);
+    expect(options.altText).not.toContain("LIMIT");
+    expect(options.altText).not.toContain("Monthly");
+  });
 });

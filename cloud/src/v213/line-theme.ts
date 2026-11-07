@@ -154,16 +154,31 @@ export const productHeader = (eyebrow: string, title: string, extra: unknown[] =
 
 /** Compact footnote text for disclosures that must remain visible. */
 /** A full-width status notice; the 4px rail substitutes for unsupported CSS border-left. */
+/** Body strings from upstream may already begin with the exact notice label. */
+const noticeBody = (title: string, body?: string): string | undefined => {
+  if (!body) return body;
+  const trimmed = body.trimStart();
+  if (trimmed === title) return "";
+  for (const delimiter of ["：", ":"]) {
+    const prefix = `${title}${delimiter}`;
+    if (trimmed.startsWith(prefix)) return trimmed.slice(prefix.length).trimStart();
+  }
+  return body;
+};
 export function noticeBanner(kind: "caution" | "info" | "negative", title: string, body?: string) {
   const [tint, strong] = kind === "caution" ? [T.paleCaution, T.caution]
     : kind === "negative" ? [T.paleNegative, T.negative] : [T.accentTint, T.accent];
+  const normalizedBody = noticeBody(title, body);
   return uiBox([
     uiBox([], { backgroundColor: strong, width: "4px", flex: 0, cornerRadius: "2px" }),
     uiBox([uiText(title, "sm", strong, { weight: "bold" }),
-      ...(body ? [uiText(body, "xs", T.ink)] : [])], { flex: 1, spacing: "xs" }),
+      ...(normalizedBody ? [uiText(normalizedBody, "xs", T.ink)] : [])], { flex: 1, spacing: "xs" }),
   ], { layout: "horizontal", spacing: "md", backgroundColor: tint, cornerRadius: "md", paddingAll: "md" });
 }
-export const noticeText = (title: string, body?: string) => `【注意】${title}${body ? `：${body}` : ""}`;
+export const noticeText = (title: string, body?: string) => {
+  const normalizedBody = noticeBody(title, body);
+  return `【注意】${title}${normalizedBody ? `：${normalizedBody}` : ""}`;
+};
 export const footnote = (text: string) => uiText(text, "xxs", T.subtle);
 
 // Body visuals (operator 2026-09-25: card bodies read as flat text). Text keeps LINE size keywords;

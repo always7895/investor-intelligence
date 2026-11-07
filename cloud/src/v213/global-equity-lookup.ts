@@ -2,7 +2,7 @@ import { adrRoute, marketHasOptions } from "./option-routes";
 import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
 import { LINE_THEME as T, bulletRow, disclosureLine, menuAction, menuBox, menuText, headerStyle, heroStat, noticeBanner, shortAltText } from "./line-theme";
 import { humanizeStatusText } from "./status-labels";
-import { formatCurrency, formatPercent } from "./line-formatters";
+import { formatCurrency, formatPercent, formatVisibleMoment } from "./line-formatters";
 import { pinPublicSnapshot, type PublicSnapshotView } from "./public-snapshot";
 import type { V213Top20Env } from "./top20-report";
 import type { ParsedQuery } from "../core";
@@ -406,8 +406,8 @@ export function buildGlobalEquityLookupMessages(
       statusTitle = secFallback ? "備援身分（SEC 快取） · 延遲報價" : "已准入證券身分 · 延遲報價";
       const check = result.crossCheck;
       const cross = check ? `；交叉比對：${sourceZh(check.source)} ${check.price}${check.diffPct === null ? "（幣別或單位不同，不比較）"
-        : `（差 ${check.diffPct >= 0 ? "+" : ""}${(check.diffPct * 100).toFixed(2)}%，${check.asOf}；觀察時間不同時有差異屬正常${Math.abs(check.diffPct) > 0.05 ? "；差異超過 5%，請以交易所價格為準並留意資料時間" : ""}）`}` : "";
-      statusSub = `價格 ${result.price} ${identity.currency}${change}${result.priceSource ? `，來源 ${result.priceSource}` : ""}，觀察時間 ${result.asOf ?? "未揭露"}${cross}；延遲公開報價，非即時可成交價。`;
+        : `（差 ${check.diffPct >= 0 ? "+" : ""}${(check.diffPct * 100).toFixed(2)}%，${formatVisibleMoment(check.asOf)}；觀察時間不同時有差異屬正常${Math.abs(check.diffPct) > 0.05 ? "；差異超過 5%，請以交易所價格為準並留意資料時間" : ""}）`}` : "";
+      statusSub = `價格 ${result.price} ${identity.currency}${change}${result.priceSource ? `，來源 ${result.priceSource}` : ""}，觀察時間 ${result.asOf ? formatVisibleMoment(result.asOf) : "未揭露"}${cross}；延遲公開報價，非即時可成交價。`;
     } else if (resolution.status === "RESOLVED") {
       statusTitle = secFallback ? "備援身分（SEC 快取） · 報價未開放" : "已准入證券身分 · 報價未開放";
       statusSub = secFallback ? SEC_FALLBACK_UNAVAILABLE_SUB

@@ -190,7 +190,7 @@ async function line(env: Record<string, unknown>, text: string, extra: Record<st
 
 const UNIQUE_NOTE = "名稱比對：輸入文字是封存名錄中唯一一家公司名稱的開頭字詞";
 const MANY_NOTE = "名稱比對：輸入文字是多家公司名稱的開頭字詞";
-const SIVERS_ABSENT = "識別代號暫不可用: 代號「SIVERS」目前未在已封存公開身分目錄中";
+const SIVERS_ABSENT = "識別代號暫不可用：代號「SIVERS」目前未在已封存公開身分目錄中";
 const bullets = (text: string) => text.split("\n").filter(item => item.startsWith("• "));
 
 afterEach(() => vi.unstubAllGlobals());
@@ -255,7 +255,7 @@ describe("V11 W5 name lookup through the real LINE entry", () => {
     const { env } = await sealed();
     for (const input of ["Siver", "Micro"]) {
       const reply = await line(env, input);
-      expect(reply.text, input).toContain(`識別代號暫不可用: 代號「${input.toUpperCase()}」`);
+      expect(reply.text, input).toContain(`識別代號暫不可用：代號「${input.toUpperCase()}」`);
       expect(reply.text, input).not.toContain("公司名稱（原文）：Sivers");
       expect(reply.text, input).not.toContain("Micron");
     }
@@ -268,7 +268,7 @@ describe("V11 W5 name lookup through the real LINE entry", () => {
   it("refuses a token shorter than four letters", async () => {
     const { env } = await sealed();
     const short = await line(env, "Abc");
-    expect(short.text).toContain("識別代號暫不可用: 代號「ABC」");
+    expect(short.text).toContain("識別代號暫不可用：代號「ABC」");
     expect(short.text).not.toContain("ABCH");
     // The gate counts the letters of the whole input, so a longer input with a short first word still matches.
     expect((await line(env, "Abc Holdings")).text).toContain("ABCH");

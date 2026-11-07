@@ -68,5 +68,6 @@ export function humanizeStatusText(input: string): string {
   return input
     .replace(/\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+){1,}\b/g, code => statusLabelZh(code))
     .replace(/(?<![A-Za-z0-9/_-])(?:UNAVAILABLE|WITHHELD|AVAILABLE|SUPPORTED|INFERENCE|UNPROVEN|UNRANKED|UNKNOWN|INVALID)(?![A-Za-z0-9/_-])/g,
-      code => statusLabelZh(code));
+      code => statusLabelZh(code))
+    .replace(/([\u3400-\u9fff]):[ \t]*/g, "$1：");
 }

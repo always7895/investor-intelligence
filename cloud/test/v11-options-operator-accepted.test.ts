@@ -316,7 +316,7 @@ describe("W1 + W2 through the real LINE entry", () => {
         const reply = await lineReply(w, env, command, OFF_NOW);
         expect(reply, command).toContain(LABEL);
         expect(reply).toContain("115.00");                        // the capture's own strike and quotes, not recomputed
-        expect(reply).toContain("2026-10-13T15:00:00Z");           // the capture instant is shown, never relabelled as fresh
+        expect(reply).toContain("10-13 23:00（台北）");           // the capture instant is shown, never relabelled as fresh
         expect(reply).toContain("Yahoo Finance 期權鏈（非官方，延遲）");
         expect(reply).toContain(w.covered.OPERATOR_ACCEPTED_NOTICE_ZH);
         expect(reply).not.toContain(UNVERIFIED);

@@ -8,8 +8,10 @@ vi.mock("../src/v213/public-options-admission", async importOriginal => {
 import { assertLineMessages } from "../src/line-messages";
 import { v25FlexMessages, v25Surfaces, bubblesOf, REPORT, top20Report } from "./flex-density-fixtures";
 import { doc, HOUR } from "./bottleneck-v3-fixture";
-import { buildBottleneckDetail, buildBottleneckTop20Messages, parseBottleneckV3 } from "../src/v213/bottleneck-v3";
+import { buildBottleneckDetail, buildBottleneckTop20Messages, buildIndustryExplosionMessages, parseBottleneckV3 } from "../src/v213/bottleneck-v3";
 import { buildV213Top20Messages } from "../src/v213/top20-presentation";
+import { buildCompanyEvidenceMessages } from "../src/v213/company-evidence-report";
+import { buildTop20DeepAnalysisMessages } from "../src/v213/deep-analysis";
 import { parseV213Top20Report } from "../src/v213/top20-report";
 import { formatOptionsAnswer } from "../src/core";
 import { optionsUnavailableReport } from "../src/v213/options-product";
@@ -88,6 +90,7 @@ describe("UI-R3 LINE mobile layout with synthetic largest fixtures", () => {
       "IDENTITY_CONFLICT_UNRESOLVED", "TEST-ONLY", "UNAVAILABLE",
     ];
     for(const code of prohibited) expect(text, code).not.toContain(code);
+    expect(text).not.toMatch(/(?<![A-Za-z0-9_./-])[a-z][a-z0-9]*(?:_[a-z0-9]+)+(?![A-Za-z0-9_./-])/);
     const noQuote = optionsUnavailableReport("SYN", "weekly", "CHAIN_PROVIDER_ERROR", true);
     expect(renderedText(noQuote)).not.toContain("CHAIN_PROVIDER_ERROR");
     expect(renderedText(noQuote)).toContain("資料來源暫時無法取得");
@@ -100,5 +103,22 @@ describe("UI-R3 LINE mobile layout with synthetic largest fixtures", () => {
     const fields = ["股票", "長期投資報酬率", "短期投資報酬率", "行業別", "獲利簡述", "公司現在訂單", "未來訂單預估"];
     let previous = -1;
     for (const field of fields) {const at = body.indexOf(field);expect(at, field).toBeGreaterThan(previous);previous = at;}
+  });
+
+  it("formats snapshot and audit-builder instants for Taipei in every visible user text (postback tokens excluded)", () => {
+    const bottleneck = parseBottleneckV3(doc(REPORT - HOUR), REPORT)!;
+    const sealed = parseV213Top20Report(top20Report() as never)!;
+    const entries = [
+      ...buildBottleneckTop20Messages(bottleneck, "text"),
+      ...buildIndustryExplosionMessages(bottleneck, "text"),
+      { type: "text" as const, text: String(buildBottleneckDetail(bottleneck, "NO_MATCH", "text")) },
+      ...buildV213Top20Messages(sealed, "bilingual", "text"),
+      ...buildCompanyEvidenceMessages(sealed, sealed.records[0]!.ticker),
+      ...buildTop20DeepAnalysisMessages(sealed, sealed.records[0]!.ticker),
+    ];
+    for (const entry of entries) assertLineMessages([entry]);
+    const text = renderedText(entries);
+    expect(text).toContain("（台北）");
+    expect(text).not.toMatch(/\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z\b/);
   });
 });

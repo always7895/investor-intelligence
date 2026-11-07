@@ -12,6 +12,7 @@
 import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
 import { statusLabelZh, humanizeStatusText } from "./status-labels";
 import { sourceZh } from "./source-labels";
+import { formatVisibleMoment } from "./line-formatters";
 import {
   LINE_THEME as T, altSummary, chip, detailsButton, divider, footerStyle, footnote, headerStyle, menuAction, menuBox, menuText, meter, panel,
   packCarousels, railTitle, rankBadge, richText, stackedBar, statTile, timelineStep, uiBox, uiText,
@@ -87,7 +88,7 @@ export function buildMacroOverviewBubble(overview: MacroTop5Overview) {
   const isShortfall = overview.status === "SHORTFALL_NOT_QUALIFIED" || overview.qualified_count < 5;
   const statusBadge = isShortfall
     ? `【未達准入門檻 · 短缺通報】合格產業僅 ${overview.qualified_count}/5`
-    : `【正式准入 TOP5】基準日：${overview.generated_at}`;
+    : `【正式准入 TOP5】基準日：${formatVisibleMoment(overview.generated_at)}`;
 
   const rows = overview.industries.map(ind => {
     const [zh, en] = splitName(ind.industry_name);
@@ -265,7 +266,7 @@ export function buildMacroTop5OverviewText(overview: MacroTop5Overview): LineOut
   const knowledgeNotice = phaseKnowledgeWithheldNotice(validated);
   const lines = [
     `【${validated.title}】`,
-    `報告產生時間：${validated.generated_at}｜觀察週期：${validated.horizon}`,
+    `報告產生時間：${formatVisibleMoment(validated.generated_at)}｜觀察週期：${validated.horizon}`,
     `准入狀態：${validated.status === "ADMITTED_TOP5" ? "合格准入 TOP5" : "未達准入門檻（短缺通報）"}`,
     `合格候選數：${validated.qualified_count}/5（短缺：${validated.shortfall}）`,
     "",

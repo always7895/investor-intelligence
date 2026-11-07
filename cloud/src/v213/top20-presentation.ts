@@ -7,7 +7,7 @@ import { pinPublicSnapshot } from "./public-snapshot";
 import { LINE_THEME as T, altSummary, chip, detailsButton, disclosureLine, divider, footnote, headerStyle, kpiTile, labelValue, uiBox, uiText } from "./line-theme";
 import { parseResearchProductRequest, unavailableResearchProduct } from "./research-product-request";
 import { getTwoYearTotalReturnDisplay } from "./top20-return-evidence";
-import { formatTaipeiTimestamp } from "./line-formatters";
+import { formatTaipeiTimestamp, formatVisibleMoment } from "./line-formatters";
 import {
   getV213ReportReference, loadV213FreshTop20Report, parseV213BoundedTop20Report, parseV213Top20Report, v213FieldLocale,
   v213EvidenceWithinWindow, v213AdmissionDisclosure, V213_STALE_RECORDS_MESSAGE,
@@ -32,7 +32,7 @@ export function buildV213Top20Messages(report: V213Top20Report, locale: FieldLoc
   const reference = getV213ReportReference(report);
   const labels = v213Top20DisplayHeader(locale);
   const localTime = formatTaipeiTimestamp(report.generated_at);
-  const generated = `報告產生 / Generated (台北 / Taipei): ${localTime}`;
+  const generated = `報告產生（台北）：${localTime}`;
   // Every Top20 surface says what the rows are (test path or research candidates) and when data was captured.
   const admission = v213AdmissionDisclosure(report, locale);
   if (style === "text") {
@@ -58,7 +58,7 @@ export function buildV213Top20Messages(report: V213Top20Report, locale: FieldLoc
   // the external presentation contract (inspectSevenFieldFlex): verbatim, unclipped, each label once, value right after.
   const disclosure = disclosureLine([
     testOnly ? "僅供測試展示，尚未完成正式現況驗證" : "研究候選（未完成獨立核實），公司主張未達獨立雙來源驗證",
-    `資料擷取 ${report.evidence_capture_at ?? "-"} UTC｜報告產生 ${localTime}`,
+    `資料擷取 ${report.evidence_capture_at ? formatVisibleMoment(report.evidence_capture_at) : "-"}｜報告產生 ${localTime}`,
     "歷史報酬，非預測；公開研究，非投資建議",
     "6個月／1年／2年情境推算尚缺逐筆訂單與估值依據，不是零成長或零風險",
     "完整免責與英文版：輸入「Top20 文字」",
@@ -149,7 +149,7 @@ export async function v213Top20LineAnswer(env: PresentationEnv, query: ParsedQue
     try {
       if (companyOnly) {
         const messages: LineOutboundMessage[] = [{ type: "text", text:
-          `本公司七欄摘要（不是完整深度分析）\n快照產生：${result.generated_at}\n${v213AdmissionDisclosure(result, v213FieldLocale(env.V213_FIELD_LOCALE))}\n${NOTICE}\n\n${companyText(row, v213Top20DisplayHeader(v213FieldLocale(env.V213_FIELD_LOCALE)))}\n\n${SCENARIO_STATUS}` }];
+          `本公司七欄摘要（不是完整深度分析）\n快照產生：${formatVisibleMoment(result.generated_at)}\n${v213AdmissionDisclosure(result, v213FieldLocale(env.V213_FIELD_LOCALE))}\n${NOTICE}\n\n${companyText(row, v213Top20DisplayHeader(v213FieldLocale(env.V213_FIELD_LOCALE)))}\n\n${SCENARIO_STATUS}` }];
         assertLineMessages(messages);
         return messages;
       }

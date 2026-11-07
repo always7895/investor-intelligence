@@ -5,6 +5,7 @@
  * Observation only: the bot never places an order. Mirror of validate_covered_call_cycle (Python). */
 import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
 import { sourceZh } from "./source-labels";
+import { formatVisibleMoment } from "./line-formatters";
 import {
   effectiveDays, dayMs, exchangeDate, expiryDayOpen, MONTHLY_DTE_BUCKET, monthlyRuleConsistent, shortDteNoticeZh, SHORT_DTE_NOTICE_MAX, usRegularSessionOpen, WEEKLY_DTE_BUCKET, weeklyWeekFor,
   type MonthlyRule, type WeeklyWeek,
@@ -609,7 +610,7 @@ function disclosureBubble(ctx: CardContext) {
   const csp = cspShown(cycle);
   const collar = collarShown(cycle);
   const lines = [
-    `來源：${sourceZh(cycle.source)}，${ctx.carried ? "前一交易時段擷取時間" : "擷取時間"} ${cycle.timestamp}（報價時間未提供）${cycle.provenance}`,
+    `來源：${sourceZh(cycle.source)}，${ctx.carried ? "前一交易時段擷取時間" : "擷取時間"} ${formatVisibleMoment(cycle.timestamp)}（報價時間未提供）${cycle.provenance}`,
     ...(ctx.operatorNotice ? [ctx.operatorNotice] : []),
     ...(ctx.carriedLabel ? [ctx.carriedLabel] : []),
     "公開延遲；非投資建議；年化非保證；不下單",
@@ -698,7 +699,7 @@ export function buildCoveredCallMessages(cycle: CoveredCallCycle, periodLabel: s
         `流動性：OI ${countZh(item.oi)}｜成交量 ${countZh(item.volume)}｜價差占中價 ${spreadZh(item.spread_pct)}`,
       ].join("\n")),
       ...textStrategyLines(cycle),
-      `來源：${sourceZh(cycle.source)}（延遲報價，${carried ? "前一交易時段擷取時間" : "擷取時間"} ${cycle.timestamp}；來源報價時間未提供）${cycle.provenance}`,
+      `來源：${sourceZh(cycle.source)}（延遲報價，${carried ? "前一交易時段擷取時間" : "擷取時間"} ${formatVisibleMoment(cycle.timestamp)}；來源報價時間未提供）${cycle.provenance}`,
       ...(operatorNotice ? [operatorNotice] : []),
       "公開行情觀察，非個人化投資建議；延遲／非即時可執行；年化收益非保證報酬；正股仍承擔下跌風險；賣出賣權可能被指派買進正股；本服務不下單。",
     ];

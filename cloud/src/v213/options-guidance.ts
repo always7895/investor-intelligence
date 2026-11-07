@@ -41,6 +41,20 @@ export const CAVEAT_DISCLAIMER =
   "數據觀察與訂單參數、非券商執行：本卡僅提供基於認證快照的掛單參數參考（委託類型／限價區間／到期與DTE／Delta／流動性）。實際掛單、成交、履約風險由操作人在券商端獨立完成；不構成投資建議 期權可能損失全部權利金。" +
   " (Data observation & limit-order parameters, NOT broker execution or a recommendation. Place and manage the order at your broker; options can lose all premium.)";
 
+/** LINE presentation is zh-only; the underlying bilingual compliance field is preserved. */
+function displayDisclaimerZh(text: string): string {
+  return text.split(" (Data observation & limit-order parameters")[0]!
+    .replace("不構成投資建議 期權", "不構成投資建議；期權");
+}
+const annualizedDisplay = (value: number | null): string => value === null
+  ? "年化收益：無合格資料，無法計算"
+  : `年化收益 ${value >= 0 ? "+" : ""}${value.toFixed(1)}%（以 Mid 權利金計）`;
+/** The input DTE is calendar days from its reference day to expiry; this is not a live quote timestamp. */
+function guidanceReferenceDay(guidance: OptionsOrderGuidance): string {
+  const instant = new Date(Date.parse(`${guidance.expiry}T00:00:00Z`) - guidance.dte * 86_400_000);
+  return Number.isFinite(instant.getTime()) ? instant.toISOString().slice(0, 10) : "日期未揭露";
+}
+
 export interface LimitReferenceBand {
   lower: number;
   upper: number;
@@ -267,15 +281,13 @@ export function buildOptionsGuidanceText(guidance: OptionsOrderGuidance): string
   return [
     `【期權掛單參數｜${guidance.ticker}｜${STRATEGY_LABEL[guidance.strategy]}】`,
     `標的價格：${guidance.underlying_price === null ? "N/A" : fmt(guidance.underlying_price)}；Strike ${fmt(guidance.strike)}；到期 ${guidance.expiry}（DTE ${guidance.dte}）`,
-    `Delta：${guidance.delta === null ? "N/A" : fmt(guidance.delta)}（${DELTA_LABEL[guidance.delta_assessment]}）；保守目標區 0.20-0.30`,
+    `Delta：${guidance.delta === null ? "N/A" : fmt(guidance.delta)}（${DELTA_LABEL[guidance.delta_assessment]}）`,
     `週期：${cycleLine(guidance)}`,
     `委託類型：${guidance.order_type}（建議避免市場單）`,
     `限價參考帶：Bid ${fmt(guidance.bid)} / Mid ${fmt(guidance.mid)} / Ask ${fmt(guidance.ask)}；建議掛單 ${fmt(band.recommended_limit)}（參考區間 ${fmt(band.lower)}-${fmt(band.upper)}）`,
-    guidance.annualized_yield_pct === null
-      ? "Annualized yield: N/A (cannot be calculated from certified data)"
-      : `Annualized yield ${guidance.annualized_yield_pct.toFixed(1)}% (premium = mid; premium/strike x 365/dte)`,
+    annualizedDisplay(guidance.annualized_yield_pct),
     `流動性：${LIQUIDITY_LABEL[guidance.liquidity_status]}`,
-    guidance.caveat_disclaimer,
+    displayDisclaimerZh(guidance.caveat_disclaimer),
   ].join("\n");
 }
 
@@ -292,7 +304,7 @@ function optionsGuidanceBubble(guidance: OptionsOrderGuidance): Record<string, u
   const cycleSummary = `${cycleLabel}｜標準 ${windowLow}-${windowHigh}天｜${WINDOW_LABEL[guidance.dte_window_status]}`;
   return {
     type: "bubble", size: "mega",
-    header: productHeader("期權掛單參數 / Order params", guidance.ticker, [
+    header: productHeader("期權掛單參數／ Order params", guidance.ticker, [
       uiBox([
         guidance.dte_window_status === "WITHIN_CYCLE_WINDOW"
           ? chip(CYCLE_LABEL[guidance.expiry_cycle])
@@ -309,7 +321,7 @@ function optionsGuidanceBubble(guidance: OptionsOrderGuidance): Record<string, u
       ], { spacing: "xs" }),
       uiBox([
         uiText(`Delta ${guidance.delta === null ? "N/A" : fmt(guidance.delta)}｜${DELTA_LABEL[guidance.delta_assessment]}`, "xs", T.subtle),
-        uiText(`Annualized yield ${guidance.annualized_yield_pct === null ? "N/A" : `${guidance.annualized_yield_pct.toFixed(1)}%`}\n${cycleSummary}`, "xs", T.ink),
+        uiText(`${annualizedDisplay(guidance.annualized_yield_pct)}\n${cycleSummary}`, "xs", T.ink),
         uiText(`流動性：${LIQUIDITY_LABEL[guidance.liquidity_status]}${cycleMismatch || alsoMonthly ? `\n${cycleMismatch ?? alsoMonthly}` : ""}`, "xs", T.subtle),
       ], { spacing: "xs" }),
     ], { paddingAll: "lg", spacing: "xs", backgroundColor: T.paper }),
@@ -325,7 +337,7 @@ export function buildOptionsGuidanceFlexBubble(guidance: OptionsOrderGuidance): 
   const band = guidance.limit_reference_band;
   const msg: LineOutboundMessage = {
     type: "flex",
-    altText: shortAltText(`期權掛單參數：${guidance.ticker} ${guidance.expiry} ${CYCLE_LABEL[guidance.expiry_cycle]} LIMIT`, guidance.expiry),
+    altText: shortAltText(`期權掛單參數｜${guidance.ticker} ${guidance.expiry_cycle === "MONTHLY" ? "月期權" : "週期權"}`, guidanceReferenceDay(guidance)),
     contents: { type: "carousel", contents: [optionsGuidanceBubble(guidance)] },
   };
   assertLineMessages([msg]);
@@ -339,7 +351,7 @@ export function buildOptionsCycleComparisonFlex(weekly: OptionsOrderGuidance, mo
   const yieldOf = (g: OptionsOrderGuidance) => g.annualized_yield_pct === null ? "N/A" : `${g.annualized_yield_pct.toFixed(1)}%`;
   const msg: LineOutboundMessage = {
     type: "flex",
-    altText: shortAltText(`週／月期權對照：${weekly.ticker}｜週 ${yieldOf(weekly)}｜月 ${yieldOf(monthly)}｜非券商執行`, weekly.expiry),
+    altText: shortAltText(`週／月期權對照｜${weekly.ticker}｜週 ${yieldOf(weekly)}｜月 ${yieldOf(monthly)}｜非券商執行`, guidanceReferenceDay(weekly)),
     contents: { type: "carousel", contents: [optionsGuidanceBubble(weekly), optionsGuidanceBubble(monthly)] },
   };
   assertLineMessages([msg]);
@@ -353,7 +365,7 @@ export function buildPositionSizingText(sizing: PositionSizingFramework, ticker:
     `現金儲備要求：>= ${sizing.cash_reserve_requirement_pct}%（緩衝 buffer，任何時點不得低於下限）`,
     `建倉節奏：${sizing.tranche_pacing}`,
     `融資風險疊層：${sizing.financing_risk_overlay}`,
-    CAVEAT_DISCLAIMER,
+    displayDisclaimerZh(CAVEAT_DISCLAIMER),
   ].join("\n");
 }
 

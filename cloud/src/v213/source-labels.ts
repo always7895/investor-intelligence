@@ -3,6 +3,9 @@
  * recorded name, and a name without a rule is shown as recorded rather than guessed. */
 
 const EXACT: Record<string, string> = {
+  "unsealed_or_missing": "未取得已封存資料",
+  "sealed_snapshot:unadmitted_symbol": "封存快照（該標的尚未准入）",
+  "yfinance_public": "Yahoo Finance資料",
   "SEC EDGAR XBRL companyfacts": "SEC EDGAR XBRL 財報資料",
   "SEC XBRL company facts": "SEC XBRL 財報資料",
   "SEC EDGAR submissions": "SEC EDGAR 申報清單",
@@ -32,6 +35,8 @@ export function sourceZh(source: string | null | undefined): string {
     const match = pattern.exec(source);
     if (match) return label(match);
   }
+  // Unknown machine-origin snake_case identifiers are not public-facing source names.
+  if (/^[a-z][a-z0-9]*(?:_[a-z0-9]+)+(?::[a-z][a-z0-9]*(?:_[a-z0-9]+)+)?$/.test(source)) return "資料來源未核實";
   return source;
 }
 

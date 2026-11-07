@@ -16,6 +16,7 @@ import { v213Top20LineAnswer } from "./top20-presentation";
 import { loadV213FreshTop20Report, v213TimesAreFresh, v213EvidenceWithinWindow, V213_STALE_RECORDS_MESSAGE, type V213Top20Env } from "./top20-report";
 import { LINE_THEME as T, altSummary, bulletRow, disclosureLine, footerStyle, menuAction, menuBox, menuText, productHeader, section, sectionTitle, shortAltText, noticeBanner } from "./line-theme";
 import { humanizeStatusText } from "./status-labels";
+import { formatVisibleMoment } from "./line-formatters";
 import {
   buildEducationalStrategyFlex,
   buildEducationalStrategyText,
@@ -346,7 +347,7 @@ export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promis
       productLine,
       "以下僅為當輪候選公司家數占比（參考資訊，不是市值／營收權重，不代表全球產業排名，非 TOP5 宏觀產業分析）：",
       ...(knowledgeNotice ? [knowledgeNotice] : []),
-      `當輪時間：${report.generated_at}；樣本20家公司。`,
+      `當輪時間：${formatVisibleMoment(report.generated_at)}；樣本20家公司。`,
       ...(groups.length > visibleGroups.length
         ? [`摘要顯示${visibleGroups.length}/${groups.length}類；其餘${groups.length - visibleGroups.length}類請看完整文字`] : []),
       ...visibleGroups.map(([industry, tickers]) => `${industry}｜${tickers.length}/20家（${(tickers.length / 20 * 100).toFixed(0)}%）\n${tickers.join("、")}`),
@@ -360,7 +361,7 @@ export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promis
         productLine,
         "以下僅為當輪候選公司家數占比（參考資訊，不是市值／營收權重，不代表全球產業排名，非 TOP5 宏觀產業分析）：",
         ...(knowledgeNotice ? [knowledgeNotice] : []),
-        `當輪時間：${report.generated_at}；樣本20家公司。`,
+        `當輪時間：${formatVisibleMoment(report.generated_at)}；樣本20家公司。`,
         ...groups.map(([industry, tickers]) => `${industry}｜${tickers.length}/20家（${(tickers.length / 20 * 100).toFixed(0)}%）\n${tickers.join("、")}`),
         "傳導框架：需求→交付／產能→營收及毛利→現金流／融資→每股價值；每條關係均須另有公司證據。",
         "",
@@ -407,7 +408,7 @@ export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promis
       const lines = [
         "MACRO_PRODUCT_NOT_SEALED：目前尚無已驗收的獨立宏觀報告。GDP、CPI、利率、匯率等值不得由來源健康狀態或候選資料直接升格發布。",
         "以上是候選公司家數占比，不是市值／營收權重，也不代表全球產業排名或投資配置比例。",
-        `當輪時間：${report.generated_at}；樣本20家公司。`,
+        `當輪時間：${formatVisibleMoment(report.generated_at)}；樣本20家公司。`,
         ...groups.map(([industry, tickers]) => `${industry}｜${tickers.length}/20家（${(tickers.length / 20 * 100).toFixed(0)}%）\n${tickers.join("、")}`),
         "傳導框架：需求→交付／產能→營收及毛利→現金流／融資→每股價值；每條關係均須另有公司證據。",
       ];
@@ -417,7 +418,7 @@ export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promis
     const lines = [
       "MACRO_PRODUCT_NOT_SEALED：目前尚無已驗收的獨立宏觀報告。GDP、CPI、利率、匯率等值不得由來源健康狀態或候選資料直接升格發布。",
       "以上是候選公司家數占比，不是市值／營收權重，也不代表全球產業排名或投資配置比例。",
-      `當輪時間：${report.generated_at}；樣本20家公司。`,
+      `當輪時間：${formatVisibleMoment(report.generated_at)}；樣本20家公司。`,
       ...(groups.length > visibleGroups.length
         ? [`摘要顯示${visibleGroups.length}/${groups.length}類；其餘${groups.length - visibleGroups.length}類請看完整文字`] : []),
       ...visibleGroups.map(([industry, tickers]) => `${industry}｜${tickers.length}/20家（${(tickers.length / 20 * 100).toFixed(0)}%）\n${tickers.join("、")}`),

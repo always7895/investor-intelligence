@@ -205,7 +205,8 @@ describe("sealed market observations", () => {
     expect(monthly[0]!.text).toContain("建議賣出限價 0.23 SEK");
     expect(monthly[0]!.text).toContain("每口權利金 225.00 SEK");
     expect(monthly[0]!.text).toContain("Nasdaq Nordic");
-    expect(monthly[0]!.text).toContain(fixedStamp);
+    expect(monthly[0]!.text).toContain("09-28 14:30（台北）");
+    expect(monthly[0]!.text).not.toContain(fixedStamp);
     expect(monthly[0]!.text).toContain("https://api.nasdaq.com/api/nordic/instruments/TX2540138/option-chain");
     expect(monthly[0]!.text).not.toContain("UNAVAILABLE");
   });

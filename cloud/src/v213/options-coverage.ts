@@ -24,7 +24,7 @@ import catalog from "../../../config/public-options-provider-candidates.json";
 import predecessorCatalog from "./options-provider-catalog-4065fbe.json";
 import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
 import { statusLabelZh } from "./status-labels";
-import { formatTaipeiTimestamp } from "./line-formatters";
+import { formatTaipeiTimestamp, formatVisibleMoment } from "./line-formatters";
 import { isValidUtcIsoInstant, validateCoveredCallCycle } from "./covered-call";
 import { OPTIONS_KEY } from "./market-observations";
 import { admitPublicOption } from "./public-options-admission";
@@ -426,7 +426,7 @@ export function buildOptionsCoverageMessages(result: OptionsCoverageResult, _isT
   if (observedState === "VERIFIED_ADMITTED_ROWS" && observed && observed.length > 0) {
     lines.push("已驗證的公開准入資料（本 Worker 依自身目錄與封存期權本文重新計算；延遲備兌買權，非 EOD、非指數；標的數為封存期權文件的不同代號鍵，不是原生標的）：");
     for (const row of observed.slice(0, OBSERVED_SHOWN)) {
-      lines.push(`• ${row.provider_id}｜${row.jurisdiction}/${row.venue}｜${row.cycle_count} 個週期、${row.ticker_key_count} 個代號鍵｜最新報價時間 ${row.quote_as_of_max}`);
+      lines.push(`• ${row.provider_id}｜${row.jurisdiction}/${row.venue}｜${row.cycle_count} 個週期、${row.ticker_key_count} 個代號鍵｜最新報價時間 ${formatVisibleMoment(row.quote_as_of_max)}`);
     }
     if (observed.length > OBSERVED_SHOWN) lines.push(`（共 ${observed.length} 列，顯示 ${OBSERVED_SHOWN} 列，另有 ${observed.length - OBSERVED_SHOWN} 列未顯示）`);
   } else if (observedState === "VERIFIED_NO_ADMITTED_ROWS_IN_SEALED_OPTIONS_BODY") {

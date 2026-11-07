@@ -13,6 +13,7 @@ import { v213ReportAgeFresh } from "./report-age";
 import { unwrapTransportV1 } from "./revenue-guidance-wire";
 import { GUIDANCE_BINDING_KEY, MACHINE_SCHEMA, resolveSealedMachineBindings, type MachineBindings } from "./revenue-guidance-machine";
 import { sourceZh } from "./source-labels";
+import { formatTaipeiTimestamp, formatVisibleMoment } from "./line-formatters";
 import { PRICE_SOURCE_LABEL } from "./market-observations";
 import { buildCompanyDataReportFlex, buildCompanyDataReportMessages, validateCompanyDataReport } from "./deep-analysis";
 import {
@@ -380,7 +381,7 @@ function corporateActionText(entry: BottleneckEntry): string | null {
   const terms = deal.kind === "ALL_STOCK" ? `每股換 ${deal.exchange_ratio!.toFixed(3)} 股 ${deal.acquirer_symbol}`
     : deal.kind === "CASH" ? `每股現金 ${deal.cash_per_share} ${deal.currency}`
     : `每股換 ${deal.exchange_ratio!.toFixed(3)} 股 ${deal.acquirer_symbol} 加現金 ${deal.cash_per_share} ${deal.currency}`;
-  return `併購進行中：${terms}，預計 ${expected} 完成；股價主要跟隨 ${deal.acquirer_symbol}（完成仍待審核）`;
+  return `併購進行中：${terms}，預計 ${expected}完成；股價主要跟隨 ${deal.acquirer_symbol}（完成仍待審核）`;
 }
 
 function validEntry(raw: any, generatedAt: string): raw is BottleneckEntry {
@@ -681,7 +682,7 @@ function lineageEvent(lineage: Lineage): string {
 function longTerm(market: Market): { value: string; sub: string | undefined; event: string | null; sources: string[] } {
   const lineage = market.lineage && market.lineage.kind !== "UNKNOWN" ? market.lineage as Lineage : null;
   const event = lineage ? lineageEvent(lineage) : null;
-  const sources = lineage ? lineage.sources.map(source => `${source.published_at} ${source.url}`) : [];
+  const sources = lineage ? lineage.sources.map(source => `${formatVisibleMoment(source.published_at)} ${source.url}`) : [];
   if (market.long_term_basis === "TWO_YEAR" && market.cagr_2y !== null) return { value: pct(market.cagr_2y, 0), sub: undefined, event, sources };
   if (lineage && market.long_term_basis === "SINCE_REGULAR_WAY") {
     return { value: "獨立交易價格未滿2年", event, sources,
@@ -1152,13 +1153,13 @@ export function buildBottleneckTop20Messages(doc: BottleneckV3, style: "flex" | 
       `營收年增 ${pct(entry.fundamentals?.revenue_yoy ?? null, 0)}`,
       `6 個月 ${pct(entry.market.ret_6m, 0)}`,
       `2 年年化 ${longTermText(entry.market)}`,
-      `目前訂單：${currentOrders(entry.outlook, ordersOf(doc, entry.symbol).filer || entry.fundamentals?.source === "SEC EDGAR XBRL companyfacts", doc.generated_at.slice(0, 10))}`,
+      currentOrders(entry.outlook, ordersOf(doc, entry.symbol).filer || entry.fundamentals?.source === "SEC EDGAR XBRL companyfacts", doc.generated_at.slice(0, 10)),
       ...(corporateActionText(entry) ? [noticeText("併購進行中", corporateActionText(entry)!)] : []),
       ...forecastText(forecastOf(doc, entry), money).split("｜"),
       ...(entry.outlook?.consensus?.revenue_growth == null && entry.outlook?.consensus ? [compactScenarioText(entry.outlook)] : []),
     ].join("\n"));
     // Paginated into at most five messages of whole entries (never an entry cut away by a length limit).
-    const blocks = [`瓶頸爆發 TOP20（v3，產生 ${doc.generated_at}）`,
+    const blocks = [`瓶頸爆發 TOP20（v3，產生 ${formatTaipeiTimestamp(doc.generated_at)}）`,
       "排序：層級熱度＋公司捕獲＋社群與機構線索＋市場確認＋爆發性；2年年化報酬為負者排除。分拆、恢復交易、IPO 或重整新股不足2年者，改用已核實正常交易首日以來年化（至少1年，非2年）；沿革未核實且價格不足2年者不列入。非投資建議。",
       ...lines, "輸入「瓶頸詳情 代號」看逐項數據與來源；「產業爆發榜」看 Leopold 邏輯產業排序。", "公開研究，非投資建議；不自動下單。"];
     const pages: string[] = [];
@@ -1392,7 +1393,7 @@ export function findBottleneckEntry(doc: BottleneckV3, symbol: string): Bottlene
 
 export function buildBottleneckDetail(doc: BottleneckV3, symbol: string, style: "flex" | "text" = "text"): LineOutboundMessage[] | string {
   const entry = findBottleneckEntry(doc, symbol);
-  if (!entry) return `「${symbol}」不在本輪瓶頸爆發 TOP20（產生 ${doc.generated_at}）。`;
+  if (!entry) return `「${symbol}」不在本輪瓶頸爆發 TOP20（產生 ${formatTaipeiTimestamp(doc.generated_at)}）。`;
   // The detail card first; then the company data report (SEC filings, business profile, thesis phase, order
   // realization) when one is sealed.
   const raw = Object.hasOwn(doc.deep_reports, entry.symbol) ? doc.deep_reports[entry.symbol] : undefined;
@@ -1453,7 +1454,7 @@ export function buildIndustryExplosionMessages(doc: BottleneckV3, style: "flex" 
         `本輪 TOP20 成員：${members.length ? members.join("、") : "（無）"}`,
       ].join("\n");
     });
-    const messages = pagesAtLineBoundary([`產業爆發榜（Leopold 因果鏈，產生 ${doc.generated_at}）`,
+    const messages = pagesAtLineBoundary([`產業爆發榜（Leopold 因果鏈，產生 ${formatTaipeiTimestamp(doc.generated_at)}）`,
       "爆發力構成：因果鏈位置35＋機構持倉權重25＋營收加速20＋SEC申報熱度10＋社群熱度10",
       ...lines, "非投資建議。"].join("\n"), 4900)
       .map(text => ({ type: "text" as const, text }));

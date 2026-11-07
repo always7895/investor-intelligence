@@ -276,13 +276,15 @@ describe("Unadmitted symbol source label (TASK 025A)", () => {
   it("sealed view -> sealed_snapshot:unadmitted_symbol", async () => {
     const out = await handleGlobalEquityLookup(sealedEnv(), query);
     expect(out).toBeTruthy();
-    expect(JSON.stringify(out)).toContain("sealed_snapshot:unadmitted_symbol");
+    expect(JSON.stringify(out)).toContain("封存快照（該標的尚未准入）");
+    expect(JSON.stringify(out)).not.toContain("sealed_snapshot:unadmitted_symbol");
     expect(JSON.stringify(out)).not.toContain("unsealed_or_missing");
   });
   it("non-sealed view -> unsealed_or_missing (only when view is not sealed)", async () => {
     const out = await handleGlobalEquityLookup(unsealedEnv(), query);
     expect(out).toBeTruthy();
-    expect(JSON.stringify(out)).toContain("unsealed_or_missing");
+    expect(JSON.stringify(out)).toContain("未取得已封存資料");
+    expect(JSON.stringify(out)).not.toContain("unsealed_or_missing");
     expect(JSON.stringify(out)).not.toContain("unadmitted_symbol");
   });
 });

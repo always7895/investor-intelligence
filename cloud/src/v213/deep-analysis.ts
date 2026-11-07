@@ -1,4 +1,5 @@
 import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
+import { formatVisibleMoment } from "./line-formatters";
 import { humanizeStatusText } from "./status-labels";
 import { requirePublicCitation as safeCitation } from "./public-citation";
 import { sourceZh } from "./source-labels";
@@ -82,7 +83,7 @@ export function validateCompanyDataReport(raw: any, ticker: string): CompanyData
 function dataReportBlocks(report: { generated_at: string }, data: CompanyDataReport): string[] {
   const numerals = ["一", "二", "三", "四", "五", "六", "七", "八", "九", "十", "十一", "十二"];
   return [
-    `【${data.ticker}｜公司深度報告 · 官方資料計算】\n原文公司名稱：${data.name}\n當輪快照產生：${report.generated_at}\n` +
+    `【${data.ticker}｜公司深度報告 · 官方資料計算】\n原文公司名稱：${data.name}\n當輪快照產生：${formatVisibleMoment(report.generated_at)}\n` +
       `資料計算日：${data.as_of}｜舊版准入狀態：${legacyGateLabel(data.phase)}｜下次檢查：${data.next_review_at ?? "下一份財報"}\n研究邊界：${data.boundary}`,
     ...data.sections.map((section, index) => `${numerals[index]}、${section.title}\n${section.text}`),
     `資料來源 / Sources\n` + data.source_references.map(ref => `• ${sourceZh(ref.source)}${ref.period ? `（${ref.period}）` : ""}：${ref.url}`).join("\n"),
@@ -120,8 +121,8 @@ export function buildTop20DeepAnalysisMessages(
     `【${row.ticker}｜深度化分析 · 供應鏈瓶頸與價值鏈研究】\n` +
     `原文公司名稱：${row.name}\n` +
     `中文名稱：未完成來源核對（不按股票代號猜譯）\n` +
-    `當輪快照產生：${report.generated_at}\n` +
-    `資料取得時間：${row.retrieved_at}\n` +
+    `當輪快照產生：${formatVisibleMoment(report.generated_at)}\n` +
+    `資料取得時間：${formatVisibleMoment(row.retrieved_at)}\n` +
     `研究邊界：公開研究，非投資建議；歷史報酬非預測。`,
 
     // Section 1: 供應鏈瓶頸定位與價值鏈角色
@@ -167,7 +168,7 @@ export function buildTop20DeepAnalysisMessages(
     `五、合約、訂單、資本支出、產能與客戶證據 / Contracts, Orders, CapEx, Capacity & Customer Evidence\n` +
     `• 快照記載現有訂單：${row.current_orders}\n` +
     `• 快照記載未來展望：${row.future_orders_estimate}\n` +
-    `• 訂單基準日期：${row.orders_as_of || "未揭露"}｜來源信心：${row.orders_confidence ?? "未標註（候選快照口徑）"}\n` +
+    `• 訂單基準日期：${row.orders_as_of ? formatVisibleMoment(row.orders_as_of) : "未揭露"}｜來源信心：${row.orders_confidence ?? "未標註（候選快照口徑）"}\n` +
     `• 主張核對（Claim Audit）：\n` +
     `  - 客戶名單不等於稀缺性（Customers aren't scarcity）。供貨予特定客戶僅代表已獲供應商代碼，不代表供貨份額具排他性。\n` +
     `  - 合約約束力缺口：缺少逐筆訂單條款、取消與退單條件、交付驗收期程及違約罰則；剩餘履約義務（RPO）不等於未來必然落袋利潤，亦不得與已認列營收重複相加。\n` +
@@ -281,7 +282,7 @@ export function buildCompanyDataReportFlex(data: CompanyDataReport, generatedAt:
         { layout: "horizontal", spacing: "md" }),
       uiText(data.ticker, "lg", T.headerText, { weight: "bold" }),
       uiText(data.name, "xs", T.headerMuted),
-      uiText(`資料計算日 ${data.as_of}｜快照 ${generatedAt}`, "xxs", T.headerSubtle),
+      uiText(`資料計算日 ${data.as_of}｜快照 ${formatVisibleMoment(generatedAt)}`, "xxs", T.headerSubtle),
     ], { ...headerStyle, spacing: "sm" }),
     body: uiBox([
       uiBox([railTitle("舊版准入狀態", legacyGateLabel(data.phase)), phaseLadder(data.phase),

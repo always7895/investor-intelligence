@@ -172,9 +172,16 @@ describe("Options order guidance (AGENTS.md authorization)", () => {
       expect(text).toContain("Covered Call");
       expect(text).toContain("LIMIT");
       expect(text).toContain(('Delta' as string) + '：' + ('N/A' as string));
-      expect(text).toContain("Annualized yield 6.5%");
+      expect(text).toContain("年化收益 +6.5%（以 Mid 權利金計）");
+      expect(text).not.toContain("Annualized yield");
       expect(text).toContain("Qualified");
-      expect(text).toContain(CAVEAT_DISCLAIMER);
+      expect(text).not.toContain("；保守目標區 0.20-0.30");
+      const alt = (buildOptionsGuidanceFlexBubble(g) as FlexMsg).altText;
+      expect(alt).toBe("期權掛單參數｜NVDA 月期權｜2026-09-15");
+      expect(alt).not.toContain("LIMIT");
+      expect(alt).not.toContain("Monthly");
+      expect(text).toContain("數據觀察與訂單參數、非券商執行");
+      expect(text).not.toContain("NOT broker execution");
     });
     it("sanSan-msth renders sizing messages with caps and pacing", () => {
       const s = generatePositionSizingFramework("BOTTLENECK_CHOKEPOINT");
@@ -184,7 +191,8 @@ describe("Options order guidance (AGENTS.md authorization)", () => {
       expect(text).toContain("20%");
       expect(text).toContain("3-4 tranches");
       expect(text).toContain("-50% cap penalty");
-      expect(text).toContain(CAVEAT_DISCLAIMER);
+      expect(text).toContain("數據觀察與訂單參數、非券商執行");
+      expect(text).not.toContain("NOT broker execution");
       const msg = buildPositionSizingFlexBubble(s, "TSM") as FlexMsg;
       assertLineMessages([msg]);
       expect(JSON.stringify(msg.contents)).toContain("現金儲備下限需始終維持，不得低於此值");

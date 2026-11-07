@@ -1,7 +1,8 @@
 /** UI-R3 display-only contracts. No network, no real markets, no snapshot writes. */
 import { describe, expect, it } from "vitest";
-import { formatCount, formatCurrency, formatDate, formatPercent, formatTaipeiTimestamp } from "../src/v213/line-formatters";
+import { formatCount, formatCurrency, formatDate, formatPercent, formatTaipeiTimestamp, formatVisibleMoment } from "../src/v213/line-formatters";
 import { statusLabelZh, humanizeStatusText } from "../src/v213/status-labels";
+import { sourceZh } from "../src/v213/source-labels";
 import { LINE_THEME as T, altSummary, menuAction, noticeBanner, noticeText, shortActionLabel, shortAltText } from "../src/v213/line-theme";
 
 const nodes = (value: any): any[] => value == null || typeof value !== "object" ? []
@@ -33,6 +34,11 @@ describe("UI-R3 status presentation (wire values remain unchanged)", () => {
       expect(statusLabelZh(value)).toBe("資料暫不可用");
     expect(humanizeStatusText("狀態 NO_LISTED_OPTIONS｜RPO 123")).toBe("狀態 無掛牌選擇權｜RPO 123");
     expect(humanizeStatusText("QUOTE_UNAVAILABLE（NO_UNDERLYING_PRICE）")).toBe("報價暫不可用（暫無標的價格）");
+    expect(humanizeStatusText("IDENTIFIER_UNAVAILABLE: 代號")).toBe("識別代號暫不可用：代號");
+    expect(sourceZh("unsealed_or_missing")).toBe("未取得已封存資料");
+    expect(sourceZh("sealed_snapshot:unadmitted_symbol")).toBe("封存快照（該標的尚未准入）");
+    expect(sourceZh("new_unknown_source")).toBe("資料來源未核實");
+    expect(sourceZh("yfinance_public")).toBe("Yahoo Finance資料");
   });
   it("notice banners have a 4px rail, WCAG AA text, and matching text-mode warning", () => {
     const tones = {
@@ -52,6 +58,9 @@ describe("UI-R3 status presentation (wire values remain unchanged)", () => {
       expect(contrast(bg, T.ink)).toBeGreaterThanOrEqual(4.5);
     }
     expect(noticeText("交易資訊未核實", "資料可能延遲")).toBe("【注意】交易資訊未核實：資料可能延遲");
+    expect(noticeText("併購進行中", "併購進行中：每股換 4.500 股 MRVL")).toBe("【注意】併購進行中：每股換 4.500 股 MRVL");
+    const notice: any = noticeBanner("caution", "併購進行中", "併購進行中：每股換 4.500 股 MRVL");
+    expect(notice.contents[1].contents.map((node: any) => node.text)).toEqual(["併購進行中", "每股換 4.500 股 MRVL"]);
   });
 });
 describe("UI-R3 financial numbers and mobile navigation", () => {
@@ -84,6 +93,9 @@ describe("UI-R3 financial numbers and mobile navigation", () => {
     expect(formatDate(new Date(NaN))).toBe("日期未揭露");
     expect(formatTaipeiTimestamp("2026-11-07T08:30:00Z")).toBe("11-07 16:30（台北）");
     expect(formatTaipeiTimestamp("invalid")).toBe("時間未知");
+    expect(formatVisibleMoment("2026-11-07T15:46:54Z")).toBe("11-07 23:46（台北）");
+    expect(formatVisibleMoment("2026-11-07")).toBe("2026-11-07");
+    expect(formatVisibleMoment("2026-11-07T15:46:54Z（擷取時間）")).toBe("11-07 23:46（台北）（擷取時間）");
   });
   it("truncates visible button labels to six while preserving the full command", () => {
     for (const value of ["查看期權策略教學", "返回 TOP20 榜單", "完整產業分布文字", "查 NVDA 每月期權", "深度化分析（10維因果）"]) {

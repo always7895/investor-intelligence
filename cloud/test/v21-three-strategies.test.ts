@@ -236,7 +236,7 @@ describe("V21 card", () => {
     vi.mocked(admission.admitPublicOption).mockImplementation(() => ({ ok: true, provider_id: "synthetic-test-only-not-in-catalog", operator_accepted: true }) as never);
     const list = bubbles(buildCoveredCallMessages(check(cycle) as never, "每月期權", "flex"));
     const disclosure = joined(list[list.length - 1]);
-    for (const required of ["資料來源與說明", "Yahoo Finance 期權鏈（非官方，延遲）", STAMP, "擷取時間",
+    for (const required of ["資料來源與說明", "Yahoo Finance 期權鏈（非官方，延遲）", "10-24 01:00（台北）", "擷取時間",
       "依營運者決定顯示；本資料未取得再散布授權", "非投資建議", "不下單",
       "價差25%內取中間價；較寬時賣出腿取Bid＋四分之一價差、買進Put取Ask－四分之一價差"])
       expect(disclosure).toContain(required);
@@ -349,7 +349,7 @@ describe("V21 card", () => {
     expect(text.indexOf("備兌買權")).toBeLessThan(text.indexOf("現金擔保賣權"));
     expect(text.indexOf("現金擔保賣權")).toBeLessThan(text.indexOf("領口策略"));
     expect(text).toContain("本服務不下單。");
-    expect(text).toContain(STAMP);
+    expect(text).toContain("10-24 01:00（台北）");
     expect(text).toContain("未取得再散布授權");
   });
 

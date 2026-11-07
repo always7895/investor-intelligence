@@ -50,3 +50,9 @@ export function formatTaipeiTimestamp(value: string | number | Date | null | und
   const part = (type: string) => parts.find(item => item.type === type)?.value ?? "--";
   return `${part("month")}-${part("day")} ${part("hour")}:${part("minute")}（台北）`;
 }
+/** Preserve calendar dates and citation wording; localize only actual ISO instants in display fields. */
+export function formatVisibleMoment(value: string | null | undefined): string {
+  if (!value) return "時間未知";
+  return value.replace(/\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})\b/g,
+    instant => formatTaipeiTimestamp(instant));
+}
