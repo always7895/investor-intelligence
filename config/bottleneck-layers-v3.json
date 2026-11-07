@@ -620,8 +620,8 @@
    "name_zh": "實體 AI 與機器人精密運動控制",
    "chain": "physical_ai_robotics",
    "chain_rank": 7,
-   "leopold_constraint": "Outside Leopold's scaling chain: precision actuators, harmonic/planetary reducers, rare-earth magnets, and force/torque sensing are candidate robotics qualification and capacity constraints; issuer-specific capacity constraints remain unverified.",
-   "leopold_constraint_zh": "不屬於 Leopold 算力擴張鏈：精密致動器、諧波／行星減速器、稀土磁鐵、力與力矩感測可能是機器人認證與產能約束；個別企業的產能瓶頸仍須查證。",
+   "leopold_constraint": "Outside Leopold's compute chain: actuators, reducers, rare-earth magnets, force/torque sensors; capacity unverified.",
+   "leopold_constraint_zh": "非 Leopold 算力鏈：機器人仰賴致動器、減速器、稀土磁鐵、力與力矩感測；產能瓶頸待驗證。",
    "capturers": [
     {
      "symbol": "6268.T",

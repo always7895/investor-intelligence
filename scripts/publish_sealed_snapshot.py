@@ -759,6 +759,43 @@ def lazy_bottleneck_v3_body(path: Path, now: datetime, effective_inputs: "object
                                       guidance_machine_enabled=guidance_machine_enabled, machine_inputs=machine_inputs)
 
 
+def _public_industry_rows(rows, constraints_zh):
+    """The exact publisher projection handed to the Worker validIndustry reader."""
+    keys = ("rank", "id", "name_zh", "chain", "leopold_constraint",
+            "explosiveness", "median_revenue_yoy", "median_acceleration",
+            "median_return_6m", "fund_13f_weight", "serenity_heat")
+    news_keys = ("source", "source_url", "recent_30d", "prior_60d", "ratio")
+    pick = lambda row, wanted: {key: row.get(key) for key in wanted}  # noqa: E731
+    return [{**pick(row, keys),
+             "leopold_constraint_zh": constraints_zh.get(row["id"]) or row.get("leopold_constraint_zh") or None,
+             "news": None if not row.get("news") else pick(row["news"], news_keys)}
+            for row in rows]
+
+
+def _public_market_window(raw):
+    """Display-only projection. Invalid/absent extras must never gate Top20."""
+    keys = ("positive_share", "median_ret_6m", "count_used", "unknown_count", "scored_universe_count")
+    if type(raw) is not dict or set(raw) != set(keys):
+        return None
+    if any(type(raw[k]) is not int or raw[k] < 0 for k in keys[2:]):
+        return None
+    if raw["count_used"] + raw["unknown_count"] != raw["scored_universe_count"]:
+        return None
+    if (raw["positive_share"] is not None and
+        (type(raw["positive_share"]) not in (int, float) or
+         not 0 <= raw["positive_share"] <= 1)):
+        return None
+    if (raw["median_ret_6m"] is not None and
+        (type(raw["median_ret_6m"]) not in (int, float) or
+         not math.isfinite(raw["median_ret_6m"]))):
+        return None
+    if raw["count_used"] == 0 and (raw["positive_share"] is not None or raw["median_ret_6m"] is not None):
+        return None
+    if raw["count_used"] > 0 and (raw["positive_share"] is None or raw["median_ret_6m"] is None):
+        return None
+    return {key: raw[key] for key in keys}
+
+
 def captured_bottleneck_v3_body(raw: bytes, now: datetime, effective_inputs=None, state_root=None,
                                *, guidance_wire_enabled=False, guidance_machine_enabled=False,
                                machine_inputs=None, captured=None, consumption=None):
@@ -788,7 +825,8 @@ def captured_bottleneck_v3_body(raw: bytes, now: datetime, effective_inputs=None
                 raise machine.MachinePublicationBlocked()
             return {}
         # Apply corporate-action state at the ranking's evidence cutoff, never before its announcement.
-        actions = corporate_actions.load_actions(today=generated.date())
+        actions = (corporate_actions.load_actions_bytes(operand("corporate_actions").read_bytes(), today=generated.date())
+                   if operand else corporate_actions.load_actions(today=generated.date()))
         active = [entry for entry in actions["entries"] if entry["status"] == "PENDING"
                   and entry["announced_on"] <= generated.date().isoformat()]
         pending_targets = {entry["target_symbol"] for entry in active}
@@ -899,11 +937,8 @@ def captured_bottleneck_v3_body(raw: bytes, now: datetime, effective_inputs=None
                 "serenity": None if not sig else pick(sig, ("mentions", "bullish", "bearish", "stance", "latest_at", "latest_url")),
                 "leopold": None if not pos else {"long_weight": pos["long_weight"], "status": pos["status"]},
             })
-        industries = [{**pick(row, ("rank", "id", "name_zh", "chain", "leopold_constraint", "explosiveness", "median_revenue_yoy",
-                                    "median_acceleration", "median_return_6m", "fund_13f_weight", "serenity_heat")),
-                       "leopold_constraint_zh": constraints_zh.get(row["id"]) or row.get("leopold_constraint_zh") or None,
-                       "news": None if not row.get("news") else pick(row["news"], ("source", "source_url", "recent_30d", "prior_60d", "ratio"))}
-                      for row in doc["industries"]]
+        industries = _public_industry_rows(doc["industries"], constraints_zh)
+        market_window = _public_market_window(doc.get("market_window"))
         serenity = (doc.get("leads") or {}).get("serenity") or {}
         filing = ((doc.get("leads") or {}).get("leopold") or {}).get("filing") or {}
         deep = company_deep_report.load_reports(
@@ -913,7 +948,8 @@ def captured_bottleneck_v3_body(raw: bytes, now: datetime, effective_inputs=None
         sealed = {"schema": "v213-bottleneck-top20-v3-sealed", "generated_at": doc["generated_at"], "deep_reports": deep,
                   "serenity_source": {"url": serenity.get("url"), "latest_post_at": serenity.get("latest_post_at")} if serenity.get("url") else None,
                   "leopold_filing": pick(filing, ("period", "filed", "url")) if filing.get("url") else None,
-                  "top": top, "industries": industries}
+                  "top": top, "industries": industries,
+                  **({"market_window": market_window} if market_window is not None else {})}
         body = (machine.compact(sealed, machine.REPORT_BYTES).decode("utf-8") if guidance_machine_enabled else
                 json.dumps(sealed, ensure_ascii=False, separators=(",", ":"), allow_nan=False))
     except machine.MachinePublicationBlocked:
