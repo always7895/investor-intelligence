@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "entries": [
+    {
+      "target_market": "US",
+      "target_symbol": "LITE",
+      "acquirer_market": "US",
+      "acquirer_symbol": "MRVL",
+      "kind": "ALL_STOCK",
+      "exchange_ratio": 4.5,
+      "cash_per_share": null,
+      "currency": null,
+      "announced_on": "2026-11-02",
+      "expected_close": "first half of calendar year 2028",
+      "status": "PENDING",
+      "status_on": "2026-11-02",
+      "source_url": "https://www.sec.gov/Archives/edgar/data/0001633978/000119312526442758/d163169dex991.htm",
+      "source_date": "2026-11-02",
+      "review_by": null
+    }
+  ]
+}
