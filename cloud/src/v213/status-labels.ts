@@ -1,0 +1,72 @@
+/** Human-facing, fail-closed Chinese labels for public LINE status enums.
+ * Wire values are NEVER modified here; only the rendered label is translated.
+ * Unknown/future codes must not escape into a user-visible text node.
+ */
+const STATUS_ZH: Readonly<Record<string, string>> = Object.freeze({
+  OK: "正常", PASS: "正常", FAIL: "未通過", UNKNOWN: "資料暫不可用",
+  AVAILABLE: "可提供", UNAVAILABLE: "資料暫不可用", WITHHELD: "資料暫不提供",
+  NO_UNDERLYING_PRICE: "暫無標的價格",
+  NO_LISTED_OPTIONS: "無掛牌選擇權",
+  NO_ELIGIBLE_LIQUID_QUOTE: "暫無流動性足夠的報價",
+  CHAIN_PROVIDER_ERROR: "資料來源暫時無法取得",
+  PROVIDER_ERROR: "資料來源暫時無法取得",
+  DEAL_PENDING_TARGET: "併購進行中，暫停選擇權建議",
+  NO_EXPIRATION_IN_WINDOW: "指定期間內無到期合約",
+  NO_CANDIDATES: "暫無符合條件的候選",
+  NO_DATA: "暫無資料", NOT_FOUND: "查無資料",
+  OPTION_RIGHTS_NOT_ADMITTED: "期權資料未通過公開驗收",
+  OPTION_DATA_NOT_ADMITTED: "期權資料未通過公開驗收",
+  OPTION_DATA_UNAVAILABLE: "期權報價不可用",
+  IDENTIFIER_UNAVAILABLE: "識別代號暫不可用",
+  COMPANY_NAME_UNAVAILABLE: "公司名稱暫不可用",
+  MACRO_TOP5_SHORTFALL: "TOP5合格產業不足",
+  MACRO_CARD_UNAVAILABLE: "產業卡片暫不可用",
+  MACRO_DEEP_UNAVAILABLE: "產業深度分析暫不可用",
+  MACRO_PRODUCT_NOT_SEALED: "宏觀資料尚未封存",
+  UNKNOWN_STRATEGY: "未支援的策略",
+  OPTION_DATA_NOT_FOUND: "查無公開期權報價",
+  COVERAGE_SCHEMA_INVALID: "來源資料未通過驗證",
+  COVERAGE_STALE: "來源資料已逾時",
+  COVERAGE_ABSENT: "來源資料未封存",
+  SNAPSHOT_UNAVAILABLE: "快照暫不可用",
+  ADMITTED_TOP5: "已通過 TOP5 准入",
+  SHORTFALL: "符合條件的資料不足",
+  RESOLVED: "身分已核對", IDENTITY_RESOLVED: "身分已核對",
+  QUOTE_UNAVAILABLE: "報價暫不可用",
+  IDENTITY_FALLBACK_SEC_CACHE: "採用身分備援資料",
+  IDENTITY_CATALOG_UNAVAILABLE: "身分資料目錄暫不可用",
+  IDENTITY_CONFLICT: "身分資料存在衝突",
+  IDENTITY_CONFLICT_UNRESOLVED: "身分資料衝突，暫不解析",
+  NEEDS_MARKET_SELECTION: "請選擇掛牌市場",
+  MARKET_AMBIGUOUS: "市場資訊不明確",
+  INVALID_REQUEST: "查詢格式不合規",
+  CATALOG_PRESENT: "目錄有資料", CATALOG_UNAVAILABLE: "目錄暫不可用",
+  LIMITED_RESEARCH_CANDIDATE: "研究候選（未完成獨立核實）",
+  TEST_ONLY: "僅供測試展示",
+  ADMITTED: "已通過驗收", NOT_ADMITTED: "未通過驗收",
+  QUALIFIED: "符合條件", LOW_VOLUME: "成交量不足",
+  LOW_OI: "未平倉量不足", WIDE_SPREAD: "買賣價差過大",
+  WITHIN_CYCLE_WINDOW: "符合週期天數", OUTSIDE_CYCLE_WINDOW: "超出週期天數",
+  NO_REVENUE_HISTORY: "缺營收歷史", INSUFFICIENT_EVIDENCE: "證據不足",
+  NO_MATCHING_REVENUE: "缺同期營收", INSUFFICIENT_COVERAGE: "訂單覆蓋不足",
+  ESTIMATE: "估計值", CURRENT: "目前資料", STALE: "資料已逾時", INVALID: "資料無效",
+  VERIFIED: "已核驗", UNVERIFIED: "尚未核驗", PENDING: "待處理",
+  ACTIVE: "進行中", INACTIVE: "未啟用",
+  SUPPORTED: "已獲證據支持", INFERENCE: "推論", CONTEXT_ONLY: "僅供背景參考",
+  NOT_A_COMPANY_FINDING: "非個股已驗證結論",
+  UNPROVEN: "尚未證實", UNRANKED: "尚未評定",
+});
+
+/** Unknown values deliberately do not echo the code or arbitrary live text. */
+export function statusLabelZh(code: unknown): string {
+  if (typeof code !== "string" || !Object.prototype.hasOwnProperty.call(STATUS_ZH, code)) return "資料暫不可用";
+  return STATUS_ZH[code]!;
+}
+
+/** Strip machine-code prefixes from free-form diagnostic text, preserving the explanation. */
+export function humanizeStatusText(input: string): string {
+  return input
+    .replace(/\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+){1,}\b/g, code => statusLabelZh(code))
+    .replace(/(?<![A-Za-z0-9/_-])(?:UNAVAILABLE|WITHHELD|AVAILABLE|SUPPORTED|INFERENCE|UNPROVEN|UNRANKED|UNKNOWN|INVALID)(?![A-Za-z0-9/_-])/g,
+      code => statusLabelZh(code));
+}

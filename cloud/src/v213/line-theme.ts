@@ -1,4 +1,6 @@
 import { assertLineMessages, LINE_CAROUSEL_FRAME_BYTES, plainBubbleArray, type LineOutboundMessage } from "../line-messages";
+import { formatDate } from "./line-formatters";
+import { humanizeStatusText } from "./status-labels";
 
 /** Ink monochrome palette, matched to the bot's black-and-white line-art identity.
  * Hierarchy comes from lightness, not hue: a three-stop black-to-graphite
@@ -23,11 +25,27 @@ export const LINE_THEME = Object.freeze({ ink: "#111418", muted: "#4A5058", pape
   negative: "#B42318", paleNegative: "#FEF3F2", caution: "#9A3412", paleCaution: "#FFF7ED",
   accent: "#344F70", accentTint: "#EEF3F8" });
 
-export const menuText = (text: string, size = "sm", color: string = LINE_THEME.ink) => ({ type: "text", text, size, color, wrap: true });
+export const menuText = (text: string, size = "sm", color: string = LINE_THEME.ink) => ({ type: "text", text: humanizeStatusText(text), size, color, wrap: true });
 export const menuBox = (contents: unknown[], extra: Record<string, unknown> = {}) => ({ type: "box", layout: "vertical", spacing: "md", contents, ...extra });
-/** Shared action contract: every product button is a secondary (light grey, ink label), md-height mobile tap target. */
+/** Six-character mobile buttons; commands remain verbatim, without routing changes. */
+export function shortActionLabel(label: string): string {
+  const clean = label.trim();
+  if (Array.from(clean).length <= 6) return clean;
+  if (/每週期權|每周期權/.test(clean) && /查/.test(clean)) return "查週選";
+  if (/每月期權/.test(clean) && /查/.test(clean)) return "查月選";
+  if (/TOP20 個股入口|每日 TOP20|TOP20 榜單/.test(clean)) return "看TOP20";
+  if (/期權與個股快查/.test(clean)) return "期權快查";
+  if (/完整產業分布文字/.test(clean)) return "產業文字";
+  if (/深度化分析|深度分析/.test(clean)) return "深度分析";
+  if (/瓶頸詳情|完整數據與網址/.test(clean)) return "瓶頸詳情";
+  if (/策略教學|期權教學/.test(clean)) return "策略教學";
+  if (/返回.*TOP20|回.*TOP20/i.test(clean)) return "回TOP20";
+  if (/回功能選單/.test(clean)) return "回選單";
+  return clampText(clean, 6);
+}
+/** Shared action contract: secondary, md-height mobile tap target, at most six visible characters. */
 export const menuAction = (label: string, command: string) => ({ type: "button", style: "secondary", height: "md", color: LINE_THEME.button,
-  action: { type: "message", label, text: command } });
+  action: { type: "message", label: shortActionLabel(label), text: command } });
 
 const T = LINE_THEME;
 
@@ -49,7 +67,7 @@ export function signColor(value: string): string {
 }
 
 export const uiText = (text: string, size = "sm", color: string = T.ink, extra: Record<string, unknown> = {}) =>
-  ({ type: "text", text, size, color, wrap: true, ...extra });
+  ({ type: "text", text: humanizeStatusText(text), size, color, wrap: true, ...extra });
 
 export const uiBox = (contents: unknown[], extra: Record<string, unknown> = {}) =>
   ({ type: "box", layout: "vertical", spacing: "sm", contents, ...extra });
@@ -62,7 +80,7 @@ export const chip = (text: string, backgroundColor: string = T.paper, color: str
   });
 
 /** Small ink heading (used outside framed sections). */
-export const sectionTitle = (text: string, color: string = T.ink) => uiText(text, "xxs", color, { weight: "bold" });
+export const sectionTitle = (text: string, color: string = T.ink, afterFirst = false) => uiText(text, "xs", color, { weight: "bold", ...(afterFirst ? { margin: "lg" } : {}) });
 
 /** Label immediately followed by its value (seven-field inspectors rely on this order). */
 export const labelValue = (label: string, value: string, valueExtra: Record<string, unknown> = {}, flex = 1) =>
@@ -71,7 +89,7 @@ export const labelValue = (label: string, value: string, valueExtra: Record<stri
 /** KPI tile: muted label, large sign-coloured value. Long values step down in size. */
 export const kpiTile = (label: string, value: string, color: string = signColor(value)) => uiBox([
   uiText(label, "xxs", T.subtle),
-  uiText(value, value.length > 8 ? "sm" : "xl", color, { weight: "bold" }),
+  uiText(value, value.length > 10 ? "md" : value.length > 7 ? "lg" : "xl", color, { weight: "bold" }),
 ], { flex: 1, spacing: "xs", backgroundColor: T.soft, cornerRadius: "md", paddingAll: "md" });
 
 /** Two-column cards use a cool slate tint; numeric contrast remains on the ink scale. */
@@ -87,7 +105,7 @@ export const accentKpiTile = (label: string, value: string) => {
   ] : [{
     type: "text", size: "sm", wrap: true, contents: [
       { type: "span", text: `${label}\n`, size: "xs", color: T.subtle },
-      { type: "span", text: value, size: value.length > 8 ? "sm" : "lg", color, weight: "bold" },
+      { type: "span", text: value, size: value.length > 10 ? "md" : value.length > 7 ? "lg" : "xl", color, weight: "bold" },
     ],
   }], { flex: 1, spacing: "xs", backgroundColor: T.accentTint, cornerRadius: "md", paddingAll: "sm" });
 };
@@ -125,16 +143,27 @@ export const panel = (contents: unknown[], tone: "soft" | "neutral" | "caution" 
   borderWidth: "light", cornerRadius: "md", paddingAll: "lg", spacing: "md",
 });
 
-export const divider = () => ({ type: "separator", color: T.border });
+export const divider = () => ({ type: "separator", color: T.border, margin: "md" });
 
 /** Shared product header: eyebrow line and bold title on the dark identity band. */
 export const productHeader = (eyebrow: string, title: string, extra: unknown[] = []) => uiBox([
-  uiText(eyebrow, "xxs", T.headerMuted, { weight: "bold" }),
-  uiText(title, "xl", T.headerText, { weight: "bold" }),
+  uiText(eyebrow, "xs", T.headerMuted),
+  uiText(title, "lg", T.headerText, { weight: "bold" }),
   ...extra,
 ], { ...headerStyle, spacing: "sm" });
 
 /** Compact footnote text for disclosures that must remain visible. */
+/** A full-width status notice; the 4px rail substitutes for unsupported CSS border-left. */
+export function noticeBanner(kind: "caution" | "info" | "negative", title: string, body?: string) {
+  const [tint, strong] = kind === "caution" ? [T.paleCaution, T.caution]
+    : kind === "negative" ? [T.paleNegative, T.negative] : [T.accentTint, T.accent];
+  return uiBox([
+    uiBox([], { backgroundColor: strong, width: "4px", flex: 0, cornerRadius: "2px" }),
+    uiBox([uiText(title, "sm", strong, { weight: "bold" }),
+      ...(body ? [uiText(body, "xs", T.ink)] : [])], { flex: 1, spacing: "xs" }),
+  ], { layout: "horizontal", spacing: "md", backgroundColor: tint, cornerRadius: "md", paddingAll: "md" });
+}
+export const noticeText = (title: string, body?: string) => `【注意】${title}${body ? `：${body}` : ""}`;
 export const footnote = (text: string) => uiText(text, "xxs", T.subtle);
 
 // Body visuals (operator 2026-09-25: card bodies read as flat text). Text keeps LINE size keywords;
@@ -196,7 +225,7 @@ export const timelineStep = (marker: string, contents: unknown[], last = false, 
 /** Stat tile with an optional meter under the value (for bounded percentages). */
 export const statTile = (label: string, value: string, bar?: number, sub?: string) => uiBox([
   uiText(label, "xxs", T.subtle),
-  uiText(value, value.length <= 4 ? "xl" : value.length <= 6 ? "lg" : "md", signColor(value), { weight: "bold" }),
+  uiText(value, value.length > 10 ? "md" : value.length > 7 ? "lg" : "xl", signColor(value), { weight: "bold" }),
   ...(bar === undefined ? [] : [meter(bar)]),
   ...(sub ? [uiText(sub, "xxs", T.subtle)] : []),
 ], { flex: 1, spacing: "xs", backgroundColor: T.soft, cornerRadius: "md", paddingAll: "md" });
@@ -322,14 +351,19 @@ export function verdictLine(text: string | null | undefined) {
   return uiText(text, "sm", T.ink, { weight: "bold" });
 }
 
-/** altText "<topic>｜<status>｜<next>" within 120 characters (code-point safe). */
-export function altSummary(parts: { topic: string; status: string; next: string }): string {
-  return clampText(`${parts.topic}｜${parts.status}｜${parts.next}`, 120);
+/** Short accessible alt text always includes the screen name and report or view date. */
+export function altSummary(parts: { topic: string; status: string; next: string; date?: string }): string {
+  const date = formatDate(parts.date ?? new Date());
+  return clampText(`${clampText(parts.topic, 28)}｜${date}｜${clampText(parts.status, 12)}｜${clampText(parts.next, 10)}`, 60);
+}
+export function shortAltText(text: string, date?: string): string {
+  const stamp = formatDate(date ?? new Date());
+  return clampText(`${clampText(text, 42)}｜${stamp}`, 60);
 }
 
 /** Carousels of at most five bubbles and 46 KB each (LINE caps a carousel at 50 KB); validated before return.
  * Count ordinary bubble JSON once per call. No retained counts, reply cache, snapshot or user state. */
-export function packCarousels(bubbles: readonly unknown[], altText: (index: number, total: number) => string): LineOutboundMessage[] {
+export function packCarousels(bubbles: readonly unknown[], altText: (index: number, total: number) => string, asOf?: string): LineOutboundMessage[] {
   const size = (value: unknown) => new TextEncoder().encode(JSON.stringify(value)).length;
   const groups: unknown[][] = [];
   const additive = plainBubbleArray(bubbles);
@@ -352,7 +386,7 @@ export function packCarousels(bubbles: readonly unknown[], altText: (index: numb
   } else {
     for (const bubble of bubbles) append(bubble);
   }
-  const messages: LineOutboundMessage[] = groups.map((contents, index) => ({ type: "flex", altText: altText(index, groups.length),
+  const messages: LineOutboundMessage[] = groups.map((contents, index) => ({ type: "flex", altText: shortAltText(altText(index, groups.length), asOf),
     contents: { type: "carousel", contents } }));
   assertLineMessages(messages);
   return messages;

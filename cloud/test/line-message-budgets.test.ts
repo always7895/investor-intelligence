@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { assertLineMessages, type LineOutboundMessage } from "../src/line-messages";
-import { packCarousels } from "../src/v213/line-theme";
+import { packCarousels, shortAltText } from "../src/v213/line-theme";
 
 const bytes = (value: unknown) => new TextEncoder().encode(JSON.stringify(value)).length;
 const bubble = (text: string) => ({ type: "bubble", body: { type: "box", layout: "vertical", contents: [{ type: "text", text, wrap: true }] } });
@@ -22,12 +22,12 @@ describe("LINE serialized UTF-8 budget boundaries", () => {
     const secondSize = 46_000 - bytes({ type: "carousel", contents: [first, bubble("")] }) + bytes(bubble(""));
     const second = sizedBubble(secondSize, prefix);
     const exact = packCarousels([first, second], alt);
-    expect(exact).toEqual([{ type: "flex", altText: "Page 1/1", contents: { type: "carousel", contents: [first, second] } }]);
+    expect(exact).toEqual([{ type: "flex", altText: shortAltText("Page 1/1"), contents: { type: "carousel", contents: [first, second] } }]);
     expect(bytes(exact[0]!.type === "flex" ? exact[0]!.contents : null)).toBe(46_000);
     const over = { ...second, body: { ...second.body, contents: [{ ...second.body.contents[0]!, text: second.body.contents[0]!.text + "x" }] } };
     expect(packCarousels([first, over], alt)).toEqual([
-      { type: "flex", altText: "Page 1/2", contents: { type: "carousel", contents: [first] } },
-      { type: "flex", altText: "Page 2/2", contents: { type: "carousel", contents: [over] } },
+      { type: "flex", altText: shortAltText("Page 1/2"), contents: { type: "carousel", contents: [first] } },
+      { type: "flex", altText: shortAltText("Page 2/2"), contents: { type: "carousel", contents: [over] } },
     ]);
   });
 
@@ -46,7 +46,7 @@ describe("LINE serialized UTF-8 budget boundaries", () => {
     const custom = { type: "bubble", toJSON(key: string) { return bubble(`Array index ${key}`); } };
     const messages = packCarousels([bubble("First"), custom], alt);
     expect(JSON.parse(JSON.stringify(messages))).toEqual([
-      { type: "flex", altText: "Page 1/1", contents: { type: "carousel", contents: [bubble("First"), bubble("Array index 1")] } },
+      { type: "flex", altText: shortAltText("Page 1/1"), contents: { type: "carousel", contents: [bubble("First"), bubble("Array index 1")] } },
     ]);
   });
 
@@ -111,7 +111,7 @@ describe("LINE serialized UTF-8 budget boundaries", () => {
     const every: any = [custom(), custom()]; every.every = () => true;
     expect(packCarousels(every, alt).map(m => m.type === "flex" && (m.contents.contents as unknown[]).length)).toEqual([1, 1]);
     const throwing: any = [bubble("")]; throwing.every = () => { throw new Error("PACK_EVERY"); };
-    expect(packCarousels(throwing, alt)).toEqual([{ type: "flex", altText: "Page 1/1", contents: { type: "carousel", contents: [bubble("")] } }]);
+    expect(packCarousels(throwing, alt)).toEqual([{ type: "flex", altText: shortAltText("Page 1/1"), contents: { type: "carousel", contents: [bubble("")] } }]);
   });
 
   it.each(["throw", "bigint", "cycle"] as const)("preserves whole-carousel serialization before early type accessor: %s", kind => {
