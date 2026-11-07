@@ -100,7 +100,7 @@ Older deployment/PASS/coverage claims here are scoped to their recorded revision
 - [PUBLIC_SOURCE_RIGHTS_REVIEW_20260909](PUBLIC_SOURCE_RIGHTS_REVIEW_20260909.md)
 - [R75_SEVEN_FIELD_MIGRATION](R75_SEVEN_FIELD_MIGRATION.md)
 - [STATUTORY_AUTHORITY_RESOLUTION_V1](STATUTORY_AUTHORITY_RESOLUTION_V1.md) — statutory authority and external citation typing (GOV/CCR provenance)
-- [LINE_ALL_FRIENDS_ACCESS](LINE_ALL_FRIENDS_ACCESS.md) — `V213_LINE_ACCESS_MODE` switch (default `owner_only`), friend-lane limits, privacy invariants, rollout steps
+- [LINE_ALL_FRIENDS_ACCESS](LINE_ALL_FRIENDS_ACCESS.md) — `V213_LINE_ACCESS_MODE` switch (source-template default `all_friends`; absent/invalid runtime value defaults to `owner_only`), friend-lane limits, privacy invariants, rollout steps
 - [OPERATOR_RUNBOOK](OPERATOR_RUNBOOK.md) — fail-closed operator procedures: health, rollbacks, task recreation, incidents, secret rotation, rollouts
 - [V213_BILINGUAL_FIELDS](V213_BILINGUAL_FIELDS.md)
 - [V213_NAMED_TUNNEL_DEPLOYMENT_HOTFIX](V213_NAMED_TUNNEL_DEPLOYMENT_HOTFIX.md)
