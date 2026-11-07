@@ -17,6 +17,19 @@
       "source_url": "https://www.sec.gov/Archives/edgar/data/0001633978/000119312526442758/d163169dex991.htm",
       "source_date": "2026-11-02",
       "review_by": "2026-12-07"
+    },
+    {
+      "target_market": "US",
+      "target_symbol": "MOD",
+      "kind": "DISTRIBUTION",
+      "status": "CLOSED",
+      "distribution_date": "2026-10-01",
+      "related_market": "US",
+      "related_symbol": "THRM",
+      "shares_per_share": 0.44619,
+      "source_url": "https://www.sec.gov/Archives/edgar/data/67347/000110465926112870/tm2626618d1_8k.htm",
+      "source_date": "2026-10-01",
+      "review_by": null
     }
   ]
 }

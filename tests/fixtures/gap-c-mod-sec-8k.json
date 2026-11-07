@@ -1,0 +1,17 @@
+{
+  "kind": "SEC_FILING_FACT_FIXTURE",
+  "issuer": "Modine Manufacturing Company",
+  "ticker": "MOD",
+  "form": "8-K",
+  "published_on": "2026-10-01",
+  "source_url": "https://www.sec.gov/Archives/edgar/data/67347/000110465926112870/tm2626618d1_8k.htm",
+  "event": "Performance Technologies separation combined with Gentherm",
+  "distribution_record_date": "2026-09-28",
+  "distribution_date": "2026-10-01",
+  "target_symbol": "MOD",
+  "related_symbol": "THRM",
+  "shares_per_mod_share": 0.44619,
+  "mod_shareholders_retain_mod_shares": true,
+  "fractional_shares": "cash in lieu",
+  "basis": "Issuer SEC Form 8-K, Item 2.01 and Exhibit 99.1. No company cash proceeds are treated as shareholder cash consideration."
+}

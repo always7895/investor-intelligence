@@ -26,6 +26,11 @@ ENTRY_FIELDS = frozenset({
     "exchange_ratio", "cash_per_share", "currency", "announced_on", "expected_close",
     "status", "status_on", "source_url", "source_date", "review_by",
 })
+DISTRIBUTION_FIELDS = frozenset({
+    "target_market", "target_symbol", "kind", "status", "distribution_date",
+    "related_market", "related_symbol", "shares_per_share",
+    "source_url", "source_date", "review_by",
+})
 FORMS = frozenset({"425", "DEFM14A", "PREM14A", "S-4", "SC TO-T", "SC 14D9"})
 SEC_FORMS_URL = "https://data.sec.gov/submissions/CIK{cik:010d}.json"
 TICKERS_URL = "https://www.sec.gov/files/company_tickers_exchange.json"
@@ -100,8 +105,39 @@ def load_actions_bytes(raw: bytes, *, today: date | None = None) -> dict[str, An
         raise ValueError("CORPORATE_ACTION_CLOCK")
     entries = []
     pending_targets: set[str] = set()
+    distribution_keys: set[tuple[str, str, str]] = set()
     for raw in doc["entries"]:
-        if not isinstance(raw, dict) or set(raw) != ENTRY_FIELDS:
+        if not isinstance(raw, dict):
+            raise ValueError("CORPORATE_ACTION_ENTRY_FIELDS")
+        if raw.get("kind") == "DISTRIBUTION":
+            if set(raw) != DISTRIBUTION_FIELDS:
+                raise ValueError("CORPORATE_ACTION_DISTRIBUTION_FIELDS")
+            if raw["status"] != "CLOSED":
+                raise ValueError("CORPORATE_ACTION_DISTRIBUTION_NOT_CLOSED")
+            for symbol_key in ("target_symbol", "related_symbol"):
+                symbol = raw[symbol_key]
+                if not isinstance(symbol, str) or not SYMBOL.fullmatch(symbol):
+                    raise ValueError("CORPORATE_ACTION_DISTRIBUTION_SYMBOL")
+            if raw["target_market"] != "US" or raw["related_market"] != "US":
+                raise ValueError("CORPORATE_ACTION_DISTRIBUTION_MARKET")
+            if raw["target_symbol"] == raw["related_symbol"]:
+                raise ValueError("CORPORATE_ACTION_DISTRIBUTION_SELF")
+            if not _finite_positive(raw["shares_per_share"]) or raw["shares_per_share"] > 10000:
+                raise ValueError("CORPORATE_ACTION_DISTRIBUTION_RATIO")
+            if not _filing_url(raw["source_url"]):
+                raise ValueError("CORPORATE_ACTION_DISTRIBUTION_SOURCE")
+            distribution_day = _day(raw["distribution_date"])
+            source_day = _day(raw["source_date"])
+            review_day = _day(raw["review_by"]) if raw["review_by"] is not None else None
+            if source_day < distribution_day or (review_day is not None and review_day < distribution_day):
+                raise ValueError("CORPORATE_ACTION_DISTRIBUTION_CHRONOLOGY")
+            key = (raw["target_symbol"], raw["distribution_date"], raw["related_symbol"])
+            if key in distribution_keys:
+                raise ValueError("CORPORATE_ACTION_DUPLICATE_DISTRIBUTION")
+            distribution_keys.add(key)
+            entries.append({**raw, "flags": []})  # a CLOSED event has no pending review flag
+            continue
+        if set(raw) != ENTRY_FIELDS:
             raise ValueError("CORPORATE_ACTION_ENTRY_FIELDS")
         for key in ("target_symbol", "acquirer_symbol"):
             if not isinstance(raw[key], str) or not SYMBOL.fullmatch(raw[key]):
@@ -168,6 +204,26 @@ def acquirer_note(entry: dict[str, Any]) -> dict[str, Any]:
              "exchange_ratio", "cash_per_share", "currency", "expected_close", "source_url")}
 
 
+def completed_distributions(doc: dict[str, Any], *, asof: date | None = None) -> dict[str, list[dict[str, Any]]]:
+    """Completed shareholder entitlements; never pending-target suppressions."""
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for entry in doc["entries"]:
+        if (entry["kind"] == "DISTRIBUTION" and entry["status"] == "CLOSED"
+                and (asof is None or _day(entry["distribution_date"]) <= asof)):
+            grouped.setdefault(entry["target_symbol"], []).append(entry)
+    for rows in grouped.values():
+        rows.sort(key=lambda x: (x["distribution_date"], x["related_symbol"]))
+    return grouped
+
+
+def distribution_note(entry: dict[str, Any]) -> dict[str, Any]:
+    """Exact, public display-only projection (never a merger/acquirer payload)."""
+    return {key: entry[key] for key in (
+        "target_market", "target_symbol", "kind", "status", "distribution_date",
+        "related_market", "related_symbol", "shares_per_share",
+        "source_url", "source_date", "review_by")}
+
+
 def _us_layer_symbols(layers_path: Path) -> list[str]:
     doc = _json(Path(layers_path).read_bytes(), MAX_SUBMISSION)
     if not isinstance(doc, dict) or not isinstance(doc.get("layers"), list):
@@ -207,7 +263,9 @@ def discover_filings(*, today: date, fetch: Callable[[str], bytes], cik_by: dict
                      layers_path: Path = DEFAULT_LAYERS, config_path: Path = DEFAULT_CONFIG) -> dict[str, Any]:
     """30-day SEC submissions JSON: only existing layer US symbols, never owner watchlists."""
     actions = load_actions(config_path, today=today)
-    registered = {entry[x] for entry in actions["entries"] for x in ("target_symbol", "acquirer_symbol")}
+    registered = {value for entry in actions["entries"]
+                  for value in (entry.get("target_symbol"), entry.get("acquirer_symbol"), entry.get("related_symbol"))
+                  if value is not None}
     symbols = _us_layer_symbols(layers_path)
     cutoff = today - timedelta(days=30)
     results = []
