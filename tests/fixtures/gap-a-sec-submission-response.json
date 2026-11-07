@@ -1,0 +1,11 @@
+{
+  "accession_fixture_provenance": "SEC submissions recent JSON response shape, deterministic offline test excerpt; synthetic record identifiers, not evidence of an actual filing",
+  "filings": {
+    "recent": {
+      "form": ["425", "10-Q", "DEFM14A"],
+      "filingDate": ["2026-11-06", "2026-11-05", "2026-09-01"],
+      "accessionNumber": ["0000000000-26-123456", "0000000000-26-123457", "0000000000-26-123458"],
+      "primaryDocument": ["synthetic-425.htm", "synthetic-10q.htm", "old-defm14a.htm"]
+    }
+  }
+}
