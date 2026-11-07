@@ -111,6 +111,8 @@ Use these severity levels:
 
 Only evidence-bound value-transfer/destruction should support `equity_capture_destroyed_by_financing` and a severe thesis break. Material dilution may coexist with a valid operating thesis.
 
+Check the reviewed `config/corporate-actions-v1.json` before ranking or suggesting public options: a `PENDING` all-stock target is withheld (`DEAL_PENDING_TARGET`), while the acquirer keeps its independently evidenced operating score and receives a separate exchange-ratio/completion-window note; a projected closing date is not a completed acquisition. A missing or invalid registry is an explicit blocker, never evidence of no deals.
+
 ### 7. Preserve source-view lifecycle
 
 Every public Serenity view should carry:
