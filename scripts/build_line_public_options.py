@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any
 
 import yfinance as yf
+import corporate_actions
 
 from fetch_options import (
     CONFIG_DIR,
@@ -323,6 +324,21 @@ def to_public_record(raw: dict[str, Any], currency: str = "USD") -> dict[str, An
     }
 
 
+def pending_target_record(item: dict[str, Any]) -> dict[str, Any]:
+    """Explicit fail-closed status, with no target option chain and no publication rights."""
+    return {
+        "schema_version": 1, "ticker": item["ticker"],
+        "provider_symbol": item["market_data_ticker"], "currency": item["currency"],
+        "retrieved_at": datetime.now(timezone.utc).isoformat(),
+        "status": "DEAL_PENDING_TARGET", "withheld_reason": "DEAL_PENDING_TARGET",
+        "quote_source": "yfinance", "quote_delay_status": "THIRD_PARTY_DELAY_UNKNOWN",
+        "provider_scope": "public_only", "line_public_eligible": False,
+        "ibkr_connected": False, "brokerage_data_included": False,
+        "account_data_included": False, "position_data_included": False,
+        "owner_watchlist_inherited": False, "periods": {},
+    }
+
+
 def build_public_options(
     *,
     symbols_path: Path = DEFAULT_SYMBOLS_PATH,
@@ -334,6 +350,7 @@ def build_public_options(
     symbols = load_public_symbols(symbols_path)
     if not symbols:
         raise ValueError("LINE public symbol catalog is empty; refusing to inherit owner symbols")
+    pending = corporate_actions.pending_targets(corporate_actions.load_actions())
     prices = load_market_prices(market_path)
     policy = load_policy(policy_path)
 
@@ -341,6 +358,9 @@ def build_public_options(
     for index, item in enumerate(symbols, start=1):
         ticker = item["ticker"]
         provider_symbol = item["market_data_ticker"]
+        if ticker in pending:
+            results.append(pending_target_record(item))
+            continue  # do not even ask for an underlying or an option chain
         price = prices.get(ticker)
         if not price:
             try:
