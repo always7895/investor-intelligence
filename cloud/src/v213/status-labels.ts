@@ -11,6 +11,7 @@ const STATUS_ZH: Readonly<Record<string, string>> = Object.freeze({
   CHAIN_PROVIDER_ERROR: "資料來源暫時無法取得",
   PROVIDER_ERROR: "資料來源暫時無法取得",
   DEAL_PENDING_TARGET: "併購進行中，暫停選擇權建議",
+  DISTRIBUTION_IN_WINDOW: "分拆後尚無經驗證的調整價格，暫不計算（不視為零）",
   NO_EXPIRATION_IN_WINDOW: "指定期間內無到期合約",
   NO_CANDIDATES: "暫無符合條件的候選",
   NO_DATA: "暫無資料", NOT_FOUND: "查無資料",

@@ -8,6 +8,7 @@ import { createHash } from "node:crypto";
 import { assertLineMessages, type LineOutboundMessage } from "../src/line-messages";
 import { parseQuery } from "../src/core";
 import { doc, HOUR } from "./bottleneck-v3-fixture";
+import modDistributionFact from "../../tests/fixtures/gap-c-mod-sec-8k.json";
 import { parseBottleneckV3, buildBottleneckTop20Messages, buildBottleneckDetail } from "../src/v213/bottleneck-v3";
 import { buildOptionsGuidanceFlexBubble, buildOptionsGuidanceText, generateOptionsOrderGuidance } from "../src/v213/options-guidance";
 import { optionsUnavailableReport } from "../src/v213/options-product";
@@ -18,6 +19,48 @@ const asMessages = (value: LineOutboundMessage[] | string | null): LineOutboundM
   typeof value === "string" ? [{ type: "text", text: value }] : value ?? [];
 
 const clone = <T,>(input: T): T => structuredClone(input);
+
+/** GAP-C: actual SEC terms in an otherwise synthetic, forced-inclusion MOD card.
+ * The real ranker excludes MOD while its distribution-crossing CAGR is unknown.
+ * This fixture deliberately forces an entry to exercise the LINE renderer, not ranking.
+ */
+function makeGapCModOutputs(now: number): Record<string, LineOutboundMessage[]> {
+  const raw = clone(doc(now - HOUR)) as any;
+  raw.top[0].symbol = modDistributionFact.target_symbol;
+  raw.top[0].name = "Synthetic MOD Distribution UI Case";
+  raw.top[0].layer = "cooling_power_train";
+  raw.industries.push({ ...raw.industries[0], rank: 4, id: "cooling_power_train", name_zh: "散熱與機房電力鏈" });
+  raw.top[0].market = {
+    ...raw.top[0].market, asof: "2026-11-06", currency: "USD",
+    history_start: "2023-11-06", history_request_start: "2023-11-06",
+    lineage: { kind: "UNKNOWN" }, long_term_basis: "UNAVAILABLE",
+    cagr_listed: null, cagr_listed_start: null, cagr_listed_span_days: null,
+    ret_6m: null, ret_1y: null, cagr_2y: null,
+    return_reasons: {
+      ret_6m: "DISTRIBUTION_IN_WINDOW",
+      ret_1y: "DISTRIBUTION_IN_WINDOW",
+      cagr_2y: "DISTRIBUTION_IN_WINDOW",
+    },
+  };
+  raw.top[0].corporate_action = {
+    target_market: "US", target_symbol: modDistributionFact.target_symbol,
+    kind: "DISTRIBUTION", status: "CLOSED",
+    distribution_date: modDistributionFact.distribution_date,
+    related_market: "US", related_symbol: modDistributionFact.related_symbol,
+    shares_per_share: modDistributionFact.shares_per_mod_share,
+    source_url: modDistributionFact.source_url,
+    source_date: modDistributionFact.published_on, review_by: null,
+  };
+  const parsed = parseBottleneckV3(raw, now);
+  if (!parsed) throw new Error("UI_R3_GAP_C_MOD_FIXTURE_INVALID");
+  return {
+    "gap-c-mod-top20-flex.json": buildBottleneckTop20Messages(parsed, "flex"),
+    "gap-c-mod-top20-text.json": buildBottleneckTop20Messages(parsed, "text"),
+    "gap-c-mod-detail-flex.json": asMessages(buildBottleneckDetail(parsed, "MOD", "flex")),
+    "gap-c-mod-detail-text.json": asMessages(buildBottleneckDetail(parsed, "MOD", "text")),
+  };
+}
+
 async function makePreviews(): Promise<Record<string, LineOutboundMessage[]>> {
   const now = Date.now();
   const standard = parseBottleneckV3(doc(now - HOUR), now);
@@ -121,8 +164,8 @@ describe("UI-R3 offline preview artifacts", () => {
       "No network, Worker, brokerage or LINE send was performed. JSON files hold raw LINE Flex/text payloads.\n", "utf8");
   });
 
-  it("guards all 12 preview surfaces against duplicate labels, raw ISO instants, raw status tokens and snake_case codes", async () => {
-    const surfaces = await makePreviews();
+  it("guards 12 UI-R3 previews plus 4 GAP-C MOD outputs against raw status tokens and snake_case codes", async () => {
+    const surfaces = { ...await makePreviews(), ...makeGapCModOutputs(Date.now()) };
     const visibleText = (messages: readonly LineOutboundMessage[]): string => {
       const lines: string[] = [];
       const visit = (value: unknown): void => {
@@ -150,6 +193,20 @@ describe("UI-R3 offline preview artifacts", () => {
       expect(text, name).not.toMatch(/\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z\b/);
       expect(text, name).not.toMatch(/(?<![A-Za-z0-9_./-])(?:[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+|[a-z][a-z0-9]*(?:_[a-z0-9]+)+)(?![A-Za-z0-9_./-])/);
     }
+    const modOutputs = Object.entries(surfaces).filter(([name]) => name.startsWith("gap-c-mod-"));
+    expect(modOutputs).toHaveLength(4);
+    for (const [name, messages] of modOutputs) {
+      const rendered = visibleText(messages);
+      expect(rendered, name).toContain("分拆後尚無經驗證的調整價格，暫不計算（不視為零）");
+      expect(rendered, name).toContain("0.44619");
+      expect(rendered, name).not.toContain("DISTRIBUTION_IN_WINDOW");
+    }
+    // The actual ranker withholds MOD's 2-year CAGR. The sealed v3 reader has
+    // no 'excluded' rows; direct detail lookup therefore reports non-membership,
+    // and must not manufacture an in-list MOD company card.
+    const normal = parseBottleneckV3(doc(Date.now() - HOUR));
+    expect(normal).not.toBeNull();
+    expect(buildBottleneckDetail(normal!, "MOD", "text")).toContain("不在本輪瓶頸爆發 TOP20");
     expect(visibleText(surfaces["top20-text.json"]!)).toContain("（台北）");
     const deal = visibleText(surfaces["lite-mrvl-deal-text.json"]!);
     expect(deal).toContain("預計 2028 年上半年完成");

@@ -26,6 +26,7 @@ describe("UI-R3 status presentation (wire values remain unchanged)", () => {
     ["CHAIN_PROVIDER_ERROR", "資料來源暫時無法取得"],
     ["PROVIDER_ERROR", "資料來源暫時無法取得"],
     ["DEAL_PENDING_TARGET", "併購進行中，暫停選擇權建議"],
+    ["DISTRIBUTION_IN_WINDOW", "分拆後尚無經驗證的調整價格，暫不計算（不視為零）"],
     ["UNAVAILABLE", "資料暫不可用"],
     ["QUOTE_UNAVAILABLE", "報價暫不可用"],
   ])("%s displays %s", (code, wanted) => expect(statusLabelZh(code)).toBe(wanted));

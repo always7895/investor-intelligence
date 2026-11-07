@@ -13,6 +13,7 @@ import { v213ReportAgeFresh } from "./report-age";
 import { unwrapTransportV1 } from "./revenue-guidance-wire";
 import { GUIDANCE_BINDING_KEY, MACHINE_SCHEMA, resolveSealedMachineBindings, type MachineBindings } from "./revenue-guidance-machine";
 import { sourceZh } from "./source-labels";
+import { statusLabelZh } from "./status-labels";
 import { formatTaipeiTimestamp, formatVisibleMoment } from "./line-formatters";
 import { PRICE_SOURCE_LABEL } from "./market-observations";
 import { buildCompanyDataReportFlex, buildCompanyDataReportMessages, validateCompanyDataReport } from "./deep-analysis";
@@ -758,7 +759,7 @@ function longTerm(market: Market): { value: string; sub: string | undefined; eve
   }
   if (lineage) return { value: "獨立交易價格未滿2年", sub: "正常交易未滿1年或缺首日價格，不年化", event, sources };
   if (market.return_reasons?.cagr_2y === "DISTRIBUTION_IN_WINDOW") {
-    return { value: "分拆期間報酬不可比", sub: "DISTRIBUTION_IN_WINDOW（未知，非零）", event, sources };
+    return { value: "分拆期間報酬不可比", sub: statusLabelZh("DISTRIBUTION_IN_WINDOW"), event, sources };
   }
   return { value: "2年價格資料不足", sub: market.history_start ? `可得價格自 ${day(market.history_start)}；上市沿革未核實` : "上市沿革未核實", event, sources };
 }
