@@ -1079,7 +1079,7 @@ def long_term_gate(market: dict[str, Any] | None) -> tuple[float | None, list[st
 
 
 # ---- V16 lead math (pure functions; every new input is optional and falls back to the pre-V16 behaviour) ----
-DEFAULT_CHAIN_WEIGHTS = {1: 1.0, 2: 1.0, 3: 0.85, 4: 0.9, 5: 0.8, 6: 0.6}
+DEFAULT_CHAIN_WEIGHTS = {1: 1.0, 2: 1.0, 3: 0.85, 4: 0.9, 5: 0.8, 6: 0.6, 7: 0.5}
 CHAIN_WEIGHT_FALLBACK = 0.6
 FUND_WEIGHT_CAP = 0.30          # long_weight at which the 13F part of the company lead saturates
 FUND_LEAD_MAX = 0.3             # maximum 13F part of the company lead (unchanged since v3)
@@ -1205,6 +1205,24 @@ def layer_fund_weight(rows: Iterable[dict[str, Any]], filing: dict[str, Any] | N
             raw += _finite(pos.get("long_weight")) or 0.0
             eff += effective_13f_weight(pos, filing, now)[0]
     return raw, eff
+
+
+def market_window_summary(scored: list[dict[str, Any]]) -> dict[str, Any]:
+    """Display-only breadth of the post-filter scored universe; unknowns never become misses.
+
+    Deliberately consumes already-scored rows and never mutates them, their scores,
+    admission rules, industry weights, exclusions or the Top20 selection.
+    """
+    values = []
+    for row in scored:
+        market = row.get("market")
+        number = _finite(market.get("ret_6m")) if isinstance(market, dict) else None
+        if number is not None:
+            values.append(number)
+    return {"positive_share": sum(n > 0 for n in values) / len(values) if values else None,
+            "median_ret_6m": statistics.median(values) if values else None,
+            "count_used": len(values), "unknown_count": len(scored) - len(values),
+            "scored_universe_count": len(scored)}
 
 
 def build(fetch: Callable[[str], bytes] | None, now: datetime, with_news: bool = True, *, captured=None,
@@ -1353,6 +1371,7 @@ def build(fetch: Callable[[str], bytes] | None, now: datetime, with_news: bool =
     return {"schema": "v213-bottleneck-top20-v3", "generated_at": iso(now), "method": "bottleneck-explosion-v3",
             "leads": {"serenity": serenity.get("source"), "leopold": {"filing": leopold.get("filing"), "caveat": leopold.get("caveat")}},
             "layers_source": "config/bottleneck-layers-v3.json", "top": top, "industries": industry,
+            "market_window": market_window_summary(scored),
             "watch": [{"symbol": c["symbol"], "score": c["score"], "layer": c["layer"]} for c in overflow[:10]],
             "all_scores": [{"symbol": c["symbol"], "score": c["score"], "layer": c["layer"], "archetype": c["archetype"],
                             "parts": c["score_parts"]} for c in scored],

@@ -502,7 +502,7 @@ class LeadMathV16Tests(unittest.TestCase):
 
     def test_chain_weights_come_from_config_with_a_fallback(self):
         config = json.loads((ROOT / "config" / "bottleneck-layers-v3.json").read_text(encoding="utf-8"))
-        self.assertEqual(engine.chain_weights(config), {1: 1.0, 2: 1.0, 3: 0.85, 4: 0.9, 5: 0.8, 6: 0.6})
+        self.assertEqual(engine.chain_weights(config), {1: 1.0, 2: 1.0, 3: 0.85, 4: 0.9, 5: 0.8, 6: 0.6, 7: 0.5})
         self.assertTrue(config["chain_weights_rationale"] and config["chain_weights_source"]["url"])
         self.assertEqual(engine.chain_weights({"layers": []}), engine.DEFAULT_CHAIN_WEIGHTS)
         changed = engine.chain_weights({"chain_weights": {"4": 0.5, "x": 1, "5": "bad", "6": 9}})
