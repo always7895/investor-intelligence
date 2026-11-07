@@ -58,6 +58,7 @@ HOST_REQUIRED_FILES = {
     "scripts/revenue_guidance_machine.py",
     "scripts/revenue_guidance_provider.psm1", "scripts/revenue_guidance_orchestration.psm1",
     "scripts/bottleneck_top20_v3.py", "scripts/publish_sealed_snapshot.py",
+    "scripts/corporate_actions.py", "config/corporate-actions-v1.json",
     "scripts/bottleneck_ranking.py", "scripts/bottleneck_claim_admission.py",
     "scripts/company_claim_admission_bridge.py", "scripts/multilineage_claim_bundle.py",
     "scripts/source_registry.py", "scripts/adapters/__init__.py", "scripts/adapters/base.py",

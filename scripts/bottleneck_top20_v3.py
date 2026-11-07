@@ -1231,7 +1231,9 @@ def build(fetch: Callable[[str], bytes] | None, now: datetime, with_news: bool =
         from publish_sealed_snapshot import CapturedPublicationInputs
         if type(captured) is not CapturedPublicationInputs:
             raise ValueError("RANKING_CAPTURE_OPERAND")
-    action_doc = corporate_actions.load_actions(today=now.date())  # fail closed on missing/malformed registry
+    action_doc = (corporate_actions.load_actions_bytes(captured.operand("corporate_actions").read_bytes(), today=now.date())
+                  if captured is not None else corporate_actions.load_actions(today=now.date()))
+    # The protected host binds registry bytes to the same immutable capture catalog.
     pending_targets = corporate_actions.pending_targets(action_doc)
     pending_acquirers = corporate_actions.pending_acquirers(action_doc)
     layers_doc = load_json(captured.operand("layers") if captured else LAYERS)

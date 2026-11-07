@@ -74,14 +74,23 @@ def _filing_url(value: Any) -> bool:
         parsed = urlparse(value)
     except ValueError:
         return False
-    return (parsed.scheme == "https" and parsed.hostname in {"www.sec.gov", "data.sec.gov"}
+    # The public Worker accepts only primary SEC archive exhibits; issuer IR and
+    # other SEC endpoints would invalidate the entire sealed Top20 payload.
+    return (parsed.scheme == "https" and parsed.hostname == "www.sec.gov"
             and not parsed.username and not parsed.password and parsed.port is None
-            and not parsed.query and not parsed.fragment and parsed.path.startswith("/"))
+            and not parsed.query and not parsed.fragment and parsed.path.startswith("/Archives/"))
 
 
 def load_actions(path: Path = DEFAULT_CONFIG, *, today: date | None = None) -> dict[str, Any]:
-    """Strict closed-schema loader. Every invocation refuses missing/bad config."""
-    doc = _json(Path(path).read_bytes(), MAX_FILE)
+    """Standalone loader for independently installed reviewed registries."""
+    return load_actions_bytes(Path(path).read_bytes(), today=today)
+
+
+def load_actions_bytes(raw: bytes, *, today: date | None = None) -> dict[str, Any]:
+    """Validate identical registry bytes without reopening a path or bypassing capture."""
+    if type(raw) is not bytes:
+        raise ValueError("CORPORATE_ACTION_BYTES_REQUIRED")
+    doc = _json(raw, MAX_FILE)
     if not isinstance(doc, dict) or set(doc) != REGISTRY_FIELDS or doc["schema_version"] != 1 or not isinstance(doc["entries"], list):
         raise ValueError("CORPORATE_ACTION_SCHEMA")
     if len(doc["entries"]) > 200:

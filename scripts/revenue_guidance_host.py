@@ -47,6 +47,7 @@ CONFIG_FILES = {
     "official_names": "company-zh-names-v1.json", "official_quarters": "official-quarterly-revenue-v1.json",
     "claims": "order-claims-v2.json", "korea_orders": "korea-ir-orders-v1.json",
     "korea_fundamentals": "korea-ir-fundamentals-v1.json",
+    "corporate_actions": "corporate-actions-v1.json",
 }
 
 
