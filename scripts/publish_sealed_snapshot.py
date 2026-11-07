@@ -43,6 +43,7 @@ import build_v213_macro_industry_research as macro_builder  # noqa: E402
 import build_zh_names  # noqa: E402
 import company_deep_report  # noqa: E402
 import listing_lineage  # noqa: E402
+import corporate_actions  # noqa: E402
 import order_forecast  # noqa: E402
 import order_claims  # noqa: E402
 import revenue_guidance  # noqa: E402
@@ -786,6 +787,16 @@ def captured_bottleneck_v3_body(raw: bytes, now: datetime, effective_inputs=None
             if guidance_machine_enabled:
                 raise machine.MachinePublicationBlocked()
             return {}
+        # Apply corporate-action state at the ranking's evidence cutoff, never before its announcement.
+        actions = corporate_actions.load_actions(today=generated.date())
+        active = [entry for entry in actions["entries"] if entry["status"] == "PENDING"
+                  and entry["announced_on"] <= generated.date().isoformat()]
+        pending_targets = {entry["target_symbol"] for entry in active}
+        if any(entry["symbol"] in pending_targets for entry in doc["top"]):
+            if guidance_machine_enabled:
+                raise machine.MachinePublicationBlocked("DEAL_PENDING_TARGET")
+            return {}  # do not seal an obsolete pre-deal target ranking into a newer report
+        acquirer_actions = {entry["acquirer_symbol"]: entry for entry in active}
         pick = lambda row, keys: {key: row.get(key) for key in keys}  # noqa: E731
         top = []
         zh = build_zh_names.names_for([entry["symbol"] for entry in doc["top"]],
@@ -866,6 +877,8 @@ def captured_bottleneck_v3_body(raw: bytes, now: datetime, effective_inputs=None
                 "name_zh_source": zh[entry["symbol"]][1] if entry["symbol"] in zh else None,
                 "layer": entry["layer"], "archetype": entry["archetype"], "score": entry["score"],
                 "role": entry["role"][:200], "role_zh": str(role_zh)[:200] if role_zh else None,
+                **({"corporate_action": corporate_actions.acquirer_note(acquirer_actions[entry["symbol"]])}
+                   if entry["symbol"] in acquirer_actions else {}),
                 "role_source": entry["role_source"], "outlook": _with_order_forecast(
                     entry["symbol"], _sealed_outlook(entry.get("outlook"), generated), (entry.get("outlook") or {}).get("orders"),
                     order_scenarios.get(entry["symbol"]), generated, order_claim_registry,

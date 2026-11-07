@@ -46,6 +46,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import listing_lineage  # noqa: E402
 import official_quarterly_revenue  # noqa: E402
 import revenue_trend  # noqa: E402
+import corporate_actions  # noqa: E402
 
 LAYERS = ROOT / "config" / "bottleneck-layers-v3.json"
 KOREA_ORDERS = ROOT / "config" / "korea-ir-orders-v1.json"
@@ -1212,6 +1213,9 @@ def build(fetch: Callable[[str], bytes] | None, now: datetime, with_news: bool =
         from publish_sealed_snapshot import CapturedPublicationInputs
         if type(captured) is not CapturedPublicationInputs:
             raise ValueError("RANKING_CAPTURE_OPERAND")
+    action_doc = corporate_actions.load_actions(today=now.date())  # fail closed on missing/malformed registry
+    pending_targets = corporate_actions.pending_targets(action_doc)
+    pending_acquirers = corporate_actions.pending_acquirers(action_doc)
     layers_doc = load_json(captured.operand("layers") if captured else LAYERS)
     layers = layers_doc["layers"]
     chain_weight_by = chain_weights(layers_doc)
@@ -1263,7 +1267,9 @@ def build(fetch: Callable[[str], bytes] | None, now: datetime, with_news: bool =
                                                      (lambda url: json.loads(captured.operand("http/" + url).read_text())) if captured else None),
                                                  captured=captured),
                              "fundamentals": fund, "market": market, "market_cap_usd": cap * rate if cap and rate else None,
-                             "serenity": serenity_by.get(symbol), "leopold": leopold_by.get(symbol)}
+                             "serenity": serenity_by.get(symbol), "leopold": leopold_by.get(symbol),
+                             **({"corporate_action": corporate_actions.acquirer_note(pending_acquirers[symbol])}
+                                if symbol in pending_acquirers else {})}
     # Layer heat and the Leopold-led industry ranking.
     max_intensity = max((row["intensity"] for row in serenity["signals"]), default=1.0) or 1.0  # raw, not mirror-scaled
     mirror = serenity_mirror_factor(serenity.get("source"), now)
@@ -1299,6 +1305,13 @@ def build(fetch: Callable[[str], bytes] | None, now: datetime, with_news: bool =
     # Company scores and filters.
     scored, excluded = [], []
     for company in companies.values():
+        pending = pending_targets.get(company["symbol"])
+        if pending is not None:
+            excluded.append({"symbol": company["symbol"], "reasons": ["DEAL_PENDING_TARGET"],
+                             "acquirer": pending["acquirer_symbol"], "kind": pending["kind"],
+                             "ratio": pending["exchange_ratio"], "expected_close": pending["expected_close"],
+                             "source_url": pending["source_url"]})
+            continue
         market, fund, sig, pos = company["market"], company["fundamentals"], company["serenity"], company["leopold"]
         long_term, reasons = long_term_gate(market)
         if serenity_excluded(sig):

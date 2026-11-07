@@ -119,6 +119,11 @@ export interface Outlook {
   order_forecast_v3?: unknown;
 }
 interface LeopoldLead { long_weight: number; status: string; }
+interface CorporateActionNote {
+  target_symbol: string; acquirer_symbol: string; kind: "ALL_STOCK" | "CASH" | "MIXED";
+  exchange_ratio: number | null; cash_per_share: number | null; currency: string | null;
+  expected_close: string; source_url: string;
+}
 export interface BottleneckEntry {
   rank: number; symbol: string; name: string; layer: string;
   /** Traditional Chinese name stated by the exchange, the company or Chinese Wikipedia; null when none exists. */
@@ -135,6 +140,8 @@ export interface BottleneckEntry {
   parts: { layer_heat: number; capture: number; lead: number; confirmation: number; size: number; penalty: number };
   fundamentals: Fundamentals | null; market: Market; market_cap_usd: number | null;
   serenity: SerenityLead | null; leopold: LeopoldLead | null;
+  /** Reviewed public merger term. Acquirer display only, never score-bearing. */
+  corporate_action?: CorporateActionNote;
 }
 export interface IndustryEntry {
   rank: number; id: string; name_zh: string; chain: string; leopold_constraint: string; leopold_constraint_zh?: string | null; explosiveness: number;
@@ -348,11 +355,39 @@ function validOutlook(raw: any, generatedAt: string): boolean {
   return ordersOk && consensusOk && secondOk;
 }
 
+function validCorporateAction(raw: unknown, symbol: string): boolean {
+  if (raw === undefined) return true; // compatible with pre-merger seals
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return false;
+  const x = raw as Record<string, unknown>;
+  const keys = ["target_symbol", "acquirer_symbol", "kind", "exchange_ratio", "cash_per_share", "currency", "expected_close", "source_url"];
+  if (!keysExactly(x, keys) || !str(x.target_symbol, 15) || !/^[A-Z0-9][A-Z0-9.-]{0,14}$/.test(x.target_symbol as string)
+    || x.target_symbol === symbol || x.acquirer_symbol !== symbol || !["ALL_STOCK", "CASH", "MIXED"].includes(String(x.kind))
+    || !str(x.expected_close, 70) || !/^(?:20\d{2}-(?:H[12]|Q[1-4])|(?:first|second) half of calendar year 20\d{2}|20\d{2}-\d{2}-\d{2})$/.test(x.expected_close as string)
+    || !https(x.source_url) || !(x.source_url as string).startsWith("https://www.sec.gov/Archives/")) return false;
+  const share = num(x.exchange_ratio) && (x.exchange_ratio as number) > 0 && (x.exchange_ratio as number) <= 10000;
+  const cash = num(x.cash_per_share) && (x.cash_per_share as number) > 0;
+  if (x.kind === "ALL_STOCK") return share && x.cash_per_share === null && x.currency === null;
+  if (x.kind === "CASH") return x.exchange_ratio === null && cash && typeof x.currency === "string" && /^[A-Z]{3}$/.test(x.currency);
+  return share && cash && typeof x.currency === "string" && /^[A-Z]{3}$/.test(x.currency);
+}
+
+function corporateActionText(entry: BottleneckEntry): string | null {
+  const deal = entry.corporate_action;
+  if (!deal) return null;
+  const firstHalf = /^first half of calendar year (20\d{2})$/.exec(deal.expected_close);
+  const secondHalf = /^second half of calendar year (20\d{2})$/.exec(deal.expected_close);
+  const expected = firstHalf ? `${firstHalf[1]} 年上半年` : secondHalf ? `${secondHalf[1]} 年下半年` : deal.expected_close;
+  const terms = deal.kind === "ALL_STOCK" ? `每股換 ${deal.exchange_ratio!.toFixed(3)} 股 ${deal.acquirer_symbol}`
+    : deal.kind === "CASH" ? `每股現金 ${deal.cash_per_share} ${deal.currency}`
+    : `每股換 ${deal.exchange_ratio!.toFixed(3)} 股 ${deal.acquirer_symbol} 加現金 ${deal.cash_per_share} ${deal.currency}`;
+  return `併購進行中：${terms}，預計 ${expected} 完成；股價主要跟隨 ${deal.acquirer_symbol}（完成仍待審核）`;
+}
+
 function validEntry(raw: any, generatedAt: string): raw is BottleneckEntry {
   return raw && Number.isInteger(raw.rank) && str(raw.symbol, 16) && str(raw.name, 160) && str(raw.layer, 40)
     && (raw.name_zh === undefined || raw.name_zh === null || (str(raw.name_zh, 40) && ZH_SOURCES.has(String(raw.name_zh_source))))
     && (raw.archetype === "EXPLOSION" || raw.archetype === "COMPOUNDER") && num(raw.score) && str(raw.role, 200)
-    && optStr(raw.role_zh, 200) && validOutlook(raw.outlook, generatedAt)
+    && optStr(raw.role_zh, 200) && validOutlook(raw.outlook, generatedAt) && validCorporateAction(raw.corporate_action, raw.symbol)
     && raw.role_source && https(raw.role_source.url) && str(raw.role_source.date, 20)
     && raw.parts && ["layer_heat", "capture", "lead", "confirmation", "size", "penalty"].every(key => num(raw.parts[key]))
     && (raw.fundamentals === null || (raw.fundamentals && str(raw.fundamentals.source, 80) && https(raw.fundamentals.source_url)
@@ -1036,6 +1071,7 @@ function companyBubble(doc: BottleneckV3, entry: BottleneckEntry, notes: ReplyDi
       uiBox([scoreIndicator(entry.score, `#${entry.rank}｜${layerName(doc, entry.layer)}｜`)], { layout: "horizontal", spacing: "sm" }),
     ], { ...headerStyle, spacing: "sm" }),
     body: uiBox([
+      ...(corporateActionText(entry) ? [uiText(corporateActionText(entry)!, "xxs", T.caution)] : []),
       uiBox([
         signedHero("營收年增", pct(fund?.revenue_yoy ?? null, 0), fund ? `季末 ${fund.quarter_end}` : undefined, true),
         uiBox([accentKpiTile("毛利變化", ppShort(fund?.gross_margin_change)), accentKpiTile("6個月", pct(entry.market.ret_6m, 0))], { layout: "horizontal", spacing: "sm" }),
@@ -1104,7 +1140,7 @@ function longTermText(market: Market): string {
 
 export function buildBottleneckTop20Messages(doc: BottleneckV3, style: "flex" | "text"): LineOutboundMessage[] {
   if (style === "text") {
-    const lines = doc.top.map(entry => `${entry.rank}. ${entry.symbol} ${chineseName(entry)}（${entry.name}）｜${layerName(doc, entry.layer)}｜${entry.score.toFixed(1)}分｜營收年增 ${pct(entry.fundamentals?.revenue_yoy ?? null, 0)}｜6個月 ${pct(entry.market.ret_6m, 0)}｜2年年化 ${longTermText(entry.market)}｜${currentOrders(entry.outlook, ordersOf(doc, entry.symbol).filer || entry.fundamentals?.source === "SEC EDGAR XBRL companyfacts", doc.generated_at.slice(0, 10))}｜${forecastText(forecastOf(doc, entry), money)}${entry.outlook?.consensus?.revenue_growth == null && entry.outlook?.consensus ? `｜${compactScenarioText(entry.outlook)}` : ""}`);
+    const lines = doc.top.map(entry => `${entry.rank}. ${entry.symbol} ${chineseName(entry)}（${entry.name}）｜${layerName(doc, entry.layer)}｜${entry.score.toFixed(1)}分｜營收年增 ${pct(entry.fundamentals?.revenue_yoy ?? null, 0)}｜6個月 ${pct(entry.market.ret_6m, 0)}｜2年年化 ${longTermText(entry.market)}｜${currentOrders(entry.outlook, ordersOf(doc, entry.symbol).filer || entry.fundamentals?.source === "SEC EDGAR XBRL companyfacts", doc.generated_at.slice(0, 10))}${corporateActionText(entry) ? `｜${corporateActionText(entry)}` : ""}｜${forecastText(forecastOf(doc, entry), money)}${entry.outlook?.consensus?.revenue_growth == null && entry.outlook?.consensus ? `｜${compactScenarioText(entry.outlook)}` : ""}`);
     // Paginated into at most five messages of whole entries (never an entry cut away by a length limit).
     const blocks = [`瓶頸爆發 TOP20（v3，產生 ${doc.generated_at}）`,
       "排序：層級熱度＋公司捕獲＋社群與機構線索＋市場確認＋爆發性；2年年化報酬為負者排除。分拆、恢復交易、IPO 或重整新股不足2年者，改用已核實正常交易首日以來年化（至少1年，非2年）；沿革未核實且價格不足2年者不列入。非投資建議。",
@@ -1292,6 +1328,7 @@ function detailText(doc: BottleneckV3, entry: BottleneckEntry): string {
     `【瓶頸詳情｜#${entry.rank} ${entry.symbol} ${chineseName(entry)}（${entry.name}）】`,
     `型態：${entry.archetype === "EXPLOSION" ? "瓶頸爆發型（市值<US$10B）" : "核心複利型"}；市值 ${cap(entry.market_cap_usd)}`,
     `瓶頸位置：${entry.role_zh ?? entry.role}${entry.role_zh ? `（原文：${entry.role}）` : ""}`,
+    ...(corporateActionText(entry) ? [corporateActionText(entry)!, `併購公告來源：${entry.corporate_action!.source_url}`] : []),
     `分數構成：層級熱度 ${entry.parts.layer_heat}｜公司捕獲 ${entry.parts.capture}｜市場確認 ${entry.parts.confirmation}｜爆發性 ${entry.parts.size}${entry.parts.penalty !== 0 ? `｜條件式稀釋／融資扣分 -${entry.parts.penalty}` : ""}`,
     fund ? `財報（${sourceZh(fund.source)}${official ? "；前一季年增採官方合併季報" : ""}，季末 ${fund.quarter_end}）：營收年增 ${pct(fund.revenue_yoy)}，前一季年增 ${pct(fund.revenue_yoy_prev)}（加速度 ${pp(accelOf(fund))}）；毛利率 ${gmText(fund.gross_margin)}（年變化 ${pp(fund.gross_margin_change)}）；剩餘履約義務年增 ${pct(fund.rpo_yoy)}；股數年增 ${pct(fund.shares_yoy)}${sharesBasis(fund) ? `（${sharesBasis(fund)}）` : ""}\n來源：${fund.source_url}${official ? `\n${official.label}\n前一季來源：${official.url}` : ""}` : "財報：未取得可比季度（不以估計替代）。",
     fund?.cross_check ? `${revenueCheck(fund.cross_check)}\n來源：${fund.cross_check.source_url}` : "官方營收未交叉比對",
