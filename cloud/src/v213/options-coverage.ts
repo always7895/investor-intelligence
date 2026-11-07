@@ -23,6 +23,8 @@ import adrMap from "../../../config/option-adr-map-v1.json";
 import catalog from "../../../config/public-options-provider-candidates.json";
 import predecessorCatalog from "./options-provider-catalog-4065fbe.json";
 import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
+import { statusLabelZh } from "./status-labels";
+import { formatTaipeiTimestamp } from "./line-formatters";
 import { isValidUtcIsoInstant, validateCoveredCallCycle } from "./covered-call";
 import { OPTIONS_KEY } from "./market-observations";
 import { admitPublicOption } from "./public-options-admission";
@@ -44,6 +46,16 @@ const COVERAGE_NOTES = new Set([
   "NO_RAW_QUOTES_IN_THIS_OBJECT", "ORIGIN_LINEAGE_UNKNOWN_NO_CORROBORATION_METRIC", "UNCATALOGUED_JURISDICTIONS_ARE_NOT_COVERAGE",
 ]);
 const RIGHTS_STATUSES = new Set(["review_before_enable", "reviewed_public_access", "automated_access_prohibited", "licence_required", "operator_accepted_unlicensed"]);
+/** Rights status is a catalog declaration, never a public-data admission. */
+const RIGHTS_ZH: Readonly<Record<string, string>> = Object.freeze({
+  review_before_enable: "啟用前需審查", reviewed_public_access: "已審閱公開存取條件（非已准入）",
+  automated_access_prohibited: "禁止自動存取", licence_required: "須授權",
+  operator_accepted_unlicensed: "操作者接受未授權風險（非已准入）",
+});
+const ADAPTER_ZH: Readonly<Record<string, string>> = Object.freeze({
+  not_implemented: "未實作", candidate_implemented: "候選已實作（未驗收）",
+  adapter_reviewed: "轉接器已審閱（非報價准入）", not_permitted: "禁止使用",
+});
 const ADAPTER_STATUSES = new Set(["not_implemented", "candidate_implemented", "adapter_reviewed", "not_permitted"]);
 const ID_RE = /^[a-z0-9_]{1,64}$/;
 const CODE_RE = /^[A-Z0-9_]{1,12}$/;
@@ -393,7 +405,7 @@ function unavailable(status: string, generatedAt?: unknown): LineOutboundMessage
     : known === "COVERAGE_ABSENT" ? "當輪已封存快照不含來源與缺口物件。"
       : known === "COVERAGE_STALE" ? `來源與缺口物件已逾時（產生於 ${validInstant(generatedAt) ? generatedAt : "未知"}，超過 6 小時有效上限）。`
         : "來源與缺口物件未通過驗證、與目錄不符或不是由本模組驗證簽發，已拒絕顯示。";
-  return toMessages([[TITLE, `OPTIONS_COVERAGE_UNAVAILABLE（${known}）：${reason}`, "不以舊資料、快取或推測代替；沒有任何報價因此被視為可用。"]]);
+  return toMessages([[TITLE, `【注意】來源與缺口資訊暫不可用（${statusLabelZh(known)}）：${reason}`, "不以舊資料、快取或推測代替；沒有任何報價因此被視為可用。"]]);
 }
 
 /** Text presentation (both LINE modes). Only the module-private verified projection is printed, never a caller-held field. */
@@ -410,7 +422,7 @@ export function buildOptionsCoverageMessages(result: OptionsCoverageResult, _isT
     observed = null;  // a counted cycle aged out or an admission window changed since loading: no late stale-positive count
     observedState = "UNKNOWN_LINK_OR_COUNT_MISMATCH";
   }
-  const lines: string[] = [TITLE, `快照產生時間：${projection.generated_at}`, "以下只是來源與缺口的中繼資料，不含任何價格。"];
+  const lines: string[] = [TITLE, `快照產生時間：${formatTaipeiTimestamp(projection.generated_at)}`, "以下只是來源與缺口的中繼資料，不含任何價格。"];
   if (observedState === "VERIFIED_ADMITTED_ROWS" && observed && observed.length > 0) {
     lines.push("已驗證的公開准入資料（本 Worker 依自身目錄與封存期權本文重新計算；延遲備兌買權，非 EOD、非指數；標的數為封存期權文件的不同代號鍵，不是原生標的）：");
     for (const row of observed.slice(0, OBSERVED_SHOWN)) {
@@ -426,7 +438,7 @@ export function buildOptionsCoverageMessages(result: OptionsCoverageResult, _isT
     lines.push(`本機路由宣告（來自備兌買權路由設定，不是觀察到的資料；此本機生產路徑未取得目錄身分，不代表整個國家沒有目錄來源）：${projection.local_markets.join("、")}。`);
   }
   const providerLines = projection.providers.map(row =>
-    `• ${row.provider_id}｜${row.authority}｜${row.jurisdictions.join("/")}｜權利:${row.rights_status}｜轉接:${row.adapter_status}｜宣告未驗證`);
+    `• ${row.provider_id}｜${row.authority}｜${row.jurisdictions.join("/")}｜權利:${RIGHTS_ZH[row.rights_status] ?? "權利未核實"}｜轉接:${ADAPTER_ZH[row.adapter_status] ?? "未核實"}｜宣告未驗證`);
   const jurisdictionLines = projection.jurisdictions.map(row => `• ${row.code}：目錄來源 ${row.catalog_provider_count} 筆（宣告，不代表已收集或可用）`);
   const tail = ["未列出的國家或地區：沒有目錄來源或屬未知，未列出不代表涵蓋；ADR 路徑是替代標的，不是本地市場期權。",
     "目錄筆數只是目錄筆數，不是獨立佐證；原始生產者血緣未知，不計佐證。"];

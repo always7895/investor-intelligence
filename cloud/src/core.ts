@@ -1,3 +1,6 @@
+import { formatCount, formatCurrency, formatPercent, formatTaipeiTimestamp } from "./v213/line-formatters";
+import { statusLabelZh, humanizeStatusText } from "./v213/status-labels";
+
 export type BotIntent =
   | "help"
   | "morning_report"
@@ -275,19 +278,17 @@ function num(value: unknown): number | null {
 
 function money(value: unknown, currency = "USD"): string {
   const parsed = num(value);
-  return parsed === null ? "N/A" : `${currency} ${parsed.toFixed(2)}`;
+  return parsed === null ? "未提供" : formatCurrency(parsed, currency);
 }
 
 function percent(value: unknown, alreadyPercent = false): string {
   const parsed = num(value);
-  if (parsed === null) return "N/A";
-  return `${(alreadyPercent ? parsed : parsed * 100).toFixed(1)}%`;
+  if (parsed === null) return "未提供";
+  return formatPercent(parsed, !alreadyPercent);
 }
 
 function timestamp(value: unknown): string {
-  if (!value) return "時間未知";
-  const parsed = new Date(String(value));
-  return Number.isNaN(parsed.getTime()) ? String(value) : parsed.toISOString();
+  return formatTaipeiTimestamp(value ? String(value) : null);
 }
 
 function limitObservation(candidate: Record<string, unknown>, currency: string): string {
@@ -296,19 +297,32 @@ function limitObservation(candidate: Record<string, unknown>, currency: string):
   const low = num((value as Record<string, unknown>).observed_limit_low);
   const high = num((value as Record<string, unknown>).observed_limit_high);
   if (low === null || high === null) return "無可用參考";
-  return `${currency} ${low.toFixed(2)}–${high.toFixed(2)}`;
+  return `${formatCurrency(low, currency)}–${formatCurrency(high, currency)}`;
 }
 
-function optionCandidateLines(
-  candidate: Record<string, unknown>,
-  currency: string,
-): string[] {
+function pendingDealTerms(record: Record<string, unknown>): string {
+  const raw = record.corporate_action ?? record.deal_terms ?? record.deal ?? record;
+  if (!raw || typeof raw !== "object") return "";
+  const terms = raw as Record<string, unknown>;
+  const ratio = num(terms.exchange_ratio);
+  const buyer = typeof terms.acquirer_symbol === "string" ? terms.acquirer_symbol : "";
+  if (ratio === null || ratio <= 0 || ratio > 10000 || !/^[A-Z][A-Z0-9.-]{0,14}$/.test(buyer)) return "";
+  return `（每股換 ${ratio.toFixed(3)} 股 ${buyer}）`;
+}
+
+function optionCandidateLines(candidate: Record<string, unknown>, currency: string): string[] {
   const yields = (candidate.annualized_yield_pct ?? {}) as Record<string, unknown>;
+  const oi = num(candidate.open_interest);
+  const vol = num(candidate.volume);
   return [
-    `• K ${money(candidate.strike, currency)}｜Bid ${money(candidate.bid, currency)}｜Ask ${money(candidate.ask, currency)}｜Mid ${money(candidate.midpoint, currency)}`,
-    `  參考限價 ${limitObservation(candidate, currency)}｜Spread ${percent(candidate.spread_pct_of_mid, true)}｜OI ${String(candidate.open_interest ?? 0)}｜Vol ${String(candidate.volume ?? 0)}`,
-    `  IV ${percent(candidate.implied_volatility_pct, true)}｜Delta ${candidate.delta ?? "N/A"}｜Bid/Mid/Ask 年化觀察 ${percent(yields.bid, true)} / ${percent(yields.mid, true)} / ${percent(yields.ask, true)}`,
-    `  資料 ${String(candidate.quote_source ?? "unknown")}｜${String(candidate.quote_delay_status ?? "unknown")}｜擷取 ${timestamp(candidate.retrieved_at)}｜流動性 ${candidate.liquidity_pass ? "PASS" : "FAIL"}`,
+    `履約價：${money(candidate.strike, currency)}`,
+    `Bid ${money(candidate.bid, currency)}　Ask ${money(candidate.ask, currency)}　Mid ${money(candidate.midpoint, currency)}`,
+    `參考限價：${limitObservation(candidate, currency)}`,
+    `價差：${percent(candidate.spread_pct_of_mid, true)}　OI：${oi === null ? "未提供" : formatCount(oi)}　成交量：${vol === null ? "未提供" : formatCount(vol)}`,
+    `隱含波動率：${percent(candidate.implied_volatility_pct, true)}　Delta：${candidate.delta ?? "未提供"}`,
+    `Bid/Mid/Ask 年化：${percent(yields.bid, true)}／${percent(yields.mid, true)}／${percent(yields.ask, true)}`,
+    `來源：${humanizeStatusText(String(candidate.quote_source ?? "未提供"))}　流動性：${candidate.liquidity_pass ? "正常" : "未通過"}`,
+    `擷取：${timestamp(candidate.retrieved_at)}`,
   ];
 }
 
@@ -337,38 +351,34 @@ export function formatOptionsAnswer(
   ];
   for (const record of records) {
     const symbol = String(record.ticker ?? "N/A");
-    lines.push(
-      "",
-      `【${symbol}】狀態 ${String(record.status ?? "UNKNOWN")}｜來源 ${String(record.quote_source ?? "unknown")}｜資料時間 ${timestamp(record.retrieved_at)}`,
-    );
+    const state = String(record.status ?? "UNKNOWN");
+    lines.push("");
+    if (state === "DEAL_PENDING_TARGET") {
+      lines.push(`【${symbol}】${statusLabelZh(state)}${pendingDealTerms(record)}`);
+      continue;
+    }
+    lines.push(`【${symbol}】`, `狀態：${statusLabelZh(state)}`,
+      `來源：${humanizeStatusText(String(record.quote_source ?? "未提供"))}`,
+      `資料時間：${timestamp(record.retrieved_at)}`);
     const periods = (record.periods ?? {}) as Record<string, unknown>;
     for (const periodName of period ? [period] : ["weekly", "monthly"]) {
       const periodRaw = periods[periodName];
-      if (!periodRaw || typeof periodRaw !== "object") {
-        lines.push(`${periodName === "weekly" ? "每週" : "每月"}：無資料`);
-        continue;
-      }
+      const label = periodName === "weekly" ? "每週" : "每月";
+      if (!periodRaw || typeof periodRaw !== "object") { lines.push(`${label}：無資料`); continue; }
       const periodRecord = periodRaw as Record<string, unknown>;
-      const status = String(periodRecord.status ?? "UNKNOWN");
-      lines.push(
-        `\n${periodName === "weekly" ? "每週" : "每月"}｜${status}｜到期 ${String(periodRecord.expiration ?? "N/A")}｜DTE ${String(periodRecord.actual_dte ?? "N/A")}`,
-      );
-      if (status !== "OK") continue;
-      for (const [key, label] of [
-        ["call_observations", "買權報價"],
-        ["put_observations", "賣權報價"],
+      const periodStatus = String(periodRecord.status ?? "UNKNOWN");
+      lines.push("", `${label}：${statusLabelZh(periodStatus)}`,
+        `到期：${periodRecord.expiration ?? "未提供"}　DTE：${periodRecord.actual_dte ?? "未提供"}`);
+      if (periodStatus !== "OK") continue;
+      for (const [key, heading] of [
+        ["call_observations", "買權報價"], ["put_observations", "賣權報價"],
       ] as const) {
         const strategyRaw = periodRecord[key];
         if (!strategyRaw || typeof strategyRaw !== "object") continue;
         const strategy = strategyRaw as Record<string, unknown>;
-        const candidates = Array.isArray(strategy.recommended_candidates)
-          ? strategy.recommended_candidates
-          : [];
-        lines.push(`${label}｜${String(strategy.status ?? "UNKNOWN")}`);
-        if (candidates.length === 0) {
-          lines.push("• 無符合公開資料與流動性條件的候選報價");
-          continue;
-        }
+        const candidates = Array.isArray(strategy.recommended_candidates) ? strategy.recommended_candidates : [];
+        lines.push(`${heading}：${statusLabelZh(strategy.status)}`);
+        if (candidates.length === 0) { lines.push("無符合公開資料與流動性條件的候選報價"); continue; }
         for (const candidate of candidates.slice(0, 3)) {
           if (!candidate || typeof candidate !== "object") continue;
           const value = candidate as Record<string, unknown>;

@@ -1,6 +1,7 @@
 import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
 import { effectiveDays, MONTHLY_DTE_BUCKET, SHORT_DTE_NOTICE_MAX, WEEKLY_DTE_BUCKET } from "./option-recommendation-rules";
-import { LINE_THEME as T, chip, disclosureLine, footerStyle, menuAction, productHeader, uiBox, uiText, verdictLine } from "./line-theme";
+import { LINE_THEME as T, chip, disclosureLine, footerStyle, menuAction, productHeader, uiBox, uiText, verdictLine, shortAltText } from "./line-theme";
+import { formatCurrency, formatTaipeiTimestamp } from "./line-formatters";
 
 /**
  * Options order guidance & position sizing (AGENTS.md "Recommendations &
@@ -291,7 +292,7 @@ function optionsGuidanceBubble(guidance: OptionsOrderGuidance): Record<string, u
   const cycleSummary = `${cycleLabel}｜標準 ${windowLow}-${windowHigh}天｜${WINDOW_LABEL[guidance.dte_window_status]}`;
   return {
     type: "bubble", size: "mega",
-    header: productHeader("韭菜守護者 · 期權掛單參數 / Order parameters", guidance.ticker, [
+    header: productHeader("期權掛單參數 / Order params", guidance.ticker, [
       uiBox([
         guidance.dte_window_status === "WITHIN_CYCLE_WINDOW"
           ? chip(CYCLE_LABEL[guidance.expiry_cycle])
@@ -302,9 +303,9 @@ function optionsGuidanceBubble(guidance: OptionsOrderGuidance): Record<string, u
     body: uiBox([
       ...(verdict ? [verdict] : []),
       uiBox([
-        uiText(`標的 ${guidance.underlying_price === null ? "N/A" : fmt(guidance.underlying_price)}｜Strike ${fmt(guidance.strike)}`, "xs", T.ink),
-        uiText(`到期 ${guidance.expiry}｜DTE ${guidance.dte}`, "xs", T.ink),
-        uiText(`Bid ${fmt(guidance.bid)}｜Mid＝LIMIT｜Ask ${fmt(guidance.ask)}（限價參考帶）`, "xs", T.ink),
+        uiText(`標的 ${guidance.underlying_price === null ? "未提供" : formatCurrency(guidance.underlying_price)}｜Strike ${formatCurrency(guidance.strike)}`, "sm", T.ink),
+        uiText(`到期 ${guidance.expiry}｜DTE ${guidance.dte}`, "sm", T.ink),
+        uiText(`Bid ${formatCurrency(guidance.bid)}｜Mid＝LIMIT｜Ask ${formatCurrency(guidance.ask)}（限價參考帶）`, "sm", T.ink),
       ], { spacing: "xs" }),
       uiBox([
         uiText(`Delta ${guidance.delta === null ? "N/A" : fmt(guidance.delta)}｜${DELTA_LABEL[guidance.delta_assessment]}`, "xs", T.subtle),
@@ -324,7 +325,7 @@ export function buildOptionsGuidanceFlexBubble(guidance: OptionsOrderGuidance): 
   const band = guidance.limit_reference_band;
   const msg: LineOutboundMessage = {
     type: "flex",
-    altText: `期權掛單參數：${guidance.ticker} ${guidance.expiry} Strike ${fmt(guidance.strike)}（${guidance.strategy}；${CYCLE_LABEL[guidance.expiry_cycle]}；LIMIT ${fmt(band.recommended_limit)}）`,
+    altText: shortAltText(`期權掛單參數：${guidance.ticker} ${guidance.expiry} ${CYCLE_LABEL[guidance.expiry_cycle]} LIMIT`, guidance.expiry),
     contents: { type: "carousel", contents: [optionsGuidanceBubble(guidance)] },
   };
   assertLineMessages([msg]);
@@ -338,7 +339,7 @@ export function buildOptionsCycleComparisonFlex(weekly: OptionsOrderGuidance, mo
   const yieldOf = (g: OptionsOrderGuidance) => g.annualized_yield_pct === null ? "N/A" : `${g.annualized_yield_pct.toFixed(1)}%`;
   const msg: LineOutboundMessage = {
     type: "flex",
-    altText: `週／月期權對照：${weekly.ticker}｜週 ${weekly.expiry} 年化 ${yieldOf(weekly)}｜月 ${monthly.expiry} 年化 ${yieldOf(monthly)}（LIMIT 參數，非券商執行）`,
+    altText: shortAltText(`週／月期權對照：${weekly.ticker}｜週 ${yieldOf(weekly)}｜月 ${yieldOf(monthly)}｜非券商執行`, weekly.expiry),
     contents: { type: "carousel", contents: [optionsGuidanceBubble(weekly), optionsGuidanceBubble(monthly)] },
   };
   assertLineMessages([msg]);
@@ -363,7 +364,7 @@ export function buildPositionSizingFlexBubble(sizing: PositionSizingFramework, t
     ? "重大融資懸崖時，配置上限 -50%" : sizing.financing_risk_overlay;
   const msg: LineOutboundMessage = {
     type: "flex",
-    altText: `倉位配置框架：${ticker}｜上限 ${sizing.max_allocation_cap_pct}%｜現金儲備 >= ${sizing.cash_reserve_requirement_pct}%`,
+    altText: shortAltText(`倉位配置框架：${ticker}｜上限 ${sizing.max_allocation_cap_pct}%｜現金儲備 ≥${sizing.cash_reserve_requirement_pct}%`),
     contents: {
       type: "carousel",
       contents: [{
