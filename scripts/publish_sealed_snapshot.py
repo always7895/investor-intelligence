@@ -830,6 +830,26 @@ def captured_bottleneck_v3_body(raw: bytes, now: datetime, effective_inputs=None
         active = [entry for entry in actions["entries"] if entry["status"] == "PENDING"
                   and entry["announced_on"] <= generated.date().isoformat()]
         pending_targets = {entry["target_symbol"] for entry in active}
+        distributions = corporate_actions.completed_distributions(actions, asof=generated.date())
+        # Do not seal a cached, pre-distribution ranking with misleading positive historical returns.
+        # No Yahoo adjustment proof for the MOD/THRM RMT is available; reject instead of rescoring
+        # an already selected Top20 behind the ranking gate.
+        if distributions:
+            from bottleneck_top20_v3 import suppress_unproven_distribution_returns
+            for ranked in doc["top"]:
+                events = distributions.get(ranked["symbol"], [])
+                if not events:
+                    continue
+                market = ranked.get("market")
+                if not isinstance(market, dict):
+                    if guidance_machine_enabled:
+                        raise machine.MachinePublicationBlocked("DISTRIBUTION_MARKET")
+                    return {}
+                guarded = suppress_unproven_distribution_returns(market, events)
+                if guarded != market:
+                    if guidance_machine_enabled:
+                        raise machine.MachinePublicationBlocked("DISTRIBUTION_IN_WINDOW")
+                    return {}
         if any(entry["symbol"] in pending_targets for entry in doc["top"]):
             if guidance_machine_enabled:
                 raise machine.MachinePublicationBlocked("DEAL_PENDING_TARGET")
@@ -915,7 +935,9 @@ def captured_bottleneck_v3_body(raw: bytes, now: datetime, effective_inputs=None
                 "name_zh_source": zh[entry["symbol"]][1] if entry["symbol"] in zh else None,
                 "layer": entry["layer"], "archetype": entry["archetype"], "score": entry["score"],
                 "role": entry["role"][:200], "role_zh": str(role_zh)[:200] if role_zh else None,
-                **({"corporate_action": corporate_actions.acquirer_note(acquirer_actions[entry["symbol"]])}
+                **({"corporate_action": corporate_actions.distribution_note(distributions[entry["symbol"]][-1])}
+                   if entry["symbol"] in distributions else
+                   {"corporate_action": corporate_actions.acquirer_note(acquirer_actions[entry["symbol"]])}
                    if entry["symbol"] in acquirer_actions else {}),
                 "role_source": entry["role_source"], "outlook": _with_order_forecast(
                     entry["symbol"], _sealed_outlook(entry.get("outlook"), generated), (entry.get("outlook") or {}).get("orders"),
@@ -932,6 +954,8 @@ def captured_bottleneck_v3_body(raw: bytes, now: datetime, effective_inputs=None
                 # The long-term fields travel validated and consistent (scripts/listing_lineage.py); malformed ones fail closed.
                 "market": {**pick(entry["market"], ("source", "source_url", "asof", "ret_6m", "ret_1y", "history_start", "currency")),
                            **listing_lineage.clean_market_lineage(entry["market"], generated.date()),
+                           **({"return_reasons": dict(entry["market"]["return_reasons"])}
+                              if isinstance(entry["market"].get("return_reasons"), dict) and entry["market"]["return_reasons"] else {}),
                            **({"cross_check": checks[entry["symbol"]]} if entry["symbol"] in checks else {})},
                 "market_cap_usd": entry.get("market_cap_usd"),
                 "serenity": None if not sig else pick(sig, ("mentions", "bullish", "bearish", "stance", "latest_at", "latest_url")),

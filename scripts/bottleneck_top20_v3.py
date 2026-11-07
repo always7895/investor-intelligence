@@ -1066,6 +1066,48 @@ def capture_score(fund: dict[str, Any] | None) -> tuple[float, dict[str, float]]
     return (30 * earned / available if available else 0.0), detail
 
 
+def suppress_unproven_distribution_returns(market: dict[str, Any],
+                                           distributions: list[dict[str, Any]]) -> dict[str, Any]:
+    """Fail closed for a corporate distribution not PROVEN adjusted in Yahoo's price series.
+
+    The live feed uses yfinance history(auto_adjust=True), captured mode uses chart.adjclose.
+    Neither feed's returned bars prove that the MOD/THRM RMT entitlement was included in
+    the adjustment factor, so a span crossing the event date must be unknown, not zero.
+    The exception path for proven adjustments is intentionally not implemented.
+    """
+    if not distributions:
+        return market
+    result = dict(market)
+    reasons: dict[str, str] = dict(result.get("return_reasons") or {})
+    try:
+        asof = date.fromisoformat(result["asof"])
+    except (ValueError, TypeError, KeyError) as exc:
+        raise ValueError("DISTRIBUTION_MARKET_ASOF") from exc
+    for entry in distributions:
+        event = date.fromisoformat(entry["distribution_date"])
+        if event > asof:
+            continue
+        for key, window in (("ret_6m", 182), ("ret_1y", 365),
+                            ("cagr_2y", listing_lineage.TWO_YEARS_DAYS)):
+            # Inclusive endpoint is deliberately conservative on the event day.
+            if asof - timedelta(days=window) <= event and result.get(key) is not None:
+                result[key] = None
+                reasons[key] = "DISTRIBUTION_IN_WINDOW"
+                if key == "cagr_2y" and result.get("long_term_basis") == "TWO_YEAR":
+                    result["long_term_basis"] = "UNAVAILABLE"
+        if result.get("cagr_listed") is not None:
+            since = result.get("cagr_listed_start")
+            if since is None or date.fromisoformat(since) <= event:
+                result["cagr_listed"] = None
+                result["cagr_listed_start"] = None
+                result["cagr_listed_span_days"] = None
+                result["long_term_basis"] = "UNAVAILABLE"
+                reasons["cagr_listed"] = "DISTRIBUTION_IN_WINDOW"
+    if reasons:
+        result["return_reasons"] = reasons
+    return result
+
+
 def long_term_gate(market: dict[str, Any] | None) -> tuple[float | None, list[str]]:
     """The long-term eligibility gate (not a score component): the two-year CAGR, else the verified since-regular-way
     figure; it must be positive. A missing figure is not a negative return: an unverified short history and a verified
@@ -1073,6 +1115,9 @@ def long_term_gate(market: dict[str, Any] | None) -> tuple[float | None, list[st
     long_term = (market or {}).get("cagr_2y")
     long_term = long_term if long_term is not None else (market or {}).get("cagr_listed")
     if long_term is None:
+        reasons = (market or {}).get("return_reasons") or {}
+        if reasons.get("cagr_2y") == "DISTRIBUTION_IN_WINDOW" or reasons.get("cagr_listed") == "DISTRIBUTION_IN_WINDOW":
+            return None, ["DISTRIBUTION_IN_WINDOW"]
         unknown = not market or (market.get("lineage") or {}).get("kind", "UNKNOWN") == "UNKNOWN"
         return None, ["HISTORY_OR_LINEAGE_UNVERIFIED" if unknown else "MARKET_HISTORY_UNDER_1Y"]
     return long_term, (["LONG_TERM_RETURN_NOT_POSITIVE"] if long_term <= 0 else [])
@@ -1236,6 +1281,7 @@ def build(fetch: Callable[[str], bytes] | None, now: datetime, with_news: bool =
     # The protected host binds registry bytes to the same immutable capture catalog.
     pending_targets = corporate_actions.pending_targets(action_doc)
     pending_acquirers = corporate_actions.pending_acquirers(action_doc)
+    distributions = corporate_actions.completed_distributions(action_doc, asof=now.date())
     layers_doc = load_json(captured.operand("layers") if captured else LAYERS)
     layers = layers_doc["layers"]
     chain_weight_by = chain_weights(layers_doc)
@@ -1276,6 +1322,9 @@ def build(fetch: Callable[[str], bytes] | None, now: datetime, with_news: bool =
         if fund and check:
             fund = {**fund, "cross_check": check}
         market = data.get("market")
+        if market is not None and symbol in distributions:
+            market = suppress_unproven_distribution_returns(market, distributions[symbol])
+            data["market"] = market
         cap = market.get("market_cap") if market else None
         rate = (captured_usd_rate(market.get("currency") if market else None, captured, fx) if captured else
                 usd_rate(market.get("currency") if market else None, fx))
@@ -1288,7 +1337,9 @@ def build(fetch: Callable[[str], bytes] | None, now: datetime, with_news: bool =
                                                  captured=captured),
                              "fundamentals": fund, "market": market, "market_cap_usd": cap * rate if cap and rate else None,
                              "serenity": serenity_by.get(symbol), "leopold": leopold_by.get(symbol),
-                             **({"corporate_action": corporate_actions.acquirer_note(pending_acquirers[symbol])}
+                             **({"corporate_action": corporate_actions.distribution_note(distributions[symbol][-1])}
+                                if symbol in distributions else
+                                {"corporate_action": corporate_actions.acquirer_note(pending_acquirers[symbol])}
                                 if symbol in pending_acquirers else {})}
     # Layer heat and the Leopold-led industry ranking.
     max_intensity = max((row["intensity"] for row in serenity["signals"]), default=1.0) or 1.0  # raw, not mirror-scaled
