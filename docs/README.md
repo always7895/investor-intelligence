@@ -12,7 +12,6 @@ Current acceptance register: [STATUS](../state/STATUS.md). Release identity: [RE
 - [CLAUDE](../CLAUDE.md) — Claude Code entrypoint importing AGENTS.md
 - [IMPLEMENTATION_STATUS](../IMPLEMENTATION_STATUS.md)
 - [STATUS](../state/STATUS.md)
-- [POST_LAUNCH_BACKLOG / 上線後待辦](../state/POST_LAUNCH_BACKLOG.md)
 - [CURRENT_STATUS_BILINGUAL](CURRENT_STATUS_BILINGUAL.md)
 - [RESEARCH_EXECUTION_AUDIT](RESEARCH_EXECUTION_AUDIT.md)
 - [PERSONA_LOGIC_FULL](PERSONA_LOGIC_FULL.md)
@@ -98,11 +97,9 @@ Older deployment/PASS/coverage claims here are scoped to their recorded revision
 - [FORMAL_PRIVATE_RELEASE](FORMAL_PRIVATE_RELEASE.md)
 - [PHASE5_VALIDATION](PHASE5_VALIDATION.md)
 - [PUBLIC_SOURCE_RIGHTS_REVIEW_20260909](PUBLIC_SOURCE_RIGHTS_REVIEW_20260909.md)
-- [R75_SEVEN_FIELD_MIGRATION](R75_SEVEN_FIELD_MIGRATION.md)
 - [STATUTORY_AUTHORITY_RESOLUTION_V1](STATUTORY_AUTHORITY_RESOLUTION_V1.md) — statutory authority and external citation typing (GOV/CCR provenance)
 - [LINE_ALL_FRIENDS_ACCESS](LINE_ALL_FRIENDS_ACCESS.md) — `V213_LINE_ACCESS_MODE` switch (source-template default `all_friends`; absent/invalid runtime value defaults to `owner_only`), friend-lane limits, privacy invariants, rollout steps
 - [OPERATOR_RUNBOOK](OPERATOR_RUNBOOK.md) — fail-closed operator procedures: health, rollbacks, task recreation, incidents, secret rotation, rollouts
-- [V213_BILINGUAL_FIELDS](V213_BILINGUAL_FIELDS.md)
 - [V213_NAMED_TUNNEL_DEPLOYMENT_HOTFIX](V213_NAMED_TUNNEL_DEPLOYMENT_HOTFIX.md)
 - [V213_SERENITY_PUBLIC_LOGIC_SOURCE_DIVERSITY.en](V213_SERENITY_PUBLIC_LOGIC_SOURCE_DIVERSITY.en.md)
 - [V213_SERENITY_PUBLIC_LOGIC_SOURCE_DIVERSITY.zh-TW](V213_SERENITY_PUBLIC_LOGIC_SOURCE_DIVERSITY.zh-TW.md)
