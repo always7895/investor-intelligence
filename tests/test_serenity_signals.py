@@ -114,7 +114,7 @@ class FixtureStanceTests(unittest.TestCase):
         self.assertEqual(self.rows["THRD"]["stance"], "MENTIONED")
 
     def test_schema_two_keeps_schema_one_keys(self):
-        self.assertEqual(self.document["schema_version"], 2)
+        self.assertEqual(self.document["schema_version"], 3)
         for row in self.rows.values():
             self.assertLessEqual(REQUIRED_V1_KEYS, set(row))
             self.assertIn(row["stance"], {"BULLISH", "BEARISH", "MENTIONED"})

@@ -9,7 +9,7 @@ the Top20 always come from company filings and market data.
 Per listing (cashtags validated against the official US directory, other tags and names through
 config/serenity-ticker-map-v1.json): original-post mentions in the last 120 days, recency- and engagement-weighted
 intensity (30-day half-life), stance counts, dilution/financing concerns, the latest mention and the most-engaged
-recent post. Retweets are excluded. Schema 2 (V16):
+recent post. Retweets are excluded. Schema 3 (GAP-B, additive to V16 schema 2):
 
 * Relay: posts that only report a fund's filing ("Situational Awareness 13F holdings ...") give relay_mentions and no
   stance, intensity or mention. Replies keep full weight and are also counted in reply_mentions.
@@ -17,6 +17,12 @@ recent post. Retweets are excluded. Schema 2 (V16):
   bullish/bearish weights and the newest stance phrase decide BULLISH, BEARISH or MENTIONED. A third-party header
   ("People on my X feed:") and the list under it carry no stance; a first-person trim or exit of "those positions" applies to
   the previous clause's listings, minus the excepted ones.
+* Closed, chronological display-only post types: NEW_THESIS (first personally bullish symbol in this window),
+  REAFFIRMATION (later bullish), WATCHLIST_MAP (at least three mapped names and no first-person stance),
+  VICTORY_LAP (first-person gain/up-percent or a "told you"/"called it" boast only after that symbol was bullish),
+  and OTHER (remaining or barred mentions). Relay, satire, negation and third-party guards apply first.
+  One type per counted original post and symbol; first_thesis_at, latest_post_type and victory_laps_60d are
+  additive source-view fields, never an automatic ticker list, company evidence or score/phase signal.
 * source.mirror_lag_hours / mirror_status say how stale the public mirror is; the ranking recomputes them.
 * Under --refresh the strongest symbols' posts are checked through X's public oEmbed endpoint (no login, no cookies);
   a post that is gone (404) is dropped for every ticker it names.
@@ -50,7 +56,7 @@ TICKER_MAP = ROOT / "config" / "serenity-ticker-map-v1.json"
 IDENTITY = ROOT / "data" / "cache" / "identity_shards_latest.json"
 WINDOW_DAYS = 120
 HALF_LIFE_DAYS = 30.0
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 TRIM_WEIGHT = 0.5
 BEARISH_SHARE = 0.5  # BEARISH when the newest stance is an exit and bearish_decayed >= this share of bullish_decayed
 MIRROR_FRESH_HOURS = 72.0
@@ -121,6 +127,13 @@ FIRST_PERSON_WORDS = re.compile(r"\b(?:my|we|our|we're|we've)(?!\w)", re.I)
 FINANCING = re.compile(r"\b(?:ATM|dilut\w*|share offering|convertible|stock comp\w*)\b", re.I)
 IGNORED_TAGS = {"USD", "BTC", "ETH", "SPX", "SPY", "QQQ", "NDX", "VIX"}
 STATUS_ID = re.compile(r"/status/(\d+)")
+# Only a previously established personal bullish thesis can have a victory lap.
+# Match a declared gain or explicit retrospective boast; not a bare price move.
+VICTORY_CLAIM = re.compile(
+    r"\b(?:told you|called it|i called (?:that|this)|my (?:position|stake|holding) (?:is )?up\s*\+?\d+(?:\.\d+)?%"
+    r"|(?:i|we) (?:made|banked|gained)\s+\+?\d+(?:\.\d+)?%?\b|up\s*\+?\d+(?:\.\d+)?%)",
+    re.I)
+
 
 
 def utc_now() -> datetime:
@@ -459,6 +472,24 @@ def build_signals(archive: dict[str, Any], mapping: dict[str, Any], us: set[str]
                          else "BULLISH" if row["bullish_decayed"] > 0 else "MENTIONED")
     ranked = sorted(signals.values(), key=lambda item: (-item["intensity"], item["symbol"]))
     lag_hours, lag_status = mirror_state(now, latest_post)
+    # Separate chronology pass: never change the legacy loop, row ordering, stance or weighting.
+    types = post_type_timeline(archive, mapping, us, now, exclude_ids=excluded)
+    first_thesis: dict[str, str] = {}
+    latest_type: dict[str, str] = {}
+    lap_counts: dict[str, int] = {}
+    lap_cutoff = iso(now - timedelta(days=60))
+    for event in types:
+        key = event["symbol"]
+        latest_type[key] = event["post_type"]
+        if event["post_type"] == "NEW_THESIS":
+            first_thesis.setdefault(key, event["created_at"])
+        if event["post_type"] == "VICTORY_LAP" and event["created_at"] >= lap_cutoff:
+            lap_counts[key] = lap_counts.get(key, 0) + 1
+    for row in ranked:
+        key = row["symbol"]
+        row["first_thesis_at"] = first_thesis.get(key)
+        row["latest_post_type"] = latest_type.get(key)
+        row["victory_laps_60d"] = lap_counts.get(key, 0)
     return {"schema_version": SCHEMA_VERSION, "generated_at": iso(now), "window_days": WINDOW_DAYS, "half_life_days": HALF_LIFE_DAYS,
             "source": {"url": archive["source_url"], "repository": archive["repository"], "retrieved_at": archive["retrieved_at"],
                        "sha256": archive["sha256"], "latest_post_at": iso(latest_post) if latest_post else None,
@@ -466,7 +497,76 @@ def build_signals(archive: dict[str, Any], mapping: dict[str, Any], us: set[str]
                        "oembed": {"enabled": False, "checked": 0, "ok": 0, "not_found": 0, "unavailable": 0},
                        "authority": "LEAD_ONLY_NOT_COMPANY_FACT"},
             "relay": {"posts": relay_posts, "mentions": sum(relay_pending.values())},
-            "signals": ranked}
+            "signals": ranked, "post_types": types}
+
+
+
+# ---- GAP-B display-only post chronology (never a candidate/phase/score input) ----
+
+POST_TYPES = frozenset({"NEW_THESIS", "REAFFIRMATION", "WATCHLIST_MAP", "VICTORY_LAP", "OTHER"})
+
+
+def post_type_timeline(archive: dict[str, Any], mapping: dict[str, Any], us: set[str], now: datetime, *,
+                       exclude_ids: Iterable[str] = ()) -> list[dict[str, str]]:
+    """Classify each counted (post, listing) chronologically, independently of the legacy scoring loop.
+
+    A single multi-ticker original has one row per counted symbol because its thesis history may differ per symbol.
+    First apply EXACTLY the existing retweet, 120-day, excluded-oEmbed, relay and stance/negation/satire/header guards.
+    For each counted symbol: satire and third-party-header-only mentions -> OTHER; an impersonal >=3-listing
+    supplier/watchlist map -> WATCHLIST_MAP; with a prior first bullish mention, a gain/"called it" claim on that
+    held name (and no bearish/trim stance) -> VICTORY_LAP; the first remaining bullish stance in the window ->
+    NEW_THESIS; any later bullish stance -> REAFFIRMATION; otherwise OTHER. A claim alone cannot start a thesis.
+    The rules are derived metadata, NOT evidence, investible picks, phase signals or scoring inputs.
+    """
+    start = now - timedelta(days=WINDOW_DAYS)
+    excluded = {str(item) for item in exclude_ids}
+    candidates: list[tuple[datetime, str, str, str, dict[str, Any], set[str], bool, bool, str]] = []
+    for post in archive["posts"]:
+        if post.get("isRetweet"):
+            continue
+        created = parse_time(post.get("createdAtISO"))
+        if created is None or created < start or created > now + timedelta(minutes=5) or post_key(post) in excluded:
+            continue
+        body = str(post.get("text") or "")
+        reading = analyze_post(body, mapping, us)
+        counted = set(reading["found"]) - reading["relay_keys"]
+        if not counted:
+            continue
+        third_party_keys = set()
+        personal_keys = set()
+        for line, third_party in post_lines(body):
+            line_keys = set(listings_in(line, mapping, us))
+            if third_party:
+                third_party_keys.update(line_keys)
+            else:
+                personal_keys.update(line_keys)
+        impersonal_map = (len(counted) >= 3 and not reading["stance"] and not third_party_keys)
+        satire = bool(SATIRE.search(body))
+        url = str(post.get("sourceUrl") or f"https://x.com/aleabitoreddit/status/{post.get('id')}")
+        for key in counted:
+            candidates.append((created, post_key(post), key, url, reading,
+                               third_party_keys - personal_keys, impersonal_map, satire, body))
+    candidates.sort(key=lambda item: (item[0], item[1], item[2]))
+    first_bullish: set[str] = set()
+    result: list[dict[str, str]] = []
+    for created, post_id, key, url, reading, third_party_only, map_post, satire, body in candidates:
+        stance = reading["stance"].get(key)
+        if satire or key in third_party_only:
+            kind = "OTHER"
+        elif map_post:
+            kind = "WATCHLIST_MAP"
+        elif (key in first_bullish and VICTORY_CLAIM.search(body) and stance not in {"BEARISH", "TRIM"}
+              and not re.search(r"\b(?:didn't|didnt|never|not)\s+(?:really\s+)?(?:call|tell)\b", body, re.I)):
+            kind = "VICTORY_LAP"
+        elif stance == "BULLISH":
+            kind = "REAFFIRMATION" if key in first_bullish else "NEW_THESIS"
+            first_bullish.add(key)
+        else:
+            kind = "OTHER"
+        assert kind in POST_TYPES
+        result.append({"symbol": key, "post_id": post_id, "created_at": iso(created),
+                       "source_url": url, "post_type": kind})
+    return result
 
 
 # ---- oEmbed verification (network only through an injectable fetch) ----
