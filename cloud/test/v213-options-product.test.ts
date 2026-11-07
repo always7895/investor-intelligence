@@ -1,5 +1,6 @@
 import { describe, expect, it, beforeEach, vi } from "vitest";
 import { assertLineMessages } from "../src/line-messages";
+import { formatTaipeiTimestamp } from "../src/v213/line-formatters";
 import type { OptionContractQuote } from "../src/v213/market-product-schema";
 import { validateOptionContractQuote } from "../src/v213/market-product-schema";
 import {
@@ -154,11 +155,11 @@ describe("Options Product Contract and Validation", () => {
     expect(flexStr).not.toContain("UNAVAILABLE（無定義策略）");
     expect(flexStr).toContain("$4.20");
     expect(flexStr).toContain("年化報酬");
-    expect(flexStr).toContain("未提供策略報酬");
-    expect(flexStr).toContain("125｜$4.35｜—");
+    expect(flexStr).toContain("年化報酬：未提供");
+    expect(flexStr).toContain("Bid/Ask/Spread"); // UI-R3: strike is in the header and Mid is the single hero; no duplicate summary tile.
     expect(flexStr).not.toContain("推薦");
     // V25-FIX3 keeps source/date, rights, provenance and both risk operands in three labelled rows on this bubble.
-    for (const qualifier of [validQuote.timestamp, "來源｜", "權利｜", "出處 OP_TEST_SUITE", "風險｜", validQuote.assignment_risk, validQuote.liquidity_warning]) {
+    for (const qualifier of [formatTaipeiTimestamp(validQuote.timestamp), "來源｜", "權利｜", "出處 OP_TEST_SUITE", "風險｜", validQuote.assignment_risk, validQuote.liquidity_warning]) {
       expect(flexStr).toContain(qualifier);
     }
 
@@ -173,7 +174,7 @@ describe("Options Product Contract and Validation", () => {
     const flex = optionsUnavailableReport("AAPL", "weekly", "封存快照不含期權物件");
     assertLineMessages(flex);
     const flexStr = JSON.stringify(flex);
-    expect(flexStr).toContain("OPTION_DATA_UNAVAILABLE");
+    expect(flexStr).toContain("期權報價不可用");
     expect(flexStr).toContain("拒用模型／Black-Scholes 猜價");
     expect(flexStr).toContain("AAPL 每週期權");
     expect(flexStr).toContain("AAPL 每月期權");
@@ -182,7 +183,7 @@ describe("Options Product Contract and Validation", () => {
     const text = optionsUnavailableReport("AAPL", "monthly", "封存快照不含期權物件", true);
     assertLineMessages(text);
     const textStr = JSON.stringify(text);
-    expect(textStr).toContain("OPTION_DATA_UNAVAILABLE");
+    expect(textStr).toContain("期權報價不可用");
     expect(textStr).toContain("AAPL 每月期權");
     expect(textStr).toContain("AAPL 每週期權");
     expect(textStr).toContain("快捷指令：");

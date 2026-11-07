@@ -108,7 +108,7 @@ describe("End-to-End Market Product Flow (Macro & Options)", () => {
     const messages = await actualReply("TOP5產業總覽");
     const body = JSON.stringify(messages);
     expect(body).toContain("准入門檻未達成");
-    expect(body).toContain("MACRO_TOP5_SHORTFALL");
+    expect(body).toContain("TOP5合格產業不足");
     expect(body).toContain("宏觀資料說明");
   });
 
@@ -117,7 +117,7 @@ describe("End-to-End Market Product Flow (Macro & Options)", () => {
     expect(messages.every(m => m.type === "text")).toBe(true);
     const body = JSON.stringify(messages);
     expect(body).toContain("TOP5產業總覽 · 准入門檻未達成");
-    expect(body).toContain("MACRO_TOP5_SHORTFALL");
+    expect(body).toContain("TOP5合格產業不足");
   });
 
   it("educational options commands return 4 strategy cards without network/model reads", async () => {
@@ -161,27 +161,27 @@ describe("End-to-End Market Product Flow (Macro & Options)", () => {
   it("functional query for ticker weekly/monthly options returns fail-closed UNAVAILABLE", async () => {
     const weeklyMessages = await actualReply("NVDA 每週期權");
     const weeklyBody = JSON.stringify(weeklyMessages);
-    expect(weeklyBody).toContain("OPTION_DATA_UNAVAILABLE");
+    expect(weeklyBody).toContain("期權報價不可用");
     expect(weeklyBody).toContain("NVDA 每週期權");
     expect(weeklyBody).toContain("期權教學");
 
     const monthlyMessages = await actualReply("AAPL 每月期權");
     const monthlyBody = JSON.stringify(monthlyMessages);
-    expect(monthlyBody).toContain("OPTION_DATA_UNAVAILABLE");
+    expect(monthlyBody).toContain("期權報價不可用");
     expect(monthlyBody).toContain("AAPL 每月期權");
   });
 
   it("unsealed macro card query reports explicit unavailable", async () => {
     const messages = await actualReply("宏觀產業 卡片 ind_hbm");
     const body = JSON.stringify(messages);
-    expect(body).toContain("MACRO_CARD_UNAVAILABLE");
+    expect(body).toContain("產業卡片暫不可用");
     expect(body).toContain("ind_hbm");
   });
 
   it("unsealed macro deep analysis query reports explicit unavailable with 10-dimension notice", async () => {
     const messages = await actualReply("宏觀產業 深度化分析 ind_hbm");
     const body = JSON.stringify(messages);
-    expect(body).toContain("MACRO_DEEP_UNAVAILABLE");
+    expect(body).toContain("產業深度分析暫不可用");
     expect(body).toContain("10維完整展開");
   });
 

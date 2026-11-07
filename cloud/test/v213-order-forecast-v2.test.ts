@@ -101,7 +101,7 @@ describe("version-2 order forecast", () => {
       const flex = JSON.stringify(flexPages);
       expect(fullText.match(/本次查核 2026-09-21/g)?.length ?? 0, `${entry.symbol} text`).toBeGreaterThanOrEqual(6);
       for (let i = 1; i <= 4; i += 1) expect(fullText, `${entry.symbol} text`).toContain(`期後訂單消息（不併入 RPO）：合約${i}`);
-      expect(flex, `${entry.symbol} flex`).toContain("完整數據與網址");
+      expect(flex, `${entry.symbol} flex`).toContain("瓶頸詳情");
       expect(flex, `${entry.symbol} flex`).toContain("逐項條件、期後披露與預估見文字版");
       // V25-FIX3 uses a separate bold group label and qualifier node; assert both on the same orders bubble.
       const ordersPage = JSON.stringify((flexPages[0] as any).contents.contents[2]);
@@ -236,7 +236,7 @@ describe("version-2 order forecast", () => {
     expect(detailText.match(/期後訂單消息（不併入 RPO）/g)?.length ?? 0).toBe(6);
     expect(detailText).toContain("若1年內實現訂單 → ");
     const detailFlex = JSON.stringify(buildBottleneckDetail(parsed, parsed.top[3]!.symbol, "flex"));
-    expect(detailFlex).toContain("完整數據與網址");
+    expect(detailFlex).toContain("瓶頸詳情");
     expect(detailFlex).toContain("逐項條件、期後披露與預估見文字版");
   });
 
@@ -261,7 +261,7 @@ describe("version-2 order forecast", () => {
       expect(detailText.match(/本次查核 2026-09-21/g)?.length ?? 0, `${entry.symbol} text`).toBeGreaterThanOrEqual(6);
       expect(detailText).toContain("若1年內實現訂單 → ");
       const detailFlex = JSON.stringify(buildBottleneckDetail(parsed, entry.symbol, "flex"));
-      expect(detailFlex, `${entry.symbol} flex`).toContain("完整數據與網址");
+      expect(detailFlex, `${entry.symbol} flex`).toContain("瓶頸詳情");
       expect(detailFlex, `${entry.symbol} flex`).toContain("逐項條件、期後披露與預估見文字版");
     }
   });

@@ -174,7 +174,7 @@ describe.each<Viewer>(["owner", "friend"])("macro freshness through the %s LINE 
       data_basis: null, potential_ranking: null });
     for (const card of doc.industries) { card.rank = null; card.growth = null; }
     const result = await reply(await macroEnv(doc), viewer, "宏觀產業 卡片 gamma 文字");
-    expect(result).toContain("MACRO_CARD_UNAVAILABLE");
+    expect(result).toContain("產業卡片暫不可用");
     expect(result).not.toMatch(FACTS);
   });
 
@@ -249,7 +249,7 @@ describe.each<Viewer>(["owner", "friend"])("macro freshness through the %s LINE 
       if (++macroReads === 2) { await Promise.resolve(); vi.setSystemTime(new Date(after)); }
       return readMacro(...args);
     });
-    const record = { ticker: "SYNTHETIC_FALLBACK", industry: "SYNTHETIC_FALLBACK_INDUSTRY",
+    const record = { ticker: "SYNTHETIC_FALLBACK", industry: "資料暫不可用",
       orders_state_as_of: "2026-09-18T12:30:00Z", retrieved_at: "2026-09-25T12:00:00Z", evidence_class: "market_observation" };
     const report = { generated_at: MACRO_STAMP, records: [record] };
     vi.spyOn(reportReaders, "loadV213FreshTop20Report").mockResolvedValue(report as any);

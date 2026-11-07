@@ -142,7 +142,7 @@ describe("data-driven potential ranking", () => {
   });
 
   it("fails closed when the ranking is missing or malformed", async () => {
-    expect(await actualReply("潛力榜", await sealedEnv(null))).toContain("POTENTIAL_RANKING_UNAVAILABLE");
+    expect(await actualReply("潛力榜", await sealedEnv(null))).toContain("資料暫不可用");
     for (const bad of [
       { ...RANKING, records: [{ ...row(1, "SYNA"), rank: 2 }] },
       { ...RANKING, records: [{ ...row(1, "SYNA-P") }] },

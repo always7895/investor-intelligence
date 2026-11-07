@@ -97,7 +97,7 @@ describe("OPTIONS-NONUS-02 bridge: exact Python-emitted bodies through the Worke
   it("TESTFIX1 rights NONE: denies the native sealed quote without opt-in", async () => {
     for (const flex of [false, true]) {
       const body = textOf(await reply(await sealedEnv("retained_sive_sept30", { flex }), "VOLV-B.ST 每月期權"));
-      expect(body).toContain("OPTION_RIGHTS_NOT_ADMITTED");
+      expect(body).toContain("期權資料未通過公開驗收");
       expect(body).not.toContain("367.00 SEK");
     }
   });
@@ -267,7 +267,7 @@ describe("OPTIONS-NONUS-02 bridge: exact Python-emitted bodies through the Worke
     invalidCycle.options["VOLV-B.ST"].monthly.currency = "USD";
     const invalidText = textOf(await reply(await sealedEnv("retained_sive_sept30", { options: JSON.stringify(invalidCycle) }), "VOLV-B.ST 每月期權"));
     expect(invalidText).not.toMatch(/\d+\.\d\d USD/);
-    expect(textOf(await reply(await sealedEnv("retained_sive_sept30", { badPointer: true }), "VOLV B 每月期權"))).toContain("OPTION_DATA_UNAVAILABLE");
+    expect(textOf(await reply(await sealedEnv("retained_sive_sept30", { badPointer: true }), "VOLV B 每月期權"))).toContain("期權報價不可用");
     vi.setSystemTime(FIXED_NOW + 3 * 3600_000);
     expect(textOf(await reply(await sealedEnv("retained_sive_sept30"), "VOLV-B.ST 每月期權"))).toContain("SEK");
     vi.setSystemTime(FIXED_NOW + 7 * 3600_000);

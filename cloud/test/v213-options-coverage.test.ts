@@ -143,14 +143,14 @@ describe("G1A loader states", () => {
     const result = await loadOptionsCoverage(await pinPublicSnapshot(env as never), FIXED_NOW);
     expect(result.status).toBe("SNAPSHOT_UNAVAILABLE");
     const text = textOf(buildOptionsCoverageMessages(result));
-    expect(text).toContain("OPTIONS_COVERAGE_UNAVAILABLE（SNAPSHOT_UNAVAILABLE）");
+    expect(text).toContain("【注意】來源與缺口資訊暫不可用（快照暫不可用）");
     expect(text).not.toContain("目錄宣告的來源");
   });
 
   it("a sealed snapshot without the object is COVERAGE_ABSENT (the builder's refusal reads the same)", async () => {
     const { result } = await load(undefined);
     expect(result.status).toBe("COVERAGE_ABSENT");
-    expect(textOf(buildOptionsCoverageMessages(result))).toContain("OPTIONS_COVERAGE_UNAVAILABLE（COVERAGE_ABSENT）");
+    expect(textOf(buildOptionsCoverageMessages(result))).toContain("【注意】來源與缺口資訊暫不可用（來源資料未封存）");
   });
 
   it("a body over 200000 UTF-8 bytes is refused BEFORE JSON.parse ever sees it", async () => {
@@ -188,7 +188,7 @@ describe("G1A loader states", () => {
     const { env, result } = await load(old);
     expect(result.status).toBe("OK");
     const output = textOf(await v213PublicLineAnswer(env as never, parseQuery("全球期權來源與缺口")) as { type: string; text?: string }[]);
-    expect(output).toContain("eurex_public_derivatives｜Eurex Frankfurt AG｜EU/DE/GLOBAL｜權利:review_before_enable");
+    expect(output).toContain("eurex_public_derivatives｜Eurex Frankfurt AG｜EU/DE/GLOBAL｜權利:啟用前需審查");
     expect(output).not.toContain("krx_open_api_options");
     expect(output).not.toContain("OPTIONS_COVERAGE_UNAVAILABLE");
     const changed = clone(old);
@@ -380,10 +380,10 @@ describe("G1A render-time safety", () => {
     const handBuilt: OptionsCoverageResult = { status: "OK", generated_at: "2026-09-30T17:00:00Z" };
     for (const forged of [{ ...result }, JSON.parse(JSON.stringify(result)) as OptionsCoverageResult, handBuilt, structuredClone(result)]) {
       const text = textOf(buildOptionsCoverageMessages(forged));
-      expect(text).toContain("OPTIONS_COVERAGE_UNAVAILABLE（COVERAGE_SCHEMA_INVALID）");
+      expect(text).toContain("【注意】來源與缺口資訊暫不可用（來源資料未通過驗證）");
       expect(text).not.toContain("目錄宣告的來源");
     }
-    expect(textOf(buildOptionsCoverageMessages(null as unknown as OptionsCoverageResult))).toContain("COVERAGE_SCHEMA_INVALID");
+    expect(textOf(buildOptionsCoverageMessages(null as unknown as OptionsCoverageResult))).toContain("來源資料未通過驗證");
     expect(textOf(buildOptionsCoverageMessages(result))).toContain("目錄宣告的來源");  // the issued wrapper is unaffected
   });
 
@@ -393,7 +393,7 @@ describe("G1A render-time safety", () => {
     expect(textOf(buildOptionsCoverageMessages(result))).toContain("目錄宣告的來源");  // exactly at the limit is still valid
     vi.setSystemTime(FIXED_NOW + 6 * 3600_000 + 1);
     const text = textOf(buildOptionsCoverageMessages(result));
-    expect(text).toContain("OPTIONS_COVERAGE_UNAVAILABLE（COVERAGE_STALE）");
+    expect(text).toContain("【注意】來源與缺口資訊暫不可用（來源資料已逾時）");
     expect(text).not.toContain("目錄宣告的來源");
   });
 
@@ -431,9 +431,11 @@ describe("G1A page content", () => {
     assertLineMessages(messages as never);
     expect(messages.length).toBeLessThanOrEqual(5);
     const text = textOf(messages);
+    const rightsZh: Record<string,string> = { review_before_enable:"啟用前需審查", reviewed_public_access:"已審閱公開存取條件（非已准入）", automated_access_prohibited:"禁止自動存取", licence_required:"須授權", operator_accepted_unlicensed:"操作者接受未授權風險（非已准入）" };
+    const adapterZh: Record<string,string> = { not_implemented:"未實作", candidate_implemented:"候選已實作（未驗收）", adapter_reviewed:"轉接器已審閱（非報價准入）", not_permitted:"禁止使用" };
     const providers = (catalogJson as unknown as { providers: Json[] }).providers;
     expect(text).toContain(`目錄宣告的來源（共 ${providers.length} 筆）：`);
-    for (const provider of providers) expect(text).toContain(`• ${provider.id}｜${provider.authority}｜${(provider.jurisdictions as string[]).join("/")}｜權利:${provider.rights_status}｜轉接:${provider.adapter_status}｜宣告未驗證`);
+    for (const provider of providers) expect(text).toContain(`• ${provider.id}｜${provider.authority}｜${(provider.jurisdictions as string[]).join("/")}｜權利:${rightsZh[provider.rights_status as string] ?? "權利未核實"}｜轉接:${adapterZh[provider.adapter_status as string] ?? "未核實"}｜宣告未驗證`);
     expect(text).toContain("GLOBAL 只是角色代碼，不代表所有國家");
     expect(text).toContain("本機路由宣告（來自備兌買權路由設定，不是觀察到的資料");
     expect(text).toContain("SWEDEN、US");  // the covered_markets KEYS, sorted
@@ -465,13 +467,13 @@ describe("G1A rich-menu command through the real handler", () => {
   it("the command reports the unavailable states instead of falling through to generic options routing", async () => {
     const absent = await sealedEnv({});
     const absentText = textOf(await v213PublicLineAnswer(absent as never, parseQuery("全球期權來源與缺口")) as { type: string; text?: string }[]);
-    expect(absentText).toContain("OPTIONS_COVERAGE_UNAVAILABLE（COVERAGE_ABSENT）");
+    expect(absentText).toContain("【注意】來源與缺口資訊暫不可用（來源資料未封存）");
     const forged = await sealedEnv({ [OPTIONS_COVERAGE_KEY]: JSON.stringify({ ...derivedBody(), purpose: "X" }) });
     expect(textOf(await v213PublicLineAnswer(forged as never, parseQuery("全球期權來源與缺口")) as { type: string; text?: string }[]))
-      .toContain("OPTIONS_COVERAGE_UNAVAILABLE（COVERAGE_SCHEMA_INVALID）");
+      .toContain("【注意】來源與缺口資訊暫不可用（來源資料未通過驗證）");
     const empty = { PUBLIC_CACHE: asKv(new MemoryKv()), TENANT_PRIVATE_CACHE: asKv(new MemoryKv()), EPHEMERAL_SECURITY_CACHE: asKv(new MemoryKv()) };
     expect(textOf(await v213PublicLineAnswer(empty as never, parseQuery("全球期權來源與缺口")) as { type: string; text?: string }[]))
-      .toContain("OPTIONS_COVERAGE_UNAVAILABLE（SNAPSHOT_UNAVAILABLE）");
+      .toContain("【注意】來源與缺口資訊暫不可用（快照暫不可用）");
   });
 
   it("a near-miss text is not the command and does not produce the source page", async () => {

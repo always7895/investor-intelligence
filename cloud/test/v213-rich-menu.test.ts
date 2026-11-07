@@ -54,7 +54,7 @@ describe("existing LINE rich-menu commands through actual authorized caller", ()
   it.each(RICH_MENU_ACTIONS)("handles $text without a model/private fallback", async action => {
     const messages = await actualReply(action.text);
     const body = JSON.stringify(messages);
-    expect(body).toContain(action.text === "TOP20" ? "T00" : action.text === "期權" ? "教學範例，非推薦" : "MACRO_TOP5_SHORTFALL");
+    expect(body).toContain(action.text === "TOP20" ? "T00" : action.text === "期權" ? "教學範例，非推薦" : "TOP5合格產業不足");
     expect(body).not.toContain("LOCAL_MODEL_NOT_CONFIGURED");
   });
   // V25 keeps the remaining command visible as text; inspect buttons recursively because the compact Flex tree is not positional.
@@ -109,9 +109,9 @@ describe("existing LINE rich-menu commands through actual authorized caller", ()
   it("main macro entry 宏觀產業分析 routes to TOP5 overview / shortfall report, never shallow company count as primary research", async () => {
     const f = await fixture();
     const body = JSON.stringify(await actualReply("宏觀產業分析", f));
-    expect(body).toContain("MACRO_TOP5_SHORTFALL");
+    expect(body).toContain("TOP5合格產業不足");
     expect(body).toContain("TOP5 准入門檻未達成");
-    expect(body).toContain("MACRO_PRODUCT_NOT_SEALED");
+    expect(body).toContain("宏觀資料尚未封存");
   });
   it("puts macro limitations before five-group summary and retains all groups in text for compatibility distribution", async () => {
     const f = await fixture();
@@ -135,7 +135,7 @@ describe("existing LINE rich-menu commands through actual authorized caller", ()
     f.publicKv.values.set("v213:source-federation:latest", JSON.stringify({ global_sources: [{ detail: { value: 999999, publication_eligible: false } }] }));
     const body = JSON.stringify(await actualReply("當輪產業分布 文字", f));
     for (const row of f.report.records) expect(body).toContain(row.ticker);
-    expect(body).toContain("10/20家（50%）"); expect(body).toContain("MACRO_PRODUCT_NOT_SEALED");
+    expect(body).toContain("10/20家（50%）"); expect(body).toContain("宏觀資料尚未封存");
     expect(body).not.toContain("999999"); expect(body).toContain("不是市值／營收權重");
   });
   it.each(["bad_pointer", "stale_report", "stale_row", "future_row"])("does not use fresh direct keys to rescue %s", async state => {
@@ -155,7 +155,7 @@ describe("existing LINE rich-menu commands through actual authorized caller", ()
     const body = JSON.stringify(await actualReply("期權"));
     expect(body).toContain("教學範例，非推薦"); expect(body).toContain("Covered Call");
     const quote = JSON.stringify(await actualReply("最新期權"));
-    expect(quote).toContain("OPTION_DATA_UNAVAILABLE");
+    expect(quote).toContain("期權報價不可用");
     const help = JSON.stringify(await actualReply("期權試算說明"));
     expect(help).toContain("期權試算 ticker=");
   });
@@ -192,7 +192,7 @@ describe("options menu: key presence is not qualified availability", () => {
     f.publicKv.values.set(key, payload);
     const body = JSON.stringify(await actualReply("最新期權", f));
     expect(body).not.toContain("快照存在");
-    expect(body).toContain("OPTION_DATA_UNAVAILABLE");
+    expect(body).toContain("期權報價不可用");
     expect(body).not.toContain("9.99");
   });
 
@@ -202,7 +202,7 @@ describe("options menu: key presence is not qualified availability", () => {
     f.publicKv.values.set("snapshot:legacy-carryover-run:options:latest", optionRow(NOW()));
     const body = JSON.stringify(await actualReply("最新期權", f));
     expect(body).not.toContain("快照存在");
-    expect(body).toContain("OPTION_DATA_UNAVAILABLE");
+    expect(body).toContain("期權報價不可用");
   });
 
   it("pinned reader is pointer-only for the options menu (no direct-key rescue, no private reads, one mocked reply)", async () => {
@@ -215,7 +215,7 @@ describe("options menu: key presence is not qualified availability", () => {
       return originalGet(key, type);
     });
     const body = JSON.stringify(await actualReply("最新期權", f));
-    expect(body).toContain("OPTION_DATA_UNAVAILABLE");
+    expect(body).toContain("期權報價不可用");
     expect(body).not.toContain("9.99");
     expect(readKeys).toContain("snapshot:current");
     expect(readKeys.filter(key => /options:latest|latest_options/.test(key))).toEqual([]);
@@ -248,7 +248,7 @@ describe("options menu: key presence is not qualified availability", () => {
     });
     const body = JSON.stringify(await actualReply("最新期權", f));
     expect(body).not.toContain("快照存在");
-    expect(body).toContain("OPTION_DATA_NOT_ADMITTED");
+    expect(body).toContain("期權資料未通過公開驗收");
     expect(body).not.toContain("9.99");
     expect(readKeys.filter(key => /options:latest|latest_options/.test(key))).toEqual([]);
   });

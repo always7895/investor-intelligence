@@ -192,7 +192,7 @@ describe("nearest standard monthly (operator 2026-11-03): sealed consumer regres
     const loaded = await loadDetailedOptionObservation(await pinPublicSnapshot(env as never), "SIVE.ST", "weekly", NOW);
     expect(loaded.status).toBe("QUOTE_INVALID_OR_STALE");
     const body = text(await answer(env, "SIVE.ST 每週期權"));
-    expect(body).toContain("OPTION_DATA_UNAVAILABLE");
+    expect(body).toContain("期權報價不可用");
     expect(body).not.toContain("33.00 SEK");
   });
 
@@ -206,7 +206,7 @@ describe("nearest standard monthly (operator 2026-11-03): sealed consumer regres
     expect(body).toContain("33.00 SEK");
     expect(body).not.toContain("月期權延伸到期");
     const absent = text(await answer(await sealed(), "SIVE.ST 每週期權"));
-    expect(absent).toContain("OPTION_DATA_UNAVAILABLE");
+    expect(absent).toContain("期權報價不可用");
     expect(absent).toContain("所列到期不在本週或下週策略範圍");
     expect(absent).not.toContain("33.00 SEK");
   });

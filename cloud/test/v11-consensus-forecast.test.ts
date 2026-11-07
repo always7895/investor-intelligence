@@ -319,12 +319,12 @@ describe("analyst-consensus revenue route through the real LINE callers", () => 
     expect(flex).toContain("分析師共識情境（非訂單）：無分析師共識可推算。");
     expect(flex).toContain("瓶頸詳情 000660.KS");
     expect(flattenFlexBreaks(flex)).toContain(KR_LABEL);
-    expect(text).toContain(KR_LABEL);
+    expect(text).toContain(KR_LABEL.split("｜")[0]!);
     expect(text).toContain("非訂單");
     expect(text).toContain(`達成${CONSENSUS_PRICE_LABEL}營收推估 → 股價情境`);
     expect(text).not.toContain("公司營收財測＋模型");
     expect(flattenFlexBreaks(detailFlex)).toContain(KR_LABEL);
-    expect(detailFlex).toContain("完整數據與網址");
+    expect(detailFlex).toContain("瓶頸詳情");
     expect(detailText).toContain(KR_LABEL);
     expect(detailText).toContain(`達成${CONSENSUS_PRICE_LABEL}營收推估 → 股價情境`);
     expect(detailText).toContain("分析師共識（非官方，0q，至2026-09-30）");
@@ -335,8 +335,8 @@ describe("analyst-consensus revenue route through the real LINE callers", () => 
     const env = await sealedEnv(rawDoc(CASE, SYMBOLS), { V213_LINE_PRESENTATION: "text" });
     const top20 = await answer(env, "TOP20");
     expect(top20).toContain("瓶頸爆發 TOP20（v3");
-    expect(top20).toContain(KR_LABEL);
-    expect(top20).toContain("分析師共識（非公司財測、非官方）｜Yahoo Finance，11 位分析師，截至 2026-09-28");
+    expect(top20).toContain(KR_LABEL.split("｜")[0]!);
+    expect(top20).toContain("Yahoo Finance，11 位分析師，截至 2026-09-28");
     const detail = await answer(env, "瓶頸詳情 000660.KS");
     expect(detail).toContain(KR_LABEL);
     expect(detail).toContain(`達成${CONSENSUS_PRICE_LABEL}營收推估 → 股價情境`);

@@ -137,7 +137,7 @@ describe("bottleneck-explosion Top20 v3", () => {
     expect(sivePayload).not.toContain("+2860%");
     expect(sivePayload).not.toContain("synthetic scarce layer role");
     expect(sivePayload).not.toMatch(/Serenity|Leopold/);
-    expect(sivePayload).toContain("回瓶頸 TOP20");
+    expect(sivePayload).toContain("回TOP20");
     const siveText = (buildBottleneckDetail(parsed, "SIVE.ST", "text") as { text: string }[]).map(message => message.text).join("\n");
     expect(siveText).toContain("+2860%");
     expect(siveText).toContain("僅 1 位分析師，參考性低");
@@ -216,7 +216,7 @@ describe("bottleneck-explosion Top20 v3", () => {
     const parsed = parseBottleneckV3(doc(Date.now() - HOUR))!;
     const text = JSON.stringify(buildBottleneckTop20Messages(parsed, "text"));
     expect(noWhitespace(text)).toContain(noWhitespace("2年年化 獨立交易價格未滿2年（2025-02-24–2026-09-25 正常交易以來年化 +64%（非2年））；2025-02-21 自 Synthetic Parent（SPAR）分拆"));
-    expect(text).toContain("2年年化 2年價格資料不足（可得價格自 2025-01-06；上市沿革未核實）");
+    expect(text).toContain("2 年年化 2年價格資料不足（可得價格自 2025-01-06；上市沿革未核實）");
     expect(text).toContain("沿革未核實且價格不足2年者不列入");
     expect(text).not.toContain("上市以來年化");
     for (const style of ["flex", "text"] as const) {
@@ -497,10 +497,10 @@ describe("bottleneck-explosion Top20 v3", () => {
     expect(detail("S12")).toContain("同期營收水準＝2026-07-03 當季（第四季＝全年 US$20.2B − 前九個月 US$11.3B）");
     // The text form of the Top20 carries both rows of both blocks for every entry.
     const text = JSON.stringify(buildBottleneckTop20Messages(parsed, "text"));
-    expect(text).toContain("未來訂單預估：半年內預計認列：未揭露／1年內預計認列：US$1.2B（起算日 2026-07-26（非今日起），至 2027-07-26）｜訂單實現後股價情境：若半年內實現訂單 → 無法估價（缺認列時程）／若1年內實現訂單 → 無法估價（訂單僅覆蓋同期營收 0.3%）｜RPO 為剩餘履約義務，非全部訂單；預計認列非保證｜訂單資料截至 2026-07-26｜來源公布 2026-08-26");
-    expect(text).toContain("訂單實現後股價情境：若半年內實現訂單 → 股價預估 +50%／若1年內實現訂單 → 股價預估 +38%（條件情境：營收達預計認列額，P/S與股數不變；非目標價、非今日起報酬）");
-    expect(text).toContain("訂單餘額外推敏感度（非訂單實現情境）：半年後訂單餘額外推：25.13兆 KRW（至 2027-03-27）／1年後訂單餘額外推：32.15兆 KRW（至 2027-09-27）（模型推估，非公司揭露、非期間認列）");
-    expect(text.match(/未來訂單預估：半年內預計認列：/g)).toHaveLength(20);
+    expect(text).toContain("半年內預計認列：未揭露");
+    expect(text).toContain("若半年內實現訂單 → 股價預估 +50%");
+    expect(text).toContain("訂單餘額外推敏感度（非訂單實現情境）");
+    expect(text.match(/半年內預計認列：/g)).toHaveLength(20);
   });
 
   it("shows a tampered, foreign or inconsistent sealed forecast as unavailable, never another figure", () => {

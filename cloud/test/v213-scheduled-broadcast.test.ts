@@ -298,7 +298,7 @@ describe("v2.1.3 scheduled seven-field owner broadcast", () => {
     expect(proof).toMatchObject({ rows: 20, fields: Array(21).fill(7), presentation: "flex_carousel", message_count: 4, values_match: true });
     expect(JSON.stringify(messages)).not.toContain("Serenity");
     // The bilingual push carries the admission disclosure on every card (it used to be added only for other locales).
-    expect(JSON.stringify(messages).split("TEST-ONLY").length - 1).toBeGreaterThanOrEqual(20);
+    expect(JSON.stringify(messages).split("僅供測試展示").length - 1).toBeGreaterThanOrEqual(20);
   });
 
   it("keeps payload and dedupe on one run when the pointer changes mid-read", async () => {

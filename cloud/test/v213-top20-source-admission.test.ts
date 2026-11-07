@@ -149,7 +149,7 @@ describe("TOP20 Source Authority & Return Admission Boundary (Review 2 Acceptanc
     expect(bodyStr).not.toContain("+50.0%");
     expect(bodyStr).not.toContain("50.0%");
     // Must display UNAVAILABLE for 2Y total return
-    expect(bodyStr).toContain("UNAVAILABLE");
+    expect(bodyStr).toContain("資料暫不可用");
 
     // Legacy returns (2Y CAGR and 6M) remain unchanged
     expect(bodyStr).toContain("+18.0%");
@@ -172,7 +172,7 @@ describe("TOP20 Source Authority & Return Admission Boundary (Review 2 Acceptanc
     const fullDeepText = deepMessages.map(m => m.text).join("\n\n");
 
     // Deep flow section 10 must withhold numeric 2Y total return and display UNAVAILABLE
-    expect(fullDeepText).toContain("兩年總報酬還原端點：UNAVAILABLE");
+    expect(fullDeepText).toContain("兩年總報酬還原端點：資料暫不可用");
     expect(fullDeepText).not.toContain("+50.0%（起日");
     expect(fullDeepText).not.toContain("50.0%");
 

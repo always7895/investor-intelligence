@@ -73,7 +73,7 @@ async function answer(env: Awaited<ReturnType<typeof sealedEnv>>, text: string):
 describe("LINE aliases for the current products", () => {
   it("TESTFIX1 rights NONE: denies an option alias without opt-in", async () => {
     const body = await answer(await sealedEnv(), "SIVE.ST 每月選擇權");
-    expect(body).toContain("OPTION_RIGHTS_NOT_ADMITTED");
+    expect(body).toContain("期權資料未通過公開驗收");
     expect(body).not.toContain("62.00 SEK");
   });
 

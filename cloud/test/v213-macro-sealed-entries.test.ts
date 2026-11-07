@@ -78,5 +78,5 @@ it("renders the industry card embedded in the sealed overview", async () => {
 
 it("an industry outside the sealed overview stays unavailable", async () => {
   const body = JSON.stringify(await v213PublicLineAnswer(await sealedEnv(), parseQuery("宏觀產業 深度化分析 omega")));
-  expect(body).toContain("MACRO_DEEP_UNAVAILABLE");
+  expect(body).toContain("產業深度分析暫不可用");
 });

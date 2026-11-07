@@ -170,7 +170,7 @@ describe("v2.1.3 Top20 deep flow and 2Y total return UI contract", () => {
     // Check footer buttons: exactly 1 button, labelled 深度化分析
     const buttons = firstBubble.footer.contents.filter((c: any) => c.type === "button");
     expect(buttons).toHaveLength(1);
-    expect(buttons[0].action.label).toContain("深度化分析");
+    expect(buttons[0].action.label).toContain("深度分析");
     expect(buttons[0].action.text).toContain("Top20 深度化分析 T00");
     // Duplicate card action removed
     expect(JSON.stringify(firstBubble.footer)).not.toContain("本公司七欄文字");
@@ -182,14 +182,14 @@ describe("v2.1.3 Top20 deep flow and 2Y total return UI contract", () => {
     expect(bodyStr).toContain("2年年化");
     expect(bodyStr).toContain("6個月");
     // In accordance with source authority review, numeric 2Y total return is withheld in actual LINE cards: UNAVAILABLE
-    expect(bodyStr).toContain("UNAVAILABLE");
+    expect(bodyStr).toContain("資料暫不可用");
     expect(bodyStr).not.toContain("+50.0%");
     // Legacy returns (2Y CAGR and 6M) are preserved and unchanged
     expect(bodyStr).toContain("+22.5%");
     expect(bodyStr).toContain("+10.0%");
     // T01 also shows UNAVAILABLE
     const secondBubble = messages[0].contents.contents[1];
-    expect(JSON.stringify(secondBubble.body)).toContain("UNAVAILABLE");
+    expect(JSON.stringify(secondBubble.body)).toContain("資料暫不可用");
   });
 
   it("triggers deep flow from button command with at least 10 sections and explicit bottleneck boundaries", async () => {
@@ -217,9 +217,9 @@ describe("v2.1.3 Top20 deep flow and 2Y total return UI contract", () => {
     expect(fullText).toContain("十、明確未明與待查事項");
 
     // Claim-level tags
-    expect(fullText).toContain("[SUPPORTED]");
-    expect(fullText).toContain("[INFERENCE]");
-    expect(fullText).toContain("[WITHHELD]");
+    expect(fullText).toContain("[已獲證據支持]");
+    expect(fullText).toContain("[推論]");
+    expect(fullText).toContain("[資料暫不提供]");
 
     // Essential analytical boundaries
     expect(fullText).toContain("Customers aren't scarcity");
@@ -229,7 +229,7 @@ describe("v2.1.3 Top20 deep flow and 2Y total return UI contract", () => {
 
     // System Bottleneck Explosion Score is UNAVAILABLE / UNRANKED
     expect(fullText).toContain("System Bottleneck Explosion Score");
-    expect(fullText).toContain("UNAVAILABLE / UNRANKED");
+    expect(fullText).toContain("資料暫不可用 / 尚未評定");
 
     // Rank rationale: legacy candidate display position, not qualified bottleneck rank
     expect(fullText).toContain("舊版候選展示序位");
@@ -237,7 +237,7 @@ describe("v2.1.3 Top20 deep flow and 2Y total return UI contract", () => {
     expect(fullText).toContain("System Bottleneck Explosion Rank");
 
     // Return evidence in section 10 withholds numeric 2Y total and shows explicit UNAVAILABLE
-    expect(fullText).toContain("兩年總報酬還原端點：UNAVAILABLE");
+    expect(fullText).toContain("兩年總報酬還原端點：資料暫不可用");
     expect(fullText).not.toContain("+50.0%");
     // Legacy CAGR and 6M remain in section 10
     expect(fullText).toContain("近兩年年化 +22.5%");

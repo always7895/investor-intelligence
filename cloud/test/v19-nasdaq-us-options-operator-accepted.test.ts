@@ -276,7 +276,7 @@ describe("through the real LINE entry", () => {
     const without = await world(catalogWith(revert));
     const env = await sealedEnv(DOC);
     const denied = await lineReply(without, env, `${NQ} 每月期權`);
-    expect(denied).toContain("OPTION_RIGHTS_NOT_ADMITTED");
+    expect(denied).toContain("期權資料未通過公開驗收");
     expect(denied).not.toContain(without.covered.OPERATOR_ACCEPTED_NOTICE_ZH);
     const yahoo = await lineReply(without, env, "SYNTHUS00 每月期權");
     expect(yahoo).toContain("Yahoo Finance 期權鏈（非官方，延遲）");

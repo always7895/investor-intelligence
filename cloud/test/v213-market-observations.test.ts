@@ -119,7 +119,7 @@ async function sealedEnv(options: {
 describe("sealed market observations", () => {
   it("TESTFIX1 rights NONE: denies the sealed observation route without opt-in", async () => {
     const body = JSON.stringify(await v213PublicLineAnswer(await sealedEnv() as never, parseQuery("SIVE 每月期權")));
-    expect(body).toContain("OPTION_RIGHTS_NOT_ADMITTED");
+    expect(body).toContain("期權資料未通過公開驗收");
     expect(body).not.toContain("62.00 SEK");
   });
 
@@ -230,7 +230,7 @@ describe("sealed market observations", () => {
     vi.setSystemTime(FIXED_NOW + 1000);
 
     const past6hAnswer = JSON.stringify(await v213PublicLineAnswer(env as never, parseQuery("SIVE 每月期權")));
-    expect(past6hAnswer).toContain("OPTION_DATA_UNAVAILABLE");
+    expect(past6hAnswer).toContain("期權報價不可用");
     expect(past6hAnswer).not.toContain("62.00 SEK");
 
     const past6hHelper = await loadOptionObservation(view, "SIVE", "monthly", FIXED_NOW + 1000);
@@ -244,7 +244,7 @@ describe("sealed market observations", () => {
 
     // Real option route returns unavailability
     const optionAns = JSON.stringify(await v213PublicLineAnswer(env as never, parseQuery("SIVE 每月期權")));
-    expect(optionAns).toContain("OPTION_DATA_UNAVAILABLE");
+    expect(optionAns).toContain("期權報價不可用");
     expect(optionAns).not.toContain("62.00 SEK");
 
     // Expired loadDelayedQuote is explicitly null
@@ -304,7 +304,7 @@ describe("sealed market observations", () => {
     kv.readKeys = [];
 
     const optionAns = JSON.stringify(await v213PublicLineAnswer(env as never, parseQuery("SIVE 每月期權")));
-    expect(optionAns).toContain("OPTION_DATA_UNAVAILABLE");
+    expect(optionAns).toContain("期權報價不可用");
     expect(optionAns).not.toContain("Illicit Direct Key Fallback");
     expect(optionAns).not.toContain("99.00 SEK");
 

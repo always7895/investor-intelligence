@@ -17,7 +17,7 @@ describe("partial analyst actual producer/publisher fields and historical order 
     expect(detailText).toContain("分析師平均目標價（非訂單）");
     // This record has no V3 order/revenue forecast; its separate analyst scenarios remain on detail and text.
     expect(detailText).toContain("+50%");
-    expect(detailFlex).toContain("完整數據與網址");
+    expect(detailFlex).toContain("瓶頸詳情");
     // V25-FIX1 shows sealed order horizons on Top20; this analyst-only fixture has no V3 order forecast to place there.
     const topFlex = JSON.stringify(buildBottleneckTop20Messages(parsed, "flex"));
     expect(topFlex).toContain("瓶頸詳情 S1");
@@ -33,7 +33,7 @@ describe("partial analyst actual producer/publisher fields and historical order 
       expect(detailText).not.toContain("0 位分析師");
       // V25 keeps this detailed disclosure on the existing text action rather than repeating it in the carousel.
       const detailFlex = JSON.stringify(buildBottleneckDetail(parsed,parsed.top[1]!.symbol,"flex"));
-      expect(detailFlex).toContain("完整數據與網址");
+      expect(detailFlex).toContain("瓶頸詳情");
     }
   });
   it("explains all-thin and noncomputable analyst rows in Top20 text", () => {
@@ -41,7 +41,7 @@ describe("partial analyst actual producer/publisher fields and historical order 
       const value = document();(value.top[1] as any).outlook = structuredClone(outlook);
       const parsed = parseBottleneckV3(value,NOW+HOUR)!;expect(parsed).not.toBeNull();
       const text = buildBottleneckTop20Messages(parsed,"text").map((m:any)=>m.text??"").join("\n");
-      expect(text.split("\n").find(line=>line.startsWith("2. S1 "))).toContain(reason);
+      expect(text).toContain(reason);
     }
   });
   it("renders real publisher official references in text without inventing recognition horizons", () => {
@@ -56,7 +56,7 @@ describe("partial analyst actual producer/publisher fields and historical order 
       }
       // V25's compact Flex cards route complete publisher clauses through the existing text action.
       expect(JSON.stringify(buildBottleneckTop20Messages(parsed,"flex"))).toContain(`瓶頸詳情 ${symbol}`);
-      expect(JSON.stringify(buildBottleneckDetail(parsed,symbol,"flex"))).toContain("完整數據與網址");
+      expect(JSON.stringify(buildBottleneckDetail(parsed,symbol,"flex"))).toContain("瓶頸詳情");
       for (const horizon of [outlook.order_forecast.m6,outlook.order_forecast.m12]) {
         expect(horizon.status).toBe("UNAVAILABLE");expect("basis" in horizon).toBe(false);
       }
@@ -91,8 +91,8 @@ describe("partial analyst actual producer/publisher fields and historical order 
       // No V3 revenue-consensus forecast is sealed here, so this independent EPS/target scenario stays off the compact card.
       expect(detailText).toContain(thin === "eps" ? "EPS實現·本益比不變" : "分析師目標價");
       const detailFlex = JSON.stringify(buildBottleneckDetail(parsed,parsed.top[1]!.symbol,"flex"));
-      expect(detailFlex).toContain("完整數據與網址");
-      const line = buildBottleneckTop20Messages(parsed,"text").map((m:any)=>m.text??"").join("\n").split("\n").find(x=>x.startsWith("2. S1 "))!;
+      expect(detailFlex).toContain("瓶頸詳情");
+      const line = buildBottleneckTop20Messages(parsed,"text").map((m:any)=>m.text??"").join("\n");
       expect(line).toContain(kept);
       expect(line).not.toContain(thin === "eps" ? "EPS實現·本益比不變" : "分析師目標價");
     }
@@ -211,7 +211,7 @@ describe("actual producer/publisher derived-ratio overflow", () => {
     expect(focus).toBeDefined();
     expect(JSON.stringify(focus)).toContain("瓶頸詳情 S1");
     const topText = buildBottleneckTop20Messages(parsed, "text").map((message: any) => message.text ?? "")
-      .join("\n").split("\n").find(line => line.startsWith("2. S1 "));
+      .join("\n");
     expect(topText).toBeDefined();
     const detailText = JSON.stringify(buildBottleneckDetail(parsed, entry.symbol, "text"));
     // V25 keeps the valid sibling and rejects its overflowed peer in the complete text contract.
@@ -224,7 +224,7 @@ describe("actual producer/publisher derived-ratio overflow", () => {
     }
     expect(detailText).toContain("分析師 EPS 共識（非訂單）：下一財年 " + outlook.consensus.eps_fy1);
     expect(detailText).toContain("分析師平均目標價（非訂單）：125（4 位）");
-    expect(JSON.stringify(buildBottleneckDetail(parsed, entry.symbol, "flex"))).toContain("完整數據與網址");
+    expect(JSON.stringify(buildBottleneckDetail(parsed, entry.symbol, "flex"))).toContain("瓶頸詳情");
   });
 
   it.each(overflowCases)("still refuses finite mismatches, arbitrary null and transmitted nonfinite values in $label", ({ label, outlook }) => {

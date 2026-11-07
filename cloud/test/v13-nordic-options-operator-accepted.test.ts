@@ -301,7 +301,7 @@ describe("through the real LINE entry", () => {
     const without = await world(catalogWith(nordic => { nordic.runtime_enabled = false; nordic.line_quote_eligible = false; }));
     const env = await sealedEnv(DOC);
     const denied = await lineReply(without, env, "SIVE.ST 每月期權");
-    expect(denied).toContain("OPTION_RIGHTS_NOT_ADMITTED");
+    expect(denied).toContain("期權資料未通過公開驗收");
     expect(denied).not.toContain(" SEK");
     expect(denied).not.toContain(without.covered.OPERATOR_ACCEPTED_NOTICE_ZH);
     const yahoo = await lineReply(without, env, "SYNTHUS00 每月期權");

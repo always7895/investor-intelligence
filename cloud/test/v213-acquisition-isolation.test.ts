@@ -140,7 +140,7 @@ describe("LINE caller acquisition metadata isolation and publication refusal", (
     expect(body).toContain("宏觀產業分析");
     expect(body).toContain("當輪產業資料不可用");
     expect(body).toContain("不以舊快照、候選宏觀資料或模型猜測補齊。");
-    expect(body).toContain("TOP20");
+    expect(body).toContain("TOP5");
     expect(body).toContain("宏觀資料說明");
     expect(body).toContain("選單");
     expect(body).not.toContain(SENTINEL);
@@ -166,7 +166,7 @@ describe("LINE caller acquisition metadata isolation and publication refusal", (
     applyForgedAcquisitionMetadata(f.publicKv);
     const messages = await actualReply("期權", f);
     const body = JSON.stringify(messages);
-    expect(body).toContain("OPTION_DATA_UNAVAILABLE");
+    expect(body).toContain("期權報價不可用");
     expect(body).toContain("NVDA 每月期權");
     expect(body).toContain("期權試算說明");
     expect(body).toContain("選單");
@@ -210,7 +210,7 @@ describe("LINE caller acquisition metadata isolation and publication refusal", (
     expect(body).toContain("產業甲");
     expect(body).toContain("產業乙");
     expect(body).toContain("10/20家（50%）");
-    expect(body).toContain("MACRO_PRODUCT_NOT_SEALED");
+    expect(body).toContain("宏觀資料尚未封存");
     expect(body).not.toContain(SENTINEL);
     expect(body).not.toContain("999999");
   });

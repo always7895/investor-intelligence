@@ -266,11 +266,11 @@ describe("V21 card", () => {
     const list = bubbles(full()).slice(0, -1);
     const metrics = list.map(bubble => {
       let bullets = 0; let textCount = 0; let chars = 0; let maxLines = 0; let xxs = 0;
-      const buttons: string[] = [];
+      const buttons: string[] = []; const commands: string[] = [];
       const walk = (node: any) => {
         if (Array.isArray(node)) { node.forEach(walk); return; }
         if (!node || typeof node !== "object") return;
-        if (node.type === "button") { buttons.push(node.action.label); return; }
+        if (node.type === "button") { buttons.push(node.action.label); commands.push(node.action.text); return; }
         if (node.type === "box" && node.layout === "horizontal" && node.contents?.length === 2 && node.contents[0]?.width === BULLET_DOT_SIZE) bullets += 1;
         if (node.type === "text") {
           const text = typeof node.text === "string" ? node.text
@@ -280,7 +280,7 @@ describe("V21 card", () => {
         Object.values(node).forEach(walk);
       };
       walk(bubble);
-      return { bullets, textCount, chars, maxLines, xxs, buttons };
+      return { bullets, textCount, chars, maxLines, xxs, buttons, commands };
     });
     // overview: three strategies of one hero figure and at most three bullets each, no more than three labelled disclosures
     expect(metrics[0]!.bullets).toBeLessThanOrEqual(9);
@@ -295,7 +295,7 @@ describe("V21 card", () => {
         expect(label).not.toMatch(/^(?:詳情|更多|詳細|查看)$/);
       }
     }
-    expect(metrics[0]!.buttons.join("|")).toContain("AAA 完整報價與出處");
+    expect(metrics[0]!.commands.join("|")).toContain("AAA 每月期權 文字");
     expect(metrics.slice(1).every(item => item.buttons.length >= 2)).toBe(true);
   });
 

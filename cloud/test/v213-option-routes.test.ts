@@ -110,7 +110,7 @@ const expectShortReason = (body: string) => {
 describe("option routes outside the sealed option markets", () => {
   it("TESTFIX1 rights NONE: denies the ADR option route without opt-in", async () => {
     const body = await answer(await sealedEnv(), "TSMC 每月期權");
-    expect(body).toContain("OPTION_RIGHTS_NOT_ADMITTED");
+    expect(body).toContain("期權資料未通過公開驗收");
     expect(body).not.toContain("330.00");
   });
 

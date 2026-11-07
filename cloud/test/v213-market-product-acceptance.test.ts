@@ -114,7 +114,7 @@ describe("Astra Acceptance Review 1 Verification Suite", () => {
       const body = JSON.stringify(messages);
       // Main macro home must NOT present company share as TOP5 industry analysis
       expect(body).toContain("TOP5");
-      expect(body).toContain("MACRO_TOP5_SHORTFALL");
+      expect(body).toContain("TOP5合格產業不足");
       expect(body).toContain("宏觀數據要求");
     });
 
@@ -124,7 +124,7 @@ describe("Astra Acceptance Review 1 Verification Suite", () => {
       // Real entry must wire to educational strategy cards or active period/quote navigation
       expect(body).toContain("教學範例，非推薦");
       expect(body).toContain("Covered Call");
-      expect(body).toContain("OPTION_DATA_UNAVAILABLE");
+      expect(body).toContain("期權報價不可用");
     });
   });
 
@@ -159,7 +159,7 @@ describe("Astra Acceptance Review 1 Verification Suite", () => {
     it("rejects unknown strategy ID rather than substring collision or default wrong strategy", async () => {
       const messages = await reply("期權教學 iron_condor");
       const body = JSON.stringify(messages);
-      expect(body).toContain("UNKNOWN_STRATEGY");
+      expect(body).toContain("未支援的策略");
     });
   });
 
@@ -290,11 +290,11 @@ describe("Astra Acceptance Review 1 Verification Suite", () => {
 
       // Commands must fail-closed UNAVAILABLE, not read unsealed keys
       const macroBody = JSON.stringify(await reply("TOP5產業總覽", f));
-      expect(macroBody).toContain("MACRO_TOP5_SHORTFALL");
+      expect(macroBody).toContain("TOP5合格產業不足");
       expect(macroBody).not.toContain("FAKE_MACRO");
 
       const optionsBody = JSON.stringify(await reply("NVDA 每週期權", f));
-      expect(optionsBody).toContain("OPTION_DATA_UNAVAILABLE");
+      expect(optionsBody).toContain("期權報價不可用");
     });
   });
 });

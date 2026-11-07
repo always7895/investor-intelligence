@@ -106,7 +106,7 @@ async function actualReply(env: any, command: string) {
 }
 
 function expectDeniedWithoutQuote(reply: string): void {
-  expect(reply).toContain(OPTION_RIGHTS_NOT_ADMITTED);
+  expect(reply).toContain("期權資料未通過公開驗收");
   for (const marker of QUOTE_MARKERS) expect(reply).not.toContain(marker);
 }
 

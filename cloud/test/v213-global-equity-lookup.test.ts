@@ -208,7 +208,7 @@ describe("Global Equity Lookup Parser & Presentation", () => {
 
       const json = JSON.stringify(messages[0]);
       expect(json).toContain("SIVE");
-      expect(json).toContain("QUOTE_UNAVAILABLE");
+      expect(json).toContain("報價暫不可用");
       expect(json).toContain("未完成來源核對");
       expect(json).not.toContain("AAPL");
       expect(json).not.toContain("US OTC");
@@ -232,7 +232,7 @@ describe("Global Equity Lookup Parser & Presentation", () => {
 
       const text = (messages[0] as any).text;
       expect(text).toContain("個股快查 · AAPL");
-      expect(text).toContain("QUOTE_UNAVAILABLE");
+      expect(text).toContain("報價暫不可用");
       expect(text).toContain("未完成來源核對");
     });
 

@@ -270,8 +270,8 @@ describe("v213 bottleneck takeover contract and admission gates", () => {
     const messages = buildTop20DeepAnalysisMessages(mockReport, "CHOKE01");
     expect(messages.length).toBeGreaterThan(0);
     const fullText = messages.map(m => (m as any).text).join("\n");
-    expect(fullText).toContain("UNAVAILABLE");
+    expect(fullText).toContain("資料暫不可用");
     expect(fullText).toContain("不逆推年化");
-    expect(fullText).toContain("UNRANKED");
+    expect(fullText).toContain("尚未評定");
   });
 });

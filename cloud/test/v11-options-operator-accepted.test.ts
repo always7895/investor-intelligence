@@ -344,7 +344,7 @@ describe("W1 + W2 through the real LINE entry", () => {
     const env = await sealedEnv(IN_DOC, fixture.in_session.generated_at, IN_NOW);
     vi.setSystemTime(IN_NOW);
     const denied = await lineReply(without, env, "T00 每週期權", IN_NOW);
-    expect(denied).toContain("OPTION_RIGHTS_NOT_ADMITTED");
+    expect(denied).toContain("期權資料未通過公開驗收");
     expect(denied).not.toContain("115.00");
     expect(denied).not.toContain(without.covered.OPERATOR_ACCEPTED_NOTICE_ZH);
     // a cycle that claims no identity (an older producer, the Nasdaq fallback) is denied even under the full catalog
@@ -352,7 +352,7 @@ describe("W1 + W2 through the real LINE entry", () => {
     const w = await world(catalogWith());
     const bareEnv = await sealedEnv({ T00: { weekly: bare } }, fixture.in_session.generated_at, IN_NOW);
     const bareReply = await lineReply(w, bareEnv, "T00 每週期權", IN_NOW);
-    expect(bareReply).toContain("OPTION_RIGHTS_NOT_ADMITTED");
+    expect(bareReply).toContain("期權資料未通過公開驗收");
     expect(bareReply).not.toContain("115.00");
   });
 
@@ -376,7 +376,7 @@ describe("W1 + W2 through the real LINE entry", () => {
     // The catalog stops admitting the carried basis (its scope removed): rights denial, no quote.
     const delayedOnly = await world(catalogWith(yahoo => { yahoo.admitted_scopes.pop(); }));
     const reply = await lineReply(delayedOnly, await sealedEnv(OFF_DOC, fixture.off_session.generated_at, OFF_NOW), "T00 每週期權", OFF_NOW);
-    expect(reply).toContain("OPTION_RIGHTS_NOT_ADMITTED");
+    expect(reply).toContain("期權資料未通過公開驗收");
     expect(reply).not.toContain("115.00");
     // The renderer re-checks admission independently (no loader in front of it).
     const { covered, admission } = delayedOnly;

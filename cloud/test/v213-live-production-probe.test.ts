@@ -124,14 +124,14 @@ it("sealed snapshot replay: legacy macro without rotation basis refuses; fresh T
   const macroReply = await v213PublicLineAnswer(e, parseQuery("宏觀產業分析 文字"));
   expect(macroReply).not.toBeNull();
   const macroStr = JSON.stringify(macroReply);
-  expect(macroStr).toContain("MACRO_TOP5_SHORTFALL");
+  expect(macroStr).toContain("TOP5合格產業不足");
   expect(macroStr).not.toContain("先進封裝與高頻寬記憶體");
   expect(macroStr).not.toContain("高速光通訊與 CPO");
 
   // 2) "TOP5產業總覽"
   const top5Reply = await v213PublicLineAnswer(e, parseQuery("TOP5產業總覽 文字"));
   expect(top5Reply).not.toBeNull();
-  expect(JSON.stringify(top5Reply)).toContain("MACRO_TOP5_SHORTFALL");
+  expect(JSON.stringify(top5Reply)).toContain("TOP5合格產業不足");
 
   // 3) Top20 admitted (same fixture, fresh clock)
   admit(await loadV213FreshTop20Report(e as never, RANKING), "replay Top20");

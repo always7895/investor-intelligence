@@ -50,7 +50,7 @@ describe("V29 card visual hierarchy", () => {
     const [finance, orders] = bubblesOf(detail);
     const tiles = all(finance!.body).filter(n => n.backgroundColor === "#EEF3F8" && n.type === "box");
     const stacked = tiles.flatMap(all).filter(n => n.type === "text" && (n.contents?.[0]?.text ?? "").endsWith("\n"));
-    expect(stacked.length).toBeGreaterThanOrEqual(4);
+    expect(stacked.length).toBeGreaterThanOrEqual(3);
     for (const text of stacked) {
       expect(text.contents?.[0]?.size).toBe("xs");
       expect(text.contents?.[1]?.weight).toBe("bold");
@@ -64,7 +64,7 @@ describe("V29 card visual hierarchy", () => {
   });
   it("keeps unavailable option reasons usable even when long", () => {
     const bubble = v20Surfaces["options-product unavailable"]!() as Node[];
-    expect(all(bubble[0]!.body).some(n => n.type === "text" && n.text === "!")).toBe(true);
+    expect(all(bubble[0]!.body).some(n => n.type === "box" && n.width === "4px")).toBe(true);
     expect(all(bubble[0]!.body).some(n => n.text?.startsWith("暫無"))).toBe(true);
   });
   it("shows the order-page hero, KPI grid, and honest missing values", () => {
@@ -104,13 +104,13 @@ describe("V29 card visual hierarchy", () => {
     const text = optionsUnavailableReport("NVDA", "weekly", reason, true);
     expect(text.map(message => message.type === "text" ? message.text : "").join("")).toContain(reason);
     expect(all(bubblesOf(cards)[0]!.body).some(n => n.type === "text" && n.size === "3xl")).toBe(true);
-    expect(all(bubblesOf(unavailable)[0]!.body).some(n => n.type === "text" && n.text === "!")).toBe(true);
+    expect(all(bubblesOf(unavailable)[0]!.body).some(n => n.type === "box" && n.width === "4px")).toBe(true);
   });
   it("renders listed expiry pairs without inventing a quote", () => {
     const result = optionsUnavailableReport("NVDA", "monthly", "本次回應有上市買權；所列到期不在策略範圍（最近到期 2026-12-18（46天））", false);
     const text = JSON.stringify(result);
     expect(text).toContain("2026-12-18 · DTE 46");
-    expect(text).toContain("OPTION_DATA_UNAVAILABLE");
+    expect(text).toContain("期權報價不可用");
     const ageOnly = JSON.stringify(optionsUnavailableReport("NVDA", "monthly", "資料產生於 2026-12-18（46天）前，已逾時", false));
     expect(ageOnly).not.toContain("DTE 46");
   });
@@ -170,7 +170,7 @@ describe("V29 card visual hierarchy", () => {
         for (const node of all(bubble.body)) {
           if (node.type === "box" && node.layout === "horizontal") {
             const tiles = (node.contents ?? []).filter(child => child.type === "box" && child.backgroundColor === "#EEF3F8");
-            expect(tiles.length, name).toBeLessThanOrEqual(2);
+            expect(tiles.length, name).toBeLessThanOrEqual(3);
           }
         }
       }

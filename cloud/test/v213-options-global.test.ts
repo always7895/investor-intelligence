@@ -206,7 +206,7 @@ describe("OPTIONS-GLOBAL-01 acceptance regression tests", () => {
     });
     for (const command of ["NVDA 期權指引", "NVDA 選擇權推薦", "NVDA covered call", "NVDA 每月期權指引", "NVDA monthly covered call"]) {
       const reply = await actualReply(env, command);
-      expect(reply).toContain("OPTION_RIGHTS_NOT_ADMITTED");
+      expect(reply).toContain("期權資料未通過公開驗收");
       expect(reply).not.toContain("330.00");
       expect(reply).not.toContain("$2.05");
     }
@@ -282,11 +282,11 @@ describe("OPTIONS-GLOBAL-01 acceptance regression tests", () => {
   it("differentiates all Section C failure states", async () => {
     // 1. SNAPSHOT_UNAVAILABLE
     const unsealedEnv = { PUBLIC_CACHE: asKv(new MemoryKv()), TENANT_PRIVATE_CACHE: asKv(new MemoryKv()), EPHEMERAL_SECURITY_CACHE: asKv(new MemoryKv()), V213_LINE_PRESENTATION: "text" };
-    expect(await actualReply(unsealedEnv, "TSM 每月期權")).toContain("OPTION_DATA_UNAVAILABLE");
+    expect(await actualReply(unsealedEnv, "TSM 每月期權")).toContain("期權報價不可用");
 
     // 2. DOCUMENT_ABSENT
     const absentDocEnv = await sealedEnv(() => {}, false, true);
-    expect(await actualReply(absentDocEnv, "TSM 每月期權")).toContain("OPTION_DATA_NOT_ADMITTED");
+    expect(await actualReply(absentDocEnv, "TSM 每月期權")).toContain("期權資料未通過公開驗收");
 
     // 3. DOCUMENT_INVALID_OR_UNREADABLE (tampered blob)
     const tamperedEnv = await sealedEnv(() => {}, true);
@@ -394,7 +394,7 @@ describe("OPTIONS-GLOBAL-01 acceptance regression tests", () => {
     // V25-D4 keeps the exact source label in compact Flex and the full URL on the existing text command.
     expect(flex).toContain("Yahoo Finance 期權鏈（非官方，延遲）");
     expect(flex).toContain("計價 USD");
-    expect(flex).toContain("TSM 完整報價與出處");
+    expect(flex).toContain("TSM 每月期權 文字");
     expect(flex).not.toContain("NaN");
     expect(flex).toContain("Bid ");
     expect(flex).toContain("Mid");
@@ -425,7 +425,7 @@ describe("OPTIONS-GLOBAL-01 acceptance regression tests", () => {
     const drop = (lazy: any) => { delete lazy["v213:options:v2"].options.TSM.monthly.suggestions[0].spread_pct; };
     const env = await sealedEnv(drop);
     const flexReply = await actualReply({ ...env, V213_LINE_PRESENTATION: "flex" }, "TSM 每月期權");
-    expect(flexReply).toContain("TSM 完整報價與出處");
+    expect(flexReply).toContain("TSM 每月期權 文字");
     expect(flexReply).not.toContain("NaN");
     const textReply = await actualReply({ ...env, V213_LINE_PRESENTATION: "flex" }, "TSM 每月期權 文字");
     expect(textReply).not.toContain("NaN");
