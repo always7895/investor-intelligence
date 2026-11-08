@@ -1,5 +1,9 @@
 # v2.1.3 Serenity 公開邏輯高保真重建與多來源標準
 
+<!-- DOCS-R1 scope -->
+> **Scope:** Dated reference; not current Production status, a new approval, or deployment authority. Current acceptance and unresolved issues: [STATUS](../state/STATUS.md). The document itself does not authorize Production changes.
+<!-- /DOCS-R1 scope -->
+
 ## 定位與非主張
 
 Investor Intelligence 不宣稱取得或重製 Serenity 的私人方法、私人流程、官方公式或官方分數。系統的 `serenity_score` 等歷史 machine key 只為相容性保留，顯示與推論時一律稱為「系統量化／System operationalization」。

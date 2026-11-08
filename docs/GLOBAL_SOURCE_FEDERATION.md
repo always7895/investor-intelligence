@@ -1,5 +1,9 @@
 # Investor Intelligence R75 全球權威來源聯邦｜Global Source Federation
 
+<!-- DOCS-R1 scope -->
+> **Scope:** Technical reference; verify executable behavior against code and current source-bound evidence. Current acceptance and unresolved issues: [STATUS](../state/STATUS.md). The document itself does not authorize Production changes.
+<!-- /DOCS-R1 scope -->
+
 [文件索引](README.md)｜[最新正式發布](FINAL_RELEASE.md)
 
 ## 設計目標｜Design objective

@@ -1,5 +1,9 @@
 # Weekly and Monthly Option BID/ASK Analysis
 
+<!-- DOCS-R1 scope -->
+> **Scope:** Contractual safety/evidence boundary; retain exact normative markers and validate against runtime configuration. Current acceptance and unresolved issues: [STATUS](../state/STATUS.md). The document itself does not authorize Production changes.
+<!-- /DOCS-R1 scope -->
+
 _Last reconciled: 2026-11-02_
 
 ## Normative boundary

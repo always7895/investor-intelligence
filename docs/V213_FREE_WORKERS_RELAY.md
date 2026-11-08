@@ -1,5 +1,9 @@
 # R75 FREE_RELAY — current operations
 
+<!-- DOCS-R1 scope -->
+> **Scope:** Technical reference; verify executable behavior against code and current source-bound evidence. Current acceptance and unresolved issues: [STATUS](../state/STATUS.md). The document itself does not authorize Production changes.
+<!-- /DOCS-R1 scope -->
+
 [Current release identity and evidence](../README.md) · [繁體中文](../README.zh-TW.md)
 
 ```text

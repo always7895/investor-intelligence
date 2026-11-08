@@ -1,5 +1,9 @@
 # Authoritative source coverage matrix
 
+<!-- DOCS-R1 scope -->
+> **Scope:** Technical reference; verify executable behavior against code and current source-bound evidence. Current acceptance and unresolved issues: [STATUS](../state/STATUS.md). The document itself does not authorize Production changes.
+<!-- /DOCS-R1 scope -->
+
 The source catalog has no fixed numeric ceiling. Coverage is expanded by authority and claim class, while runtime work remains bounded by request, byte, time, host-concurrency, retry and free-quota budgets. Catalog membership never activates a source.
 
 ## Current coverage families

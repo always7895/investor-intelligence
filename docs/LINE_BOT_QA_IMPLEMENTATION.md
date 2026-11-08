@@ -1,5 +1,9 @@
 # LINE Bot Q&A Runtime Implementation
 
+<!-- DOCS-R1 scope -->
+> **Scope:** Contractual safety/evidence boundary; retain exact normative markers and validate against runtime configuration. Current acceptance and unresolved issues: [STATUS](../state/STATUS.md). The document itself does not authorize Production changes.
+<!-- /DOCS-R1 scope -->
+
 _Last reconciled: 2026-08-25 Asia/Taipei_
 
 This document describes the implemented shared LINE boundary. The shared bot is a public-research client, not an owner, portfolio or brokerage assistant.

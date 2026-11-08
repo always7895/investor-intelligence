@@ -1,5 +1,9 @@
 # Release and installation / 正式交付與安裝
 
+<!-- DOCS-R1 scope -->
+> **Scope:** Technical reference; verify executable behavior against code and current source-bound evidence. Current acceptance and unresolved issues: [STATUS](../state/STATUS.md). The document itself does not authorize Production changes.
+<!-- /DOCS-R1 scope -->
+
 [Released identity](../README.md) · [Current acceptance](../state/STATUS.md) · [Release gates](FINAL_RELEASE_PLAN.md)
 
 1. Obtain the immutable ZIP and its adjacent refs/receipts from the release identified in README. Verify the external SHA256 before extraction. Never overwrite a prior release or borrow another ZIP's qualification.

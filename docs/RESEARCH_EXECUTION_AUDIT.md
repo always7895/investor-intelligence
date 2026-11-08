@@ -1,5 +1,9 @@
 # Research execution and card-content audit / 研究接線與資訊保留
 
+<!-- DOCS-R1 scope -->
+> **Scope:** Technical reference; verify executable behavior against code and current source-bound evidence. Current acceptance and unresolved issues: [STATUS](../state/STATUS.md). The document itself does not authorize Production changes.
+<!-- /DOCS-R1 scope -->
+
 Checked against source `4ba2a606c9e459884e15354aa91798ec432df0ba` on 2026-09-12, then corrected locally. This is source/caller analysis, **not fresh Production verification, current investment recommendations or a completed 20-company deep-research run**. Latest tests/findings: [STATUS](../state/STATUS.md).
 
 ## Two screenshots: what actually changed

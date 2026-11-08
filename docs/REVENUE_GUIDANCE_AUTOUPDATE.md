@@ -1,5 +1,9 @@
 # Revenue guidance auto-update (ORDERS-V3-AUTOUPDATE-01)
 
+<!-- DOCS-R1 scope -->
+> **Scope:** Technical reference; verify executable behavior against code and current source-bound evidence. Current acceptance and unresolved issues: [STATUS](../state/STATUS.md). The document itself does not authorize Production changes.
+<!-- /DOCS-R1 scope -->
+
 Status: **Part A slice 1 (framework + NVDA + MU) documented as accepted in this doc (`e89936f`); receipt not located in R; unverified. B0 documented as accepted in this doc (`839f2f8`); receipt not located in R; unverified. B1 effective-input boundary: the subject line of commit `77c0552` says "B1 accepted and committed"; receipt not located in R; unverified. No same-snapshot dual-acceptance receipt is claimed for any of the three. Not deployed or installed (`state/STATUS.md`: PRODUCTION_GO=false).** Source-only F03 caller/Worker composition and F05A's inactive NBIS adapter
 are not functional acceptance or activation. Installed defaults still do not select these machine paths;
 with no auto-update state root (the unchanged production case) every default build is byte-identical

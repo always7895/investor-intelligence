@@ -1,5 +1,9 @@
 # Locked dependencies and local validation
 
+<!-- DOCS-R1 scope -->
+> **Scope:** Technical reference; verify executable behavior against code and current source-bound evidence. Current acceptance and unresolved issues: [STATUS](../state/STATUS.md). The document itself does not authorize Production changes.
+<!-- /DOCS-R1 scope -->
+
 ## Authority
 
 Exact dependencies are in [requirements-ci.txt](../requirements-ci.txt) and [cloud/package-lock.json](../cloud/package-lock.json), not a version table in documentation. Both locks exist. Source and installed runtimes require separate validation; do not upgrade packages just to make a benchmark pass.

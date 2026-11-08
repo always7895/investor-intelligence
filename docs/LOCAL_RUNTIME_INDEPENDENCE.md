@@ -1,5 +1,9 @@
 # Local Runtime Independence V1
 
+<!-- DOCS-R1 scope -->
+> **Scope:** Technical reference; verify executable behavior against code and current source-bound evidence. Current acceptance and unresolved issues: [STATUS](../state/STATUS.md). The document itself does not authorize Production changes.
+<!-- /DOCS-R1 scope -->
+
 100% local AI at the LOCAL v213 gateway — `$0` paid inference, no cloud fallback.
 This is a LOCAL-gateway capability, not a Cloudflare Worker change.
 

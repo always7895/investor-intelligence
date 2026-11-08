@@ -1,5 +1,9 @@
 # Investor Intelligence R75 清理與回滾保留政策
 
+<!-- DOCS-R1 scope -->
+> **Scope:** Technical reference; verify executable behavior against code and current source-bound evidence. Current acceptance and unresolved issues: [STATUS](../state/STATUS.md). The document itself does not authorize Production changes.
+<!-- /DOCS-R1 scope -->
+
 [文件索引](README.md)｜[最新正式發布](FINAL_RELEASE.md)
 
 本專案將清理視為**發布後、證據綁定、可回滾的維護交易**，不是為了方便而任意刪檔。任何清理都不得破壞不可變 Release、正式 rollback baseline、Production 設定、route lease 安全、排程或稽核證據。

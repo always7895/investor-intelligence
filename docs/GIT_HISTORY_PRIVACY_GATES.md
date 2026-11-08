@@ -1,5 +1,9 @@
 # Git History 隱私閘門｜Git-history privacy gates
 
+<!-- DOCS-R1 scope -->
+> **Scope:** Technical reference; verify executable behavior against code and current source-bound evidence. Current acceptance and unresolved issues: [STATUS](../state/STATUS.md). The document itself does not authorize Production changes.
+<!-- /DOCS-R1 scope -->
+
 [文件索引](README.md)｜[最新正式發布](FINAL_RELEASE.md)
 
 本文件說明目前仍適用的 Git history、current-tree 與 release-evidence 隱私規則。舊 v2.0.0 的 Support purge 已完成；目前 R75 FREE_RELAY 的正式 release 與 main 文件更新仍必須遵守同一套「不輸出敏感內容、exact commit 綁定、不可把舊 PASS 套到新 HEAD」原則。

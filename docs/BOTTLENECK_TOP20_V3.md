@@ -1,5 +1,9 @@
 # Bottleneck-explosion Top20 v3 / 瓶頸爆發 TOP20
 
+<!-- DOCS-R1 scope -->
+> **Scope:** Technical reference; verify executable behavior against code and current source-bound evidence. Current acceptance and unresolved issues: [STATUS](../state/STATUS.md). The document itself does not authorize Production changes.
+<!-- /DOCS-R1 scope -->
+
 Status: live in LINE from 2026-09-26 (operator request: the Top20 must follow Serenity's bottleneck logic, exclude
 negative long-term returns, rank future bottleneck explosions, and an industry analysis led by Leopold
 Aschenbrenner's logic must name the most explosive industries from current events). Current Production state is in

@@ -1,5 +1,9 @@
 # Top20 carry-forward v1 / Top20 單一寫入者
 
+<!-- DOCS-R1 scope -->
+> **Scope:** Technical reference; verify executable behavior against code and current source-bound evidence. Current acceptance and unresolved issues: [STATUS](../state/STATUS.md). The document itself does not authorize Production changes.
+<!-- /DOCS-R1 scope -->
+
 Status: implemented 2026-09-26 (tasks T1–T11 of the single-writer programme). Current Production state and the
 cutover record live in [STATUS](../state/STATUS.md); this page is the design and the operating contract.
 

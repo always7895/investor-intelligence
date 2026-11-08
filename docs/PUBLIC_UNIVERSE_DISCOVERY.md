@@ -1,5 +1,9 @@
 # Independent Public Universe Identity Discovery / 獨立公開市場清單發現規範
 
+<!-- DOCS-R1 scope -->
+> **Scope:** Technical reference; verify executable behavior against code and current source-bound evidence. Current acceptance and unresolved issues: [STATUS](../state/STATUS.md). The document itself does not authorize Production changes.
+<!-- /DOCS-R1 scope -->
+
 ## 1. Scope and Identity Role / 範疇與識別定位
 
 本模組（`scripts/public_universe_discovery.py`）提供獨立、離線的公開市場掛牌證券與發行機構識別發現機制，嚴格遵守下列邊界：

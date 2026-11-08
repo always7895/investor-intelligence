@@ -1,5 +1,9 @@
 # Public options provider rights review
 
+<!-- DOCS-R1 scope -->
+> **Scope:** Technical reference; verify executable behavior against code and current source-bound evidence. Current acceptance and unresolved issues: [STATUS](../state/STATUS.md). The document itself does not authorize Production changes.
+<!-- /DOCS-R1 scope -->
+
 _Last reviewed: 2026-08-25_
 
 Dating note (D1 closure): `Last reviewed` dates only the four reviewed provider decisions below. The sections L-RIGHTS, G1A and G1B were first committed in `52c7733` (2026-10-06) as source-only checkpoints and keep their original `tests NOT_RUN` wording as history. Measured at the D1 base (`9255297f`): L-RIGHTS is executed by `tests/test_public_options_provider_gate.py` (PASS in the complete Python gate of the accepted G7 snapshot, `R/g7-a43bef58/all/all-r1/summary.json`) and Worker tests such as `cloud/test/v213-options-caller-b2.test.ts`; G1B has the BATCH06 caller tests, accepted scoped O1/O9 (see [OPTIONS_SOURCE_REVIEW](OPTIONS_SOURCE_REVIEW.md)), which are not a rights decision; G1A is executed by `tests/test_options_coverage_body.py` (real builder on the canonical catalog, a synthetic admitted provider only inside the test) and `cloud/test/v213-options-coverage.test.ts` (real loader, renderer and rich-menu command on a sealed MemoryKv); `tests/test_publish_sealed_snapshot_keyset.py` still stubs the builder. Execution evidence is recorded in `state/STATUS.md` after the end-of-push gate; there is no Python-to-Worker byte-parity fixture. No whole-diff acceptance of these sections is claimed. Public option admission remains NONE and the catalog is unchanged (`state/STATUS.md`).

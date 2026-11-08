@@ -1,5 +1,9 @@
 # OPERATOR RUNBOOK — v213 Owner-Line (2026-09-16)
 
+<!-- DOCS-R1 scope -->
+> **Scope:** Dated reference; not current Production status, a new approval, or deployment authority. Current acceptance and unresolved issues: [STATUS](../state/STATUS.md). The document itself does not authorize Production changes.
+<!-- /DOCS-R1 scope -->
+
 Applies to: Cloudflare Worker `investor-intelligence-v21-owner-line` + KV (PUBLIC_CACHE `96142af4…`) + Windows refresh task + local seal tooling.
 Principle: **every procedure is fail-closed.** A failure before any pointer write leaves the live pointer where it was. Once a pointer write has been attempted (sync, rollback), a failed or missing final verification means the live state is unknown until fresh live bytes are classified (section 7.6). Operators never patch live state by hand.
 
