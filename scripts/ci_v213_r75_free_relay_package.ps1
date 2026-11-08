@@ -109,6 +109,7 @@ try {
         'tests/fixtures/v213-r75-publication-mode/all-limited.json','tests/fixtures/v213-r75-publication-mode/mixed.json',
         'tests/fixtures/v213-r75-publication-mode/claim-recount-vectors.json',
         'tests/fixtures/receipt-id-persisted-form-vectors.json',
+        'tests/fixtures/gap-c-mod-sec-8k.json',
         'tests/fixtures/identity-batch04-functional.json','tests/fixtures/revenue-guidance-machine-auto-functional.json',
         'tests/fixtures/revenue-guidance-machine-barrier-functional.json','tests/fixtures/revenue-guidance-machine-nbis-auto-functional.json',
         'tests/fixtures/revenue-guidance-machine-nbis-reaffirm-functional.json',
@@ -190,7 +191,7 @@ try {
         if((Get-FileHash $destination).Hash-ne(Get-FileHash (Join-Path $ProjectRoot $relative)).Hash){throw 'Public research payload digest mismatch.'}
     }
     # Activation runs npm test on the installed package. These are runtime gate
-    # dependencies, not removable internal content. Restore ONLY the exact fixture paths (the 26 always-required test fixtures, plus the
+    # dependencies, not removable internal content. Restore ONLY the exact fixture paths (the 27 always-required test fixtures, plus the
     # revenue-guidance wire fixture when the exact commit carries the wire pair) with the exact bounded archive-stage bytes captured before the prune.
     foreach ($relative in $fixturePaths) {
         $packaged = Join-Path $stage $relative

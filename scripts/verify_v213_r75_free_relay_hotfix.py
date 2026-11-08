@@ -104,6 +104,7 @@ ALWAYS_FIXTURES = (
     "tests/fixtures/v213-r75-publication-mode/mixed.json",
     "tests/fixtures/v213-r75-publication-mode/claim-recount-vectors.json",
     "tests/fixtures/receipt-id-persisted-form-vectors.json",
+    "tests/fixtures/gap-c-mod-sec-8k.json",
     "tests/fixtures/identity-batch04-functional.json",
     "tests/fixtures/revenue-guidance-machine-auto-functional.json",
     "tests/fixtures/revenue-guidance-machine-barrier-functional.json",
