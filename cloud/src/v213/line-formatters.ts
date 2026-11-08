@@ -30,6 +30,15 @@ export function formatCurrency(n: number, currency = "USD", decimals = 2): strin
   const digits = divisor === 1 ? decimals : (n / divisor % 1 === 0 ? 0 : 1);
   return `${prefix}${fixed(n / divisor, digits)}${suffix}`;
 }
+/** Display an observed share price without binary-float tails or large-amount abbreviation.
+ * Zero-decimal markets quote in whole currency units; others use cents.
+ * Do not round numeric inputs before comparing observations. */
+export function formatQuotePrice(n: number, currency = "USD"): string {
+  if (!finite(n)) return "未提供";
+  const digits = ["JPY", "KRW"].includes(currency.toUpperCase()) ? 0 : 2;
+  const rounded = Math.abs(n) < 0.5 * 10 ** -digits ? 0 : n;
+  return fixed(rounded, digits);
+}
 /** Date-only values are never converted across time zones. */
 export function formatDate(value: string | number | Date | null | undefined): string {
   if (value == null || value === "") return "日期未揭露";

@@ -269,16 +269,16 @@ export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promis
     return v213Top20LineAnswer(env, { ...query, normalized: /文字\s*$/.test(command) ? "Top20 文字" : "Top20" });
   }
   if (/^(?:選單|菜单|menu|功能導覽|功能导航)(?:\s*文字)?$/i.test(command)) {
-    return panel("研究功能導覽", "三個入口 · 不連券商 · 不自動下單", [
+    return panel("研究功能導覽", "五類功能 · 三個主要捷徑 · 不連券商 · 不自動下單", [
       "A｜TOP20：瓶頸爆發 TOP20（Serenity／Leopold 線索＋財報、訂單與交易所報價）；輸入「瓶頸詳情 代號」（例：瓶頸詳情 NVDA）看單一公司完整卡片。歷史報酬不是未來預測。",
       "B｜宏觀產業分析：TOP5產業總覽與12–36M因果鏈分析；輸入「產業爆發榜」看 Leopold 因果鏈產業排序。",
       "C｜期權與個股快查：輸入「代號 每月期權」或「代號 每週期權」（例：NVDA 每月期權，格式範例非推薦）看備兌買權建議；直接輸入代號或名稱（例：2330、SIVE）查延遲報價；「期權教學」看策略範例。",
       "D｜資料驅動潛力榜：輸入「潛力榜」；依官方資料每日重算，輸入「潛力報告 代號」看逐項數據報告，「訂單實現榜」看已簽約訂單覆蓋排序。",
       "E｜舊版七欄榜請輸入「七欄Top20」。本服務不連券商、不下單，內容非投資建議。",
     ], NAV, commandText, { bullets: [
-      "A｜TOP20、瓶頸詳情、潛力榜、訂單實現榜",
-      "B｜宏觀產業分析、產業爆發榜",
-      "C｜輸入代號查個股；「NVDA 每月期權」；「期權教學」",
+      "A｜TOP20／瓶頸；D｜潛力榜／訂單實現榜",
+      "B｜宏觀產業分析；E｜七欄Top20",
+      "C｜輸入代號查個股、期權教學；NVDA 每月期權",
     ], disclosure: "歷史報酬非未來預測；不連券商、不自動下單；非投資建議｜舊榜「七欄Top20」｜完整說明「選單 文字」", actions: NAV.slice(0, 2), plainBullets: true, disclosureInFooter: true });
   }
 

@@ -134,7 +134,7 @@ describe("Astra Acceptance Review 1 Verification Suite", () => {
       const messages = await reply("期權教學 protective_put");
       const body = JSON.stringify(messages);
       expect(body).toContain("Protective Put");
-      expect(body).toContain("UNBOUNDED");
+      expect(body).toContain("無固定上限");
       expect(body).not.toContain("Cash-Secured Put");
     });
 
@@ -153,7 +153,7 @@ describe("Astra Acceptance Review 1 Verification Suite", () => {
 
       const pp = JSON.stringify(await reply("期權教學 protective_put"));
       expect(pp).toContain("Protective Put");
-      expect(pp).toContain("UNBOUNDED");
+      expect(pp).toContain("無固定上限");
     });
 
     it("rejects unknown strategy ID rather than substring collision or default wrong strategy", async () => {

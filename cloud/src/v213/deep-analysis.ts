@@ -3,6 +3,7 @@ import { formatVisibleMoment } from "./line-formatters";
 import { humanizeStatusText } from "./status-labels";
 import { requirePublicCitation as safeCitation } from "./public-citation";
 import { sourceZh } from "./source-labels";
+import { legacyCompanyNameLabel } from "./verified-legacy-company-names";
 import { parseV213Top20Report, type V213Top20Report } from "./top20-report";
 import { parseV213BottleneckReport, type V213BottleneckReport } from "./bottleneck-report";
 import { validateTwoYearReturnEvidence } from "./top20-return-evidence";
@@ -80,10 +81,10 @@ export function validateCompanyDataReport(raw: any, ticker: string): CompanyData
   }
 }
 
-function dataReportBlocks(report: { generated_at: string }, data: CompanyDataReport): string[] {
+function dataReportBlocks(report: { generated_at: string }, data: CompanyDataReport, nameZh?: string): string[] {
   const numerals = ["一", "二", "三", "四", "五", "六", "七", "八", "九", "十", "十一", "十二"];
   return [
-    `【${data.ticker}｜公司深度報告 · 官方資料計算】\n原文公司名稱：${data.name}\n當輪快照產生：${formatVisibleMoment(report.generated_at)}\n` +
+    `【${data.ticker}｜公司深度報告 · 官方資料計算】\n原文公司名稱：${data.name}\n${nameZh ? `中文名稱：${nameZh}\n` : ""}當輪快照產生：${formatVisibleMoment(report.generated_at)}\n` +
       `資料計算日：${data.as_of}｜舊版准入狀態：${legacyGateLabel(data.phase)}｜下次檢查：${data.next_review_at ?? "下一份財報"}\n研究邊界：${data.boundary}`,
     ...data.sections.map((section, index) => `${numerals[index]}、${section.title}\n${section.text}`),
     `資料來源 / Sources\n` + data.source_references.map(ref => `• ${sourceZh(ref.source)}${ref.period ? `（${ref.period}）` : ""}：${ref.url}`).join("\n"),
@@ -104,7 +105,8 @@ export function buildTop20DeepAnalysisMessages(
   const row: any = validated?.records?.find((item: any) => item.ticker === ticker.toUpperCase());
   if (!validated || !row) throw new Error("REPORT_CONTEXT_INVALID");
 
-  if (dataReport && style === "flex") return buildCompanyDataReportFlex(dataReport, validated.generated_at, ["回 Top20", "Top20"]);
+  const nameZh = legacyCompanyNameLabel(row.ticker, row.name);
+  if (dataReport && style === "flex") return buildCompanyDataReportFlex(dataReport, validated.generated_at, ["回 Top20", "Top20"], nameZh);
 
   const currentUrls = [...new Set(((row.current_order_source_urls ?? []) as string[]).map(safeCitation))];
   const futureUrls = [...new Set(((row.future_order_source_urls ?? []) as string[]).map(safeCitation))];
@@ -116,11 +118,11 @@ export function buildTop20DeepAnalysisMessages(
 
   const percent = (value: number | null | undefined) => (value === null || value === undefined ? "未提供" : `${value >= 0 ? "+" : ""}${value.toFixed(1)}%`);
 
-  const blocks: string[] = dataReport ? dataReportBlocks(report, dataReport) : [
+  const blocks: string[] = dataReport ? dataReportBlocks(report, dataReport, nameZh) : [
     // Header & Meta
     `【${row.ticker}｜深度化分析 · 供應鏈瓶頸與價值鏈研究】\n` +
     `原文公司名稱：${row.name}\n` +
-    `中文名稱：未完成來源核對（不按股票代號猜譯）\n` +
+    `中文名稱：${nameZh}\n` +
     `當輪快照產生：${formatVisibleMoment(report.generated_at)}\n` +
     `資料取得時間：${formatVisibleMoment(row.retrieved_at)}\n` +
     `研究邊界：公開研究，非投資建議；歷史報酬非預測。`,
@@ -228,7 +230,7 @@ export function buildTop20DeepAnalysisMessages(
     // Section 10: 明確未明與待查事項
     `十、明確未明與待查事項 / Explicit Unknowns & Open Items\n` +
     `• 待補齊之關鍵缺口：\n` +
-    `  1. 中文名稱官方對照：未完成來源核對，不按股票代碼猜譯。\n` +
+    `  1. 中文名稱來源對照：${nameZh}。\n` +
     `  2. 兩年總報酬還原端點：${returnDisplay}\n` +
     `  3. 歷史報酬背景：近兩年年化 ${percent(row.long_term_return_pct)}，近六個月 ${percent(row.short_term_return_pct)}。歷史數據僅供風險脈絡參考，對評分與候選排序無任何影響力。\n` +
     `  4. 逐筆合約法律約束力：尚缺不可撤銷條款、價格重議機制與明確履約交期。\n` +
@@ -270,7 +272,7 @@ function kpiRows(kpis: readonly CompanyKpi[]) {
 
 /** Data report as a Flex carousel: overview (phase ladder, KPI tiles), numbered sections, sources. */
 export function buildCompanyDataReportFlex(data: CompanyDataReport, generatedAt: string,
-  back: readonly [string, string] = ["回功能選單", "選單"]): LineOutboundMessage[] {
+  back: readonly [string, string] = ["回功能選單", "選單"], nameZh?: string): LineOutboundMessage[] {
   const perBubble = 3;
   const sectionPages = Math.ceil(data.sections.length / perBubble);
   const total = sectionPages + 2;
@@ -282,6 +284,7 @@ export function buildCompanyDataReportFlex(data: CompanyDataReport, generatedAt:
         { layout: "horizontal", spacing: "md" }),
       uiText(data.ticker, "lg", T.headerText, { weight: "bold" }),
       uiText(data.name, "xs", T.headerMuted),
+      ...(nameZh ? [uiText(`中文名稱：${nameZh}`, "xs", T.headerMuted)] : []),
       uiText(`資料計算日 ${data.as_of}｜快照 ${formatVisibleMoment(generatedAt)}`, "xxs", T.headerSubtle),
     ], { ...headerStyle, spacing: "sm" }),
     body: uiBox([
