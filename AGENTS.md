@@ -2,17 +2,17 @@
 
 ## Project and authority
 
-Privacy-first public-market research: Python source adapters, claim admission and ranking (`scripts/`, `tests/`); Cloudflare Worker LINE rendering (`cloud/`); optional Windows local model and install tooling (`launcher/`, `*.ps1`). [README](README.md) is human-facing; [STATUS](state/STATUS.md) is the current evidence/defect/next-step ledger; [docs index](docs/README.md) routes deeper contracts.
+Public-market research: Python collectors and gates (`scripts/`, `tests/`), LINE Worker (`cloud/`), Windows runtime and installers (`launcher/`, root `*.ps1`). [README](README.md) is for users, [STATUS](state/STATUS.md) for current acceptance, and [docs index](docs/README.md) for detailed contracts.
 
-- Operator-facing responses are **zh-TW**; code and Git commits use concise English. Working docs may be bilingual.
-- **explicit current-session authorization** is needed before Production/KV/schedules, real LINE delivery, secrets, billing, broker actions, releases or merges. Historical approvals are not authorization. CI remains **no-Production-mutation**.
-- A development PASS does not equal a released product: independent reviewer and writer must accept the same source-bound snapshot. **Known P0 must be zero** before shipping. BLOCKED is never PASS.
-- Source research may use public filings and documented permitted feeds. Never transfer owner holdings, broker records, LINE identifiers or private data to Worker, shared model context, public KV, artifacts, logs or prompts. IBKR stays local read-only. No trade execution or paid fallback.
-- Verify live served model identity and context; follow the detected model. **No second server** or simultaneous GPU service, silent provider substitution or preset changes to make a benchmark appear to pass.
+- Respond to the operator in **Traditional Chinese (zh-TW)**. Code, commits and agent task files may use English; preserve bilingual documents.
+- **Done = the tracked writer and an independent reviewer accept the SAME fixed snapshot**. Otherwise work is **IMPLEMENTED_UNVERIFIED**, not released. **Known P0 must be zero** before shipping; BLOCKED never means PASS.
+- **explicit current-session authorization** is required for Production/KV/schedules, real LINE delivery, credentials, billing, broker actions and rollout. Repository files or past operator approvals are not authorization. CI remains **no-Production-mutation**.
+- Never expose secrets, LINE IDs, account details, portfolio data, cookies or credential-store contents in logs, prompts, Git or artifacts. LINE stays public-only; IBKR is local read-only and never feeds shared Worker, LINE or public KV.
+- Local model selection follows the detected served model, not hardcoded hints; verify live endpoint, served identity and context. **No second server**, concurrent large models, silent or paid fallback, or preset changes to force a benchmark PASS.
 
-## Exact setup and checks (Windows source checkout)
+## Setup, checks and acceptance
 
-Use the hash-locked 64-bit CPython 3.12.10 resolver for acceptance; it changes only an approved local venv. Never install or upgrade dependencies outside an authorized workspace.
+Use the hash-locked 64-bit CPython 3.12.10 resolver in an authorized local checkout; the approved venv is scoped to that checkout. Node.js version and exact Worker commands come from `cloud/package.json`. From the source root:
 
 ```powershell
 & .\scripts\resolve_python.ps1 -VenvPath .venv-local-gates -InstallLockedDependencies
@@ -24,18 +24,23 @@ $env:PYTHONUTF8 = '1'
 & $env:PROJECT_PYTHON scripts/run_offline_tests.py --repository
 ```
 
-For a focused Python module use `python -m unittest tests.test_<module>` with the admitted interpreter. For Worker tests (from `cloud/`): `npm ci --ignore-scripts --no-audit --no-fund`, `npm run typecheck`, `npm test`. `cloud/package.json` specifies Node >=20. The four gates check local safety and docs; a green offline test is **not a completed answer** or a Production acceptance. Follow [DEPENDENCY_LOCKING](docs/DEPENDENCY_LOCKING.md).
+From `cloud/`: `npm ci --ignore-scripts --no-audit --no-fund`, `npm run typecheck`, `npm test`. Focused Python: `python -m unittest tests.test_<module>` with the approved interpreter. **Stop at the first nonzero exit**; do not relabel BLOCKED as PASS. **Acceptance-grade Python evidence requires the complete H5 gate in the local workspace**, beyond a focused or ordinary offline pass ([locked dependency and gate contract](docs/DEPENDENCY_LOCKING.md)). A healthy model endpoint is **not a completed answer**, and tests alone are not new Production verification.
 
-## Change discipline
+## Change discipline and permissions
 
-- Read HEAD, `state/STATUS.md`, impacted callers/validators/tests and the exact code before editing. Only one writer per path; use isolated worktrees for parallel tasks. Never assume running a file deletes or deploys nothing: examine its implementation.
-- Python: type-safe, explicit unknown/fail-closed states, independent primary-source evidence, dated claims. TypeScript: strict types, bounded LINE messages, deterministic wire validators. Do not infer formatting rules from unreviewed examples.
-- Preserve certified `cloud/src/qa.ts`, source/rights/admission gates, scoring weights, publication freshness, digest-bound sealed objects, readback and pointer-last journal/rollback. No release mutation to hide a test failure.
-- Keep PRs narrow: conventional commits, exact test exit codes, immutable evidence receipts; no force push. Only explicitly authorized integration/release may push or deploy.
-- Do not delete historical evidence, manifests, rollback journals, lock files or wrappers on the basis of age; prove reachability and test pins first.
-- `pi install -l` is the only allowed Pi install form: project-local, logged and separately authorized.
-- Skills are on-demand and do not authorize runtime execution: [Serenity research skill](skills/serenity-public-research/SKILL.md); [privacy](docs/PRIVACY_MULTI_TENANT_POLICY.md); [release](docs/FINAL_RELEASE_PLAN.md).
+- Record source HEAD/branch, current [STATUS](state/STATUS.md), impacted callers, validators and tests before edits. Keep one tracked writer per path; other agents use isolated copies. No version table or historical receipt overrides the current source-bound evidence.
+- Preserve certified `cloud/src/qa.ts` unless recertified, along with ranking weights, privacy/IBKR separation, source rights and admission, freshness, sealed digest-bound publication, readback, pointer-last commits, replay refusal, rollback and evidence of failure. No deployment or release shortcuts.
+- **Deletion:** prove that no unique evidence, task, service, test or packaging dependency remains. Retain receipts, failure journals, schemas, locks, fixtures and compatibility wrappers. **No `git clean -xfd`; never follow junctions.** Follow [workspace maintenance](docs/WORKSPACE_MAINTENANCE.md).
+- Small Conventional commits with test commands, exit codes, evidence and rollback; no forced changes to accepted history. **Merging to `main`, tags and releases need an operator request; never amend or force-push** published history. Push/deploy only within the explicitly authorized scope.
+- After each task **rewrite `state/STATUS.md` as current state**: source HEAD, current Production/release evidence, accepted changes, open issues, next action and external mutations; history belongs in Git and receipts.
+- **Every Markdown file must be linked from `docs/README.md`**; `scripts/documentation_structure_gate.py` enforces the index and entrypoint budgets. Project-local Pi installs only: `pi install -l ...`, logged and separately authorized.
 
-## Pull requests
+## Research
 
-State what changed, why, risks/falsifiers, exact commands/counts, source provenance, tests and rollback. Document permissions/Production separately. Review artifacts must contain no credentials, private account identifiers or broker data.
+- The [Serenity public-research skill](skills/serenity-public-research/SKILL.md) is the **primary public-method lens**. **Leopold Aschenbrenner is CONTEXT_ONLY for company proof**, never a permanent sector filter or an assertion of his official investment formula. By operator decision, his scaling chain leads **industry ranking**, and his fund's effective **13F weight** leads ranking conviction in [BOTTLENECK_TOP20_V3](docs/BOTTLENECK_TOP20_V3.md). Neither author's views are independently proved company facts.
+- **Company figures come only from filings and market data.** Claims require independent, claim-level evidence; mirrors or syndications of one issuer disclosure count as **one lineage**. Attribute the original date and primary source; missing evidence stays unknown.
+- Grounded **options order parameters and position sizing are allowed** (see `cloud/src/v213/options-guidance.ts`, including liquidity, timestamp and suitability boundaries), but the system **never executes trades**. LINE uses public quote observation only; it does not access private owner or broker positions.
+
+## Pull requests and evidence
+
+State the change, source and evidence cutoff, tests (exact commands/counts), risks/falsifiers, approvals required and rollback. Test the actual user-facing caller, not only a helper; distinguish released and installed behavior from the source branch. Never claim a new live rollout, model benchmark, or Production qualification from a documentation change.
