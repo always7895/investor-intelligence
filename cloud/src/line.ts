@@ -1,4 +1,5 @@
 import { splitLineText } from "./core";
+import { localizeObservedStatusText } from "./v213/status-labels";
 import {
   hashOpaqueId,
   verifyLineSignature,
@@ -99,7 +100,7 @@ export async function rateLimit(
 }
 
 export async function replyText(env: LineEnv, replyToken: string, text: string): Promise<void> {
-  const chunks = splitLineText(text, MAX_LINE_TEXT, MAX_LINE_MESSAGES);
+  const chunks = splitLineText(localizeObservedStatusText(text), MAX_LINE_TEXT, MAX_LINE_MESSAGES);
   const response = await fetch(REPLY_URL, {
     method: "POST",
     headers: {

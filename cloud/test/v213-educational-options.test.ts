@@ -93,7 +93,7 @@ describe("Standalone Educational Options Strategies", () => {
     expect(flexStr).toContain("Cash-Secured Put");
     expect(flexStr).toContain("Bull Call Spread");
     expect(flexStr).toContain("Protective Put");
-    expect(flexStr).toContain("SYNTHETIC_EDUCATIONAL（模擬基準日：2026-09-14T00:00:00Z）");
+    expect(flexStr).toContain("教學模擬（模擬基準日：2026-09-14T00:00:00Z）");
     expect(flexStr).toContain("每口對應100股");
     // Flex retains a compact cost basis and unit; the full derivation remains on the actual text route.
     expect(flexStr).toContain("持有現股成本 $100");
@@ -126,7 +126,7 @@ describe("Standalone Educational Options Strategies", () => {
     }
     const textStr = JSON.stringify(text);
     expect(textStr).toContain("教學範例，非推薦");
-    expect(textStr).toContain("UNBOUNDED（理論無限）");
+    expect(textStr).toContain("無固定上限（理論無限）");
     expect(textStr).toContain("1 口合約 = 100 股現股");
     expect(textStr).toContain("現股買入成本為 $100.00/股");
 });

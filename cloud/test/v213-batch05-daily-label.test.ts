@@ -52,8 +52,10 @@ describe("BATCH05 daily source and date contract", () => {
   it("B05-I5 renamed daily Yahoo label is still one provider on text and Flex", async () => {
     for (const style of ["text", "flex"] as const) {
       const reply = await answer(style, "2026-09-14");
-      expect(reply).toContain("Yahoo 日收盤（合成改名）");
-      expect(reply).toContain("2026-09-14");
+      // Same provider: newest hourly observation wins; obsolete daily label is not a second price.
+      expect(reply).toContain("Yahoo Finance（非官方，延遲）");
+      expect(reply).toContain("最新觀察價 33.00 SEK");
+      expect(reply).not.toContain("Yahoo 日收盤（合成改名）");
       expect(reply).not.toContain("交叉比對");
       expect(reply).not.toContain("2026-09-14T");
     }
@@ -61,7 +63,8 @@ describe("BATCH05 daily source and date contract", () => {
   it("B05-I5 missing trade date is explicitly acquisition-only, never an invented close date", async () => {
     for (const style of ["text", "flex"] as const) {
       const reply = await answer(style, null);
-      expect(reply).toContain("09-15 20:00（台北）（擷取時間；來源未載明成交日）");
+      expect(reply).toContain("09-15 20:00（台北）");
+      expect(reply).toContain("最新觀察價 33.00 SEK");
       expect(reply).not.toContain(fixture.stamp);
       expect(reply).not.toContain("交叉比對");
     }

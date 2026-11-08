@@ -61,7 +61,7 @@ describe("IDIV2 renderer: the SEC-cache fallback card", () => {
       expect(all, style).toContain(NOTICE);
       expect(all, style).toContain(QUOTE_DISCLAIMER);
       expect(all, style).toContain(NAME_ZH);
-      expect(all, style).toContain("價格 12.34 USD（+1.23%）");
+      expect(all, style).toContain("最新觀察價 12.34 USD（+1.23%）");
       expect(all, style).not.toContain("已准入證券身分");
       expect(all, style).not.toContain("身分來自官方上市目錄");  // the ordinary verified-identity wording is replaced, not appended
       if (style === "text") {

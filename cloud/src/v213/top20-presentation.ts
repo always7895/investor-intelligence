@@ -8,6 +8,7 @@ import { LINE_THEME as T, altSummary, chip, detailsButton, disclosureLine, divid
 import { parseResearchProductRequest, unavailableResearchProduct } from "./research-product-request";
 import { getTwoYearTotalReturnDisplay } from "./top20-return-evidence";
 import { formatTaipeiTimestamp, formatVisibleMoment } from "./line-formatters";
+import { legacyCompanyNameLabel } from "./verified-legacy-company-names";
 import {
   getV213ReportReference, loadV213FreshTop20Report, parseV213BoundedTop20Report, parseV213Top20Report, v213FieldLocale,
   v213EvidenceWithinWindow, v213AdmissionDisclosure, V213_STALE_RECORDS_MESSAGE,
@@ -18,8 +19,8 @@ import {
 type PresentationEnv = V213Top20Env & { V213_LINE_PRESENTATION?: string };
 const NOTICE = "歷史報酬，非預測；公開研究，非投資建議。 / Historical returns, not forecasts. Public research, not investment advice.";
 const SCENARIO_STATUS = "6個月／1年／2年：實現、延遲及未實現訂單的目標價／漲跌幅，尚缺逐筆訂單與估值依據；不是零成長或零風險。時程見深度化分析。";
-const companyText = (record: V213Top20ReportRecord, labels: readonly string[]) =>
-  `── ${record.rank}/20 · ${record.ticker}｜原文：${record.name} ──\n中文名稱：未完成來源核對（不猜譯）\n` + v213Top20DisplayValues(record).map((value, i) => `${labels[i]}：${value}`).join("\n");
+export const companyText = (record: V213Top20ReportRecord, labels: readonly string[]) =>
+  `── ${record.rank}/20 · ${record.ticker}｜原文：${record.name} ──\n中文名稱：${legacyCompanyNameLabel(record.ticker, record.name)}\n` + v213Top20DisplayValues(record).map((value, i) => `${labels[i]}：${value}`).join("\n");
 
 
 /** Pure presentation only. Callers retain freshness, sealed-publication and dedupe gates. */
@@ -79,7 +80,7 @@ export function buildV213Top20Messages(report: V213Top20Report, locale: FieldLoc
           uiText(values[0]!, "xl", T.headerText, { weight: "bold" }),
         ], { spacing: "none" }),
         uiText(`原文：${record.name}`, "lg", T.headerText, { weight: "bold" }),
-        uiText("中文名稱：未完成來源核對", "xxs", T.headerSubtle),
+        uiText(`中文名稱：${legacyCompanyNameLabel(record.ticker, record.name)}`, "xxs", T.headerSubtle),
         uiText("歷史報酬，非預測 / Not forecasts", "xxs", T.headerMuted, { weight: "bold" }),
       ], { ...headerStyle, spacing: "md" }),
       body: uiBox([
