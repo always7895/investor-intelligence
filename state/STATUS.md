@@ -1,58 +1,35 @@
 # Current state / 目前狀態
 
-2026-10-18: INCREMENTAL_VERIFICATION. R = `_workspace/audit-runtime/claude-bridge-repair-20261004`. Done = writer + independent reviewer accept SAME snapshot (Claude Code + Sonnet 5.5); unaccepted = IMPLEMENTED_UNVERIFIED. Previous state: `git show bd5848b:state/STATUS.md` (FIXGATE, next1, rollout v10 plan); older: `46b2e8f`, `f7d6353`; baseline: `git show 38860e7:state/STATUS.md`.
+**As of 2026-11-08 (Asia/Taipei).** Release **`v3.3.0`** is the dual-accepted source snapshot **`8ff4b0722f71f983716b2accc1fadeb301e848e4`** (`feat/v33-options-trend`), merged to `main`. The commit that adds this page is documentation-only on top of that snapshot. The release is a source release; it is **not** the installed Worker version. This page records the project, not a task log.
 
-## Identity / roles / operator decisions
+## Production and rollout
 
-Master + single tracked writer Claude Code a43bef58. Sonnet 5.5: design, critique, judge; fresh Sonnet 5.5 agents give independent acceptance and rollout GO/NO-GO (read-only, reruns in copies). Haiku: mechanical checks. Gemini (agy): isolated copies or no-tool packet reviews (`R/OPERATOR-DECISION-GEMINI-JEV-TOKEN-20261013.txt`). Xor (local System One) first at judgment nodes, JEV below 0.8 confidence (`R/OPERATOR-DECISION-XOR-SYSTEMONE-20261017.txt`). Fable 5.1 retired 2026-10-12 (receipts are history); Astra gone; Qwen HOLD.
-Standing: DEFER-TESTS-20261010; INSTRUCTION-RULES-20261011; INSTRUCTIONS-F3-SYNC-20261010; REMOVE-FABLE-SONNET-REVIEWER-20261012. 2026-10-11: Q3-FOLLOW-AUTODETECTED-MODEL, OPTIONS-TIERS-WEEKLY, LINE-ALL-FRIENDS, ROLLOUT-AUTHORIZATION/SCOPE-EXPANSION, S1-AND-ALPHAVANTAGE-FRIENDS (S1 deferred).
-Since 2026-10-12 (`R/OPERATOR-DECISION-*`, listed in `git show bd5848b:state/STATUS.md` and R): rollout v10 and v11 authorizations, options/consensus display decisions, V13-ALL-ACTIONS (「授權你進行所有動作」), P1-DURING-V14-H5; V15-SECOND-SEED-SOURCE-20261018 (「除了yahoo之外加入至少一個以上的備選」); STAGE3-P8-V12-20261018 (Q1 stage 3 terms confirmed for the V13 Worker; Q2 after rollout v11 is DUAL-ACCEPTED fast-forward feat/v11-line-data-gaps to the accepted head plus state-only commits, merge PR 37 (head 8d98136) then PR 41, no tag or release; Q3 V12 condenses the entrypoint documents). Authorization is current-session only; files are not authorization.
-Local model: auto-detected and followed; UNQUALIFIED; verify `/health` and `/v1/models` live. Observed 2026-10-18 03:4xZ: no LINE Q&A model served (only another project's loopback services; the resolver refused an automatic choice), so the relay is idle (LOCAL_MODEL_UNAVAILABLE in cycles since 2026-10-17 23:12Z); the watchdog reconnects within 5 min once a model is served.
+- **Live Worker (master-reported):** version `18c0a22d-4e06-4f76-b687-423e524dba32`; deployed **2026-11-05T00:54:48Z** from source **`0c33b33`**; LINE access mode **`owner_only`**. These are the accepted deployment identifiers supplied by the master, not a new live readback performed in this repository.
+- **Combined all-friends rollout: PAUSED by the operator on 2026-11-08.** Do not silently switch to `all_friends` or treat a source build as deployed. Any new rollout requires a new plan, **master GO**, and **explicit current-session operator authorization**.
+- CI, an offline test, or a successful build does not qualify fresh sealed market evidence, confirm the current model endpoint or authorize LINE/KV/Worker changes.
 
-DEVELOPMENT_COMPLETE=false; FUNCTIONAL_PROJECT_COMPLETE=false; FINAL_RELEASE_COMPLETE=false; PRODUCTION_GO=false (rollout v11 partial, below); B0_READY/CPB_IMPLEMENTATION_ACCEPTED/PLATFORM_CAPABILITY_PROVEN/MACHINE_ADMISSION_ENABLED=false; publication_eligible=false; source_complete=false; all_functions_implemented=false; globalP0 NOT_REAUDITED; capacity UNQUALIFIED.
+## Integrated source and acceptance scope
 
-## Lanes DUAL-ACCEPTED (complete H5 gate each, ruling frozen before launch)
+- **UI-R3:** reviewed LINE display design pass, with Chinese human-facing labels and raw-code safeguards; no claim that every source renderer is live in the installed Worker.
+- **GAP-C:** completed MOD → THRM distribution on 2026-10-01 (0.44619 THRM shares per MOD share). Because adjusted entitlement prices are not independently proven, historical returns crossing the distribution are withheld as **unknown, not zero**, and the positive long-term history gate excludes MOD from V3 Top20 until qualified.
+- **MIN-1:** documented minimization of obsolete paths, preserving required tests, install/release boundaries and source evidence.
+- **Official-guides documentation:** README, AGENTS/CLAUDE, GitHub community files, SKILL and topic documents follow the official guides; every Markdown file is linked from `docs/README.md`.
+- The public-data/IBKR separation, paid-fallback refusal, rights/admission gates, sealed-object digest, snapshot freshness and rollback requirements remain mandatory. Source acceptance is not Production acceptance: `publication_eligible` stays false until a new rollout produces its own live evidence.
 
-- FIXGATE + next1 (fix/options-provenance-audit, head stays 8d98136, PR 37 open): detail in `git show bd5848b:state/STATUS.md`; CINV `R/SONNET-FIXGATE-CINV-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt` ACCEPT.
-- V11 LINE data gaps, dbf63cf (feat/v11-line-data-gaps, PR 41 to main OPEN, unmerged): Yahoo option chain (operator-accepted, labelled), off-hours last quote, labelled analyst consensus + 70-day bridge, 14-issuer guidance, name lookup. H5 `R/final-a43bef58-v11-g3`: 327 modules, PASS 307, BLOCKED 20 (ruled), FAIL 0. Receipts `R/EXECUTOR-V11-RESULT-...`, `R/SONNET-V11-INDEPENDENT-ACCEPT-...` ACCEPT (part 1 `...-PART1-...`). G3-F1 accepted: wiring module skips in the sandbox, 12 out-of-sandbox tests OK.
-- V13 history-model estimates, Nasdaq Nordic options, KV sync credential retry, 1c05eae (feat/v13-history-estimates, pushed, no PR). H5 `R/final-a43bef58-v13-g1`: 329, PASS 309, BLOCKED 20, FAIL 0. Receipts `R/EXECUTOR-V13-RESULT-...`, `R/SONNET-V13-INDEPENDENT-ACCEPT-...` ACCEPT-WITH-NOTES (F1 sync comment counts, F2 ruling and RESULT share one file, F3 history block beside FRESHNESS_UNVERIFIED rows by design).
-- V14 (TSM guidance record, history-model docs, sync code 7009) + V15 (Top20 second seed source: Nasdaq US stock screener when Yahoo is empty, 168 h seed bridge), bd5848b (feat/v14-tsm-guidance 6b93219, feat/v15-top20-seed-sources bd5848b, pushed). `R/final-a43bef58-v14-g1` 330, PASS 309, BLOCKED 21 (one unruled observation race; V14 alone IMPLEMENTED_UNVERIFIED); `R/final-a43bef58-v15-g1` PASS_AS_RULED 310 PASS / 20 BLOCKED, FAIL 0. Receipts `R/EXECUTOR-V14-RESULT-...`, `R/EXECUTOR-V15-RESULT-...`, `R/SONNET-V15-INDEPENDENT-ACCEPT-CLAUDECODE-a43bef58.txt` ACCEPT-WITH-NOTES (V14+V15 on bd5848b). Gemini packet review ACCEPT 7/7 (`R/v15-evidence-a43bef58/`).
-- V12 entrypoint documents, b7b3b17 + state-only 7742ccc, 5cb69f0 (feat/v15-top20-seed-sources, pushed): five entrypoint documents 47283 -> 43570 bytes, no Markdown deleted, no model id pinned. `R/final-a43bef58-v12-g2` PASS_AS_RULED 310 PASS / 20 BLOCKED, FAIL 0 (v12-g1 stopped on a dropped STATUS pointer, restored by 5cb69f0). Receipts `R/EXECUTOR-V12-RESULT-...`, `R/SONNET-V12-INDEPENDENT-ACCEPT-...` ACCEPT-WITH-NOTES; installed skill synced (`_archive/instruction-sync-20261018T104458Z`).
-- Ruled BLOCKED 20: the 15 n1-g10 native/vault modules + installer_diagnostics, installer_parse_evidence, local_model_endpoint, v213_free_relay_watchdog, v213_journal_reconciliation (sandbox PATH/cwd; reruns outside the sandbox OK).
+## Release acceptance (v3.3.0)
 
-## Rollout v10 (executed 2026-10-13; plan 172fe218, target 8d98136, `R/SONNET-ROLLOUT10-GO-...`)
+- **Writer:** complete H5 gate `rel1-g2` on `8ff4b07`: 346 modules, 326 PASS, 20 BLOCKED as ruled before launch (host-bound modules), 0 FAIL; verdict PASS_AS_RULED.
+- **Independent reviewer:** separate ChatGPT review in its own clone: four gates, `cloud` typecheck and 2204 Vitest tests, release-scope Python modules all exit 0; no P0/P1. Receipts are kept in the local audit archive.
 
-P1-P7 done (part 1 ACCEPT `R/SONNET-ROLLOUT10-P0-P7-PART1-INDEPENDENT-ACCEPT-...`); P6b and P8 replaced by rollout v11 P6 and operator Q2. Defects: D-R1 relay under the embedded Python (fix cb48779 ships in V11); D-R2 bridge SelfTest sibling files; I4 identity rebuild (tpex IncompleteRead).
+## Next actions
 
-## Rollout v11 (authorized 2026-10-17; plan 2df0a85f GO-WITH-CONDITIONS; log `R/ROLLOUT11-EXEC-NOTES-CLAUDECODE-a43bef58.md`)
+1. Propose a **new rollout plan** for the combined product. Do not activate any deployment, schedule or `all_friends` access without the **master's GO and the operator's current-session approval**.
 
-Stage 1 Worker, stage 2 runtime P2-P5, stage 3 friends (P6), one UTC day each. Deltas: `R/ROLLOUT11-V13-DELTA-PLAN-...` (GO-WITH-CONDITIONS K1-K3), `R/ROLLOUT11-V15-DELTA-PLAN-...` (r1 NO-GO B1/B2; r2 GO-WITH-CONDITIONS, F1 HIGH fixed).
-- Stage 1, 2026-10-17 16:48-16:56Z: P0 problems=0; P1 Worker 5159441e alone at 100 % (V13 code, owner_only). Post check problems=1 TOP20_NOT_FRESH: data, not Worker (Yahoo screeners answer 0 quotes since 2026-10-16; Top20 left the seal at 16:12Z). No rollback; re-observe the post once a seal carries 20 Top20 records (K-C).
-- Stage 2, 2026-10-18, target bd5848b: P2 exclude and P3 install 02:49-02:54Z problems=0 (K-3: 7/7 installed engine files equal the git blobs). P3b 03:18-03:26Z DATA_REFRESH OK, identity rebuilt, consensus 6. P3d 03:26-03:32Z (new step, GO r2): the installed V15 engine seeded the Top20 from the Nasdaq US stock screener (263) while every Yahoo screen was EMPTY; LKG promoted, check VALID. P3c 03:32Z: local seal replay PASS fresh 20, old reader refuses (M3), 0 expected failures (AVAILABLE 12, CONSENSUS_PATH 6, STALE 1 AAOI by receipt, IR_COVERAGE_MISSING 1 TSM; CRDO left the Top20). P4 03:34-03:40Z: mutex released, writers enabled; RELAY_NOT_UP_ESCALATE (E8 branch, no model served, operator told). P5: H1 = the ordinary job at 04:12:34Z (FALLBACK_BY_LIMIT); P5 accept problems=0 at 04:50Z (run 20261018T041234Z-7ce9bbbc8ef3: READBACK_CONFIRMED, 84 objects within the 85 bound, live copy EXACT, target replay PASS fresh 20, old reader refuses, readiness 5159441e owner_only contract v2). Watch to the 23:12Z cycle.
-- K-C (P1 post re-observation once a seal carries 20 Top20 records): P1 post rerun 04:51-04:56Z problems=0 (deploy gate post exit 0; first run kept as post-r1). Stage 1 closed.
-- Stage 3 (P6 friends, v10b config on the V13 Worker): 2026-10-19 from 00:48Z under `R/ROLLOUT10-P6B-ADDENDUM-V3` (m=20, p=10, F=150, D=50, threshold 950, N_a 50, R-F one-way), confirmed 2026-10-18 (K-D closed); watch C1-C4 through the P6 day.
-- Merge (operator Q2): after rollout v11 is DUAL-ACCEPTED, fast-forward feat/v11-line-data-gaps to the accepted head, merge PR 37 then PR 41; if a merge command is refused, the operator merges on GitHub.
-- Kill switches REVERT_O (catalog-only, local, not for merge): ops/v13-revert-options, ops/v15-revert-options.
+## Open follow-ups
 
-## Python gate method (PYGATE1-4)
+- **MOD:** obtain verifiable entitlement-adjusted historical returns before allowing a crossing-window CAGR to count.
+- **AGLT:** follow the listed-company lead, but respect the **365-day history admission gate**; listing is not immediate ranking eligibility.
+- **Aschenbrenner 13F:** verify the **Q3 2026 13F after 2026-11-16**, using filing date and reporting period; do not infer current positions from an earlier filing.
+- **LITE/MRVL:** next deal-state review `review_by=2026-12-07`; the merger remains a pending state until primary evidence changes it.
 
-Policy/history: `git show 42770026:state/STATUS.md`. Owned kill-on-close jobs, load-aware WMI; installed root RO except _workspace/_archive; no OS sandbox. Relaunch only in sibling roots; workspace AGENTS.md gate rules apply. Ruling frozen before launch (RULING-BEFORE-LAUNCH.txt/.sha256). BLOCKED is never PASS.
-
-## Open work
-
-- V15 notes (low): N1 `config/revenue-guidance-v1.json` TSM calendar_locator parenthetical not literal PDF text; N2 TSM `release_channels {}` has no in-record reason (tests/test_v14_tsm_guidance.py:4, docs/BOTTLENECK_TOP20_V3.md:109); N3 `scripts/sync_sealed_snapshot_kv.py:42-43` "17 KV GETs 401" not reproducible; N4 `scripts/v21_serenity_top20.py` build_report catalog_count 101 vs CATALOG_COUNT 103; N5 168 h bound also widens the Yahoo bridge (intended).
-- V12 note (low): N3 runbook friend-GPU item says "set" where the base said "consider" (still owner-gated; restore in a later docs lane).
-- V11 notes: bridge 70 days (operator allowed 75); Yahoo review_valid_through 2027-10-13; old Worker lacks the non-official consensus wording until V11 code ships.
-- GO delta findings: V13 F1 P0 diffs mode-v1 not v2 (wording); derived V13 p0.ps1 header names V11 pins; GO r2 F2-F6 low (P3d extra log writes, sub-deadline clamps, wording).
-- Live: KV sync failed every other cycle (AUTHENTICATION_ERROR, 7009) before the stage 2 install (02:54Z); since H1 every cycle SUCCEEDED on the first attempt (watch 04:12-08:12Z); TAIFEX 17:30 run sees the previous trade_date until dataset 11320 publishes (a time change is a new registration).
-- Carried (see `git show bd5848b:state/STATUS.md`): C1 v2 enforcement wiring (verify_r75_qa_evidence.py, verify_v213_r75_free_relay_hotfix.py); l5 bench seeds no generated_at; N6; F8; G9a N2; G2-B1 M04/M22; auth-capture; bridge RoutingCheckOnly row; v213_qa_live_gate.py host proxy; security_check bare workers.dev host; runbook `npx wrangler` (SC-R2-2); unpinned winget cloudflared (SC-2); Node version (F-6); HIST scope lens review; workers.dev rename (operator); launcher EXE rebuild; erratum commit 1301118.
-- Environment-only failures: bridge_model_identity, model_profile, qa_capacity_security outside pinned hosts; source_declared_candidates under long roots; CI embeddable Python.
-- Operator questions: M5, O11/O12 (`R/REQUESTS-OPEN-DECISIONS-MODEL-OPTIONS-CLAUDECODE-a43bef58-20261011.txt`); dataset 11321 rights. Deferred/external: S1, T11-F1A D2/D3, BATCH08D P3(c)/DIL-4/DIL-6/1800 s/B5/B7, BATCH09 G6 F05B, 15 BLOCKED modules, 03f GAP_OPEN, M5 native, L5 qa.ts recertification, P6 host execution, G9b. Earlier lanes: global options rights, identity rebuild, O5, source diversity, F06/A3/CRWV, Lane2/3, CRDO-RPO-01, SEC-cache, LINE bounds, native M2/M3, provenance block. Not whole-project completion.
-
-## Process deviations (retained; no retroactive approval)
-
-History: `git show bd5848b:state/STATUS.md`. Since: P0 run 1 tool defect (p0.ps1 r2 reviewed); P0/P1 during the V14 H5 by single operator exception; p3d.ps1 written to the driver directory only after its GO; first P2 attempt refused (FreeRelay instance running), rerun passed; first K-3 run hit a variable-name collision (kept, fixed, rerun 7/7); Xor timeout skipped; JEV q005 0.30, master arbitrated. Failed evidence/BLOCKED never means PASS.
-
-## Next
-
-Stage 2 watch to the 23:12Z cycle (read with the stage 3 gate at 00:48Z); stage 3 on 2026-10-19 00:48Z and its watch; rollout writer receipt and Sonnet acceptance; then the Q2 merges and the final STATUS. Boundaries: credentials, billing, broker, trades, M5, BATCH02D. No trades.
+**Boundaries:** no secret, owner/portfolio/IBKR-to-LINE data, Production mutation, paid fallback, automated trading or unauthorized rollout. Prior evidence remains in Git (`git show 38860e7:state/STATUS.md`), not as competing current-status prose.

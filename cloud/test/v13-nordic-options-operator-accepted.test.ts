@@ -1,8 +1,8 @@
 // V13 item 3b on the Worker: the operator-accepted (unlicensed) Nasdaq Nordic option provider, a second pinned provider beside Yahoo, through the REAL
 // callers: admitPublicOption, validateCoveredCallCycle, loadDetailedOptionObservation, the renderer and processAuthorizedLineEvent on a sealed MemoryKv
 // snapshot. The sealed options object is a slice of what the real Python producer and sealer emit (cloud/test/fixtures/v13-nordic-options.json, byte-pinned
-// by tests/test_v13_nordic_options_operator_accepted.py). The catalog is the REPOSITORY catalog (vi.doMock, since the Worker imports it at build time) with
-// mutations applied per row; clocks lie after the decision day 2026-10-17. Synthetic LINE credentials; every other network call throws.
+// by tests/test_v13_nordic_options_operator_accepted.py). The October-clock cases use the pre-V30 catalog fixture (vi.doMock); a separate
+// parity row checks the repository catalog. Synthetic LINE credentials; every other network call throws.
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -12,6 +12,7 @@ import { SNAPSHOT_SEAL_KEY } from "../src/v213/snapshot-seal";
 
 const CATALOG_MODULE = "../../config/public-options-provider-candidates.json";
 const repository = JSON.parse(readFileSync(resolve(__dirname, CATALOG_MODULE), "utf-8")) as Doc;
+const historical = JSON.parse(readFileSync(resolve(__dirname, "fixtures/options-provider-catalog-pre-v30.json"), "utf-8")) as Doc;
 const fixture = JSON.parse(readFileSync(resolve(__dirname, "fixtures/v13-nordic-options.json"), "utf-8")) as Doc;
 type Doc = Record<string, any>;
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
@@ -29,9 +30,19 @@ const GENERATED_AT = fixture.both.generated_at as string;
 const RUN = "20261019T080000Z-abcdefabcde3";
 
 const entry = (doc: Doc, id: string): Doc => doc.providers.find((item: Doc) => item.id === id)!;
-/** The repository catalog with optional per-row mutations (a deep copy; the root selection follows `selected` when given). */
+/** The historical catalog with optional per-row mutations (a deep copy; the root selection follows `selected` when given). */
+// V19: the Nasdaq US entry (decided 2026-10-19) lies after this file's 2026-10-17 clocks, where it would make the whole catalog unusable; its own
+// rows live in v19-nasdaq-us-options-operator-accepted.test.ts. Here it keeps its pre-decision, unadmitted shape so these rows prove Nordic alone.
+const NASDAQ_UNADMITTED: Doc = {
+  id: "nasdaq_public_option_chain", name: "Nasdaq public option-chain pages", authority: "Nasdaq", jurisdictions: ["US"],
+  data_roles: ["delayed_quotes_candidate", "contract_reference"], official_url: "https://www.nasdaq.com/market-activity/stocks",
+  rights_evidence_url: "https://www.nasdaq.com/market-activity/quotes/option-chain", rights_status: "review_before_enable",
+  automated_access_allowed: null, rights_reviewed_at: null, review_notes: "Automated API access, free-tier continuity and redistribution rights remain unverified.",
+  adapter_status: "not_implemented", runtime_enabled: false, line_quote_eligible: false,
+};
 function catalogWith(mutate?: (nordic: Doc, yahoo: Doc, doc: Doc) => void): Doc {
-  const doc = clone(repository);
+  const doc = clone(historical); // The fixture clocks precede the 2026-11-02 catalog review.
+  doc.providers = doc.providers.map((item: Doc) => (item.id === "nasdaq_public_option_chain" ? clone(NASDAQ_UNADMITTED) : item));
   mutate?.(entry(doc, NORDIC_ID), entry(doc, YAHOO_ID), doc);
   return doc;
 }
@@ -112,7 +123,7 @@ describe("the repository catalog carries exactly the two pinned operator-accepte
     expect(yahoo.operator_decision.decision_id).toBe("OPERATOR-DECISION-OPTIONS-DISPLAY-ALL-20261013");
     expect(yahoo.admitted_scopes).toEqual([YAHOO_SCOPE, { ...YAHOO_SCOPE, quote_basis: "previous_session_last" }]);
     const enabled = repository.providers.filter((item: Doc) => item.runtime_enabled === true).map((item: Doc) => item.id).sort();
-    expect(enabled).toEqual([NORDIC_ID, YAHOO_ID].sort());
+    expect(enabled).toEqual([NORDIC_ID, YAHOO_ID, "nasdaq_public_option_chain"].sort());  // V19: the third pinned provider
   });
 });
 
@@ -185,7 +196,7 @@ describe("admission: the pinned Nordic decision, through the catalog", () => {
   it("a second provider claiming the Nordic id or the operator status invalidates the catalog, whatever it copies", async () => {
     const duplicate = await world(catalogWith((nordic, _yahoo, doc) => { doc.providers.push(clone(nordic)); }));
     expect(duplicate.admission.admitPublicOption(NORDIC_CLAIM, NOW)).toEqual(DENIED);
-    const others = repository.providers.map((item: Doc) => item.id as string).filter((id: string) => id !== NORDIC_ID && id !== YAHOO_ID);
+    const others = historical.providers.map((item: Doc) => item.id as string).filter((id: string) => id !== NORDIC_ID && id !== YAHOO_ID);
     expect(others.length).toBeGreaterThanOrEqual(12);
     for (const id of others) {
       const doc = catalogWith((nordic, _yahoo, root) => {
@@ -290,7 +301,7 @@ describe("through the real LINE entry", () => {
     const without = await world(catalogWith(nordic => { nordic.runtime_enabled = false; nordic.line_quote_eligible = false; }));
     const env = await sealedEnv(DOC);
     const denied = await lineReply(without, env, "SIVE.ST 每月期權");
-    expect(denied).toContain("OPTION_RIGHTS_NOT_ADMITTED");
+    expect(denied).toContain("期權資料未通過公開驗收");
     expect(denied).not.toContain(" SEK");
     expect(denied).not.toContain(without.covered.OPERATOR_ACCEPTED_NOTICE_ZH);
     const yahoo = await lineReply(without, env, "SYNTHUS00 每月期權");

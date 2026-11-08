@@ -1003,7 +1003,7 @@ def build_v3(issuer: str, stock_orders: Mapping[str, Any] | None, recognition_or
         # reviewed guidance-release title travel sealed, so the Worker binds the receipt's ISSUER_IR channel to the
         # registry's own IR host and derives the IR_COVERAGE_MISSING diagnostic.
         ir = rc.get("ir")
-        if isinstance(ir, Mapping) and ir.get("kind") in ("Q4_PRESS_RELEASES", "RSS", "NEWSROOM_HTML") \
+        if isinstance(ir, Mapping) and ir.get("kind") in ("Q4_PRESS_RELEASES", "RSS", "NEWSROOM_HTML", "TSMC_NEWS_HTML") \
                 and isinstance(ir.get("url"), str) and ir["url"].startswith("https://") and len(ir["url"]) <= 400:
             out["ir"] = {"kind": ir["kind"], "url": ir["url"]}
         ir_title = rc.get("ir_guidance_release_title")

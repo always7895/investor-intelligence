@@ -45,6 +45,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 import listing_lineage  # noqa: E402
 import official_quarterly_revenue  # noqa: E402
+import revenue_trend  # noqa: E402
+import corporate_actions  # noqa: E402
 
 LAYERS = ROOT / "config" / "bottleneck-layers-v3.json"
 KOREA_ORDERS = ROOT / "config" / "korea-ir-orders-v1.json"
@@ -127,6 +129,47 @@ def companyfacts(cik: int, fetch: Callable[[str], bytes] | None, max_age_hours: 
     return json.loads(raw.decode("utf-8"))
 
 
+def _fact_revision_key(row: dict[str, Any]) -> tuple[str, str]:
+    """Filed date then canonical content: stable even when SEC arrays are reordered."""
+    return row["filed"], json.dumps(row, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+
+
+def _fact_operand(row: dict[str, Any], unit: str) -> dict[str, Any]:
+    return {key: row[key] for key in ("start", "end", "filed", "val")} | {"unit": unit}
+
+
+def _valid_filed_fact(row: dict[str, Any]) -> bool:
+    if not isinstance(row, dict):
+        return False
+    try:
+        return (_canonical_day(row.get("end")) and _canonical_day(row.get("filed"))
+                and row["filed"] >= row["end"] and isinstance(row.get("val"), (int, float))
+                and not isinstance(row.get("val"), bool) and math.isfinite(row["val"]))
+    except OverflowError:
+        return False
+
+
+def _latest_facts(rows: list[dict[str, Any]], *, duration: bool,
+                  conflicted_ends: set[str] | None = None) -> list[dict[str, Any]]:
+    groups: dict[tuple[str, ...], list[dict[str, Any]]] = {}
+    for row in rows:
+        if not _valid_filed_fact(row) or (duration and not _canonical_day(row.get("start"))):
+            continue
+        key = (row["start"], row["end"]) if duration else (row["end"],)
+        groups.setdefault(key, []).append(row)
+    result = []
+    for group in groups.values():
+        filed = max(row["filed"] for row in group)
+        latest = [row for row in group if row["filed"] == filed]
+        # Ordering cannot resolve two different financial values in the same latest filing.
+        if any(row["val"] != latest[0]["val"] for row in latest):
+            if conflicted_ends is not None:
+                conflicted_ends.add(latest[0]["end"])
+            continue
+        result.append(max(latest, key=_fact_revision_key))
+    return sorted(result, key=_fact_revision_key)
+
+
 def _quarter_series(facts: dict[str, Any], tags: list[tuple[str, str]]) -> tuple[str | None, dict[str, dict[str, Any]]]:
     """Quarter-length duration facts (80-100 days, any fiscal calendar) of the tag with the most recent quarter,
     keyed by period end date; the latest filing wins for a restated period. SEC frames are not used because many
@@ -136,9 +179,10 @@ def _quarter_series(facts: dict[str, Any], tags: list[tuple[str, str]]) -> tuple
         units = facts.get("facts", {}).get(taxonomy, {}).get(tag, {}).get("units", {})
         for unit, rows in units.items():
             series: dict[str, dict[str, Any]] = {}
-            nine_month: dict[str, dict[str, Any]] = {}
+            nine_month: dict[tuple[str, str], dict[str, Any]] = {}
             annual: list[dict[str, Any]] = []
-            for row in rows:
+            conflicted_ends: set[str] = set()
+            for row in _latest_facts(rows, duration=True, conflicted_ends=conflicted_ends):
                 try:
                     end, start = row["end"], row["start"]
                     if not (_canonical_day(end) and _canonical_day(start)):
@@ -150,18 +194,24 @@ def _quarter_series(facts: dict[str, Any], tags: list[tuple[str, str]]) -> tuple
                     continue
                 if 80 <= days <= 100:
                     previous = series.get(row["end"])
-                    if previous is None or str(row.get("filed", "")) >= str(previous.get("filed", "")):
+                    if previous is None or _fact_revision_key(row) > _fact_revision_key(previous):
                         series[row["end"]] = {**row, "unit": unit}
                 elif 260 <= days <= 285:
-                    nine_month[row["start"]] = row
+                    nine_month[(row["start"], row["end"])] = row
                 elif 350 <= days <= 380:
                     annual.append(row)
             # Fourth fiscal quarters are often filed only inside the annual figure: annual minus nine-month YTD.
-            for year in annual:
-                ytd = nine_month.get(year["start"])
-                if ytd and year["end"] not in series:
+            for year in sorted(annual, key=_fact_revision_key):
+                candidates = [row for row in nine_month.values() if row["start"] == year["start"]
+                              and 80 <= (date.fromisoformat(year["end"]) - date.fromisoformat(row["end"])).days <= 100]
+                ytd = max(candidates, key=_fact_revision_key) if candidates else None
+                if (ytd and year["end"] not in conflicted_ends
+                        and (year["end"] not in series or series[year["end"]].get("derived") == "annual_minus_9m")):
+                    if not _valid_filed_fact({**year, "val": year["val"] - ytd["val"]}):
+                        continue
                     series[year["end"]] = {**year, "val": year["val"] - ytd["val"], "unit": unit, "derived": "annual_minus_9m",
-                                           "start": ytd["end"]}
+                                           "start": (date.fromisoformat(ytd["end"]) + timedelta(days=1)).isoformat(),
+                                           "filed": max(year["filed"], ytd["filed"]), "operands": [_fact_operand(year, unit), _fact_operand(ytd, unit)]}
             if len(series) >= 5 and max(series) > best[0]:
                 best = (max(series), f"{taxonomy}:{tag}", series)
     return best[1], best[2]
@@ -192,12 +242,35 @@ def _iso_end(row: dict[str, Any]) -> bool:
 
 
 def _instant_series(facts: dict[str, Any], tags: list[tuple[str, str]]) -> tuple[str | None, list[dict[str, Any]]]:
+    """Newest valid filings with conflict refusal and undated legacy compatibility."""
     for taxonomy, tag in tags:
         units = facts.get("facts", {}).get(taxonomy, {}).get(tag, {}).get("units", {})
         for unit, rows in units.items():
-            dated = sorted((row for row in rows if _iso_end(row) and row.get("val") is not None), key=lambda row: row["end"])
-            if dated:
-                return f"{taxonomy}:{tag}", [{**row, "unit": unit} for row in dated]
+            conflicted: set[str] = set()
+            dated = _latest_facts(rows, duration=False, conflicted_ends=conflicted)
+            by_end = {row["end"]: row for row in dated}
+            for row in rows:
+                if not isinstance(row, dict) or not _iso_end(row) or row.get("filed") is not None:
+                    continue  # explicit malformed filing metadata cannot become an undated fallback
+                if row["end"] in conflicted:
+                    continue  # no undated/older resurrection of a conflicting latest filing
+                value = row.get("val")
+                try:
+                    if not isinstance(value, (int, float)) or isinstance(value, bool) or not math.isfinite(value):
+                        continue
+                except OverflowError:
+                    continue
+                previous = by_end.get(row["end"])
+                if previous is not None and previous["filed"] is not None:
+                    continue
+                undated = {**row, "filed": None}
+                if previous is not None and previous["val"] != value:
+                    del by_end[row["end"]]
+                    conflicted.add(row["end"])
+                else:
+                    by_end[row["end"]] = max(previous, undated, key=_fact_revision_key) if previous else undated
+            if by_end:
+                return f"{taxonomy}:{tag}", [{**by_end[end], "unit": unit} for end in sorted(by_end)]
     return None, []
 
 
@@ -306,14 +379,20 @@ def sec_fundamentals(ticker: str, cik: int, facts: dict[str, Any]) -> dict[str, 
                 prior = diluted[min(candidates, key=lambda end: abs((date.fromisoformat(end) - target).days))]
                 shares_yoy = _shares_yoy(diluted[latest]["val"], prior["val"])
                 shares_basis = "DILUTED_WEIGHTED_AVERAGE" if shares_yoy is not None else None
+    # TREND_YOY_V1 input (scripts/revenue_trend.py): the last four contiguous filed quarters in one unit; local only.
+    trend_quarters = revenue_trend.quarters_of({end: row["val"] for end, row in revenue.items() if row.get("unit") == current["unit"]}, latest)
     return {"source": "SEC EDGAR XBRL companyfacts", "source_url": COMPANYFACTS.format(cik=cik), "revenue_tag": tag,
             "quarter": current.get("fp"), "quarter_end": current.get("end"), "filed": current.get("filed"), "form": current.get("form"),
             "revenue": current["val"], "revenue_unit": current["unit"], "revenue_yoy": yoy, "revenue_yoy_prev": yoy_prev,
+            "revenue_operands": current.get("operands", [_fact_operand(current, current["unit"])]),
             "gross_margin": gm, "gross_margin_change": (gm - gm_prior) if gm is not None and gm_prior is not None else None,
             "rpo_yoy": rpo_yoy, "shares_yoy": shares_yoy, "shares_basis": shares_basis,
             "rpo": rpo[-1]["val"] if rpo else None, "rpo_unit": rpo[-1]["unit"] if rpo else None,
             "rpo_end": rpo[-1]["end"] if rpo else None,
-            "rpo_prior": rpo_prior["val"] if rpo_prior else None, "rpo_prior_end": rpo_prior["end"] if rpo_prior else None}
+            "rpo_filed": rpo[-1]["filed"] if rpo else None,
+            "rpo_prior_filed": rpo_prior["filed"] if rpo_prior else None,
+            "rpo_prior": rpo_prior["val"] if rpo_prior else None, "rpo_prior_end": rpo_prior["end"] if rpo_prior else None,
+            **({"revenue_quarters": trend_quarters} if trend_quarters else {})}
 
 
 # ---------------------------------------------------------------- order visibility and growth scenarios
@@ -325,29 +404,54 @@ def _finite(value: Any) -> float | None:
     return number if math.isfinite(number) else None
 
 
-def yahoo_consensus(ticker: Any, symbol: str, price: float | None, info: dict[str, Any] | None) -> dict[str, Any] | None:
-    """Analyst consensus for the current (0y) and next (+1y) fiscal year and the mean target price (Yahoo Finance,
-    unofficial). Each figure keeps its analyst count; None when Yahoo has no next-year revenue estimate."""
-    def row(frame: Any, period: str) -> tuple[float | None, int | None]:
-        if frame is None or getattr(frame, "empty", True) or period not in frame.index:
-            return None, None
-        count = _finite(frame.loc[period].get("numberOfAnalysts"))
-        return _finite(frame.loc[period].get("avg")), int(count) if count else None
-    revenue0, _ = row(ticker.revenue_estimate, "0y")
-    revenue1, revenue_n = row(ticker.revenue_estimate, "+1y")
-    if not revenue0 or not revenue1 or revenue0 <= 0:
+def analyst_number(value):
+    try:
+        return None if isinstance(value, bool) else _finite(value)
+    except OverflowError:
         return None
-    eps0, _ = row(ticker.earnings_estimate, "0y")
-    eps1, eps_n = row(ticker.earnings_estimate, "+1y")
+
+
+def _analyst_outlook(symbol, price, r0, r1, rn, e0, e1, en, target, tn, asof):
+    """Keep independent published analyst fields; missing revenue never removes EPS/target evidence."""
+    def count(value):
+        n = _finite(value) if not isinstance(value, bool) else None
+        return int(n) if n is not None and n > 0 and n == int(n) else None
+    rn, en, tn = count(rn), count(en), count(tn)
+    positive = lambda x: x is not None and math.isfinite(x) and x > 0
+    rg = _finite(r1 / r0 - 1) if positive(r0) and positive(r1) else None
+    if en is None:
+        e0 = e1 = None
+    eg = _finite(e1 / e0 - 1) if positive(e0) and positive(e1) else None
+    if not positive(target) or tn is None:
+        target = tn = None
+    upside = _finite(target / price - 1) if target is not None and positive(price) else None
+    if rg is None and e1 is None and target is None:
+        return None
+    return {"source": "Yahoo Finance analyst estimates (unofficial)",
+            "source_url": f"https://finance.yahoo.com/quote/{symbol}/analysis", "asof": asof,
+            "revenue_fy0": r0, "revenue_fy1": r1, "revenue_growth": rg, "revenue_analysts": rn,
+            "eps_fy0": e0, "eps_fy1": e1, "eps_growth": eg, "eps_analysts": en,
+            "target_mean": target, "target_analysts": tn, "price": price, "target_upside": upside}
+
+
+def yahoo_consensus(ticker: Any, symbol: str, price: float | None, info: dict[str, Any] | None, *, as_of: datetime | None = None) -> dict[str, Any] | None:
+    """Independent revenue/EPS/target observations; a failed endpoint cannot erase another field."""
+    def pair(field):
+        try:
+            frame = getattr(ticker, field)
+            def row(period):
+                if frame is None or getattr(frame, "empty", True) or period not in frame.index:
+                    return None, None
+                return analyst_number(frame.loc[period].get("avg")), analyst_number(frame.loc[period].get("numberOfAnalysts"))
+            return row("0y")[0], *row("+1y")
+        except Exception:
+            return None, None, None
+    r0, r1, rn = pair("revenue_estimate")
+    e0, e1, en = pair("earnings_estimate")
     info = info or {}
-    target, target_n = _finite(info.get("targetMeanPrice")), _finite(info.get("numberOfAnalystOpinions"))
-    return {"source": "Yahoo Finance analyst estimates (unofficial)", "source_url": f"https://finance.yahoo.com/quote/{symbol}/analysis",
-            "asof": utc_now().date().isoformat(), "revenue_fy0": revenue0, "revenue_fy1": revenue1,
-            "revenue_growth": revenue1 / revenue0 - 1, "revenue_analysts": revenue_n,
-            "eps_fy0": eps0, "eps_fy1": eps1, "eps_analysts": eps_n,
-            "eps_growth": eps1 / eps0 - 1 if eps0 and eps1 and eps0 > 0 and eps1 > 0 else None,
-            "target_mean": target, "target_analysts": int(target_n) if target_n else None,
-            "price": price, "target_upside": target / price - 1 if target and price and price > 0 else None}
+    return _analyst_outlook(symbol, price, r0, r1, rn, e0, e1, en,
+                            analyst_number(info.get("targetMeanPrice")), analyst_number(info.get("numberOfAnalystOpinions")),
+                            (as_of or utc_now()).date().isoformat())
 
 
 NASDAQ_ANALYST = "https://api.nasdaq.com/api/analyst/{symbol}/{kind}"
@@ -427,7 +531,8 @@ def outlook(symbol: str, fund: dict[str, Any] | None, consensus: dict[str, Any] 
         orders = korea_orders(symbol, captured.operand("korea_orders") if captured else KOREA_ORDERS)
     scenarios = []
     if consensus:
-        scenarios.append({"kind": "REVENUE_CONSTANT_PS", "change": consensus["revenue_growth"]})
+        if consensus.get("revenue_growth") is not None:
+            scenarios.append({"kind": "REVENUE_CONSTANT_PS", "change": consensus["revenue_growth"]})
         if consensus.get("eps_growth") is not None:
             scenarios.append({"kind": "EPS_CONSTANT_PE", "change": consensus["eps_growth"]})
         if consensus.get("target_upside") is not None:
@@ -436,6 +541,15 @@ def outlook(symbol: str, fund: dict[str, Any] | None, consensus: dict[str, Any] 
 
 
 # ---------------------------------------------------------------- Yahoo Finance
+def _yahoo_trend_quarters(revenue: dict[str, float], latest_end: str, financial_currency: Any, quote_currency: Any) -> dict[str, Any]:
+    """The TREND_YOY_V1 input (scripts/revenue_trend.py) from a Yahoo quarterly statement: the key is absent unless the
+    statement currency is known and equals the quote currency the revenue unit is labelled with (fail closed)."""
+    if not isinstance(financial_currency, str) or financial_currency != quote_currency:
+        return {}
+    quarters = revenue_trend.quarters_of(revenue, latest_end)
+    return {"revenue_quarters": quarters} if quarters else {}
+
+
 def yahoo_data(symbol: str, lineage: dict[str, Any] | None = None, *, config_path: Path | None = None, as_of: datetime | None = None) -> dict[str, Any]:
     import yfinance as yf
     requested_from = listing_lineage.request_start(datetime.now(timezone.utc).date())
@@ -470,7 +584,7 @@ def yahoo_data(symbol: str, lineage: dict[str, Any] | None = None, *, config_pat
     except Exception:
         pass
     try:
-        out["consensus"] = yahoo_consensus(ticker, symbol, last, info)
+        out["consensus"] = yahoo_consensus(ticker, symbol, last, info, as_of=as_of)
     except Exception:
         out["consensus"] = None
     try:
@@ -529,7 +643,10 @@ def yahoo_data(symbol: str, lineage: dict[str, Any] | None = None, *, config_pat
                                        "revenue_yoy_prev_basis": prev_basis, "revenue_yoy_prev_source": prev_source,
                                        **({"revenue_yoy_prev_reason": prev_reason} if prev_reason else {}),  # local only
                                        "gross_margin": gm, "gross_margin_change": (gm - gm_prior) if gm is not None and gm_prior is not None else None,
-                                       "rpo_yoy": None, "shares_yoy": shares_yoy, "shares_basis": shares_basis}
+                                       "rpo_yoy": None, "shares_yoy": shares_yoy, "shares_basis": shares_basis,
+                                       **_yahoo_trend_quarters({str(end.date()): float(value) for end, value in revenue.items()},
+                                                               str(latest_end.date()), info.get("financialCurrency") if isinstance(info, dict) else None,
+                                                               out["market"].get("currency"))}
     except Exception:
         pass
     return out
@@ -568,7 +685,7 @@ def captured_yahoo_data(symbol, captured, lineage, as_of):
         summary = captured.operand("yahoo/summary/" + symbol)
         modules = json.loads(summary.read_text())["quoteSummary"]["result"][0] if summary.exists() else {}
         quote = modules.get("price") or {}
-        number = lambda value: _finite(value.get("raw")) if isinstance(value, dict) else _finite(value)
+        number = lambda value: analyst_number(value.get("raw")) if isinstance(value, dict) else analyst_number(value)
         currency = quote.get("currency") or meta.get("currency")
         price = returns["price"]
         out["market"] = {"source": "Yahoo Finance adjusted daily close (unofficial)",
@@ -582,15 +699,10 @@ def captured_yahoo_data(symbol, captured, lineage, as_of):
         r0, r1 = number((fy0.get("revenueEstimate") or {}).get("avg")), number((fy1.get("revenueEstimate") or {}).get("avg"))
         e0, e1 = number((fy0.get("earningsEstimate") or {}).get("avg")), number((fy1.get("earningsEstimate") or {}).get("avg"))
         target = number(financial.get("targetMeanPrice"))
-        if r0 and r0 > 0 and r1 is not None:
-            out["consensus"] = {"source": "Yahoo Finance analyst consensus (unofficial)",
-                "source_url": f"https://finance.yahoo.com/quote/{symbol}/analysis", "asof": iso(as_of)[:10],
-                "revenue_fy0": r0, "revenue_fy1": r1, "revenue_growth": r1 / r0 - 1,
-                "revenue_analysts": number((fy1.get("revenueEstimate") or {}).get("numberOfAnalysts")),
-                "eps_fy0": e0, "eps_fy1": e1, "eps_growth": e1 / e0 - 1 if e0 and e0 > 0 and e1 is not None else None,
-                "eps_analysts": number((fy1.get("earningsEstimate") or {}).get("numberOfAnalysts")),
-                "target_mean": target, "target_analysts": number(financial.get("numberOfAnalystOpinions")),
-                "price": price, "target_upside": target / price - 1 if target and price else None}
+        out["consensus"] = _analyst_outlook(symbol, price, r0, r1,
+            number((fy1.get("revenueEstimate") or {}).get("numberOfAnalysts")), e0, e1,
+            number((fy1.get("earningsEstimate") or {}).get("numberOfAnalysts")), target,
+            number(financial.get("numberOfAnalystOpinions")), iso(as_of)[:10])
         series = captured.operand("yahoo/financials/" + symbol)
         if series.exists():
             rows = json.loads(series.read_text())["timeseries"]["result"]
@@ -649,7 +761,9 @@ def captured_yahoo_data(symbol, captured, lineage, as_of):
                     **({"revenue_yoy_prev_reason": reason} if reason else {}),
                     "gross_margin": gm, "gross_margin_change": gm - gm_prior if gm is not None and gm_prior is not None else None,
                     "rpo_yoy": None, "shares_yoy": dilution,
-                    "shares_basis": "DILUTED_WEIGHTED_AVERAGE" if dilution is not None else None}
+                    "shares_basis": "DILUTED_WEIGHTED_AVERAGE" if dilution is not None else None,
+                    **_yahoo_trend_quarters({day.isoformat(): amount for day, amount in revenue.items()}, end.isoformat(),
+                                            financial.get("financialCurrency"), currency)}
     except (KeyError, ValueError, TypeError, IndexError):
         # No substitute rows/numbers; whatever independent admitted channel was
         # obtained remains visible, matching existing graceful Yahoo availability.
@@ -952,6 +1066,48 @@ def capture_score(fund: dict[str, Any] | None) -> tuple[float, dict[str, float]]
     return (30 * earned / available if available else 0.0), detail
 
 
+def suppress_unproven_distribution_returns(market: dict[str, Any],
+                                           distributions: list[dict[str, Any]]) -> dict[str, Any]:
+    """Fail closed for a corporate distribution not PROVEN adjusted in Yahoo's price series.
+
+    The live feed uses yfinance history(auto_adjust=True), captured mode uses chart.adjclose.
+    Neither feed's returned bars prove that the MOD/THRM RMT entitlement was included in
+    the adjustment factor, so a span crossing the event date must be unknown, not zero.
+    The exception path for proven adjustments is intentionally not implemented.
+    """
+    if not distributions:
+        return market
+    result = dict(market)
+    reasons: dict[str, str] = dict(result.get("return_reasons") or {})
+    try:
+        asof = date.fromisoformat(result["asof"])
+    except (ValueError, TypeError, KeyError) as exc:
+        raise ValueError("DISTRIBUTION_MARKET_ASOF") from exc
+    for entry in distributions:
+        event = date.fromisoformat(entry["distribution_date"])
+        if event > asof:
+            continue
+        for key, window in (("ret_6m", 182), ("ret_1y", 365),
+                            ("cagr_2y", listing_lineage.TWO_YEARS_DAYS)):
+            # Inclusive endpoint is deliberately conservative on the event day.
+            if asof - timedelta(days=window) <= event and result.get(key) is not None:
+                result[key] = None
+                reasons[key] = "DISTRIBUTION_IN_WINDOW"
+                if key == "cagr_2y" and result.get("long_term_basis") == "TWO_YEAR":
+                    result["long_term_basis"] = "UNAVAILABLE"
+        if result.get("cagr_listed") is not None:
+            since = result.get("cagr_listed_start")
+            if since is None or date.fromisoformat(since) <= event:
+                result["cagr_listed"] = None
+                result["cagr_listed_start"] = None
+                result["cagr_listed_span_days"] = None
+                result["long_term_basis"] = "UNAVAILABLE"
+                reasons["cagr_listed"] = "DISTRIBUTION_IN_WINDOW"
+    if reasons:
+        result["return_reasons"] = reasons
+    return result
+
+
 def long_term_gate(market: dict[str, Any] | None) -> tuple[float | None, list[str]]:
     """The long-term eligibility gate (not a score component): the two-year CAGR, else the verified since-regular-way
     figure; it must be positive. A missing figure is not a negative return: an unverified short history and a verified
@@ -959,9 +1115,159 @@ def long_term_gate(market: dict[str, Any] | None) -> tuple[float | None, list[st
     long_term = (market or {}).get("cagr_2y")
     long_term = long_term if long_term is not None else (market or {}).get("cagr_listed")
     if long_term is None:
+        reasons = (market or {}).get("return_reasons") or {}
+        if reasons.get("cagr_2y") == "DISTRIBUTION_IN_WINDOW" or reasons.get("cagr_listed") == "DISTRIBUTION_IN_WINDOW":
+            return None, ["DISTRIBUTION_IN_WINDOW"]
         unknown = not market or (market.get("lineage") or {}).get("kind", "UNKNOWN") == "UNKNOWN"
         return None, ["HISTORY_OR_LINEAGE_UNVERIFIED" if unknown else "MARKET_HISTORY_UNDER_1Y"]
     return long_term, (["LONG_TERM_RETURN_NOT_POSITIVE"] if long_term <= 0 else [])
+
+
+# ---- V16 lead math (pure functions; every new input is optional and falls back to the pre-V16 behaviour) ----
+DEFAULT_CHAIN_WEIGHTS = {1: 1.0, 2: 1.0, 3: 0.85, 4: 0.9, 5: 0.8, 6: 0.6, 7: 0.5}
+CHAIN_WEIGHT_FALLBACK = 0.6
+FUND_WEIGHT_CAP = 0.30          # long_weight at which the 13F part of the company lead saturates
+FUND_LEAD_MAX = 0.3             # maximum 13F part of the company lead (unchanged since v3)
+STALE_13F_DAYS = 200
+TRIM_FACTOR = 0.5               # judgment-node multiplier (JEV 2026-10-18): shares cut by at least TRIM_CUT versus the prior 13F
+HEDGE_FACTOR = 0.75             # judgment-node multiplier (Xor, master 2026-10-18): own put notional at least HEDGE_RATIO of the long value
+TRIM_CUT = 0.5
+HEDGE_RATIO = 0.5
+MIRROR_FRESH_HOURS = 72
+MIRROR_STALE_DAYS = 14
+
+
+def chain_weights(layers_doc: Any) -> dict[int, float]:
+    """Chain-rank weights from config `chain_weights`; any missing or malformed key keeps the built-in constant."""
+    out = dict(DEFAULT_CHAIN_WEIGHTS)
+    raw = layers_doc.get("chain_weights") if isinstance(layers_doc, dict) else None
+    if isinstance(raw, dict):
+        for key, value in raw.items():
+            try:
+                rank = int(key)
+            except (TypeError, ValueError):
+                continue
+            number = _finite(value)
+            if rank in out and number is not None and 0.0 <= number <= 1.0:
+                out[rank] = number
+    return out
+
+
+def _parse_day(value: Any) -> date | None:
+    try:
+        return date.fromisoformat(str(value)[:10])
+    except (TypeError, ValueError):
+        return None
+
+
+def direction_factor(pos: dict[str, Any] | None) -> tuple[float, list[str]]:
+    """(factor, reasons) from the direction of the fund's own position: TRIM when its shares fell by at least half versus the
+    prior 13F (NEW or a prior of 0 never trims), HEDGED when its own put notional is at least half of its long value (puts on
+    other tickers, such as sector ETFs, are never netted). Missing or unreadable fields give 1.0. Never above 1.0."""
+    factor, reasons = 1.0, []
+    pos = pos or {}
+    prior, change = _finite(pos.get("prior_shares")), _finite(pos.get("shares_change"))
+    if prior is not None and change is not None and prior > 0 and change / prior <= -TRIM_CUT:
+        factor *= TRIM_FACTOR
+        reasons.append("TRIM")
+    puts, long_value = _finite(pos.get("put_notional_usd")), _finite(pos.get("long_value_usd"))
+    if puts is not None and long_value is not None and long_value > 0 and puts >= HEDGE_RATIO * long_value:
+        factor *= HEDGE_FACTOR
+        reasons.append("HEDGED")
+    return factor, reasons
+
+
+def effective_13f_weight(pos: dict[str, Any] | None, filing: dict[str, Any] | None, now: datetime) -> tuple[float, str | None]:
+    """w_eff = long_weight * min(1, currency_factor (1.0 when absent) * direction_factor) * age factor; the age factor is 0 (STALE_13F) when the
+    filing period is more than STALE_13F_DAYS before the build time, else 1. Returns (w_eff, reason)."""
+    if not pos:
+        return 0.0, None
+    weight = _finite(pos.get("long_weight")) or 0.0
+    factor = _finite(pos.get("currency_factor"))
+    factor = 1.0 if factor is None else clip(factor, 0.0, 1.0)
+    period = _parse_day((filing or {}).get("period"))
+    if period is not None and (now.date() - period).days > STALE_13F_DAYS:
+        return 0.0, "STALE_13F"
+    return max(0.0, weight) * min(1.0, factor * direction_factor(pos)[0]), None
+
+
+def fund_lead_part(w_eff: float) -> float:
+    """Concave 13F part of the company lead: 0.3 * sqrt(min(w_eff, 0.30) / 0.30), at most 0.3."""
+    return FUND_LEAD_MAX * math.sqrt(clip(w_eff, 0.0, FUND_WEIGHT_CAP))  # clip() already divides by the cap
+
+
+def serenity_mirror_factor(source: dict[str, Any] | None, now: datetime) -> float:
+    """1.0 while the mirror's newest post is at most 72 h old (or the field is absent or unreadable), 0.5 up to 14 days, else 0."""
+    raw = (source or {}).get("latest_post_at")
+    if not raw:
+        return 1.0
+    try:
+        latest = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+        if latest.tzinfo is None:
+            latest = latest.replace(tzinfo=timezone.utc)
+    except ValueError:
+        return 1.0
+    age = now - latest
+    if age <= timedelta(hours=MIRROR_FRESH_HOURS):
+        return 1.0
+    return 0.5 if age <= timedelta(days=MIRROR_STALE_DAYS) else 0.0
+
+
+def serenity_intensity_eff(sig: dict[str, Any] | None, mirror_factor: float) -> float:
+    return (_finite((sig or {}).get("intensity")) or 0.0) * mirror_factor
+
+
+def serenity_excluded(sig: dict[str, Any] | None) -> bool:
+    """Hard filter. Rows carrying bullish_decayed and bearish_decayed (schema 2): BEARISH, decayed bearish at least twice the
+    decayed bullish and at least two bearish posts. Other rows: the old rule (BEARISH, three bearish posts, no bullish)."""
+    if not sig or sig.get("stance") != "BEARISH":
+        return False
+    bull, bear = _finite(sig.get("bullish_decayed")), _finite(sig.get("bearish_decayed"))
+    if bull is not None and bear is not None:
+        return bear >= 2 * bull and (sig.get("bearish") or 0) >= 2
+    return (sig.get("bearish") or 0) >= 3 and (sig.get("bullish") or 0) == 0
+
+
+def company_lead(sig: dict[str, Any] | None, pos: dict[str, Any] | None, max_intensity: float, mirror_factor: float,
+                 archetype: str, filing: dict[str, Any] | None = None, now: datetime | None = None) -> float:
+    """Lead conviction points: 0.7 * clip(intensity_eff, 0, max_intensity / 2) (clip scales to 0..1) (x0.3 when BEARISH) + the concave 13F part,
+    times the archetype weight (EXPLOSION 30, COMPOUNDER 20). max_intensity is the raw maximum over all rows."""
+    weight = 30 if archetype == "EXPLOSION" else 20
+    lead = 0.7 * clip(serenity_intensity_eff(sig, mirror_factor), 0.0, max_intensity * 0.5) if sig else 0.0
+    if sig and sig.get("stance") == "BEARISH":
+        lead *= 0.3
+    if pos:
+        lead += fund_lead_part(effective_13f_weight(pos, filing, now or utc_now())[0])
+    return lead * weight
+
+
+def layer_fund_weight(rows: Iterable[dict[str, Any]], filing: dict[str, Any] | None, now: datetime) -> tuple[float, float]:
+    """(raw, effective) sums of the 13F weights of a layer's companies; raw stays the sealed fund_13f_weight."""
+    raw = eff = 0.0
+    for row in rows:
+        pos = row.get("leopold")
+        if pos:
+            raw += _finite(pos.get("long_weight")) or 0.0
+            eff += effective_13f_weight(pos, filing, now)[0]
+    return raw, eff
+
+
+def market_window_summary(scored: list[dict[str, Any]]) -> dict[str, Any]:
+    """Display-only breadth of the post-filter scored universe; unknowns never become misses.
+
+    Deliberately consumes already-scored rows and never mutates them, their scores,
+    admission rules, industry weights, exclusions or the Top20 selection.
+    """
+    values = []
+    for row in scored:
+        market = row.get("market")
+        number = _finite(market.get("ret_6m")) if isinstance(market, dict) else None
+        if number is not None:
+            values.append(number)
+    return {"positive_share": sum(n > 0 for n in values) / len(values) if values else None,
+            "median_ret_6m": statistics.median(values) if values else None,
+            "count_used": len(values), "unknown_count": len(scored) - len(values),
+            "scored_universe_count": len(scored)}
 
 
 def build(fetch: Callable[[str], bytes] | None, now: datetime, with_news: bool = True, *, captured=None,
@@ -970,7 +1276,15 @@ def build(fetch: Callable[[str], bytes] | None, now: datetime, with_news: bool =
         from publish_sealed_snapshot import CapturedPublicationInputs
         if type(captured) is not CapturedPublicationInputs:
             raise ValueError("RANKING_CAPTURE_OPERAND")
-    layers = load_json(captured.operand("layers") if captured else LAYERS)["layers"]
+    action_doc = (corporate_actions.load_actions_bytes(captured.operand("corporate_actions").read_bytes(), today=now.date())
+                  if captured is not None else corporate_actions.load_actions(today=now.date()))
+    # The protected host binds registry bytes to the same immutable capture catalog.
+    pending_targets = corporate_actions.pending_targets(action_doc)
+    pending_acquirers = corporate_actions.pending_acquirers(action_doc)
+    distributions = corporate_actions.completed_distributions(action_doc, asof=now.date())
+    layers_doc = load_json(captured.operand("layers") if captured else LAYERS)
+    layers = layers_doc["layers"]
+    chain_weight_by = chain_weights(layers_doc)
     source_serenity = captured.operand("serenity") if captured else SERENITY
     source_leopold = captured.operand("leopold") if captured else LEOPOLD
     serenity = load_json(source_serenity) if source_serenity.exists() else {"signals": [], "source": None}
@@ -1008,6 +1322,9 @@ def build(fetch: Callable[[str], bytes] | None, now: datetime, with_news: bool =
         if fund and check:
             fund = {**fund, "cross_check": check}
         market = data.get("market")
+        if market is not None and symbol in distributions:
+            market = suppress_unproven_distribution_returns(market, distributions[symbol])
+            data["market"] = market
         cap = market.get("market_cap") if market else None
         rate = (captured_usd_rate(market.get("currency") if market else None, captured, fx) if captured else
                 usd_rate(market.get("currency") if market else None, fx))
@@ -1019,9 +1336,15 @@ def build(fetch: Callable[[str], bytes] | None, now: datetime, with_news: bool =
                                                      (lambda url: json.loads(captured.operand("http/" + url).read_text())) if captured else None),
                                                  captured=captured),
                              "fundamentals": fund, "market": market, "market_cap_usd": cap * rate if cap and rate else None,
-                             "serenity": serenity_by.get(symbol), "leopold": leopold_by.get(symbol)}
+                             "serenity": serenity_by.get(symbol), "leopold": leopold_by.get(symbol),
+                             **({"corporate_action": corporate_actions.distribution_note(distributions[symbol][-1])}
+                                if symbol in distributions else
+                                {"corporate_action": corporate_actions.acquirer_note(pending_acquirers[symbol])}
+                                if symbol in pending_acquirers else {})}
     # Layer heat and the Leopold-led industry ranking.
-    max_intensity = max((row["intensity"] for row in serenity["signals"]), default=1.0) or 1.0
+    max_intensity = max((row["intensity"] for row in serenity["signals"]), default=1.0) or 1.0  # raw, not mirror-scaled
+    mirror = serenity_mirror_factor(serenity.get("source"), now)
+    filing = leopold.get("filing")
     industry = []
     for layer in layers:
         rows = [company for company in companies.values() if company["layer"] == layer["id"]]
@@ -1029,12 +1352,12 @@ def build(fetch: Callable[[str], bytes] | None, now: datetime, with_news: bool =
         accels = [c["fundamentals"]["revenue_yoy"] - c["fundamentals"]["revenue_yoy_prev"] for c in rows
                   if c["fundamentals"] and c["fundamentals"].get("revenue_yoy") is not None and c["fundamentals"].get("revenue_yoy_prev") is not None]
         six = [c["market"]["ret_6m"] for c in rows if c["market"] and c["market"].get("ret_6m") is not None]
-        fund_weight = sum((c["leopold"] or {}).get("long_weight", 0) for c in rows)
-        serenity_heat = sum((c["serenity"] or {}).get("intensity", 0) for c in rows)
+        fund_weight_raw, fund_weight = layer_fund_weight(rows, filing, now)
+        serenity_heat = sum(serenity_intensity_eff(c["serenity"], mirror) for c in rows)
         news = news_momentum(layer["filing_terms"], fetch, now.date()) if with_news else None
         median_yoy = statistics.median(yoys) if yoys else None
         median_accel = statistics.median(accels) if accels else None
-        chain_weight = {1: 1.0, 2: 1.0, 3: 0.85, 4: 0.9, 5: 0.8, 6: 0.6}.get(layer["chain_rank"], 0.6)
+        chain_weight = chain_weight_by.get(layer["chain_rank"], CHAIN_WEIGHT_FALLBACK)
         heat = (10 * clip(median_yoy, 0.0, 0.8) + 5 * clip(median_accel, -0.15, 0.25)
                 + 5 * clip((news or {}).get("ratio"), 0.8, 1.6) + 5 * clip(fund_weight, 0.0, 0.3))
         leopold_score = (35 * chain_weight + 25 * clip(fund_weight, 0.0, 0.4) + 20 * clip(median_accel, -0.15, 0.25)
@@ -1043,7 +1366,8 @@ def build(fetch: Callable[[str], bytes] | None, now: datetime, with_news: bool =
                          "leopold_constraint": layer["leopold_constraint"], "leopold_constraint_zh": layer.get("leopold_constraint_zh"),
                          "heat": round(heat, 2), "explosiveness": round(leopold_score, 1),
                          "companies": len(rows), "median_revenue_yoy": median_yoy, "median_acceleration": median_accel,
-                         "median_return_6m": statistics.median(six) if six else None, "fund_13f_weight": round(fund_weight, 4),
+                         "median_return_6m": statistics.median(six) if six else None, "fund_13f_weight": round(fund_weight_raw, 4),
+                         "fund_13f_weight_effective": round(fund_weight, 4),
                          "serenity_heat": round(serenity_heat, 2), "news": news})
     heat_by = {row["id"]: row["heat"] for row in industry}
     industry.sort(key=lambda row: -row["explosiveness"])
@@ -1052,9 +1376,16 @@ def build(fetch: Callable[[str], bytes] | None, now: datetime, with_news: bool =
     # Company scores and filters.
     scored, excluded = [], []
     for company in companies.values():
+        pending = pending_targets.get(company["symbol"])
+        if pending is not None:
+            excluded.append({"symbol": company["symbol"], "reasons": ["DEAL_PENDING_TARGET"],
+                             "acquirer": pending["acquirer_symbol"], "kind": pending["kind"],
+                             "ratio": pending["exchange_ratio"], "expected_close": pending["expected_close"],
+                             "source_url": pending["source_url"]})
+            continue
         market, fund, sig, pos = company["market"], company["fundamentals"], company["serenity"], company["leopold"]
         long_term, reasons = long_term_gate(market)
-        if sig and sig.get("stance") == "BEARISH" and sig.get("bearish", 0) >= 3 and sig.get("bullish", 0) == 0:
+        if serenity_excluded(sig):
             reasons.append("SERENITY_BEARISH")
         if reasons:
             excluded.append({"symbol": company["symbol"], "reasons": reasons})
@@ -1063,11 +1394,7 @@ def build(fetch: Callable[[str], bytes] | None, now: datetime, with_news: bool =
         archetype = "EXPLOSION" if company["market_cap_usd"] and company["market_cap_usd"] < EXPLOSION_CAP_USD else "COMPOUNDER"
         weights = {"capture": 15, "lead": 30, "confirm": 20} if archetype == "EXPLOSION" else {"capture": 30, "lead": 20, "confirm": 15}
         capture = capture * weights["capture"] / 30
-        lead = 0.7 * clip((sig or {}).get("intensity"), 0.0, max_intensity * 0.5) if sig else 0.0
-        if sig and sig.get("stance") == "BEARISH":
-            lead *= 0.3
-        lead += 0.3 * clip((pos or {}).get("long_weight"), 0.0, 0.05) if pos else 0.0
-        lead *= weights["lead"]
+        lead = company_lead(sig, pos, max_intensity, mirror, archetype, filing, now)
         confirm = weights["confirm"] * (0.55 * clip(market.get("ret_6m"), -0.2, 1.0) + 0.45 * clip(market.get("ret_1y"), 0.0, 2.0))
         size = size_score(company["market_cap_usd"])
         penalty = 0.0
@@ -1079,6 +1406,7 @@ def build(fetch: Callable[[str], bytes] | None, now: datetime, with_news: bool =
         total = heat_by.get(company["layer"], 0) + capture + lead + confirm + size - penalty
         company["long_term_return"] = long_term
         company["archetype"] = archetype
+        company["direction_reason"] = direction_factor(pos)[1]
         company["score"] = round(max(0.0, total), 1)
         company["score_parts"] = {"layer_heat": heat_by.get(company["layer"], 0), "capture": round(capture, 2), "capture_detail": capture_detail,
                                   "lead": round(lead, 2), "confirmation": round(confirm, 2), "size": size, "penalty": penalty}
@@ -1096,6 +1424,7 @@ def build(fetch: Callable[[str], bytes] | None, now: datetime, with_news: bool =
     return {"schema": "v213-bottleneck-top20-v3", "generated_at": iso(now), "method": "bottleneck-explosion-v3",
             "leads": {"serenity": serenity.get("source"), "leopold": {"filing": leopold.get("filing"), "caveat": leopold.get("caveat")}},
             "layers_source": "config/bottleneck-layers-v3.json", "top": top, "industries": industry,
+            "market_window": market_window_summary(scored),
             "watch": [{"symbol": c["symbol"], "score": c["score"], "layer": c["layer"]} for c in overflow[:10]],
             "all_scores": [{"symbol": c["symbol"], "score": c["score"], "layer": c["layer"], "archetype": c["archetype"],
                             "parts": c["score_parts"]} for c in scored],

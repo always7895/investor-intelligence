@@ -1,5 +1,9 @@
 # OPERATOR RUNBOOK — v213 Owner-Line (2026-09-16)
 
+<!-- DOCS-R1 scope -->
+> **Scope:** Dated reference; not current Production status, a new approval, or deployment authority. Current acceptance and unresolved issues: [STATUS](../state/STATUS.md). The document itself does not authorize Production changes.
+<!-- /DOCS-R1 scope -->
+
 Applies to: Cloudflare Worker `investor-intelligence-v21-owner-line` + KV (PUBLIC_CACHE `96142af4…`) + Windows refresh task + local seal tooling.
 Principle: **every procedure is fail-closed.** A failure before any pointer write leaves the live pointer where it was. Once a pointer write has been attempted (sync, rollback), a failed or missing final verification means the live state is unknown until fresh live bytes are classified (section 7.6). Operators never patch live state by hand.
 
@@ -8,7 +12,7 @@ Worker base URL: `https://investor-intelligence-v21-owner-line.<account>.workers
 ## 1. Health check & verification
 1. GET `/health` → HTTP 200, `ok: true`, `product_version: "2.1.3"`, `top20_presentation: "seven_fields"`.
 2. GET `/v213/readiness` → HTTP 409 `V213_READINESS_REQUEST_INVALID` with `worker_version` echoing the deployed version id. The 409 is the *healthy* challenge-gated response.
-3. Live snapshot run: `npx wrangler kv key get snapshot:current --namespace-id 96142af40b5d4213862d5483fe3a66da --remote` (Wrangler 4 reads the local store without `--remote`) → note `run_id` + `seal_sha256`.
+3. Live snapshot run (from `cloud/`): `npm exec --no -- wrangler kv key get snapshot:current --namespace-id 96142af40b5d4213862d5483fe3a66da --remote` (Wrangler 4 reads the local store without `--remote`) → note `run_id` + `seal_sha256`.
 4. Confirm the run passed the seal pipeline in the runtime's `data\cache\sealed-refresh.log` (lines printed by `sync_sealed_snapshot_kv.py`; read the log, never re-run the sync): `OBJECTS_UPLOADED <u> [BLOBS_REUSED <r>] → READBACK_VERIFIED <n> → POINTER_LAST <run_id>`, where `<n>` is the entry count of that run's `objects.json` and `<u> + <r> = <n>` (for example `OBJECTS_UPLOADED 17 BLOBS_REUSED 60`, `READBACK_VERIFIED 77`). Counts come from the run, never from a fixed number.
 5. Freshness: pointer `public_data_as_of` must be ≤ 7200 s old, otherwise Top20 honestly answers the stale notice; run procedure 2/refresh instead of chasing the worker. The carried Top20 report must be ≤ 14 h old ([TOP20_CARRY_FORWARD_V1](TOP20_CARRY_FORWARD_V1.md)). `scripts/deploy_production_gate.ps1 -Phase post -WorkerVersion <id> -ExpectTop20Records 20` checks both.
 
@@ -23,8 +27,8 @@ The default kv layer runs only the locked Wrangler CLI that `scripts/sync_sealed
 Hourly carry-forward runs live under the runtime's `data\v213-snapshots`, are not git-tracked, and cannot be targeted. To stop carrying the Top20, re-register the hourly task without `-CarryForwardTop20` (Section 4); the next seal publishes INSUFFICIENT Top20 plus macro within about an hour.
 
 ## 3. Worker rollback (version)
-1. From `cloud/`: `npx wrangler versions list -c wrangler.v213.production.local.toml`.
-2. `npx wrangler rollback [VERSION_ID] -c wrangler.v213.production.local.toml` (no id = previous version).
+1. From `cloud/`: `npm exec --no -- wrangler versions list -c wrangler.v213.production.local.toml`.
+2. `npm exec --no -- wrangler rollback [VERSION_ID] -c wrangler.v213.production.local.toml` (no id = previous version).
 3. Wait ~15 s, then Section 1 steps 1–2; `/v213/readiness` `worker_version` must equal the target.
 
 Worker rollback does NOT touch KV; the sealed-snapshot pointer is independent (Sections 1–2).
@@ -58,7 +62,7 @@ Escalation: if two rollback attempts fail, HALT. Do not assume which run is serv
 
 ## 6. Secret rotation (Cloudflare)
 1. Sign out/in on the local machine (cached `~/.wrangler` session); never commit tokens; `wrangler.v213.production.local.toml` stays git-ignored.
-2. Verify with a read: `npx wrangler kv key get snapshot:current --namespace-id 96142af40b5d4213862d5483fe3a66da --remote` must return the live pointer (without `--remote` Wrangler 4 reads the local store).
+2. Verify with a read (from `cloud/`): `npm exec --no -- wrangler kv key get snapshot:current --namespace-id 96142af40b5d4213862d5483fe3a66da --remote` must return the live pointer (without `--remote` Wrangler 4 reads the local store).
 3. Re-run Section 1 steps 1–2; `python scripts/security_check.py` must stay PASSED.
 4. Never echo token values into logs, git or handoffs. A leaked secret is an incident: rotate again, then Section 5 audit + supervisor notification (classification is outside this runbook's authority).
 
@@ -77,11 +81,11 @@ Authority first: a production rollout needs the operator's authorization in the 
 The template `scripts/task-templates/taifex-options-eod.disabled.xml` is registered only after the plan in [OPTIONS_SOURCE_REVIEW](OPTIONS_SOURCE_REVIEW.md) (O10 activation plan) is reviewed and the operator authorizes it in the current session: installed-payload sync if the installed collector hash differs from source, registration, enabling, first manual run. Verify the output file (`status` OK; `publication_eligible`, `line_quote_eligible` and `executable_quote` all false). Rollback: disable and unregister the task, keep the output.
 
 ## 8. All-friends LINE access (V213_LINE_ACCESS_MODE) — switch, budget, migration, rollback
-Spec: [LINE_ALL_FRIENDS_ACCESS](LINE_ALL_FRIENDS_ACCESS.md). The template ships `owner_only`; enabling is a Production change that needs a Sonnet 5.5 GO/NO-GO of a source-bound plan with rollback and then current-session operator authorization.
+Spec: [LINE_ALL_FRIENDS_ACCESS](LINE_ALL_FRIENDS_ACCESS.md). The source template ships `all_friends` (not proof of the live configuration). Deploying that template is a separate Production change requiring a Sonnet 5.5 GO/NO-GO of a source-bound plan with rollback and then current-session operator authorization.
 1. Switch: `V213_LINE_ACCESS_MODE`, exactly `all_friends` to open; anything else is `owner_only`. After the deploy check `/health` (`line_access_mode`, `owner_only`, and `friend_queue_configured`, which must be `true` before opening) and `/v213/readiness` (`line_access_mode`).
-2. Durable Object migration: deploy the version containing migration `v213-friend-qa-gate-v1` (`new_sqlite_classes = ["V213FriendQaGate"]`, binding `V213_FRIEND_QA_GATE`) while the mode is still `owner_only`; confirm the binding with `/health`, then change the mode in a second step. An unbound or failing gate fails closed (friends get the busy text); it never opens access.
+2. Durable Object migration: deploy the version containing migration `v213-friend-qa-gate-v1` (`new_sqlite_classes = ["V213FriendQaGate"]`, binding `V213_FRIEND_QA_GATE`) with an explicit deployment-local `owner_only` override (do not deploy the `all_friends` template value yet); confirm the binding with `/health`, then deploy `all_friends` in a second, separately authorized step. An unbound or failing gate fails closed (friends get the busy text); it never opens access.
 3. KV budget (rule from section 7.4; free plan 1,000 writes/UTC day, shared with the hourly publisher): estimate + reservations + 50 <= 1,000. Friend traffic itself writes no KV; add the friend allowance to the reservations: parked-job writes at most `V213_FRIEND_JOB_WRITES_PER_DAY` (default 150, two per job) plus data commands (`刪除我的資料`, memory) at most 5 per friend per Taipei day. The owner keeps three KV writes per message. KV reads: every friend event costs three owner-lookup reads (pointer, epoch, target) before the Durable Object dedupe and caps, and every friend model question adds one epoch read before the gate decides; include redeliveries and floods in the 100,000 reads/day estimate.
-4. GPU: `V213_FRIEND_QA_GLOBAL_INFLIGHT` (default 1) must not exceed the gateway's `II_GATEWAY_MAX_CONCURRENT_GENERATIONS`; do not raise either without the shared-host owner (the RTX 5090 is shared). The owner is never queued behind friends, but a saturated gateway answers HTTP 429 to anyone, owner included; set the gateway value to the friend value + 1 only with the shared-host owner's agreement.
+4. GPU: `V213_FRIEND_QA_GLOBAL_INFLIGHT` (default 1) must not exceed the gateway's `II_GATEWAY_MAX_CONCURRENT_GENERATIONS`; do not raise either without the shared-host owner (the RTX 5090 is shared). The owner is never queued behind friends, but a saturated gateway answers HTTP 429 to anyone, owner included; consider setting the gateway value to the friend value + 1 only with the shared-host owner's agreement.
 5. LINE reply quota: replies use the single-use replyToken; verify the account plan and current LINE terms before opening (rollout checklist item). Push stays owner-only.
 6. Rollback: set `V213_LINE_ACCESS_MODE = "owner_only"` (or remove it) and redeploy config. That branch is the pre-existing owner-only code: non-owners are silent, no Durable Object call, the same KV path. The gate class and its rows may stay; they are never read in that mode. To revert the rollout itself, use section 3.
 

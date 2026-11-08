@@ -3,6 +3,9 @@
  * recorded name, and a name without a rule is shown as recorded rather than guessed. */
 
 const EXACT: Record<string, string> = {
+  "unsealed_or_missing": "未取得已封存資料",
+  "sealed_snapshot:unadmitted_symbol": "封存快照（該標的尚未准入）",
+  "yfinance_public": "Yahoo Finance資料",
   "SEC EDGAR XBRL companyfacts": "SEC EDGAR XBRL 財報資料",
   "SEC XBRL company facts": "SEC XBRL 財報資料",
   "SEC EDGAR submissions": "SEC EDGAR 申報清單",
@@ -15,7 +18,7 @@ const EXACT: Record<string, string> = {
   "Yahoo Finance (unofficial, delayed)": "Yahoo Finance（非官方，延遲）",
   "Yahoo Finance option chain (unofficial, delayed)": "Yahoo Finance 期權鏈（非官方，延遲）",
   "Nasdaq Nordic option chain (exchange public web API, delayed)": "Nasdaq Nordic 期權鏈（交易所公開網頁 API，非官方授權，延遲）",
-  "Nasdaq US option chain (public quote page API, delayed; Yahoo fallback)": "Nasdaq 美股期權鏈（公開報價頁 API，延遲；Yahoo 備援）",
+  "Nasdaq US option chain (public quote page API, delayed; Yahoo fallback)": "Nasdaq 美股期權鏈（公開報價頁 API，非官方授權，延遲；Yahoo 備援）",
 };
 
 const PATTERNS: [RegExp, (match: RegExpExecArray) => string][] = [
@@ -32,13 +35,16 @@ export function sourceZh(source: string | null | undefined): string {
     const match = pattern.exec(source);
     if (match) return label(match);
   }
+  // Unknown machine-origin snake_case identifiers are not public-facing source names.
+  if (/^[a-z][a-z0-9]*(?:_[a-z0-9]+)+(?::[a-z][a-z0-9]*(?:_[a-z0-9]+)+)?$/.test(source)) return "資料來源未核實";
   return source;
 }
 
 const QUOTE_BASIS: Record<string, string> = { realtime: "即時", delayed: "延遲", asof_close: "收盤" };
 const RIGHTS: Record<string, string> = {
   reviewed_public_access: "已審查的公開取用", candidate_local_review: "候選來源（本機審查）", unadmitted_third_party: "未納入的第三方來源",
-  review_before_enable: "啟用前待審查", automated_access_prohibited: "禁止自動擷取", operator_accepted_unlicensed: "營運者決定顯示（無再散布授權）",
+  review_before_enable: "啟用前待審查", automated_access_prohibited: "禁止自動擷取", licence_required: "需授權",
+  operator_accepted_unlicensed: "營運者決定顯示（無再散布授權）",
 };
 export const quoteBasisZh = (value: string) => QUOTE_BASIS[value] ?? value;
 export const rightsZh = (value: string) => RIGHTS[value] ?? value;

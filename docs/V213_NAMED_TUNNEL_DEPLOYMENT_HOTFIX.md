@@ -1,5 +1,9 @@
 # v2.1.3 R75 Production Named Tunnel deployment hotfix
 
+<!-- DOCS-R1 scope -->
+> **Scope:** Dated reference; not current Production status, a new approval, or deployment authority. Current acceptance and unresolved issues: [STATUS](../state/STATUS.md). The document itself does not authorize Production changes.
+<!-- /DOCS-R1 scope -->
+
 This hotfix replaces the test-only Quick Tunnel path for formal Production activation. It does not change scoring, source federation, publication modes, sealed bundles, or release evidence rules.
 
 ## One-time setup

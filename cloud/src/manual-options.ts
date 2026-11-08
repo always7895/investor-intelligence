@@ -1,4 +1,4 @@
-import { limitMiddle, roundTick, WEEKLY_DTE_BUCKET } from "./v213/option-recommendation-rules";
+import { limitMiddle, MONTHLY_DTE_BUCKET, roundTick, shortDteNoticeZh, WEEKLY_DTE_BUCKET } from "./v213/option-recommendation-rules";
 
 export type ManualOptionType = "call" | "put";
 
@@ -134,7 +134,7 @@ function annualized(credit: number, capital: number, dte: number): number {
 
 function periodLabel(dte: number): string {
   if (dte >= WEEKLY_DTE_BUCKET[0] && dte <= WEEKLY_DTE_BUCKET[1]) return "每週觀察區間";
-  if (dte >= 21 && dte <= 45) return "每月觀察區間";
+  if (dte >= MONTHLY_DTE_BUCKET[0] && dte <= MONTHLY_DTE_BUCKET[1]) return "每月觀察區間";
   return "自訂到期區間";
 }
 
@@ -239,6 +239,8 @@ export function formatManualOptionQuote(input: ManualOptionInput): string {
     `非約束性限價觀察 ${money(observedLow, input.currency)}–${money(midpoint, input.currency)}｜中間檔 ${money(limitMiddle(roundTick(observedLow), roundTick(midpoint)), input.currency)}`,
     `Bid / Mid / Ask 年化權利金觀察 ${percent(yields[0]!)} / ${percent(yields[1]!)} / ${percent(yields[2]!)}`,
   ];
+  const shortNotice = shortDteNoticeZh(input.dte);
+  if (shortNotice) lines.push(shortNotice);
 
   if (input.optionType === "call") {
     lines.push(

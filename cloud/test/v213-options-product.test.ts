@@ -1,5 +1,6 @@
 import { describe, expect, it, beforeEach, vi } from "vitest";
 import { assertLineMessages } from "../src/line-messages";
+import { formatTaipeiTimestamp } from "../src/v213/line-formatters";
 import type { OptionContractQuote } from "../src/v213/market-product-schema";
 import { validateOptionContractQuote } from "../src/v213/market-product-schema";
 import {
@@ -118,9 +119,15 @@ describe("Options Product Contract and Validation", () => {
 
     const flex = buildOptionContractFlex(validated, { evaluatedAt: "2026-09-14T12:00:00Z" });
     assertLineMessages(flex);
-    const bodyStr = JSON.stringify(flex);
-    expect(bodyStr).toContain("Delta: UNAVAILABLE");
-    expect(bodyStr).toContain("OI: UNAVAILABLE");
+    // In-process output from this renderer has the known Flex card shape.
+    type Tile = { contents?: { contents?: { text: string }[] }[] };
+    type Rendered = { contents: { contents: { body: { contents: { layout: string; contents?: Tile[] }[] } }[] } };
+    const rendered = flex[0] as unknown as Rendered;
+    const tiles = rendered.contents.contents[0]!.body.contents.flatMap(row => row.layout === "horizontal" ? row.contents ?? [] : []);
+    const spans = tiles.flatMap(tile => tile.contents?.[0]?.contents ?? []);
+    const tileValue = (label: string) => spans[spans.findIndex(span => span.text.trim() === label) + 1]?.text;
+    expect(tileValue("Delta/IV")).toBe("未取得/未取得");
+    expect(tileValue("OI / 量")).toBe("未取得 / 未取得");
   });
 
   it("rejects future timestamps beyond allowable tolerance", () => {
@@ -146,7 +153,15 @@ describe("Options Product Contract and Validation", () => {
     const flexStr = JSON.stringify(flex);
     expect(flexStr).toContain("NVDA 2026-09-25 125CALL");
     expect(flexStr).not.toContain("UNAVAILABLE（無定義策略）");
-    expect(flexStr).toContain("Bid $4.20");
+    expect(flexStr).toContain("$4.20");
+    expect(flexStr).toContain("年化報酬");
+    expect(flexStr).toContain("年化報酬：未提供");
+    expect(flexStr).toContain("Bid/Ask/Spread"); // UI-R3: strike is in the header and Mid is the single hero; no duplicate summary tile.
+    expect(flexStr).not.toContain("推薦");
+    // V25-FIX3 keeps source/date, rights, provenance and both risk operands in three labelled rows on this bubble.
+    for (const qualifier of [formatTaipeiTimestamp(validQuote.timestamp), "來源｜", "權利｜", "出處 OP_TEST_SUITE", "風險｜", validQuote.assignment_risk, validQuote.liquidity_warning]) {
+      expect(flexStr).toContain(qualifier);
+    }
 
     const text = buildOptionContractText(validQuote, { evaluatedAt: "2026-09-14T12:00:00Z" });
     assertLineMessages(text);
@@ -159,7 +174,8 @@ describe("Options Product Contract and Validation", () => {
     const flex = optionsUnavailableReport("AAPL", "weekly", "封存快照不含期權物件");
     assertLineMessages(flex);
     const flexStr = JSON.stringify(flex);
-    expect(flexStr).toContain("OPTION_DATA_UNAVAILABLE");
+    expect(flexStr).toContain("期權報價不可用");
+    expect(flexStr).toContain("拒用模型／Black-Scholes 猜價");
     expect(flexStr).toContain("AAPL 每週期權");
     expect(flexStr).toContain("AAPL 每月期權");
     expect(flexStr).toContain("期權教學");
@@ -167,7 +183,7 @@ describe("Options Product Contract and Validation", () => {
     const text = optionsUnavailableReport("AAPL", "monthly", "封存快照不含期權物件", true);
     assertLineMessages(text);
     const textStr = JSON.stringify(text);
-    expect(textStr).toContain("OPTION_DATA_UNAVAILABLE");
+    expect(textStr).toContain("期權報價不可用");
     expect(textStr).toContain("AAPL 每月期權");
     expect(textStr).toContain("AAPL 每週期權");
     expect(textStr).toContain("快捷指令：");

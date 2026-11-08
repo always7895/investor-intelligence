@@ -114,7 +114,7 @@ describe("I2-03 structural validity is not market completeness", () => {
     const messages = await handleGlobalEquityLookup(environment() as never, parseQuery("\u80a1\u7968 ABSENT")) as LineOutboundMessage[];
     expect(Array.isArray(messages)).toBe(true);
     const text = textOf(messages);
-    expect(text).toContain("IDENTIFIER_UNAVAILABLE:");
+    expect(text).toContain("識別代號暫不可用：");
     expect(text).toContain(NOT_PROOF);
     // The same present catalog still resolves its own listing: the absence is about this snapshot's rows only.
     const good = textOf(await handleGlobalEquityLookup(environment() as never, parseQuery("GOOD")) as LineOutboundMessage[]);

@@ -1,5 +1,9 @@
 # Leopold Aschenbrenner source view and system operationalization
 
+<!-- DOCS-R1 scope -->
+> **Scope:** Methodology reference, not either author's private or official investment method; no authority to trade or deploy. Current acceptance and unresolved issues: [STATUS](../state/STATUS.md). The document itself does not authorize Production changes.
+<!-- /DOCS-R1 scope -->
+
 > Primary source: Leopold Aschenbrenner, *Situational Awareness: The Decade Ahead* (June 2024).
 >
 > Attribution boundary: the essay presents arguments about AI progress, infrastructure, security and geopolitics. The stock-screen taxonomy and numerical investment rules in this repository are project-authored operationalizations, not rules published or endorsed by Aschenbrenner.

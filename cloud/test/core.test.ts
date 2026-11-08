@@ -117,10 +117,10 @@ describe("LINE bot public-only core", () => {
     ];
     const answer = formatOptionsAnswer(data, "ALPHA", "weekly");
     expect(answer).toContain("公開期權 BID / ASK");
-    expect(answer).toContain("買權報價｜OK");
-    expect(answer).toContain("Bid USD 4.00");
-    expect(answer).toContain("Ask USD 4.20");
-    expect(answer).toContain("2026-08-23T16:00:00.000Z");
+    expect(answer).toContain("買權報價：正常");
+    expect(answer).toContain("Bid US$4.00");
+    expect(answer).toContain("Ask US$4.20");
+    expect(answer).toContain("08-24 00:00（台北）");
     expect(answer).not.toContain("可覆蓋口數");
     expect(answer).not.toContain("持倉摘要");
   });
@@ -153,7 +153,7 @@ describe("LINE bot public-only core", () => {
       "BETA",
       null,
     );
-    expect(answer).toContain("每週｜NO_EXPIRATION_IN_WINDOW");
-    expect(answer).toContain("每月｜OK｜到期 2026-09-18");
+    expect(answer).toContain("每週：指定期間內無到期合約");
+    expect(answer).toContain("每月：正常");
   });
 });

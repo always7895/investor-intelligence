@@ -47,12 +47,13 @@ const REQUIRED_FIELDS = ["id", "name", "authority", "jurisdictions", "data_roles
   "line_quote_eligible"];
 const ALL_FIELDS = new Set([...REQUIRED_FIELDS, "admitted_scopes", "review_valid_through", "operator_decision"]);
 const OPERATOR_ACCEPTED_STATUS = "operator_accepted_unlicensed";
-const RIGHTS_STATUSES = new Set(["review_before_enable", "reviewed_public_access", "automated_access_prohibited", OPERATOR_ACCEPTED_STATUS]);
+const RIGHTS_STATUSES = new Set(["review_before_enable", "reviewed_public_access", "automated_access_prohibited", "licence_required", OPERATOR_ACCEPTED_STATUS]);
 const ADAPTER_STATUSES = new Set(["not_implemented", "candidate_implemented", "adapter_reviewed", "not_permitted"]);
 const PROHIBITED_IDS = ["cboe_public_options_market_data", "marketdata_app_free_forever", "occ_public_market_data",
   "tradier_broker_market_data_api"];
 // Operator-accepted display WITHOUT a redistribution licence (operator 2026-10-13, R/OPERATOR-DECISION-OPTIONS-DISPLAY-ALL-20261013.txt;
-// operator 2026-10-17, R/OPERATOR-DECISION-OPTIONS-NORDIC-DISPLAY-20261017.txt,
+// operator 2026-10-17, R/OPERATOR-DECISION-OPTIONS-NORDIC-DISPLAY-20261017.txt;
+// operator 2026-10-19, R/OPERATOR-DECISION-V18-BOUNDARY-ITEMS-A1-A4-C1-C3-20261019.txt (Nasdaq US option chain),
 // docs/PUBLIC_OPTIONS_PROVIDER_RIGHTS_REVIEW.md). Not a rights review and never a licence. Safety-invariant constants mirrored from
 // scripts/public_options_provider_gate.py (OPERATOR_ACCEPTED_PROVIDERS), not a second approval catalog: only these provider ids, each with
 // exactly its own decision and a subset of these scopes, can carry the status; any other provider claiming it invalidates the catalog.
@@ -69,6 +70,12 @@ const OPERATOR_ACCEPTED: Readonly<Record<string, { readonly decision: Readonly<R
     decision: { decision_id: "OPERATOR-DECISION-OPTIONS-NORDIC-DISPLAY-20261017", decided_at: "2026-10-17", record: "docs/PUBLIC_OPTIONS_PROVIDER_RIGHTS_REVIEW.md" },
     scopes: new Set([
       JSON.stringify(["SE", "NASDAQ_STOCKHOLM_OPTIONS", "equity_option", "delayed", "public_line_quote"]),
+    ]),
+  },
+  nasdaq_public_option_chain: {
+    decision: { decision_id: "OPERATOR-DECISION-V18-BOUNDARY-ITEMS-A1-A4-C1-C3-20261019", decided_at: "2026-10-19", record: "docs/PUBLIC_OPTIONS_PROVIDER_RIGHTS_REVIEW.md" },
+    scopes: new Set([
+      JSON.stringify(["US", "US_LISTED_OPTIONS", "equity_option", "delayed", "public_line_quote"]),
     ]),
   },
 };
@@ -193,6 +200,8 @@ function checkProvider(provider: Record<string, unknown>, today: number): Provid
     if (automation !== null || reviewedAt !== null || adapter === "not_permitted") return null;
   } else if (status === "automated_access_prohibited") {
     if (automation !== false || reviewedDay === null || reviewedDay > today || adapter !== "not_permitted") return null;
+  } else if (status === "licence_required") {
+    if (automation !== false || reviewedDay === null || reviewedDay > today || adapter !== "not_permitted") return null;
   } else if (status === OPERATOR_ACCEPTED_STATUS) {
     // Operator decision, not a rights review (mirror of the Python audit): only the pinned id, the exact pinned decision and a subset of
     // the pinned scopes; no review claim (automated_access_allowed null); a dated, non-future decision.
@@ -258,13 +267,21 @@ function validCatalogProviders(root: unknown, today: number): Record<string, unk
   return rows;
 }
 
+/** validCatalogProviders is a pure function of the imported catalog constant and the UTC day, so one isolate validates it once per day, not once per row
+ * (the coverage page used to re-validate the whole catalog for each of ~600 cycles). */
+let catalogForDay: { readonly today: number; readonly providers: Record<string, unknown>[] | null } | undefined;
+function catalogProvidersFor(today: number): Record<string, unknown>[] | null {
+  if (catalogForDay === undefined || catalogForDay.today !== today) catalogForDay = { today, providers: validCatalogProviders(catalog as unknown, today) };
+  return catalogForDay.providers;
+}
+
 /** Public admission of one row (a covered-call cycle or an option contract quote) against the canonical catalog at `nowMs`.
  * Fail closed on every uncertainty, including an unexpected exception. */
 export function admitPublicOption(subject: unknown, nowMs: number = Date.now()): PublicOptionAdmission {
   try {
     if (!isRecord(subject) || !Number.isFinite(nowMs)) return DENIED;
     const today = Math.floor(nowMs / DAY_MS) * DAY_MS;
-    const providers = validCatalogProviders(catalog as unknown, today);  // the WHOLE catalog first, before any requested entry
+    const providers = catalogProvidersFor(today);  // the WHOLE catalog first, before any requested entry
     if (providers === null) return DENIED;
     const claimed: Record<string, string> = {};
     for (const field of ["provider_id", "jurisdiction", "venue", "instrument_kind", "quote_basis", "publication_scope"]) {

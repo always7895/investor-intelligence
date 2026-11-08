@@ -310,7 +310,7 @@ describe("TOP20 review acceptance suite (Reviewer RED cases)", () => {
       expect(text).toContain("絕非");
       expect(text).toContain("System Bottleneck Explosion Rank");
       expect(text).toContain("System Bottleneck Explosion Score");
-      expect(text).toContain("UNAVAILABLE / UNRANKED");
+      expect(text).toContain("資料暫不可用 / 尚未評定");
     });
 
     it("formats card with short return labels (2Y 總報酬, 2Y 年化, 6M 報酬), no duplicate card action, and adheres to LINE limits", async () => {
@@ -328,7 +328,7 @@ describe("TOP20 review acceptance suite (Reviewer RED cases)", () => {
       expect(bodyStr).toContain("2年年化");
       expect(bodyStr).toContain("6個月");
       // Authoritative admission withheld in actual LINE cards
-      expect(bodyStr).toContain("UNAVAILABLE");
+      expect(bodyStr).toContain("資料暫不可用");
       expect(bodyStr).not.toContain("+50.0%");
 
       // No duplicate card action
@@ -339,7 +339,7 @@ describe("TOP20 review acceptance suite (Reviewer RED cases)", () => {
       // Exactly one primary button for deep analysis
       const buttons = firstBubble.footer.contents.filter((c: any) => c.type === "button");
       expect(buttons).toHaveLength(1);
-      expect(buttons[0].action.label).toContain("深度化分析");
+      expect(buttons[0].action.label).toContain("深度分析");
 
       // Emitted button action flows cleanly through publicLineAnswer to pinned snapshot
       const deepActionText = buttons[0].action.text;

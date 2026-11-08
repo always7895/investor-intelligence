@@ -1,5 +1,9 @@
 # Authoritative Global Identity Resolver v1 (Specification & Acceptance Revision 2)
 
+<!-- DOCS-R1 scope -->
+> **Scope:** Technical reference; verify executable behavior against code and current source-bound evidence. Current acceptance and unresolved issues: [STATUS](../state/STATUS.md). The document itself does not authorize Production changes.
+<!-- /DOCS-R1 scope -->
+
 ## 1. Overview & Architecture
 
 `AUTHORITATIVE_GLOBAL_IDENTITY_RESOLVER_V1` establishes a truly general, source-audited global instrument identity resolver for the Investor Intelligence LINE bot. It replaces ephemeral top-20 matching and hardcoded dictionaries with a verifiable, versioned catalog schema (`v213-global-identity-v1`).
@@ -14,7 +18,7 @@ Every query resolves deterministically into one of four mutually exclusive state
 
 ---
 
-## 2. Acceptance Revision 2 Corrections (Astra Audit)
+## 2. Catalog validation invariants
 
 ### 2.1 Complete Removal of Object References in Indexes (Defect 1)
 - Removed all object fallback and object compatibility from `by_symbol`, `by_name`, and `by_venue_and_symbol`.
@@ -70,13 +74,3 @@ Every query resolves deterministically into one of four mutually exclusive state
   - The variance is explained by the global catalog retaining official ETFs (5,677+ ETFs across NASDAQ, Other US, and TWSE).
 
 ---
-
-## 4. Test Verification Matrix (Revision 2)
-
-| Lane | Target | Tests | Status | Retries |
-|---|---|---|---|---|
-| Behavioral RED | `v213-global-identity-integrity.test.ts` (against pre-fix code) | 10 tests, 8 failed assertions | RED_CONFIRMED | 0 |
-| Focused Lane | `integrity`, `review`, `identity`, `caller`, `lookup`, `worker-flow` | 98 passed | PASS | 0 |
-| Python Lane | `test_global_identity_index.py`, `test_public_symbol_admission.py` | 14 passed | PASS | 0 |
-| Affected Suite | Full Cloud Suite (50 test files) + `tsc --noEmit` | 775 passed, 1 skipped | PASS | 0 |
-| Catalog CLI | `scripts/global_identity_index.py` | 14,276 records indexed | PASS | 0 |

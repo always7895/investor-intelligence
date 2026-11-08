@@ -96,7 +96,7 @@ describe("BATCH04 identity real caller", () => {
       expect(catalog?.records.filter(r => r.symbol === "ACME")).toHaveLength(2);
       for (const query of ["公司 Acme Orbit", "ACME"]) {
         const reply = await answer(f, query);
-        expect(reply.text).toContain("IDENTITY_CONFLICT:");
+        expect(reply.text).toContain("身分資料存在衝突：");
         expect(reply.text).toContain("NASDAQ:ACME");
         expect(reply.text).not.toContain("原因不明");
         expect(reply.raw).not.toContain('"label":"每月期權"');

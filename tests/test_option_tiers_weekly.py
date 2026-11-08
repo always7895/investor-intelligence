@@ -198,7 +198,8 @@ class TierProducerTests(unittest.TestCase):
 
 
 def fake_yahoo(expiries, rows=((120.0, 0.20, 0.24),), iv=0.9):
-    calls = [types.SimpleNamespace(strike=k, bid=b, ask=a, impliedVolatility=iv, openInterest=5, volume=2) for k, b, a in rows]
+    calls = [types.SimpleNamespace(strike=k, bid=b, ask=a, impliedVolatility=iv, openInterest=5, volume=2,
+                                   contractSize="REGULAR", currency="USD") for k, b, a in rows]
     chain = types.SimpleNamespace(calls=types.SimpleNamespace(itertuples=lambda: iter(calls)))
     ticker = types.SimpleNamespace(options=list(expiries), option_chain=lambda expiry: chain)
     return mock.patch.dict(sys.modules, {"yfinance": types.SimpleNamespace(Ticker=lambda symbol: ticker)})
@@ -239,12 +240,12 @@ class WeeklyProducerTests(unittest.TestCase):
         after = self.run_us(D(2026, 10, 9), "2026-10-09T21:00:00Z", ["2026-10-09", "2026-10-16"])["weekly"]  # 17:00 New York
         self.assertEqual((after["expiry"], after["dte"], after["weekly_week"]), ("2026-10-16", 7, "NEXT"))
 
-    def test_monthly_is_unchanged_nearest_thirty_days_inside_21_to_45(self):
+    def test_monthly_is_the_nearest_standard_monthly_whatever_its_dte(self):
         out = self.run_us(D(2026, 10, 7), "2026-10-07T14:00:00Z", ["2026-10-09", "2026-10-16", "2026-11-06", "2026-11-20"])
         monthly = {h["cycle"]: h for h in out.health}["monthly"]
-        self.assertEqual(monthly["expiry"], "2026-11-06")  # DTE 30; 2026-11-20 is DTE 44, 2026-10-16 is DTE 9 (outside 21-45)
-        self.assertEqual(builder.CYCLES["monthly"], (21, 45))
+        self.assertEqual(monthly["expiry"], "2026-10-16")  # the third Friday, DTE 9; 2026-11-06 (DTE 30) is not a monthly, 2026-11-20 is the next one
         self.assertEqual(builder.CYCLES["weekly"], (0, 14))
+        self.assertEqual(builder.CYCLES["monthly"], (0, 60))
 
     @staticmethod
     def call(expiry: str, dte: int, strike=110.0, bid=0.20, ask=0.24, delta=0.12):
@@ -359,6 +360,7 @@ class TierValidatorTests(unittest.TestCase):
         zero = tier_cycle(dte=0, expiry="2026-10-07", asof="2026-10-07")
         validate_covered_call_cycle(zero, period="weekly", **EVAL)
         self.reject(tier_cycle(dte=61, expiry="2026-12-07", asof="2026-10-07"), "INVALID_DTE", period="monthly")
+        validate_covered_call_cycle(tier_cycle(dte=0, expiry="2026-10-07", asof="2026-10-07", week=None), period="monthly", **EVAL)
 
     def test_a_dte_zero_row_is_rejected_after_the_us_session_close(self):
         def zero(stamp):
@@ -377,8 +379,9 @@ class TierValidatorTests(unittest.TestCase):
         self.reject(tier_cycle(asof="2026-02-30"), "INVALID_ASOF_DATE")
         self.reject(tier_cycle(asof=20261007), "INVALID_ASOF_DATE")
         self.reject(tier_cycle(asof="2026-10-08"), "ASOF_DTE_INCONSISTENT")
-        # the same expiry as a monthly request is outside the monthly bucket, with or without the as-of date
-        self.reject(tier_cycle(), "DTE_OUTSIDE_PERIOD_BUCKET", period="monthly")
+        # the monthly bucket is 0-60: a 2-DTE expiry is inside it, but a weekly marker never rides a monthly row
+        self.reject(tier_cycle(), "INVALID_WEEKLY_WEEK", period="monthly")
+        validate_covered_call_cycle(tier_cycle(week=None), period="monthly", **EVAL)
 
     def test_the_weekly_week_marker_is_weekly_only_and_two_valued(self):
         self.reject(tier_cycle(asof=None, week="LATER"), "INVALID_WEEKLY_WEEK")
@@ -397,40 +400,17 @@ class TierValidatorTests(unittest.TestCase):
         self.assertEqual(cycle, before)
 
 
-class TypeScriptParityTests(unittest.TestCase):
-    """The Worker twin cloud/src/v213/option-recommendation-rules.ts carries the same constants; drift fails here."""
-    SOURCE = (ROOT / "cloud" / "src" / "v213" / "option-recommendation-rules.ts").read_text(encoding="utf-8")
+class WindowAdmissionTests(unittest.TestCase):
+    """Run collector and Python validator behavior; the Worker executes these same fixture probes in Vitest."""
 
-    def number(self, name: str) -> float:
-        import re
-        match = re.search(rf"export const {name}\b[^=]*= ([0-9.]+);", self.SOURCE)
-        self.assertIsNotNone(match, name)
-        return float(match.group(1))
-
-    def test_constants_match_the_python_rules(self):
-        import re
-        for name, expected in (("MIDDLE_DELTA", rules.MIDDLE_DELTA), ("MIDDLE_MONEYNESS", rules.MIDDLE_MONEYNESS),
-                               ("SHORT_DTE_NOTICE_MAX", rules.SHORT_DTE_NOTICE_MAX), ("MIN_ANNUALIZATION_DAYS", rules.MIN_ANNUALIZATION_DAYS),
-                               ("MONTHLY_TARGET_DTE", rules.MONTHLY_TARGET_DTE)):
-            self.assertEqual(self.number(name), expected, name)
-        for name, expected in (("WEEKLY_DTE_BUCKET", rules.WEEKLY_DTE_BUCKET), ("MONTHLY_DTE_BUCKET", rules.MONTHLY_DTE_BUCKET)):
-            match = re.search(rf"export const {name}[^=]*= \[(\d+), (\d+)\]", self.SOURCE)
-            self.assertEqual((int(match.group(1)), int(match.group(2))), tuple(expected), name)
-        minutes = re.search(r"EXPIRY_DAY_CLOSE_LOCAL_MINUTES[^=]*= \{ US: ([0-9 *+]+), STOCKHOLM: ([0-9 *+]+), TAIFEX: ([0-9 *+]+) \}", self.SOURCE)
-        def arithmetic(text: str) -> int:  # sums of products only, as written in the TypeScript source ("17 * 60 + 30")
-            return sum(math.prod(int(factor) for factor in term.split("*")) for term in text.split("+"))
-        parsed = {key: arithmetic(text) for key, text in zip(("US", "STOCKHOLM", "TAIFEX"), minutes.groups())}
-        self.assertEqual(parsed, rules.EXPIRY_DAY_CLOSE_LOCAL_MINUTES)
-
-    def test_every_consumer_takes_the_windows_from_the_shared_rules_not_a_private_copy(self):
-        import validate_v213_market_products as validator
-        self.assertEqual(validator.PERIOD_DTE_BUCKETS, {"weekly": rules.WEEKLY_DTE_BUCKET, "monthly": rules.MONTHLY_DTE_BUCKET})
-        self.assertEqual(builder.CYCLES, {"weekly": rules.WEEKLY_DTE_BUCKET, "monthly": rules.MONTHLY_DTE_BUCKET})
-        for relative in ("cloud/src/v213/covered-call.ts", "cloud/src/v213/market-product-schema.ts", "cloud/src/v213/options-guidance.ts"):
-            text = (ROOT / relative).read_text(encoding="utf-8")
-            self.assertIn("option-recommendation-rules", text, relative)
-            self.assertNotIn("[3, 14]", text, relative)
-            self.assertNotIn("dte < 3", text, relative)
+    def test_producer_and_validator_admit_the_same_weekly_and_monthly_windows(self):
+        from tests.test_monthly_options_fallback import WINDOW_ADMISSION_CASES, window_observations
+        for case, actual in zip(WINDOW_ADMISSION_CASES, window_observations(WINDOW_ADMISSION_CASES), strict=True):
+            with self.subTest(dte=case["dte"], period=case["period"]):
+                self.assertEqual(actual["producer_available"], case["expected"])
+                self.assertEqual(actual["validator_available"], case["expected"])
+                if case["expected"]:
+                    self.assertTrue(actual["produced_validated"])
 
 
 if __name__ == "__main__":

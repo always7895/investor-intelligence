@@ -208,7 +208,7 @@ describe("Global Equity Lookup Parser & Presentation", () => {
 
       const json = JSON.stringify(messages[0]);
       expect(json).toContain("SIVE");
-      expect(json).toContain("QUOTE_UNAVAILABLE");
+      expect(json).toContain("報價暫不可用");
       expect(json).toContain("未完成來源核對");
       expect(json).not.toContain("AAPL");
       expect(json).not.toContain("US OTC");
@@ -232,7 +232,7 @@ describe("Global Equity Lookup Parser & Presentation", () => {
 
       const text = (messages[0] as any).text;
       expect(text).toContain("個股快查 · AAPL");
-      expect(text).toContain("QUOTE_UNAVAILABLE");
+      expect(text).toContain("報價暫不可用");
       expect(text).toContain("未完成來源核對");
     });
 
@@ -276,13 +276,15 @@ describe("Unadmitted symbol source label (TASK 025A)", () => {
   it("sealed view -> sealed_snapshot:unadmitted_symbol", async () => {
     const out = await handleGlobalEquityLookup(sealedEnv(), query);
     expect(out).toBeTruthy();
-    expect(JSON.stringify(out)).toContain("sealed_snapshot:unadmitted_symbol");
+    expect(JSON.stringify(out)).toContain("封存快照（該標的尚未准入）");
+    expect(JSON.stringify(out)).not.toContain("sealed_snapshot:unadmitted_symbol");
     expect(JSON.stringify(out)).not.toContain("unsealed_or_missing");
   });
   it("non-sealed view -> unsealed_or_missing (only when view is not sealed)", async () => {
     const out = await handleGlobalEquityLookup(unsealedEnv(), query);
     expect(out).toBeTruthy();
-    expect(JSON.stringify(out)).toContain("unsealed_or_missing");
+    expect(JSON.stringify(out)).toContain("未取得已封存資料");
+    expect(JSON.stringify(out)).not.toContain("unsealed_or_missing");
     expect(JSON.stringify(out)).not.toContain("unadmitted_symbol");
   });
 });

@@ -224,7 +224,7 @@ describe("v213 bottleneck takeover acceptance review: real caller & factor autho
     expect(flexMessages.length).toBeGreaterThan(0);
     const flexStr = JSON.stringify(flexMessages);
     expect(flexStr).toContain("NEWCHOKE");
-    expect(flexStr).toContain("UNAVAILABLE");
+    expect(flexStr).toContain("資料暫不可用");
     expect(flexStr).toContain("深度化分析");
     expect(flexStr).not.toContain("LEGACY00");
   });

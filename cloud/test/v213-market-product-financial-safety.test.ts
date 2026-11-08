@@ -164,7 +164,7 @@ describe("v213 Market Product Financial Safety Suite", () => {
       expect(() => validateOptionContractQuote(oldQuote, { evaluatedAt: "2026-09-14T12:00:00Z" })).toThrow("STALE_TIMESTAMP_REJECTED");
     });
 
-    it("enforces period filter matching weekly (0-14 DTE) vs monthly (21-45 DTE)", () => {
+    it("enforces weekly outer bounds vs monthly admission (0-60 DTE)", () => {
       const weeklyQuoteWithMonthlyDte = createValidBareQuote({
         expiry: "2026-10-16",
         dte: 32,
@@ -176,12 +176,12 @@ describe("v213 Market Product Financial Safety Suite", () => {
         }),
       ).toThrow("QUOTE_PERIOD_MISMATCH");
 
-      const monthlyQuoteWithWeeklyDte = createValidBareQuote({
-        expiry: "2026-09-21",
-        dte: 7,
-      });
+      // The monthly bucket is 0-60: the nearest standard monthly may be a week away (or the expiry day); 61 DTE is no monthly.
+      for (const [expiry, dte] of [["2026-09-14", 0], ["2026-09-21", 7]] as const) {
+        expect(() => validateOptionContractQuote(createValidBareQuote({ expiry, dte }), { evaluatedAt: "2026-09-14T12:00:00Z", period: "monthly" })).not.toThrow();
+      }
       expect(() =>
-        validateOptionContractQuote(monthlyQuoteWithWeeklyDte, {
+        validateOptionContractQuote(createValidBareQuote({ expiry: "2026-11-14", dte: 61 }), {
           evaluatedAt: "2026-09-14T12:00:00Z",
           period: "monthly",
         }),

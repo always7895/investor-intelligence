@@ -124,7 +124,7 @@ class CatalogDerivedSectionsTests(unittest.TestCase):
         # before that decision and its rights_reviewed_at) the gate admits nobody, so every row is NOT_ADMITTED even when the entry is
         # enabled; the root selection mirrors the catalog.
         enabled = {p["id"] for p in self.catalog["providers"] if p["runtime_enabled"] is True and p["line_quote_eligible"] is True}
-        self.assertTrue(enabled <= {"yahoo_finance_option_chain", "nasdaq_nordic_option_chain"}, enabled)
+        self.assertTrue(enabled <= {"yahoo_finance_option_chain", "nasdaq_nordic_option_chain", "nasdaq_public_option_chain"}, enabled)
         self.assertEqual({row["public_admission"] for row in document["providers"]}, {"NOT_ADMITTED"})
         self.assertEqual(document["catalog_summary"], {"catalog_provider_count": len(self.catalog["providers"]),
                                                        "public_admitted_provider_count": 0,
@@ -146,9 +146,15 @@ class CatalogDerivedSectionsTests(unittest.TestCase):
         self.assertEqual({row["public_admission"] for row in decided["providers"] if row["provider_id"] not in yahoo}, {"NOT_ADMITTED"})
         self.assertEqual(decided["catalog_summary"]["public_admitted_provider_count"], len(yahoo))
         nordic_day = build(None, datetime(2026, 10, 17, 17, 0, 0, tzinfo=timezone.utc))
-        self.assertEqual({row["provider_id"] for row in nordic_day["providers"] if row["public_admission"] == "ADMITTED"}, enabled)
-        self.assertEqual({row["public_admission"] for row in nordic_day["providers"] if row["provider_id"] not in enabled}, {"NOT_ADMITTED"})
-        self.assertEqual(nordic_day["catalog_summary"]["public_admitted_provider_count"], len(enabled))
+        nordic = {"yahoo_finance_option_chain", "nasdaq_nordic_option_chain"} & enabled
+        self.assertEqual({row["provider_id"] for row in nordic_day["providers"] if row["public_admission"] == "ADMITTED"}, nordic)
+        self.assertEqual({row["public_admission"] for row in nordic_day["providers"] if row["provider_id"] not in nordic}, {"NOT_ADMITTED"})
+        self.assertEqual(nordic_day["catalog_summary"]["public_admitted_provider_count"], len(nordic))
+        # V19: the Nasdaq US option chain is admitted from its own decision day (2026-10-19), all pinned providers then.
+        nasdaq_day = build(None, datetime(2026, 10, 19, 17, 0, 0, tzinfo=timezone.utc))
+        self.assertEqual({row["provider_id"] for row in nasdaq_day["providers"] if row["public_admission"] == "ADMITTED"}, enabled)
+        self.assertEqual({row["public_admission"] for row in nasdaq_day["providers"] if row["provider_id"] not in enabled}, {"NOT_ADMITTED"})
+        self.assertEqual(nasdaq_day["catalog_summary"]["public_admitted_provider_count"], len(enabled))
 
     def test_the_object_validates_stays_bounded_is_byte_stable_and_holds_no_quote_field(self):
         produced = publisher.lazy_options_coverage_body(None, NOW)[publisher.COVERAGE_KEY]

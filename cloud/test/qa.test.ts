@@ -282,8 +282,8 @@ describe("Q&A public-only privacy, namespace isolation and freshness", () => {
       parseQuery("TEST 每週期權 BID ASK"),
       firstContext,
     );
-    expect(answer).toContain("Bid USD 2.00");
-    expect(answer).toContain(".999Z");
+    expect(answer).toContain("Bid US$2.00");
+    expect(answer).toContain("（台北）");
     expect(answer).not.toContain("Bid USD 999.00");
     expect(answer).not.toContain("IBKR_PRIVATE_SENTINEL");
     expect(privateRead).not.toHaveBeenCalled();

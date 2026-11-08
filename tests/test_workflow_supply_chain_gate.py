@@ -144,6 +144,33 @@ class WorkflowSupplyChainGateTests(unittest.TestCase):
         )
         self.assertTrue(any("stable per branch/PR" in finding for finding in findings))
 
+    def test_rejects_untrusted_expressions_inside_run_scripts(self):
+        for expression in (
+            "${{ github.event.pull_request.title }}",
+            "${{ github.head_ref }}",
+            "${{ inputs.version }}",
+            "${{ github.event.inputs.target }}",
+        ):
+            with self.subTest(expression=expression):
+                findings = self.audit(workflow_text(f'Write-Host "{expression}"'))
+                self.assertTrue(any("untrusted expression" in finding for finding in findings))
+        inline = workflow_text("Write-Host 'safe'").replace(
+            "        run: |\n          Write-Host 'safe'",
+            '        run: Write-Host "${{ github.head_ref }}"',
+        )
+        self.assertTrue(any("untrusted expression" in finding for finding in self.audit(inline)))
+
+    def test_accepts_env_routed_untrusted_values_and_trusted_contexts(self):
+        text = workflow_text('Write-Host "$env:TITLE ${{ github.sha }} ${{ env.TARGET }}"').replace(
+            "        run: |",
+            "        env:\n          TITLE: ${{ github.event.pull_request.title }}\n        run: |",
+        )
+        self.assertEqual(self.audit(text), [])
+
+    def test_repository_workflows_route_untrusted_values_through_env(self):
+        findings = [finding for finding in gate.audit_workflows(ROOT) if "untrusted expression" in finding]
+        self.assertEqual(findings, [])
+
 
 if __name__ == "__main__":
     unittest.main()

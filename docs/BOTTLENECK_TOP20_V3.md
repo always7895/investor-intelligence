@@ -1,5 +1,9 @@
 # Bottleneck-explosion Top20 v3 / 瓶頸爆發 TOP20
 
+<!-- DOCS-R1 scope -->
+> **Scope:** Technical reference; verify executable behavior against code and current source-bound evidence. Current acceptance and unresolved issues: [STATUS](../state/STATUS.md). The document itself does not authorize Production changes.
+<!-- /DOCS-R1 scope -->
+
 Status: live in LINE from 2026-09-26 (operator request: the Top20 must follow Serenity's bottleneck logic, exclude
 negative long-term returns, rank future bottleneck explosions, and an industry analysis led by Leopold
 Aschenbrenner's logic must name the most explosive industries from current events). Current Production state is in
@@ -27,8 +31,24 @@ Leads weight conviction only; every figure users see comes from filings or marke
 
 - COMPOUNDER (market cap ≥ US$10B): layer heat 25, company capture 30, lead conviction 20, market confirmation 15,
   size 10. EXPLOSION (< US$10B, often before volume revenue): 25 / 15 / 30 / 20 / 10.
+- Lead conviction (V16, 2026-10-18; pure functions `company_lead`, `effective_13f_weight`, `fund_lead_part`,
+  `serenity_mirror_factor`, `serenity_excluded` in `scripts/bottleneck_top20_v3.py`): lead = 0.7 x clip(intensity_eff, 0,
+  max_intensity / 2) (x0.3 when the stance is BEARISH) + the 13F part, times the archetype weight (30 EXPLOSION, 20
+  COMPOUNDER). `max_intensity` is the maximum raw Serenity intensity; `intensity_eff` = intensity x the mirror factor m. m
+  is 1.0 while the mirror's newest post (`source.latest_post_at`) is at most 72 hours old or the field is absent, 0.5 up to
+  14 days, else 0. The 13F part is 0.3 x sqrt(min(w_eff, 0.30) / 0.30) (concave, same maximum 0.3 as before; the old 5 percent
+  cap scored a 0.05 and a 0.28 position alike, the new shape ranks 0.28 above 0.05), with w_eff = `long_weight` x `currency_factor` (1.0 when the
+  field is absent; 0.25 after a recorded full-book sale dated after the 13F period, see the Aschenbrenner context
+  reference) x an age factor (0, reason `STALE_13F`, when the filing period is more than 200 days before the build time,
+  else 1). Relay posts (a fund's disclosure re-reported, not Serenity's own view) are removed upstream in
+  `scripts/serenity_signals.py` and never reach the intensity. Schema 1 lead files keep the old behaviour (every new factor
+  1.0, the old exclusion rule); a schema 2 row without a new field falls back the same way. Lead precision (V18): principal (PRN) and option rows never count as shares and prior shares sum over all CUSIPs of a name; a CUSIP failing the check digit is never name-matched; a table that misses its own cover totals by over 0.5 % (`RECON_MISMATCH`) multiplies the currency factor by 0.5 (`RECON_UNKNOWN` and `CONFIDENTIAL_OMITTED` only label the filing); Form 3/4 filings by the fund size like a 13D/G event; and `direction_factor` x0.5 (`TRIM`, shares down by half or more) and x0.75 (`HEDGED`, own puts at least half the long value) join `currency_factor`, the product capped at 1.
 - Capture: latest-quarter revenue YoY, acceleration, gross-margin change, remaining performance obligations,
   normalized over the evidence available (fiscal quarters; a fourth quarter is annual minus nine-month YTD).
+  Instant RPO facts require a canonical `YYYY-MM-DD` end before deduplication; an invalid end skips only that row.
+  For each end, the newest valid filing wins; conflicting values in that latest filing refuse the end, without reviving older or undated rows.
+  Genuinely absent filing metadata remains an undated fallback only when no valid dated group exists; explicit malformed metadata is skipped, not repaired.
+  Both duration and instant facts retain same-filing conflict refusal, and no fallback invents a filing date.
 - Penalties: share count +5% / +15% a year (SEC shares outstanding; without it, as for dual-class filers and Yahoo-sourced listings, the quarter's diluted weighted-average shares against the same quarter a year earlier, labelled 稀釋加權平均股數; a change outside -50%..+500% is treated as a data error; a 20-F/6-K filer whose cover share counts are dated at fiscal year end rather than the revenue quarter and that has no quarterly diluted tag gets no dilution input, `shares_yoy` stays None and never a forced 0; pairing the fiscal-year-end counts of two years was reviewed and rejected because it breaks the same-quarter alignment rule above, so the remaining gap is external data: quarter-aligned counts from 6-K interim statements, subject to data rights and qualification; `scripts/bottleneck_top20_v3.py` (`DEI_COVER_MAX_LAG_DAYS`, quarter-length diluted rows); decision 2026-10-11, batch next1), repeated financing concerns in Serenity's posts.
 - Filters: one long-term standard — positive 2-year CAGR (an eligibility gate, not a score component). A security whose
   own regular-way trading is younger than two years because of a verified corporate event (spin-off, trading resumption,
@@ -36,13 +56,25 @@ Leads weight conviction only; every figure users see comes from filings or marke
   checked by `scripts/listing_lineage.py`) uses the annualized return from its first regular-way session, never from
   when-issued trading or a parent's/predecessor's shares, and needs at least 365 days. A short history without a verified
   record is excluded as `HISTORY_OR_LINEAGE_UNVERIFIED` (a verified segment under one year: `MARKET_HISTORY_UNDER_1Y`); a
-  missing figure is never read as a negative return. No clearly bearish Serenity stance; at most five names per layer.
+  missing figure is never read as a negative return. No clearly bearish Serenity stance (a schema 2 row: stance BEARISH,
+  decayed bearish weight at least twice the decayed bullish weight and at least two bearish posts; a schema 1 row: BEARISH,
+  three bearish posts and no bullish post); at most five names per layer.
 
 ## Industry ranking (產業爆發榜, Leopold-led)
 
 Explosiveness = position on Leopold's chain (compute → power → datacenter → chips/memory → network/optics →
-materials) 35 + the fund's 13F weight in the layer 25 + median revenue acceleration 20 + SEC filing mentions of the
-layer's terms (last 30 days versus the prior 60) 10 + Serenity heat 10.
+materials) 35 x the chain weight + 25 x min(1, the fund's effective 13F weight in the layer / 0.4) + median revenue
+acceleration 20 + SEC filing mentions of the layer's terms (last 30 days versus the prior 60) 10 + Serenity heat 5 per
+unit of (sum of intensity_eff / strongest raw intensity), at most 10 (reached at 2 units). The chain weights are read from
+`chain_weights` in `config/bottleneck-layers-v3.json` (1.0, 1.0, 0.85, 0.9, 0.8, 0.6 for ranks 1 to 6, with the essay
+rationale: power is the binding infrastructure constraint, CoWoS packaging and HBM the binding chip constraint, so
+chips/memory sit above datacenter); the same constants apply when the key is absent. The effective weight is the sum of
+the layer's w_eff (see Lead conviction); the sealed `fund_13f_weight` stays the raw sum and `fund_13f_weight_effective`
+(not sealed) carries the one used in the heat and explosiveness clips.
+
+Deferred (DEFERRED_WITH_REASON, 2026-10-18): D4, dynamic admission of lead-only names into the universe, needs the capture
+host and a host contract (and under the currency rule would admit no 13F name); D5, non-SEC fund disclosures (for example
+a Japanese filing) are recorded as a dated note only and Serenity's own portfolio-state posts carry no signal.
 
 ## LINE
 
@@ -86,6 +118,7 @@ Tile 3: `營收實現後股價情境`; operator 2026-09-27; Astra contract ORDER
   - Company guidance: `公司營收財測＋模型（非訂單）`
   - Analyst consensus (operator 2026-10-13, on and labelled unofficial): `分析師共識（非公司財測、非官方）｜<來源>，<n> 位分析師，截至 <YYYY-MM-DD>` followed by `非訂單` on each horizon row; the price rows read `若<期間>達成分析師共識（非官方）營收推估 → 股價情境 …`. The source is named from the capture's own URL (only the Yahoo Finance hosts are known; any other host fails closed), n is the smaller analyst count of the consensus quarters the model uses and the date is the capture day.
   - History model (lane V13; Worker-only `HISTORY_YOY_V1`, `cloud/src/v213/revenue-history-model.ts`; Python reference `tests/test_v13_history_reference.py` with the shared vectors `cloud/test/fixtures/v13-history-vectors.json`): beside an unavailable revenue row whose reason is `INPUTS_MISSING`, `NOT_DISCLOSED`, `FRESHNESS_UNVERIFIED`, `STALE`, `SAMPLE_INSUFFICIENT` or `PERIOD_MISMATCH`, and only when the reviewed record seals four positive single-currency company-scope actuals and four contiguous forward intervals (no withdrawn, conflicting, limited or faulted evidence), the card appends `歷史模型推估（依公司過去財報；非公司財測、非分析師共識、非訂單）`. Each forward quarter is its year-ago quarter times (1 + g), g the median of the sealed fundamentals' year-over-year rates for the anchor quarter (within 10 days), capped to −50 %…+100 %; without such a rate, or when |g| > 300 %, the latest quarter is held flat. An anchor older than 200 days or a later reported quarter the record does not hold yet shows its reason line instead of a figure. Nothing is sealed and no status, tile, score or rank changes; admitted guidance or consensus always wins. When 現有訂單 reads 未揭露, a `營收動能（代理）` tile (reported revenue growth and its acceleration; not orders, not a forecast) takes its place.
+  - Trend estimate (lane V33b, operator 2026-11-03; `TREND_YOY_V1`, lowest priority; producer `scripts/revenue_trend.py`, Worker validator `cloud/src/v213/revenue-trend.ts`, shared vectors `cloud/test/fixtures/revenue-trend-vectors.json`, tests `tests/test_revenue_trend.py` and `cloud/test/v213-revenue-trend.test.ts`): a card whose revenue state has no basis (POET has no reviewed record, `INPUTS_MISSING`; AXTI is `NOT_DISCLOSED` with no numeric guidance) used to read 未揭露 rows and 無法估價 prices. The collector (`bottleneck_top20_v3.py`) now keeps the last four contiguous quarters (SEC XBRL, or the Yahoo quarterly statement only when its currency equals the quote currency) beside the fundamentals, and the sealer adds the OPTIONAL entry field `revenue_trend` (absent when the input is incomplete; the closed `fundamentals` key set is unchanged, so older inputs seal byte-identically). Method, the same arithmetic and constants as the history model: each forward quarter is its year-ago reported quarter times (1 + g), g the middle (mean of two) of the sealed latest and previous-quarter YoY, clamped to −50 %…+100 % (flagged), the latest quarter held flat without a rate or at |g| > 300 %; 6 months = the two year-ago quarters × (1 + g), 1 year = the four; the price scenario is the existing arithmetic (`compute_v3_arithmetic`: B = reported four quarters, change6 = (q3 + q4 + f1 + f2)/B − 1, change12 = (f1..f4)/B − 1; P/S and shares unchanged). The Worker recomputes every figure from the sealed quarters and the sealed fundamentals and ignores an absent, malformed or inconsistent field (the card reads as before). It applies only where no existing basis does: a v3 forecast with `revenueStatus UNAVAILABLE`, no guidance or consensus on either horizon, reason `INPUTS_MISSING`, `NOT_DISCLOSED`, `FRESHNESS_UNVERIFIED`, `STALE`, `SAMPLE_INSUFFICIENT` or `PERIOD_MISMATCH` (the history model's fail-closed list) and no `IR_COVERAGE_MISSING`, `UNREVIEWED_INPUTS` or machine-barrier diagnostic; a horizon that already has contracted recognition keeps it. It is labelled `趨勢推估（依已申報營收外推，非公司指引）` with the last reported quarter end, the growth used and its clamp (card chip `趨勢推估·非公司指引`, rows 約半年趨勢推估 / 約1年趨勢推估, price bars 約半年趨勢 / 約1年趨勢, footer reminder, `來源` note and the detail text); it is never an actual and never company guidance. No forward figure from an earlier disclosure exists for POET or AXTI; any active guidance claim already wins as `COMPANY_GUIDANCE`, and stale, withdrawn or conflicting guidance stays excluded. Nothing changes a sealed status, tile, score or rank.
   - Contracted recognition only: `已簽約預計認列`
   - Contracted recognition beside revenue projection defaults to `另列已簽約預計認列：半年期 X（起訖日；不相加）` / `1年期 X（起訖日；不相加）` (`其中` requires matching issuer, currency, scope, window and proven inclusion).
 - **Tile 3: 營收實現後股價情境**
@@ -314,7 +347,9 @@ the Worker ignores a shard older than 4 days. Japan and Korea have no free offic
 stocks get Yahoo Finance daily closes once a day (labelled unofficial, each row with its own date). London Main
 Market and AIM equities (for example IQE) come from the exchange's public price-explorer API, both as identities and
 as last prices (no trade date in the response, so the retrieval time is shown); they are optional feeds, so an
-outage there never blocks the other markets.
+outage there never blocks the other markets. In `build_price_shards.py` an outage of either London feed is recorded in
+the file's `skipped_optional_feeds` (not `failed`), drops the UK shard until the next good run (the previous UK shard
+keeps serving) and leaves the exit status 0; only a required feed failing exits 2, and every feed failing exits 1.
 
 `TOP20` (v3 when sealed and fresh, else the seven-field Top20), `瓶頸詳情 代號`, `產業爆發榜`, `七欄Top20`.
 The Worker refuses a v3 document older than the report bound (14 h) and falls back rather than showing stale data.

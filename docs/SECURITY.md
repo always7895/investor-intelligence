@@ -1,5 +1,9 @@
 # Security and Credential Operations
 
+<!-- DOCS-R1 scope -->
+> **Scope:** Contractual safety/evidence boundary; retain exact normative markers and validate against runtime configuration. Current acceptance and unresolved issues: [STATUS](../state/STATUS.md). The document itself does not authorize Production changes.
+<!-- /DOCS-R1 scope -->
+
 _Last reconciled: 2026-08-25 Asia/Taipei_
 
 ## Normative boundary
@@ -68,7 +72,7 @@ The shared bot stores no raw push destination and has no push sender. Raw LINE I
 
 ## Local model egress
 
-The local Qwen/llama.cpp route must be:
+The local model route must be:
 
 - HTTPS;
 - exact-host allowlisted;

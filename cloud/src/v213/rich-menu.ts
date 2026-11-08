@@ -11,9 +11,12 @@ import { loadIdentityCatalogForQuery } from "./identity-shards";
 import { buildCoveredCallMessages, validateCoveredCallCycle } from "./covered-call";
 import { admitPublicOption, OPTION_RIGHTS_NOT_ADMITTED_ZH, OptionRightsNotAdmittedError } from "./public-options-admission";
 import { pinPublicSnapshot } from "./public-snapshot";
+import { freshPotentialCompanyData, loadFreshMacroDocument } from "./macro-freshness";
 import { v213Top20LineAnswer } from "./top20-presentation";
 import { loadV213FreshTop20Report, v213TimesAreFresh, v213EvidenceWithinWindow, V213_STALE_RECORDS_MESSAGE, type V213Top20Env } from "./top20-report";
-import { LINE_THEME as T, footerStyle, menuAction, menuBox, menuText, productHeader, section, sectionTitle } from "./line-theme";
+import { LINE_THEME as T, altSummary, bulletRow, disclosureLine, footerStyle, menuAction, menuBox, menuText, productHeader, section, sectionTitle, shortAltText, noticeBanner } from "./line-theme";
+import { humanizeStatusText } from "./status-labels";
+import { formatVisibleMoment } from "./line-formatters";
 import {
   buildEducationalStrategyFlex,
   buildEducationalStrategyText,
@@ -25,7 +28,6 @@ import {
   buildMacroIndustryCardText,
   buildMacroTop5OverviewFlex,
   buildMacroTop5OverviewText,
-  MACRO_PRODUCT_KEY,
   macroHomeShortfallLine,
   macroOverviewState,
   macroShortfallReport,
@@ -52,8 +54,9 @@ type Env = V213Top20Env & { V213_LINE_PRESENTATION?: string };
 
 /** Industry card and deep analysis travel inside the sealed TOP5 overview (the seal admits one macro
  * object); legacy per-industry keys are read only as a fallback. Invalid entries are ignored. */
-async function sealedMacroEntry(view: Awaited<ReturnType<typeof pinPublicSnapshot>>, targetId: string, kind: "card" | "deep") {
-  const overview = await view.json<Record<string, unknown>>([MACRO_PRODUCT_KEY]);
+async function sealedMacroEntry(env: Env, view: Awaited<ReturnType<typeof pinPublicSnapshot>>, targetId: string, kind: "card" | "deep") {
+  const overview = await loadFreshMacroDocument(env, view);
+  if (!overview) return null;
   try {
     if (overview && kind === "card" && Array.isArray(overview.industries)) {
       const raw = (overview.industries as Record<string, unknown>[]).find(row => String(row?.industry_id ?? "").toLowerCase() === targetId);
@@ -64,9 +67,10 @@ async function sealedMacroEntry(view: Awaited<ReturnType<typeof pinPublicSnapsho
   } catch {
     return null;
   }
-  return kind === "card"
+  const legacy = await (kind === "card"
     ? view.json<MacroIndustryCard>([`v213:macro-industry:${targetId}`])
-    : view.json<MacroDeepAnalysis>([`v213:macro-deep:${targetId}`]);
+    : view.json<MacroDeepAnalysis>([`v213:macro-deep:${targetId}`]));
+  return await loadFreshMacroDocument(env, view) ? legacy : null;
 }
 const V3_UNAVAILABLE = "瓶頸爆發 TOP20 目前沒有已封存且在時效內的資料，未以舊資料替代。輸入「七欄Top20」可看舊版七欄榜。";
 
@@ -86,7 +90,7 @@ function panelTextMessages(
   const actionText = actions.length > 0
     ? "快捷指令：\n" + actions.map(([label, command]) => `• ${label}：${command}`).join("\n")
     : "";
-  const blocks: string[] = [header, ...paragraphs, ...(actionText ? [actionText] : [])].filter(Boolean);
+  const blocks: string[] = [header, ...paragraphs.map(humanizeStatusText), ...(actionText ? [actionText] : [])].filter(Boolean);
 
   for (const block of blocks) {
     if (block.length > 4900) throw new Error("V213_PANEL_BLOCK_TOO_LARGE");
@@ -114,19 +118,37 @@ function panelTextMessages(
   return messages;
 }
 
+function preferredNavActions(actions: readonly (readonly [string, string])[]): readonly (readonly [string, string])[] {
+  if (actions.length <= 3) return actions;
+  // Retain the data-requirements path and the exit while staying within three mobile buttons.
+  const back = actions.find(([, command]) => command === "選單");
+  const macro = actions.find(([, command]) => command === "宏觀資料說明");
+  return [actions[0]!, macro ?? actions[1]!, back ?? actions[2]!];
+}
+
 function panel(
   title: string,
   subtitle: string,
   paragraphs: readonly string[],
   actions: readonly (readonly [string, string])[],
   isText = false,
+  /** V20: shorter flex bullets and a one-line disclosure; text keeps full paragraphs and every action. */
+  flex?: { bullets: readonly string[]; disclosure?: string; actions?: readonly (readonly [string, string])[]; plainBullets?: boolean; disclosureInFooter?: boolean },
 ): LineOutboundMessage[] {
   if (isText) return panelTextMessages(title, subtitle, paragraphs, actions);
-  const messages: LineOutboundMessage[] = [{ type: "flex", altText: `${title}｜${subtitle}`, contents: { type: "carousel", contents: [{
+  const bullets = flex?.bullets ?? paragraphs;
+  const messages: LineOutboundMessage[] = [{ type: "flex", altText: altSummary({ topic: title, status: subtitle, next: actions[0]?.[0] ?? "點選下方按鈕" }),
+    contents: { type: "carousel", contents: [{
     type: "bubble", size: "mega",
     header: productHeader("韭菜守護者 · 公開研究", title),
-    body: menuBox([section(subtitle, paragraphs.map(p => menuText(p)), "detail")], { backgroundColor: T.paper, paddingAll: "lg" }),
-    footer: menuBox(actions.map(([label, command]) => menuAction(label, command)), { ...footerStyle }),
+    body: menuBox([
+      ...(flex?.plainBullets ? bullets.map(p => bulletRow(p)) : [section(subtitle, bullets.map(p => bulletRow(p)), "detail")]),
+      ...(flex?.disclosure && !flex.disclosureInFooter ? [disclosureLine([flex.disclosure])] : []),
+    ], { backgroundColor: T.paper, paddingAll: "lg" }),
+    footer: menuBox([
+      ...(flex?.disclosure && flex.disclosureInFooter ? [disclosureLine([flex.disclosure])] : []),
+      ...preferredNavActions(flex?.actions ?? actions).map(([label, command]) => menuAction(label, command)),
+    ], { ...footerStyle }),
   }] } }];
   assertLineMessages(messages);
   return messages;
@@ -246,14 +268,18 @@ export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promis
   if (/^(?:七欄\s*top\s*20|舊版\s*top\s*20)(?:\s*文字)?$/i.test(command)) {
     return v213Top20LineAnswer(env, { ...query, normalized: /文字\s*$/.test(command) ? "Top20 文字" : "Top20" });
   }
-  if (/^(?:選單|菜单|menu|功能導覽|功能导航)$/i.test(command)) {
+  if (/^(?:選單|菜单|menu|功能導覽|功能导航)(?:\s*文字)?$/i.test(command)) {
     return panel("研究功能導覽", "三個入口 · 不連券商 · 不自動下單", [
       "A｜TOP20：瓶頸爆發 TOP20（Serenity／Leopold 線索＋財報、訂單與交易所報價）；輸入「瓶頸詳情 代號」（例：瓶頸詳情 NVDA）看單一公司完整卡片。歷史報酬不是未來預測。",
       "B｜宏觀產業分析：TOP5產業總覽與12–36M因果鏈分析；輸入「產業爆發榜」看 Leopold 因果鏈產業排序。",
       "C｜期權與個股快查：輸入「代號 每月期權」或「代號 每週期權」（例：NVDA 每月期權，格式範例非推薦）看備兌買權建議；直接輸入代號或名稱（例：2330、SIVE）查延遲報價；「期權教學」看策略範例。",
       "D｜資料驅動潛力榜：輸入「潛力榜」；依官方資料每日重算，輸入「潛力報告 代號」看逐項數據報告，「訂單實現榜」看已簽約訂單覆蓋排序。",
       "E｜舊版七欄榜請輸入「七欄Top20」。本服務不連券商、不下單，內容非投資建議。",
-    ], NAV, isEnvText);
+    ], NAV, commandText, { bullets: [
+      "A｜TOP20、瓶頸詳情、潛力榜、訂單實現榜",
+      "B｜宏觀產業分析、產業爆發榜",
+      "C｜輸入代號查個股；「NVDA 每月期權」；「期權教學」",
+    ], disclosure: "歷史報酬非未來預測；不連券商、不自動下單；非投資建議｜舊榜「七欄Top20」｜完整說明「選單 文字」", actions: NAV.slice(0, 2), plainBullets: true, disclosureInFooter: true });
   }
 
   // --- Primary Macro Home Entry: 宏觀產業分析 & TOP5 產業總覽 ---
@@ -262,10 +288,18 @@ export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promis
     const view = await pinPublicSnapshot(env);
 
     // 1. Route choice and counts come only from the shared root validator, never from a raw claimed status or count.
-    const macro = macroOverviewState(view.integrity === "sealed" ? await view.json<unknown>([MACRO_PRODUCT_KEY]) : null);
+    let macro = macroOverviewState(await loadFreshMacroDocument(env, view));
     if (macro.kind === "VALID" && macro.overview.status === "ADMITTED_TOP5") {
       return isText ? buildMacroTop5OverviewText(macro.overview) : buildMacroTop5OverviewFlex(macro.overview);
     }
+    // 2. Load Top20 before revalidating both fallback data sources against the final clock.
+    const report = await loadV213FreshTop20Report(env, parseQuery("Top20"));
+    // The fallback awaits unrelated readers too: counts and phase metadata must use the final clock.
+    macro = macroOverviewState(await loadFreshMacroDocument(env, view));
+    // No storage reads follow: evaluate company evidence against the final execution clock too.
+    const reportEvidenceFresh = report && typeof report !== "string" ? await v213EvidenceWithinWindow(report.records.map(r => ({
+      freshAsOf: r.orders_state_as_of, retrievedAt: r.retrieved_at, evidenceClass: r.evidence_class, sealTime: report.generated_at,
+    }))) : false;
     // Only a validated overview carries its time metadata; an absent or invalid root shows the UNKNOWN notice.
     const knowledgeNotice = phaseKnowledgeWithheldNotice(macro.kind === "VALID" ? macro.overview : null);
     const shortfallLine = macroHomeShortfallLine(macro);
@@ -275,8 +309,6 @@ export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promis
         ? "MACRO_PRODUCT_INVALID：本輪已封存之宏觀總覽未通過驗證，已拒絕使用，不據以推論任何合格產業數。GDP、CPI、利率、匯率等值不得由來源健康狀態或候選資料直接升格發布。"
         : "MACRO_PRODUCT_NOT_SEALED：目前尚無已驗收的獨立宏觀報告。GDP、CPI、利率、匯率等值不得由來源健康狀態或候選資料直接升格發布。";
 
-    // 2. Check Top20 fresh report for company industry distribution context
-    const report = await loadV213FreshTop20Report(env, parseQuery("Top20"));
     const navActions = [
       ["TOP5 產業總覽", "TOP5產業總覽"],
       ["TOP20 公司證據", "TOP20"],
@@ -295,7 +327,7 @@ export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promis
       return panel("宏觀產業分析", "當輪產業資料不可用 · 短缺通報", errLines, navActions, isText);
     }
 
-    if (!(await v213EvidenceWithinWindow(report.records.map(r => ({ freshAsOf: r.orders_state_as_of, retrievedAt: r.retrieved_at, evidenceClass: r.evidence_class, sealTime: report.generated_at }))))) {
+    if (!reportEvidenceFresh) {
       const staleLines = [
         shortfallLine,
         "公司資料過期：" + V213_STALE_RECORDS_MESSAGE,
@@ -315,7 +347,7 @@ export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promis
       productLine,
       "以下僅為當輪候選公司家數占比（參考資訊，不是市值／營收權重，不代表全球產業排名，非 TOP5 宏觀產業分析）：",
       ...(knowledgeNotice ? [knowledgeNotice] : []),
-      `當輪時間：${report.generated_at}；樣本20家公司。`,
+      `當輪時間：${formatVisibleMoment(report.generated_at)}；樣本20家公司。`,
       ...(groups.length > visibleGroups.length
         ? [`摘要顯示${visibleGroups.length}/${groups.length}類；其餘${groups.length - visibleGroups.length}類請看完整文字`] : []),
       ...visibleGroups.map(([industry, tickers]) => `${industry}｜${tickers.length}/20家（${(tickers.length / 20 * 100).toFixed(0)}%）\n${tickers.join("、")}`),
@@ -329,14 +361,14 @@ export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promis
         productLine,
         "以下僅為當輪候選公司家數占比（參考資訊，不是市值／營收權重，不代表全球產業排名，非 TOP5 宏觀產業分析）：",
         ...(knowledgeNotice ? [knowledgeNotice] : []),
-        `當輪時間：${report.generated_at}；樣本20家公司。`,
+        `當輪時間：${formatVisibleMoment(report.generated_at)}；樣本20家公司。`,
         ...groups.map(([industry, tickers]) => `${industry}｜${tickers.length}/20家（${(tickers.length / 20 * 100).toFixed(0)}%）\n${tickers.join("、")}`),
         "傳導框架：需求→交付／產能→營收及毛利→現金流／融資→每股價值；每條關係均須另有公司證據。",
         "",
         "快捷指令：",
         ...navActions.map(([label, cmd]) => `• ${label}：${cmd}`),
       ];
-      return [{ type: "text", text: fullLines.join("\n") }];
+      return [{ type: "text", text: fullLines.map(humanizeStatusText).join("\n") }];
     }
 
     return panel("宏觀產業分析", "TOP5 准入門檻未達成 · 短缺通報", lines, navActions, false);
@@ -346,7 +378,7 @@ export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promis
   if (/^(?:TOP5(?:產業總覽|產業)?|宏觀(?:產業)?總覽)(?:\s*文字)?$/i.test(command)) {
     const isText = isEnvText || /文字\s*$/i.test(command);
     const view = await pinPublicSnapshot(env);
-    const macro = macroOverviewState(view.integrity === "sealed" ? await view.json<unknown>([MACRO_PRODUCT_KEY]) : null);
+    const macro = macroOverviewState(await loadFreshMacroDocument(env, view));
     if (macro.kind === "VALID" && macro.overview.status === "ADMITTED_TOP5") {
       return isText ? buildMacroTop5OverviewText(macro.overview) : buildMacroTop5OverviewFlex(macro.overview);
     }
@@ -376,7 +408,7 @@ export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promis
       const lines = [
         "MACRO_PRODUCT_NOT_SEALED：目前尚無已驗收的獨立宏觀報告。GDP、CPI、利率、匯率等值不得由來源健康狀態或候選資料直接升格發布。",
         "以上是候選公司家數占比，不是市值／營收權重，也不代表全球產業排名或投資配置比例。",
-        `當輪時間：${report.generated_at}；樣本20家公司。`,
+        `當輪時間：${formatVisibleMoment(report.generated_at)}；樣本20家公司。`,
         ...groups.map(([industry, tickers]) => `${industry}｜${tickers.length}/20家（${(tickers.length / 20 * 100).toFixed(0)}%）\n${tickers.join("、")}`),
         "傳導框架：需求→交付／產能→營收及毛利→現金流／融資→每股價值；每條關係均須另有公司證據。",
       ];
@@ -386,7 +418,7 @@ export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promis
     const lines = [
       "MACRO_PRODUCT_NOT_SEALED：目前尚無已驗收的獨立宏觀報告。GDP、CPI、利率、匯率等值不得由來源健康狀態或候選資料直接升格發布。",
       "以上是候選公司家數占比，不是市值／營收權重，也不代表全球產業排名或投資配置比例。",
-      `當輪時間：${report.generated_at}；樣本20家公司。`,
+      `當輪時間：${formatVisibleMoment(report.generated_at)}；樣本20家公司。`,
       ...(groups.length > visibleGroups.length
         ? [`摘要顯示${visibleGroups.length}/${groups.length}類；其餘${groups.length - visibleGroups.length}類請看完整文字`] : []),
       ...visibleGroups.map(([industry, tickers]) => `${industry}｜${tickers.length}/20家（${(tickers.length / 20 * 100).toFixed(0)}%）\n${tickers.join("、")}`),
@@ -415,9 +447,9 @@ export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promis
     const isText = isEnvText || /文字\s*$/i.test(command);
     const view = await pinPublicSnapshot(env);
     const statusTextBase = view.integrity === "sealed"
-      ? "備兌買權建議（持有100股賣買權收權利金）：觀察清單內美股（Yahoo Finance，延遲、非官方）與 Nasdaq Stockholm（交易所公開 API，延遲）每小時更新；每個週期最多給三個價格：高履約價（不易被賣掉）、中間型與平衡型（缺少中間履約價時只顯示兩個）；每週＝當週到期。清單外標的或無雙邊報價時維持不可用。"
+      ? "保守期權三策略：備兌買權（持股賣買權）、現金擔保賣權（備現金賣賣權）、領口（持股＋買保護賣權＋賣買權）；觀察清單內美股（Yahoo Finance／Nasdaq，延遲、非官方）與 Nasdaq Stockholm（延遲）每小時更新；每週＝當週到期。清單外標的維持不可用；某策略無雙邊報價時只該策略顯示無資料。"
       : "OPTION_DATA_UNAVAILABLE：目前沒有已封存驗收的公開期權快照；舊鍵 options:latest／latest_options 殘留或存在本身不計為可用，不代表權利金為0或沒有風險。";
-    const statusText = `${statusTextBase} 各市場來源與缺口狀態：輸入「${GLOBAL_SOURCE_STATUS_COMMAND}」（僅來源說明，非即時報價）。`;
+    const statusText = humanizeStatusText(`${statusTextBase} 各市場來源與缺口狀態：輸入「${GLOBAL_SOURCE_STATUS_COMMAND}」（僅來源說明，非即時報價）。`);
 
     const navActions = [
       ["範例：NVDA 每月期權", "NVDA 每月期權"],
@@ -447,10 +479,11 @@ export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promis
       header: productHeader("韭菜守護者 · 公開研究", "期權與個股快查"),
       body: menuBox([
         sectionTitle("股票代號 → 每週／每月 → 報價與風險"),
+        ...(view.integrity === "sealed" ? [] : [noticeBanner("caution", "當輪報價未封存", "僅顯示教學與查詢入口，不把舊報價當成即時資料")]),
         menuText(statusText, "sm", T.ink),
         menuText("本入口整合逐約報價查詢與 4 種標準期權策略教學範例；請向右滑動查看教學卡片。", "xs", T.subtle),
       ], { backgroundColor: T.paper, paddingAll: "xl" }),
-      footer: menuBox(navActions.map(([label, cmd]) => menuAction(label, cmd)), { ...footerStyle }),
+      footer: menuBox(preferredNavActions(navActions).map(([label, cmd]) => menuAction(label, cmd)), { ...footerStyle }),
     };
 
     const eduFlex = buildEducationalStrategyFlex();
@@ -459,7 +492,7 @@ export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promis
 
     const messages: LineOutboundMessage[] = [{
       type: "flex",
-      altText: "期權與個股快查｜策略教學與公開報價",
+      altText: shortAltText("期權與個股快查｜策略教學與公開報價"),
       contents: {
         type: "carousel",
         contents: allBubbles,
@@ -489,9 +522,9 @@ export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promis
   if (potentialReport || orderView || /^(?:潛力榜|潜力榜|資料驅動潛力榜|潛力\s*top\s*20)(?:\s*文字)?$/i.test(command)) {
     const isText = isEnvText || /文字\s*$/i.test(command);
     const view = await pinPublicSnapshot(env);
-    const overview = view.integrity === "sealed" ? await view.json<Record<string, unknown>>([MACRO_PRODUCT_KEY]) : null;
-    const ranking = validatePotentialRanking(overview?.potential_ranking);
-    if (!ranking) {
+    const overview = await loadFreshMacroDocument(env, view);
+    const validatedRanking = validatePotentialRanking(overview?.potential_ranking);
+    if (!validatedRanking) {
       const macro = macroOverviewState(overview);
       const knowledgeNotice = phaseKnowledgeWithheldNotice(macro.kind === "VALID" ? macro.overview : null);
       return panel("資料驅動潛力榜", "本輪未封存", [
@@ -500,7 +533,8 @@ export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promis
         ...(knowledgeNotice ? [knowledgeNotice] : []),
       ], [["TOP5 產業總覽", "TOP5產業總覽"], ["回功能選單", "選單"]], isText);
     }
-    if (potentialReport) return buildPotentialReport(ranking, potentialReport[1]!, String(overview?.generated_at ?? ranking.as_of), isText);
+    const ranking = freshPotentialCompanyData(validatedRanking, String(overview!.generated_at));
+    if (potentialReport) return buildPotentialReport(ranking, potentialReport[1]!, String(overview!.generated_at), isText);
     if (orderView) return isText ? buildOrderRealizationText(ranking) : buildOrderRealizationFlex(ranking);
     return isText ? buildPotentialRankingText(ranking) : buildPotentialRankingFlex(ranking);
   }
@@ -511,7 +545,7 @@ export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promis
     const targetId = cardMatch[1]!.toLowerCase();
     const view = await pinPublicSnapshot(env);
     if (view.integrity === "sealed") {
-      const card = await sealedMacroEntry(view, targetId, "card") as MacroIndustryCard | null;
+      const card = await sealedMacroEntry(env, view, targetId, "card") as MacroIndustryCard | null;
       if (card) {
         return isText ? buildMacroIndustryCardText(card) : buildMacroIndustryCardFlex(card);
       }
@@ -529,7 +563,7 @@ export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promis
     const targetId = deepMatch[1]!.toLowerCase();
     const view = await pinPublicSnapshot(env);
     if (view.integrity === "sealed") {
-      const deep = await sealedMacroEntry(view, targetId, "deep") as MacroDeepAnalysis | null;
+      const deep = await sealedMacroEntry(env, view, targetId, "deep") as MacroDeepAnalysis | null;
       if (deep) {
         return isText ? buildMacroDeepAnalysisText(deep) : buildMacroDeepAnalysisFlex(deep);
       }

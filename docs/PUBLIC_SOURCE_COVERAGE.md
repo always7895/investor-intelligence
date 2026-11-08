@@ -1,5 +1,9 @@
 # Public source coverage / 公開資料來源覆蓋
 
+<!-- DOCS-R1 scope -->
+> **Scope:** Technical reference; verify executable behavior against code and current source-bound evidence. Current acceptance and unresolved issues: [STATUS](../state/STATUS.md). The document itself does not authorize Production changes.
+<!-- /DOCS-R1 scope -->
+
 This is a development audit, not a claim that all financial data is diversified or Production-qualified. One shared adapter interface, provenance validator and explicit local collector are used; staged adapters do not enter the reviewed runtime registry automatically.
 
 ## Role and availability matrix

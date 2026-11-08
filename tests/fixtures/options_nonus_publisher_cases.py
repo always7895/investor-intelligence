@@ -85,6 +85,15 @@ def _sha(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+def monthly_dte() -> int:
+    """Days from the (patchable) TODAY to the nearest standard monthly (a third Friday): 16 on the default 2026-09-30 world."""
+    fridays = []
+    for offset in range(4):
+        index = TODAY.year * 12 + TODAY.month - 1 + offset
+        fridays.append(builder.rules.third_friday(index // 12, index % 12 + 1))
+    return (builder.rules.select_monthly_expiry(fridays, TODAY) - TODAY).days
+
+
 def dte_date(dte: int) -> str:
     return (TODAY + timedelta(days=dte)).isoformat()
 
@@ -162,7 +171,7 @@ def healthy_us(count: int, prefix: str = "SYNTHUS") -> list[dict[str, Any]]:
     out = []
     for i in range(count):
         chains = {}
-        for dte in (7, 28):
+        for dte in (7, monthly_dte()):
             strike, bid, ask = qualifying(100.0, dte)
             chains[dte] = [(strike, bid, ask)]
         out.append(us(f"{prefix}{i:02d}", chains))
@@ -170,17 +179,17 @@ def healthy_us(count: int, prefix: str = "SYNTHUS") -> list[dict[str, Any]]:
 
 
 def zero_us(symbol: str) -> dict[str, Any]:
-    return us(symbol, {28: [(120.0, 0.0, 0.0)]})
+    return us(symbol, {monthly_dte(): [(120.0, 0.0, 0.0)]})
 
 
 def healthy_st(symbol: str, spot: float = 100.0) -> dict[str, Any]:
     root = symbol[:-3].replace("-", "")
-    return st(symbol, [qualifying_row(root, 28, spot)], spot=spot)
+    return st(symbol, [qualifying_row(root, monthly_dte(), spot)], spot=spot)
 
 
 def zero_st(symbol: str) -> dict[str, Any]:
     root = symbol[:-3].replace("-", "")
-    return st(symbol, [nordic_row(root, 28, 120.0, bid="0.00", ask="0.00")])
+    return st(symbol, [nordic_row(root, monthly_dte(), 120.0, bid="0.00", ask="0.00")])
 
 
 # ---------------------------------------------------------------------------------------------- real main harness
@@ -221,7 +230,8 @@ def _sealed_world(specs: list[dict[str, Any]], now: datetime, requests: list[str
 
         def option_chain(self, expiry: str) -> Any:
             dte = (date.fromisoformat(expiry) - TODAY).days
-            rows = [types.SimpleNamespace(strike=k, bid=b, ask=a, impliedVolatility=0.6, openInterest=10, volume=5)
+            rows = [types.SimpleNamespace(strike=k, bid=b, ask=a, impliedVolatility=0.6, openInterest=10, volume=5,
+                                           contractSize="REGULAR", currency="USD")
                     for k, b, a in self.spec["chains"].get(dte, [])]
             return types.SimpleNamespace(calls=types.SimpleNamespace(itertuples=lambda: iter(rows)))
 
@@ -241,7 +251,16 @@ def _sealed_world(specs: list[dict[str, Any]], now: datetime, requests: list[str
         if "/api/quote/" in url:
             for spec in specs:
                 if spec["kind"] == "US" and f"/api/quote/{spec['symbol'].replace('-', '.').lower()}/option-chain" in url:
-                    return {"data": {"table": {"rows": spec["nasdaq_rows"] or []}}}
+                    if "nasdaq_error" in spec:  # V19: a bot challenge or non-JSON body surfaces as the transport's exception
+                        raise spec["nasdaq_error"]
+                    day = now.date()
+                    data: dict[str, Any] = {"table": {"rows": spec["nasdaq_rows"] or []}}
+                    if "nasdaq_last_trade" in spec:  # V19: an explicit data.lastTrade text; None leaves it out
+                        if spec["nasdaq_last_trade"] is not None:
+                            data["lastTrade"] = spec["nasdaq_last_trade"]
+                    else:
+                        data["lastTrade"] = f"LAST TRADE: $1.00 (AS OF {day.strftime('%b').upper()} {day.day}, {day.year})"
+                    return {"data": data}
             return {"data": {"table": {"rows": []}}}
         raise AssertionError("UNEXPECTED_TRANSPORT:" + url)
 
@@ -334,7 +353,7 @@ READ_FAILED = "讀取或解析失敗"
 TERMS_UNCONFIRMED = "合約單位或幣別來源未確認"
 NONSTANDARD = "合約單位非標準100股"
 NO_TWO_SIDED = "所選到期無有效雙邊報價"
-STRATEGY_MISS = "沒有年化權利金達 6% 且有雙邊報價的履約價"
+STRATEGY_MISS = "沒有 Delta 不超過 0.20 且有雙邊報價的履約價"   # no yield floor (removed 2026-11-03): only the delta cap and the quote can refuse a strike
 PRECISION = "兩位以上小數"  # recommendation capability of the two-decimal display, not a source-identity or quote failure
 
 
@@ -346,12 +365,11 @@ def case_retained_sive_sept30() -> tuple[str, str, list[dict[str, Any]], Any]:
          "contractSize": "100", "bidPrice": "", "askPrice": ""},
         nordic_row("SIVE", 51, 36.0, currency="")]  # SYNTHETIC row standing for the reported 2026-11-20 listing
     specs = [st("SIVE.ST", sive_rows, spot=31.48, cached=False, search_share=RETAINED_SIVE_SHARE),
-             st("VOLV-B.ST", [dict(RETAINED_VOLVB_WEEKLY), qualifying_row("VOLVB", 28, 310.0)], spot=310.0), healthy_st("AZN.ST", 100.0), *healthy_us(10)]
-    specs.append(us("AZN", {28: [qualifying(100.0, 28)]}, spot=100.0))
+             st("VOLV-B.ST", [dict(RETAINED_VOLVB_WEEKLY), qualifying_row("VOLVB", 16, 310.0)], spot=310.0), healthy_st("AZN.ST", 100.0), *healthy_us(10)]
+    specs.append(us("AZN", {16: [qualifying(100.0, 16)]}, spot=100.0))
 
     def check(case: str, result: _Result, bodies: dict[str, str]) -> None:
         assert result.rc == 0, result.status
-        expect_unavailable(case, bodies, "SIVE.ST", "monthly", "本次回應有上市買權；所列到期不在21–45天策略範圍", "2026-10-16（16天）", "2026-11-20（51天）")
         expect_unavailable(case, bodies, "SIVE.ST", "weekly", "本次回應有上市買權；所列到期不在本週或下週策略範圍", "2026-10-16（16天）")
         # The retained weekly VOLVB row (2026-10-02, this calendar week as of Wed 2026-09-30) IS the weekly now; its blank contract currency
         # follows the confirmed SEK underlying (V13, Nasdaq contract specification), and its retained bid/ask are empty, so it is refused for
@@ -363,19 +381,18 @@ def case_retained_sive_sept30() -> tuple[str, str, list[dict[str, Any]], Any]:
         expect_available(case, bodies, "AZN", "monthly", currency="USD")
         expect_available(case, bodies, "SYNTHUS00", "monthly", currency="USD")
         assert any("/nordic/search?searchText=SIVE" in url for url in result.requests), "the search fallback must resolve the SHARES fixture"
-        expect_health(case, result, "STOCKHOLM", 3, 2)  # V13: the blank-currency VOLVB weekly chain is now read (no two-sided quote)
     return ("retained_sive_sept30", "RETAINED-shape SIVE rows (16 and 51 DTE) beside healthy SYNTHETIC SEK/USD siblings, admitted through real main", specs, check)
 
 
 def case_currency_evidence_matrix() -> tuple[str, str, list[dict[str, Any]], Any]:
     specs: list[dict[str, Any]] = [healthy_st("VOLV-B.ST", 310.0), *healthy_us(2)]
-    row = lambda root, **kw: [qualifying_row(root, 28, 100.0, **kw)]  # noqa: E731
+    row = lambda root, **kw: [qualifying_row(root, 16, 100.0, **kw)]  # noqa: E731
     contract_variants = {"CURSEK": {"currency": "SEK"}, "CURNULL": {"currency": None}, "CUREMPTY": {"currency": ""}, "CURWS": {"currency": "  "},
                          "CURFALSE": {"currency": False}, "CURZERO": {"currency": 0}, "CURLIST": {"currency": []}, "CURDICT": {"currency": {}},
                          "CURNAN": {"currency": float("nan")}, "CURINT": {"currency": 752}, "CURLOWER": {"currency": "sek"}, "CURUSD": {"currency": "USD"}}
     for root, override in contract_variants.items():
         specs.append(st(f"{root}.ST", row(root, **override), cached=False))
-    missing = qualifying_row("CURMISSING", 28, 100.0)
+    missing = qualifying_row("CURMISSING", 16, 100.0)
     del missing["currency"]
     specs.append(st("CURMISSING.ST", [missing], cached=False))
     specs.append(st("SPOTUSD.ST", row("SPOTUSD"), spot_currency="USD"))
@@ -407,7 +424,7 @@ def case_native_symbol_identity_matrix() -> tuple[str, str, list[dict[str, Any]]
     k, b, a = qualifying(13.7, 9, strike=15.5)
     week = lambda root: [nordic_row(root, 9, k, bid=b, ask=a)]  # noqa: E731 - the reviewed decimal-strike weekly shape (15.50, 9 DTE)
     specs.append(st("SYMCTL.ST", week("SYMCTL"), spot=13.7))
-    specs.append(st("SYMMON.ST", [qualifying_row("SYMMON", 28, 100.0)]))
+    specs.append(st("SYMMON.ST", [qualifying_row("SYMMON", 16, 100.0)]))
     specs.append(st("SYMWEEK.ST", [qualifying_row("SYMWEEK", 7, 100.0)]))
     day14 = TODAY + timedelta(days=9)
     wrong = {"SYMSTRIKE": native_symbol("SYMSTRIKE", 9, 16.0), "SYMMONTH": f"SYMMONTH{day14.year % 10}K{_strike_text(k)}",
@@ -477,12 +494,12 @@ def case_identity_matrix() -> tuple[str, str, list[dict[str, Any]], Any]:
     specs: list[dict[str, Any]] = [healthy_st("VOLV-B.ST", 310.0), *healthy_us(2)]
 
     def one(root: str, **override: Any) -> list[dict[str, Any]]:
-        return [qualifying_row(root, 28, 100.0, **override)]
-    wrong = {"IDROOT": {"fullName": "OTHER 28OCT26 125C"}, "IDDATE": {}, "IDSTRIKE": {"strikePrice": "126.00"}, "IDSYMBOL": {"symbol": "OTHER6J125"},
+        return [qualifying_row(root, 16, 100.0, **override)]
+    wrong = {"IDROOT": {"fullName": "OTHER 16OCT26 125C"}, "IDDATE": {}, "IDSTRIKE": {"strikePrice": "126.00"}, "IDSYMBOL": {"symbol": "OTHER6J125"},
              "IDNAMENONE": {"fullName": None}, "IDBADDATE": {"expirationDate": "2026-13-45"}, "IDBADSTRIKE": {"strikePrice": None}}
-    rows_idroot = one("IDROOT", fullName="OTHER 28OCT26 125C")
-    bad_date = qualifying_row("IDDATE", 28, 100.0)
-    bad_date["expirationDate"] = dte_date(29)  # the call name says 28 days, the row's own expiry field says 29
+    rows_idroot = one("IDROOT", fullName="OTHER 16OCT26 125C")
+    bad_date = qualifying_row("IDDATE", 16, 100.0)
+    bad_date["expirationDate"] = dte_date(17)  # the call name says 16 days, the row's own expiry field says 17
     for root, override in wrong.items():
         if root == "IDDATE":
             specs.append(st("IDDATE.ST", [bad_date]))
@@ -490,17 +507,17 @@ def case_identity_matrix() -> tuple[str, str, list[dict[str, Any]], Any]:
             specs.append(st("IDROOT.ST", rows_idroot))
         else:
             specs.append(st(f"{root}.ST", one(root, **override)))
-    put_only = qualifying_row("IDPUT", 28, 100.0)
+    put_only = qualifying_row("IDPUT", 16, 100.0)
     put_only["fullName"] = put_only["fullName"][:-1] + "P"
     specs.append(st("IDPUT.ST", [put_only]))
-    specs.append(st("IDFUTCOPT.ST", [nordic_row("IDFUTCOPT", 28, 0.0, bid="99.00", ask="99.50", fullName=f"IDFUTCOPT {_name_date(28)} FUTC", strikePrice="0.00")]))
-    specs.append(st("IDFUTC.ST", [nordic_row("IDFUTC", 28, 0.0, bid="99.00", ask="99.50", fullName=f"IDFUTC {_name_date(28)} FUTC", strikePrice="0.00", assetClass="FUTURES_FORWARDS")]))
+    specs.append(st("IDFUTCOPT.ST", [nordic_row("IDFUTCOPT", 16, 0.0, bid="99.00", ask="99.50", fullName=f"IDFUTCOPT {_name_date(16)} FUTC", strikePrice="0.00")]))
+    specs.append(st("IDFUTC.ST", [nordic_row("IDFUTC", 16, 0.0, bid="99.00", ask="99.50", fullName=f"IDFUTC {_name_date(16)} FUTC", strikePrice="0.00", assetClass="FUTURES_FORWARDS")]))
     specs.append(st("IDUNKNOWN.ST", one("IDUNKNOWN", assetClass="UNKNOWN_DERIVATIVE")))
-    missing_class = qualifying_row("IDNOCLASS", 28, 100.0)
+    missing_class = qualifying_row("IDNOCLASS", 16, 100.0)
     del missing_class["assetClass"]
     specs.append(st("IDNOCLASS.ST", [missing_class]))
     specs.append(st("IDMALONLY.ST", [None, 5, "x", [], {"assetClass": "OPTIONS", "fullName": None}]))
-    specs.append(st("IDMIXED.ST", [None, "x", qualifying_row("IDMIXED", 28, 100.0)]))
+    specs.append(st("IDMIXED.ST", [None, "x", qualifying_row("IDMIXED", 16, 100.0)]))
     specs.append(st("IDROWSNONE.ST", {"raw": {"data": {"instrumentListing": {"rows": None}}}}))
     specs.append(st("IDROWSDICT.ST", {"raw": {"data": {"instrumentListing": {"rows": {}}}}}))
     specs.append(st("IDENVELOPE.ST", {"raw": {"data": None}}))
@@ -528,39 +545,43 @@ def case_terms_and_quote_states() -> tuple[str, str, list[dict[str, Any]], Any]:
 
     def chain(root: str, *rows: dict[str, Any]) -> dict[str, Any]:
         return st(f"{root}.ST", list(rows))
+    # As of Wed 2026-09-30 the nearest standard monthly is 2026-10-16 (16 DTE); the next one is 2026-11-20 (51 DTE). The nearest decides.
     k16, b16, a16 = q(16)
-    k28, b28, a28 = q(28)
+    k51, b51, a51 = q(51)
     specs += [
-        chain("TSIZE50", nordic_row("TSIZE50", 16, k16, bid=b16, ask=a16), nordic_row("TSIZE50", 28, k28, bid=b28, ask=a28, size="50")),
-        chain("TSIZE1005", nordic_row("TSIZE1005", 28, k28, bid=b28, ask=a28, size="100.5")),
-        chain("TSIZENONE", nordic_row("TSIZENONE", 16, k16, bid=b16, ask=a16), nordic_row("TSIZENONE", 28, k28, bid=b28, ask=a28, size=None)),
-        chain("TCCYNONE", nordic_row("TCCYNONE", 16, k16, bid=b16, ask=a16), nordic_row("TCCYNONE", 28, k28, bid=b28, ask=a28, currency=None)),
-        chain("TOUTSIDE", nordic_row("TOUTSIDE", 28, k28, bid=b28, ask=a28), nordic_row("TOUTSIDE", 40, k28, bid=b28, ask=a28, size="50")),
-        chain("QNOQUOTE", nordic_row("QNOQUOTE", 28, k28)),
-        chain("QONESIDED", nordic_row("QONESIDED", 28, k28, bid="0.50", ask="")),
-        chain("QZERO", nordic_row("QZERO", 28, k28, bid="0.00", ask="0.00")),
-        chain("QCROSSED", nordic_row("QCROSSED", 28, k28, bid="0.60", ask="0.50")),
-        chain("QLASTSALE", nordic_row("QLASTSALE", 28, k28, lastSalePrice="0.55", settlementPrice="0.55", openInterest="500", volume="40")),
-        chain("QMISS", nordic_row("QMISS", 28, k28, bid="0.01", ask="0.02")),
-        chain("QGOOD", nordic_row("QGOOD", 28, k28, bid=b28, ask=a28)),
-        chain("TSZEXACT", nordic_row("TSZEXACT", 28, k28, bid=b28, ask=a28, size="100.00")),
-        chain("TSZLEADING", nordic_row("TSZLEADING", 28, k28, bid=b28, ask=a28, size="0100")),
-        chain("TSZEXP", nordic_row("TSZEXP", 28, k28, bid=b28, ask=a28, size="1e2")),
-        chain("TSZPREC", nordic_row("TSZPREC", 28, k28, bid=b28, ask=a28, size="100.000000000000000001")),
-        chain("TSZLONG", nordic_row("TSZLONG", 28, k28, bid=b28, ask=a28, size="100." + "0" * 40)),
+        chain("TSIZE50", nordic_row("TSIZE50", 16, k16, bid=b16, ask=a16, size="50"), nordic_row("TSIZE50", 51, k51, bid=b51, ask=a51)),
+        chain("TSIZE1005", nordic_row("TSIZE1005", 16, k16, bid=b16, ask=a16, size="100.5")),
+        chain("TSIZENONE", nordic_row("TSIZENONE", 16, k16, bid=b16, ask=a16, size=None), nordic_row("TSIZENONE", 51, k51, bid=b51, ask=a51)),
+        chain("TCCYNONE", nordic_row("TCCYNONE", 16, k16, bid=b16, ask=a16, currency=None), nordic_row("TCCYNONE", 51, k51, bid=b51, ask=a51)),
+        chain("TOUTSIDE", nordic_row("TOUTSIDE", 16, k16, bid=b16, ask=a16), nordic_row("TOUTSIDE", 51, k51, bid=b51, ask=a51, size="50")),
+        chain("QNOQUOTE", nordic_row("QNOQUOTE", 16, k16)),
+        chain("QONESIDED", nordic_row("QONESIDED", 16, k16, bid="0.50", ask="")),
+        chain("QZERO", nordic_row("QZERO", 16, k16, bid="0.00", ask="0.00")),
+        chain("QCROSSED", nordic_row("QCROSSED", 16, k16, bid="0.60", ask="0.50")),
+        chain("QLASTSALE", nordic_row("QLASTSALE", 16, k16, lastSalePrice="0.55", settlementPrice="0.55", openInterest="500", volume="40")),
+        chain("QMISS", nordic_row("QMISS", 16, 101.0, bid="4.00", ask="4.20")),  # an out-of-the-money strike whose quote implies a delta over the 0.20 cap
+        chain("QCHEAP", nordic_row("QCHEAP", 16, k16, bid="0.01", ask="0.02")),  # pays almost nothing, and no yield floor refuses it
+        chain("QGOOD", nordic_row("QGOOD", 16, k16, bid=b16, ask=a16)),
+        chain("TSZEXACT", nordic_row("TSZEXACT", 16, k16, bid=b16, ask=a16, size="100.00")),
+        chain("TSZLEADING", nordic_row("TSZLEADING", 16, k16, bid=b16, ask=a16, size="0100")),
+        chain("TSZEXP", nordic_row("TSZEXP", 16, k16, bid=b16, ask=a16, size="1e2")),
+        chain("TSZPREC", nordic_row("TSZPREC", 16, k16, bid=b16, ask=a16, size="100.000000000000000001")),
+        chain("TSZLONG", nordic_row("TSZLONG", 16, k16, bid=b16, ask=a16, size="100." + "0" * 40)),
     ]
 
     def check(case: str, result: _Result, bodies: dict[str, str]) -> None:
         assert result.rc == 0, result.status
-        expect_unavailable(case, bodies, "TSIZE50.ST", "monthly", NONSTANDARD, forbid=("所列到期不在21",))
+        expect_unavailable(case, bodies, "TSIZE50.ST", "monthly", NONSTANDARD, forbid=("所列到期無標準月選",))
         expect_unavailable(case, bodies, "TSIZE50.ST", "weekly", "所列到期不在本週或下週策略範圍", "2026-10-16（16天）")
         expect_unavailable(case, bodies, "TSIZE1005.ST", "monthly", NONSTANDARD)
-        expect_unavailable(case, bodies, "TSIZENONE.ST", "monthly", TERMS_UNCONFIRMED, forbid=(NONSTANDARD, "所列到期不在21"))
-        expect_unavailable(case, bodies, "TCCYNONE.ST", "monthly", TERMS_UNCONFIRMED, forbid=("所列到期不在21",))
+        expect_unavailable(case, bodies, "TSIZENONE.ST", "monthly", TERMS_UNCONFIRMED, forbid=(NONSTANDARD, "所列到期無標準月選"))
+        expect_unavailable(case, bodies, "TCCYNONE.ST", "monthly", TERMS_UNCONFIRMED, forbid=("所列到期無標準月選",))
         expect_available(case, bodies, "TOUTSIDE.ST", "monthly", currency="SEK")
         for root in ("QNOQUOTE", "QONESIDED", "QZERO", "QCROSSED", "QLASTSALE"):
             expect_unavailable(case, bodies, f"{root}.ST", "monthly", NO_TWO_SIDED, forbid=(STRATEGY_MISS, "沒有上市", "無上市"))
         expect_unavailable(case, bodies, "QMISS.ST", "monthly", STRATEGY_MISS, forbid=(NO_TWO_SIDED,))
+        expect_available(case, bodies, "QCHEAP.ST", "monthly", currency="SEK")  # no yield floor: a 0.01 bid is listed
+        assert cycle_of(bodies, "QCHEAP.ST", "monthly")["suggestions"][0]["annualized_yield"] < 0.02
         expect_available(case, bodies, "QGOOD.ST", "monthly", currency="SEK")
         expect_available(case, bodies, "TSZEXACT.ST", "monthly", currency="SEK")  # a validated exact-100 numeric representation
         for root in ("TSZLEADING", "TSZEXP"):  # an unsupported encoding is unconfirmed, never a proven non-100 share count
@@ -568,19 +589,25 @@ def case_terms_and_quote_states() -> tuple[str, str, list[dict[str, Any]], Any]:
         expect_unavailable(case, bodies, "TSZPREC.ST", "monthly", NONSTANDARD)  # exactly not 100: never rounded into the standard
         expect_unavailable(case, bodies, "TSZLONG.ST", "monthly", TERMS_UNCONFIRMED, forbid=(NONSTANDARD,))  # over the bounded precision
         expect_available(case, bodies, "VOLV-B.ST", "monthly", currency="SEK")
-        # R counts only chains read with an eligible selected expiry: 5 without a two-sided quote, QMISS/QGOOD/TSZEXACT/TOUTSIDE/VOLV-B with one.
-        expect_health(case, result, "STOCKHOLM", 10, 5)
+        # R counts only chains read with an eligible selected expiry: 11, 5 without a two-sided quote and QMISS/QCHEAP/QGOOD/TSZEXACT/TOUTSIDE/VOLV-B with one.
+        expect_health(case, result, "STOCKHOLM", 11, 6)
     return ("terms_and_quote_states", "SYNTHETIC: mixed contract terms versus DTE reasoning and raw quote states (lastSale/settlement/OI are never quotes)", specs, check)
 
 
 # Weekly selection is calendar-week based (as of Wed 2026-09-30 a single listed expiry is a weekly only for 1 <= DTE <= 11: through
-# next Sunday); monthly stays 21-45 DTE.
+# next Sunday). A single listed expiry is a monthly only when it is that month's standard monthly: the third Friday (2026-10-16 = 16 DTE,
+# 2026-11-20 = 51 DTE) or, with no Friday listed, a Monday-Thursday of that week (12-15 and 47-50 DTE); nothing beyond 60 DTE.
 WEEKLY_DTE_RANGE = (1, 11)
-NORDIC_DTES = (3, 11, 12, 14, 15, 20, 21, 45, 46, 60)
+MONTHLY_DTES = frozenset({12, 13, 14, 15, 16, 47, 48, 49, 50, 51})
+NORDIC_DTES = (3, 11, 12, 14, 15, 16, 17, 20, 21, 45, 46, 50, 51, 52, 60, 61)
 
 
-def window_needle(cycle: str, low: int, high: int) -> str:
-    return "所列到期不在本週或下週策略範圍" if cycle == "weekly" else f"所列到期不在{low}–{high}天策略範圍"
+def window_needle(cycle: str) -> str:
+    return "所列到期不在本週或下週策略範圍" if cycle == "weekly" else "所列到期無標準月選（第三個星期五）"
+
+
+def in_cycle(cycle: str, dte: int) -> bool:
+    return WEEKLY_DTE_RANGE[0] <= dte <= WEEKLY_DTE_RANGE[1] if cycle == "weekly" else dte in MONTHLY_DTES
 
 
 def case_dte_nordic_matrix() -> tuple[str, str, list[dict[str, Any]], Any]:
@@ -594,16 +621,16 @@ def case_dte_nordic_matrix() -> tuple[str, str, list[dict[str, Any]], Any]:
         assert result.rc == 0, result.status
         for dte in NORDIC_DTES:
             symbol = f"ND{dte}.ST"
-            for cycle, (low, high) in (("weekly", WEEKLY_DTE_RANGE), ("monthly", (21, 45))):
-                if low <= dte <= high:
+            for cycle in ("weekly", "monthly"):
+                if in_cycle(cycle, dte):
                     expect_available(case, bodies, symbol, cycle, currency="SEK")
                     assert cycle_of(bodies, symbol, cycle)["dte"] == dte
                 else:
-                    expect_unavailable(case, bodies, symbol, cycle, window_needle(cycle, low, high), dte_date(dte))
-    return ("dte_nordic_matrix", "SYNTHETIC: Stockholm selector boundaries weekly 3/11/12/14/15 (calendar-week rule) and monthly 15/20/21/45/46/60 through real main", specs, check)
+                    expect_unavailable(case, bodies, symbol, cycle, window_needle(cycle), dte_date(dte))
+    return ("dte_nordic_matrix", "SYNTHETIC: Stockholm selector boundaries, weekly (calendar-week rule) and monthly (standard monthly, third Friday or its week) through real main", specs, check)
 
 
-US_DTES = (3, 11, 12, 14, 15, 20, 21, 45, 46, 60)
+US_DTES = NORDIC_DTES
 
 
 def case_dte_us_matrix() -> tuple[str, str, list[dict[str, Any]], Any]:
@@ -615,10 +642,10 @@ def case_dte_us_matrix() -> tuple[str, str, list[dict[str, Any]], Any]:
         date_text = (TODAY + timedelta(days=dte)).strftime("%B %d, %Y")
         specs.append(us(f"UN{dte}", {}, yahoo_expiries=[], nasdaq_rows=[
             {"expirygroup": date_text}, {"strike": f"{strike:.1f}", "c_Bid": f"{bid:.2f}", "c_Ask": f"{ask:.2f}", "c_Openinterest": "10", "c_Volume": "5"}]))
-    specs.append(us("UYMISS", {7: [(120.0, 0.01, 0.02)], 28: [(120.0, 0.01, 0.02)]}))
+    specs.append(us("UYMISS", {7: [(101.0, 4.0, 4.2)], 16: [(101.0, 4.0, 4.2)]}))  # a strike whose quote implies a delta over the 0.20 cap
     specs.append(us("UYEMPTY", {}, yahoo_expiries=[]))
-    specs.append(us("UYZERO", {7: [(120.0, 0.0, 0.0)], 28: [(120.0, 0.0, 0.0)]}))
-    specs.append(us("UYONESIDED", {7: [(120.0, 0.5, None)], 28: [(120.0, 0.5, None)]}))
+    specs.append(us("UYZERO", {7: [(120.0, 0.0, 0.0)], 16: [(120.0, 0.0, 0.0)]}))
+    specs.append(us("UYONESIDED", {7: [(120.0, 0.5, None)], 16: [(120.0, 0.5, None)]}))
     specs += healthy_us(2)
 
     def check(case: str, result: _Result, bodies: dict[str, str]) -> None:
@@ -626,14 +653,14 @@ def case_dte_us_matrix() -> tuple[str, str, list[dict[str, Any]], Any]:
         for prefix in ("UY", "UN"):
             for dte in US_DTES:
                 symbol = f"{prefix}{dte}"
-                for cycle, (low, high) in (("weekly", WEEKLY_DTE_RANGE), ("monthly", (21, 45))):
-                    if low <= dte <= high:
+                for cycle in ("weekly", "monthly"):
+                    if in_cycle(cycle, dte):
                         expect_available(case, bodies, symbol, cycle, currency="USD")
                         assert cycle_of(bodies, symbol, cycle)["dte"] == dte, (symbol, cycle)
                     else:
                         assert "unavailable" in cycle_of(bodies, symbol, cycle), f"{case}: {symbol}/{cycle} must not emit a strategy at {dte} DTE"
         miss = cycle_of(bodies, "UYMISS", "monthly")
-        assert "unavailable" in miss and "年化權利金" in miss["unavailable"], miss
+        assert "unavailable" in miss and "Delta 不超過 0.20" in miss["unavailable"] and "年化權利金" not in miss["unavailable"], miss
         nasdaq = [u for u in result.requests if "/api/quote/" in u]
         assert not any("/api/quote/uymiss/" in u for u in nasdaq), "a successfully read strategy miss must not trigger a Nasdaq retry"
         assert sum(1 for u in nasdaq if "/api/quote/uyempty/" in u) == 1, "an unread Yahoo chain gets exactly one Nasdaq retry"
@@ -654,8 +681,8 @@ def _prior_bytes(directory: Path) -> tuple[bytes, dict[str, str]]:
 
 def _depletion_specs(venue: str, chains: int, healthy: int) -> list[dict[str, Any]]:
     if venue == "US":  # one monthly chain per underlying keeps R equal to the number of underlyings
-        good = qualifying(100.0, 28)
-        specs = [us(f"DEPUS{i:02d}", {28: [good if i < healthy else (120.0, 0.0, 0.0)]}) for i in range(chains)]
+        good = qualifying(100.0, 16)
+        specs = [us(f"DEPUS{i:02d}", {16: [good if i < healthy else (120.0, 0.0, 0.0)]}) for i in range(chains)]
         return specs + [healthy_st("VOLV-B.ST", 310.0)]
     specs = [healthy_st("DEPSTOK.ST") if i < healthy else zero_st(f"DEPST{i:02d}.ST") for i in range(chains)]
     return specs + [*healthy_us(1)]

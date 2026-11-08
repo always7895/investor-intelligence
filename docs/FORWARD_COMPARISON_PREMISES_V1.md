@@ -1,5 +1,9 @@
 # Forward comparison premises V1 / 前瞻比較前提 V1
 
+<!-- DOCS-R1 scope -->
+> **Scope:** Design or candidate contract; existence of this file does not prove implementation, admission or rollout. Current acceptance and unresolved issues: [STATUS](../state/STATUS.md). The document itself does not authorize Production changes.
+<!-- /DOCS-R1 scope -->
+
 Status (2026-09-25): design accepted for development; C1 implemented as a nonauthorizing shadow. No scoring, ranking, publication or consumer change is authorized by this document. It names the finite contracts that implement lane 1 of `state/STATUS.md`.
 
 ## Problem

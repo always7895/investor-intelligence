@@ -15,11 +15,11 @@ const SEC_URL = "https://www.sec.gov/files/company_tickers_exchange.json";
 const NOTICE = "身分備援：SEC 本機快取僅部分涵蓋 Nasdaq／NYSE；掛牌狀態與證券類別未經交易所名錄核實。檔案時間不等於已驗證取得時間；若顯示期權按鈕，僅供查詢，不代表期權資格或可成交。";
 const QUOTE_DISCLAIMER = "公開研究資訊，非投資建議；身分採 SEC 公司代號名錄之本機快取備援（部分涵蓋，未經交易所名錄核實），報價為延遲觀察值，不下單。";
 const NO_QUOTE_DISCLAIMER = "公開研究資訊，非投資建議；身分採 SEC 公司代號名錄之本機快取備援（部分涵蓋，未經交易所名錄核實），本標的暫無延遲報價觀察。";
-const UNAVAILABLE_SUB = "IDENTITY_FALLBACK_SEC_CACHE：本筆採 SEC 公司代號名錄之本機快取備援；部分涵蓋，非即時交易所核實；暫無已封存延遲報價。";
+const UNAVAILABLE_SUB = "採用身分備援資料：本筆採 SEC 公司代號名錄之本機快取備援；部分涵蓋，非即時交易所核實；暫無已封存延遲報價。";
 const NAME_ZH = "未有已核對中文名稱（SEC 快取備援，不猜譯）";
 const ORDINARY_QUOTE_DISCLAIMER = "公開研究資訊，非投資建議；身分來自官方上市目錄，報價為延遲觀察值，不下單。";
 const ORDINARY_NO_QUOTE_DISCLAIMER = "公開研究資訊，非投資建議；官方上市身分已核對，本標的暫無延遲報價觀察。";
-const FALLBACK_PHRASES = ["備援身分（SEC 快取）", "身分備援：SEC 本機快取", "IDENTITY_FALLBACK_SEC_CACHE", "SEC 標示", "SEC 公司代號名錄之本機快取備援", "SEC 快取備援，不猜譯"];
+const FALLBACK_PHRASES = ["備援身分（SEC 快取）", "身分備援：SEC 本機快取", "採用身分備援資料", "SEC 標示", "SEC 公司代號名錄之本機快取備援", "SEC 快取備援，不猜譯"];
 
 function record(overrides: Partial<GlobalIdentityRecord> = {}): GlobalIdentityRecord {
   return { venue: "NASDAQ", market: "US", country: "United States", symbol: "SECA", native_symbol: "SECA", security_name: "Sec Cache Orbit",
@@ -69,7 +69,7 @@ describe("IDIV2 renderer: the SEC-cache fallback card", () => {
         expect(out.text).toContain("【個股快查 · SECA｜備援身分（SEC 快取） · 延遲報價】");
       } else {
         expect(out.raw).toContain("市場（SEC 標示）：NASDAQ（United States）");
-        expect(out.raw).toContain('"altText":"個股快查 · SECA｜備援身分（SEC 快取） · 延遲報價"');
+        expect(out.raw).toContain('"altText":"個股快查 · SECA｜備援身分（SEC 快取） · 延遲報價｜');
         expect(out.raw).toContain('"label":"每月期權"');  // the option buttons are unchanged navigation, not an option qualification
         expect(out.raw).toContain('"label":"每週期權"');
       }

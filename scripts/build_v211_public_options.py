@@ -31,25 +31,8 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 
 
 def failure_record(item: dict[str, Any], status: str) -> dict[str, Any]:
-    return {
-        "schema_version": 1,
-        "ticker": item["ticker"],
-        "provider_symbol": item["market_data_ticker"],
-        "currency": item["currency"],
-        "current_price": None,
-        "retrieved_at": datetime.now(timezone.utc).isoformat(),
-        "status": status,
-        "quote_source": "yfinance",
-        "quote_delay_status": "THIRD_PARTY_DELAY_UNKNOWN",
-        "provider_scope": "public_only",
-        "line_public_eligible": True,
-        "ibkr_connected": False,
-        "brokerage_data_included": False,
-        "account_data_included": False,
-        "position_data_included": False,
-        "owner_watchlist_inherited": False,
-        "periods": {},
-    }
+    """Use the same exact Worker-compatible failure schema as the base builder."""
+    return base.failure_record(item, status)
 
 
 def build(
@@ -63,6 +46,7 @@ def build(
     symbols = base.load_public_symbols(symbols_path)
     if not symbols:
         raise ValueError("Generated v2.1.1 public symbol universe is empty")
+    pending = base.corporate_actions.pending_targets(base.corporate_actions.load_actions())
     prices = base.load_market_prices(market_path)
     policy = base.load_policy(policy_path)
 
@@ -70,6 +54,9 @@ def build(
     for index, item in enumerate(symbols, start=1):
         ticker = item["ticker"]
         provider_symbol = item["market_data_ticker"]
+        if ticker in pending:
+            results.append(failure_record(item, "DEAL_PENDING_TARGET"))
+            continue  # no chain, no quote and no public promotion for a pending target
         price = prices.get(ticker)
         if not price:
             try:

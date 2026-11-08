@@ -22,6 +22,8 @@ const fixture = JSON.parse(readFileSync("../tests/fixtures/v11-consensus-sealed.
 const money = (amount: number, currency: string | null) => `${currency ?? ""} ${amount}`;
 const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value));
 const KR_LABEL = "分析師共識（非公司財測、非官方）｜Yahoo Finance，37 位分析師，截至 2026-09-28";
+// V25-FIX3 wraps required Flex source text at line boundaries; ignore only serialized layout breaks.
+const flattenFlexBreaks = (value: string) => value.replaceAll("\\n", "").replaceAll("\\r", "");
 
 function v3Of(name: string, symbol: string): any { return clone(fixture.cases[name]!.outlooks[symbol]!.order_forecast_v3); }
 function parse(name: string, symbol: string, mutate?: (v3: any) => void): OrderForecast {
@@ -198,21 +200,40 @@ describe("analyst-consensus revenue route: an unknown or malformed consensus blo
   });
 });
 
-describe("analyst-consensus revenue route: today's sealed objects read exactly as before", () => {
+describe("analyst-consensus revenue route: legacy views plus reviewed MU contract reference", () => {
   // The rendering of every sealed outlook the earlier producers made (the reviewed golden, the real-data proofs and the
-  // producer probes) is byte-identical to the reader before this change: the hash was taken from that reader.
+  // producer probes) remains byte-identical to the original reader after removing only the explicitly asserted MU
+  // contract-reference addition. The aggregate hash still binds every original number, window, label and source.
   const golden = JSON.parse(readFileSync("../tests/fixtures/v213-orders-v3-golden-sealed.json", "utf-8"));
   const proofRpo = JSON.parse(readFileSync("../tests/fixtures/v213-orders-v3-proof-rpo.json", "utf-8"));
   const proofStates = JSON.parse(readFileSync("../tests/fixtures/v213-orders-v3-proof-states.json", "utf-8"));
   const probes = JSON.parse(readFileSync("../tests/fixtures/v213-orders-v3-probes.json", "utf-8"));
 
-  it("renders every earlier sealed outlook byte-identically and never as the consensus basis", () => {
+  it("preserves the legacy projection and only appends the reviewed MU reference", () => {
     const rendered: string[] = [];
     const take = (label: string, v3: any, v2: any, generatedAt: string, symbol: string) => {
       const f = parseOrderForecastV3(v3, generatedAt.slice(0, 10), symbol, generatedAt, v2);
       expect(f.revenueBasis ?? null, label).not.toBe("CONSENSUS");
       expect(f.consensusNote ?? null, label).toBeNull();
-      rendered.push(label, JSON.stringify(surfaces(f)));
+      const view = surfaces(f);
+      if (label === "proof-states MU") {
+        const headline = "期後訂單消息（不併入 RPO）：已簽策略客戶協議（SCA）RPO 約 US$100B（含 FQ3 後新簽，最低量×最低價）（2026-06-24）";
+        expect(f.supplements.map(c => c.id)).toEqual(["MU-SCA-RPO-2026-06-24"]);
+        expect(view.card.endsWith(`\n${headline}`)).toBe(true);
+        expect(view.text.endsWith(`｜${headline}`)).toBe(true);
+        view.card = view.card.slice(0, -headline.length - 1);
+        view.text = view.text.slice(0, -headline.length - 1);
+        const marker = `\n${headline}\n`;
+        const index = view.detail.indexOf(marker);
+        expect(index).toBeGreaterThan(0);
+        const added = view.detail.slice(index + 1).split("\n");
+        expect(added).toHaveLength(3);
+        expect(added[0]).toBe(headline);
+        expect(added[1]).toBe("　已簽合約；已簽 SCA（含 FQ3 後新簽；公司說明日，非資產負債表日）；截至 2026-06-24");
+        expect(added[2]).toBe(`　公司法說會講稿 2026-06-24（p.7, Strategic customer agreements）https://s25.q4cdn.com/621799436/files/doc_financials/2026/q3/Q3-FY26-Prepared-Remarks.pdf；原文：「${[...f.supplements[0]!.passage].slice(0, 160).join("")}」；本次查核 2026-09-27`);
+        view.detail = view.detail.slice(0, index);
+      }
+      rendered.push(label, JSON.stringify(view));
     };
     for (const symbol of Object.keys(golden)) take(`golden ${symbol}`, golden[symbol].order_forecast_v3, golden[symbol].order_forecast, "2026-09-28T15:00:00Z", symbol);
     for (const [name, proof] of [["proof-rpo", proofRpo], ["proof-states", proofStates]] as const) {
@@ -283,17 +304,29 @@ describe("analyst-consensus revenue route through the real LINE callers", () => 
     return JSON.stringify(messages);
   }
 
-  it("shows the label in the Top20 carousel, the Top20 text and the detail card (reader level)", () => {
+  it("keeps the compact consensus scenario on Top20 and full detail on existing detail/text routes", () => {
     const parsed = parsedDoc(CASE, SYMBOLS);
     const flex = JSON.stringify(buildBottleneckTop20Messages(parsed, "flex"));
     const text = JSON.stringify(buildBottleneckTop20Messages(parsed, "text"));
     const detailFlex = JSON.stringify(buildBottleneckDetail(parsed, "000660.KS", "flex"));
     const detailText = JSON.stringify(buildBottleneckDetail(parsed, "000660.KS", "text"));
-    for (const [name, body] of Object.entries({ flex, text, detailFlex, detailText })) {
-      expect(body, name).toContain(KR_LABEL);
-      expect(body, name).toContain(`達成${CONSENSUS_PRICE_LABEL}營收推估 → 股價情境`);
-    }
-    expect(flex).toContain("分析師共識為第三方分析師估計平均，非公司財測、非官方");
+    // V25-D4 merges the duplicate prefix into the remaining clause "情境：營收依上述推估實現，P/S股數不變；以最新已報四季為基準".
+    // V25-FIX3 keeps the detailed non-official source label on the forecast row; "非訂單" is its distinct order-basis qualifier.
+    expect(flattenFlexBreaks(flex)).toContain("非訂單");
+    expect(flex).toContain(`若約6個月（2財季）達成${CONSENSUS_PRICE_LABEL}營收推估 → 股價情境`);
+    // V25-FIX3 places the qualifier under the bold "情境" label and shortens only connective wording.
+    expect(flattenFlexBreaks(flex)).toContain("營收推估達成，P/S與股數不變；基準：最新已報四季");
+    expect(flex).toContain("分析師共識情境（非訂單）：無分析師共識可推算。");
+    expect(flex).toContain("瓶頸詳情 000660.KS");
+    expect(flattenFlexBreaks(flex)).toContain(KR_LABEL);
+    expect(text).toContain(KR_LABEL.split("｜")[0]!);
+    expect(text).toContain("非訂單");
+    expect(text).toContain(`達成${CONSENSUS_PRICE_LABEL}營收推估 → 股價情境`);
+    expect(text).not.toContain("公司營收財測＋模型");
+    expect(flattenFlexBreaks(detailFlex)).toContain(KR_LABEL);
+    expect(detailFlex).toContain("瓶頸詳情");
+    expect(detailText).toContain(KR_LABEL);
+    expect(detailText).toContain(`達成${CONSENSUS_PRICE_LABEL}營收推估 → 股價情境`);
     expect(detailText).toContain("分析師共識（非官方，0q，至2026-09-30）");
     expect(detailText).toContain("https://query2.finance.yahoo.com/v10/finance/quoteSummary/000660.KS");
   });
@@ -302,22 +335,26 @@ describe("analyst-consensus revenue route through the real LINE callers", () => 
     const env = await sealedEnv(rawDoc(CASE, SYMBOLS), { V213_LINE_PRESENTATION: "text" });
     const top20 = await answer(env, "TOP20");
     expect(top20).toContain("瓶頸爆發 TOP20（v3");
-    expect(top20).toContain(KR_LABEL);
-    expect(top20).toContain("分析師共識（非公司財測、非官方）｜Yahoo Finance，11 位分析師，截至 2026-09-28");
+    expect(top20).toContain(KR_LABEL.split("｜")[0]!);
+    expect(top20).toContain("Yahoo Finance，11 位分析師，截至 2026-09-28");
     const detail = await answer(env, "瓶頸詳情 000660.KS");
     expect(detail).toContain(KR_LABEL);
     expect(detail).toContain(`達成${CONSENSUS_PRICE_LABEL}營收推估 → 股價情境`);
   });
 
-  it("answers through the Worker's LINE event entry: the TOP20 carousel and the company detail", async () => {
+  it("answers the TOP20 command compactly and keeps full company consensus data reachable", async () => {
     const env = await sealedEnv(rawDoc(CASE, SYMBOLS));
     const carousel = await lineReply(env, "TOP20");
     expect(carousel).toContain('"type":"flex"');
-    expect(carousel).toContain(KR_LABEL);
-    expect(carousel).toContain(`達成${CONSENSUS_PRICE_LABEL}營收推估 → 股價情境`);
+    expect(flattenFlexBreaks(carousel)).toContain(KR_LABEL);
+    expect(flattenFlexBreaks(carousel)).toContain("非訂單");
+    expect(carousel).toContain("瓶頸詳情 000660.KS");
     const detail = await lineReply(env, "瓶頸詳情 000660.KS");
-    expect(detail).toContain(KR_LABEL);
+    expect(flattenFlexBreaks(detail)).toContain(KR_LABEL);
     expect(detail).not.toContain("公司營收財測＋模型");
+    const detailText = await lineReply(env, "瓶頸詳情 000660.KS 文字");
+    expect(detailText).toContain(KR_LABEL);
+    expect(detailText).toContain(`達成${CONSENSUS_PRICE_LABEL}營收推估 → 股價情境`);
   });
 
   it("shows no consensus figure through the LINE entry when the sealed block is malformed (fail closed)", async () => {
@@ -329,7 +366,7 @@ describe("analyst-consensus revenue route through the real LINE callers", () => 
     expect(detail).not.toContain("分析師共識（非公司財測、非官方）｜");
     expect(detail).toContain("資料未通過驗證");
     const other = await lineReply(env, "瓶頸詳情 005930.KS"); // the other issuers keep their own valid state
-    expect(other).toContain("分析師共識（非公司財測、非官方）｜Yahoo Finance，25 位分析師");
+    expect(flattenFlexBreaks(other)).toContain("分析師共識（非公司財測、非官方）｜Yahoo Finance，25 位分析師");
   });
 
   it("states the expired route through the LINE entry (the quarter ended before the company reported)", async () => {

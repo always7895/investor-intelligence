@@ -67,7 +67,7 @@ class NordicPositiveTests(unittest.TestCase):
         for field, value in (("quote_basis", "previous_session_last"), ("quote_basis", "realtime"), ("quote_basis", "asof_close"),
                              ("jurisdiction", "US"), ("jurisdiction", "NO"), ("venue", "US_LISTED_OPTIONS"), ("venue", "STOCKHOLM"),
                              ("venue", "NASDAQ_STOCKHOLM_OPTIONS "), ("instrument_kind", "eod_index"), ("publication_scope", "local_research"),
-                             ("provider_id", "nasdaq_nordic_option_chain "), ("provider_id", "nasdaq_public_option_chain")):
+                             ("provider_id", "nasdaq_nordic_option_chain "), ("provider_id", "nyse_options_reference")):
             self.assertEqual(gate.public_option_cycle_admission({**NORDIC_CLAIM, field: value}, policy), DENIED, (field, value))
         for field in NORDIC_CLAIM:
             self.assertEqual(gate.public_option_cycle_admission({k: v for k, v in NORDIC_CLAIM.items() if k != field}, policy), DENIED, field)
@@ -101,7 +101,7 @@ class NordicPositiveTests(unittest.TestCase):
         self.assertEqual(scopes, {("SE", "NASDAQ_STOCKHOLM_OPTIONS", "equity_option", "delayed", "public_line_quote")})  # delayed only: no carry-forward
         self.assertEqual(gate.OPERATOR_ACCEPTED_PROVIDERS[support.NORDIC_ID]["operator_decision"],
                          {"decision_id": support.NORDIC_DECISION_ID, "decided_at": "2026-10-17", "record": "docs/PUBLIC_OPTIONS_PROVIDER_RIGHTS_REVIEW.md"})
-        self.assertEqual(sorted(gate.OPERATOR_ACCEPTED_PROVIDERS), BOTH)  # exactly these two
+        self.assertEqual(sorted(gate.OPERATOR_ACCEPTED_PROVIDERS), sorted(BOTH + [support.NASDAQ_ID]))  # these two plus the V19 Nasdaq US pin
 
     def test_the_repository_catalog_entry_equals_the_pinned_copy(self) -> None:
         repository = json.loads((ROOT / "config" / "public-options-provider-candidates.json").read_text(encoding="utf-8"))
@@ -116,7 +116,7 @@ class NordicPositiveTests(unittest.TestCase):
         self.assertEqual(strip(yahoo[0]), strip(support.YAHOO_ENTRY))  # the Yahoo entry is byte-for-byte what it was
         findings, summary = gate.audit_public_options_providers(ROOT, today=TODAY)
         self.assertEqual(findings, [])
-        self.assertEqual(summary["fully_eligible_provider_ids"], BOTH)
+        self.assertEqual(summary["fully_eligible_provider_ids"], sorted(BOTH + [support.NASDAQ_ID]))  # V19 added the third pinned provider
 
     def test_the_worker_constants_mirror_the_python_pins(self) -> None:
         source = (ROOT / "cloud" / "src" / "v213" / "public-options-admission.ts").read_text(encoding="utf-8")
@@ -175,8 +175,8 @@ class NordicPinTests(unittest.TestCase):
             self.assertTrue(findings, findings)
             self.assertEqual(policy_of(document, root).provider_ids(), [])
             base = both_document()
-            others = [item["id"] for item in base["providers"] if item["id"] not in BOTH]
-            self.assertGreaterEqual(len(others), 12)
+            others = [item["id"] for item in base["providers"] if item["id"] not in BOTH + [support.NASDAQ_ID]]  # the Nasdaq US id is pinned since V19
+            self.assertGreaterEqual(len(others), 11)
             for provider_id in others:
                 with self.subTest(provider=provider_id):
                     document = copy.deepcopy(base)
@@ -215,7 +215,7 @@ class NordicPinTests(unittest.TestCase):
     def test_the_four_pinned_prohibitions_stay_rejected(self) -> None:
         policy = support.both_policy()
         for provider_id in ("cboe_public_options_market_data", "occ_public_market_data", "marketdata_app_free_forever", "tradier_broker_market_data_api",
-                            "taifex_public_options", "nasdaq_public_option_chain"):
+                            "taifex_public_options", "nyse_options_reference"):
             self.assertIsNone(policy.provider(provider_id), provider_id)
             self.assertEqual(gate.public_option_cycle_admission({**NORDIC_CLAIM, "provider_id": provider_id}, policy), DENIED)
 
@@ -300,7 +300,7 @@ class NordicProducerSealerTests(unittest.TestCase):
         base = self.both["options"][cases.SIVE]["monthly"]
         forged = {"carried basis": {**base, "quote_basis": "previous_session_last"},
                   "foreign venue": {**base, "venue": "STOCKHOLM"},
-                  "foreign provider": {**base, "provider_id": "nasdaq_public_option_chain"},
+                  "foreign provider": {**base, "provider_id": "nyse_options_reference"},
                   "no identity": {key: value for key, value in base.items() if key != "provider_id"}}
         policy = support.both_policy()
         document = {"schema": "v213-market-observations-v2", "generated_at": base["timestamp"], "options": {}, "quotes": {

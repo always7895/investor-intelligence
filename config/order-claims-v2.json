@@ -1,7 +1,25 @@
 {
   "schema": "order-claims-v2",
   "issuers": {
-    "MU": {"name": "Micron Technology, Inc.", "url_prefixes": ["https://investors.micron.com/", "https://s25.q4cdn.com/621799436/"]}
+    "MU": {
+      "name": "Micron Technology, Inc.",
+      "url_prefixes": [
+        "https://investors.micron.com/",
+        "https://s25.q4cdn.com/621799436/"
+      ]
+    },
+    "APLD": {
+      "name": "Applied Digital Corporation",
+      "url_prefixes": [
+        "https://ir.applieddigital.com/"
+      ]
+    },
+    "NBIS": {
+      "name": "Nebius Group N.V.",
+      "url_prefixes": [
+        "https://assets.nebius.com/"
+      ]
+    }
   },
   "documents": [
     {
@@ -16,6 +34,32 @@
       "sha256": "a3ce62b84a059e35fae80c2bfd5c89f9af334193fd6aceff698fc3008e7d4c27",
       "byte_size": 119859,
       "lineage_id": "MU-FQ3-26-RESULTS"
+    },
+    {
+      "id": "APLD-RESULTS-2026-10-07",
+      "issuer": "APLD",
+      "publisher": "Applied Digital Corporation",
+      "title": "Fiscal First Quarter2027 Results",
+      "source_kind": "ISSUER_EARNINGS_RELEASE",
+      "url": "https://ir.applieddigital.com/sec-filings/all-sec-filings/content/0001144879-26-000057/apldq127earningsrelease.htm",
+      "published_date": "2026-10-07",
+      "retrieved_at": "2026-10-23T10:51:10Z",
+      "sha256": "b06280244f19c647ac185ee3075c57daf1ec9c05d0fd8962f9df81f121566674",
+      "byte_size": 344102,
+      "lineage_id": "APLD-RESULTS-2026-10-07"
+    },
+    {
+      "id": "NBIS-RESULTS-2026-08-12",
+      "issuer": "NBIS",
+      "publisher": "Nebius Group N.V.",
+      "title": "Q2 2026 Shareholder Letter",
+      "source_kind": "ISSUER_EARNINGS_RELEASE",
+      "url": "https://assets.nebius.com/assets/a6ecfd85-a6cb-4967-8ef7-9a25bd261f9c/SHLQ226.pdf?cache-buster=2026-08-12T11:54:46.695Z",
+      "published_date": "2026-08-12",
+      "retrieved_at": "2026-10-23T10:51:11Z",
+      "sha256": "aec30236b7903532684ddf43fd5006ef89a945118366d767315434fd65b4dc29",
+      "byte_size": 1003545,
+      "lineage_id": "NBIS-RESULTS-2026-08-12"
     }
   ],
   "claims": [
@@ -36,8 +80,64 @@
       "scope_label": "已簽 SCA（含 FQ3 後新簽；公司說明日，非資產負債表日）",
       "series_id": "MU:SCA-RPO",
       "basis": "minimum committed volumes x minimum pricing (issuer statement, approximate)",
-      "revision": {"kind": "SUPPLEMENTS", "overlap": "INCLUDED"},
-      "review": {"checked_at": "2026-09-27T11:25:00Z", "receipt": "lane-dispatch-20260927T0905Z-mu-writer-verify"}
+      "revision": {
+        "kind": "SUPPLEMENTS",
+        "overlap": "INCLUDED"
+      },
+      "review": {
+        "checked_at": "2026-09-27T11:25:00Z",
+        "receipt": "lane-dispatch-20260927T0905Z-mu-writer-verify"
+      }
+    },
+    {
+      "id": "APLD-SIGNED-COMMITMENTS-2026",
+      "symbol": "APLD",
+      "document_id": "APLD-RESULTS-2026-10-07",
+      "locator": "HPC Hosting section, as-of-Aug31 paragraph",
+      "passage": "Those leases represent approximately $36 billion of contracted revenue over their initial base terms",
+      "summary": "HPC Hosting 五園區初始租期約 US$36B 合約營收；排除可選續約，非公司總 RPO",
+      "metric": "SIGNED_CONTRACT_VALUE",
+      "assertion_kind": "DISCLOSED_FACT",
+      "currency": "USD",
+      "unit_multiplier": 1000000000,
+      "amount": 36,
+      "as_of": "2026-08-31",
+      "scope": "CONTRACT",
+      "scope_label": "HPC Hosting five-campus leases; initial base terms only, no optional renewals",
+      "series_id": "APLD:CONTRACT-REFERENCE",
+      "basis": "Approximate initial base-term contracted revenue; excludes optional renewals, not total RPO or annual revenue",
+      "revision": {
+        "kind": "ORIGINAL"
+      },
+      "review": {
+        "checked_at": "2026-10-23T10:55:49Z",
+        "receipt": "CODEX-OFFICIAL-ORDER-CLAIMS-REVIEW-20261023"
+      }
+    },
+    {
+      "id": "NBIS-SIGNED-COMMITMENTS-2026",
+      "symbol": "NBIS",
+      "document_id": "NBIS-RESULTS-2026-08-12",
+      "locator": "PDFp3 long-term-contracts; visible dehyphenated quote",
+      "passage": "with $40 billion in customer commitments",
+      "summary": "8/12 披露長期投資等級客戶承諾約 US$40B；非 6/30 RPO、非年度營收",
+      "metric": "SIGNED_CONTRACT_VALUE",
+      "assertion_kind": "DISCLOSED_FACT",
+      "currency": "USD",
+      "unit_multiplier": 1000000000,
+      "amount": 40,
+      "as_of": "2026-08-12",
+      "scope": "CONTRACT",
+      "scope_label": "Long-term investment-grade customer commitments disclosed August 12; not June 30 RPO or annual revenue",
+      "series_id": "NBIS:CONTRACT-REFERENCE",
+      "basis": "Long-term investment-grade customer commitments at statement date; no recognition or delivery schedule",
+      "revision": {
+        "kind": "ORIGINAL"
+      },
+      "review": {
+        "checked_at": "2026-10-23T10:55:49Z",
+        "receipt": "CODEX-OFFICIAL-ORDER-CLAIMS-REVIEW-20261023"
+      }
     }
   ]
 }

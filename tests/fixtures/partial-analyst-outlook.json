@@ -1,0 +1,1234 @@
+{
+  "scope": "SYNTHETIC_ACTUAL_PRODUCER_AND_COMPACT_PUBLISHER",
+  "generated_at": "2026-10-23T12:00:00Z",
+  "partial": {
+    "orders": null,
+    "consensus": {
+      "revenue_fy0": null,
+      "revenue_fy1": null,
+      "revenue_growth": null,
+      "revenue_analysts": null,
+      "eps_fy0": 2.0,
+      "eps_fy1": 3.0,
+      "eps_growth": 0.5,
+      "eps_analysts": 5.0,
+      "target_mean": 125.0,
+      "target_analysts": 4.0,
+      "price": 100.0,
+      "target_upside": 0.25,
+      "source": "Yahoo Finance analyst estimates (unofficial)",
+      "source_url": "https://finance.yahoo.com/quote/SYNTH/analysis",
+      "asof": "2026-10-23"
+    },
+    "scenarios": [
+      {
+        "kind": "EPS_CONSTANT_PE",
+        "change": 0.5
+      },
+      {
+        "kind": "ANALYST_TARGET",
+        "change": 0.25
+      }
+    ],
+    "consensus_second": null
+  },
+  "loss": {
+    "orders": null,
+    "consensus": {
+      "revenue_fy0": null,
+      "revenue_fy1": null,
+      "revenue_growth": null,
+      "revenue_analysts": null,
+      "eps_fy0": -2.0,
+      "eps_fy1": -1.0,
+      "eps_growth": null,
+      "eps_analysts": 5.0,
+      "target_mean": 125.0,
+      "target_analysts": 4.0,
+      "price": 100.0,
+      "target_upside": 0.25,
+      "source": "Yahoo Finance analyst estimates (unofficial)",
+      "source_url": "https://finance.yahoo.com/quote/SYNTH/analysis",
+      "asof": "2026-10-23"
+    },
+    "scenarios": [
+      {
+        "kind": "ANALYST_TARGET",
+        "change": 0.25
+      }
+    ],
+    "consensus_second": null
+  },
+  "all_thin": {
+    "orders": null,
+    "consensus": {
+      "revenue_fy0": null,
+      "revenue_fy1": null,
+      "revenue_growth": null,
+      "revenue_analysts": null,
+      "eps_fy0": 2.0,
+      "eps_fy1": 3.0,
+      "eps_growth": 0.5,
+      "eps_analysts": 1.0,
+      "target_mean": 125.0,
+      "target_analysts": 1.0,
+      "price": 100.0,
+      "target_upside": 0.25,
+      "source": "Yahoo Finance analyst estimates (unofficial)",
+      "source_url": "https://finance.yahoo.com/quote/SYNTH/analysis",
+      "asof": "2026-10-23"
+    },
+    "scenarios": [
+      {
+        "kind": "EPS_CONSTANT_PE",
+        "change": 0.5
+      },
+      {
+        "kind": "ANALYST_TARGET",
+        "change": 0.25
+      }
+    ],
+    "consensus_second": null
+  },
+  "no_basis": {
+    "orders": null,
+    "consensus": {
+      "revenue_fy0": null,
+      "revenue_fy1": null,
+      "revenue_growth": null,
+      "revenue_analysts": null,
+      "eps_fy0": -2.0,
+      "eps_fy1": -1.0,
+      "eps_growth": null,
+      "eps_analysts": 5.0,
+      "target_mean": null,
+      "target_analysts": null,
+      "price": 100.0,
+      "target_upside": null,
+      "source": "Yahoo Finance analyst estimates (unofficial)",
+      "source_url": "https://finance.yahoo.com/quote/SYNTH/analysis",
+      "asof": "2026-10-23"
+    },
+    "scenarios": [],
+    "consensus_second": null
+  },
+  "official": {
+    "APLD": {
+      "orders": null,
+      "consensus": null,
+      "scenarios": [],
+      "consensus_second": null,
+      "order_forecast": {
+        "version": 2,
+        "issuer": "APLD",
+        "status": "UNAVAILABLE",
+        "reason": "NO_ORDERS",
+        "m6": {
+          "status": "UNAVAILABLE",
+          "reason": "NO_ORDERS",
+          "scenario": {
+            "status": "NO_BASIS",
+            "reason": "NO_ORDER_BASIS"
+          }
+        },
+        "m12": {
+          "status": "UNAVAILABLE",
+          "reason": "NO_ORDERS",
+          "scenario": {
+            "status": "NO_BASIS",
+            "reason": "NO_ORDER_BASIS"
+          }
+        },
+        "stock_sensitivity": null,
+        "references": [
+          {
+            "kind": "CLAIM",
+            "claim_id": "APLD-SIGNED-COMMITMENTS-2026"
+          }
+        ],
+        "evidence": {
+          "registry_status": "OK",
+          "registry_sha256": "9b25a1ed05d353ff22723e31c8980813c2c3eb025f7e995490a960328e40917e",
+          "cutoff": "2026-10-23T12:00:00Z",
+          "url_prefixes": [
+            "https://ir.applieddigital.com/"
+          ],
+          "documents": [
+            {
+              "id": "APLD-RESULTS-2026-10-07",
+              "issuer": "APLD",
+              "publisher": "Applied Digital Corporation",
+              "title": "Fiscal First Quarter2027 Results",
+              "source_kind": "ISSUER_EARNINGS_RELEASE",
+              "url": "https://ir.applieddigital.com/sec-filings/all-sec-filings/content/0001144879-26-000057/apldq127earningsrelease.htm",
+              "published_date": "2026-10-07",
+              "retrieved_at": "2026-10-23T10:51:10Z",
+              "sha256": "b06280244f19c647ac185ee3075c57daf1ec9c05d0fd8962f9df81f121566674",
+              "byte_size": 344102,
+              "lineage_id": "APLD-RESULTS-2026-10-07"
+            }
+          ],
+          "claims": [
+            {
+              "id": "APLD-SIGNED-COMMITMENTS-2026",
+              "symbol": "APLD",
+              "document_id": "APLD-RESULTS-2026-10-07",
+              "locator": "HPC Hosting section, as-of-Aug31 paragraph",
+              "passage": "Those leases represent approximately $36 billion of contracted revenue over their initial base terms",
+              "summary": "HPC Hosting 五園區初始租期約 US$36B 合約營收；排除可選續約，非公司總 RPO",
+              "metric": "SIGNED_CONTRACT_VALUE",
+              "assertion_kind": "DISCLOSED_FACT",
+              "currency": "USD",
+              "unit_multiplier": 1000000000,
+              "amount": 36,
+              "as_of": "2026-08-31",
+              "scope": "CONTRACT",
+              "scope_label": "HPC Hosting five-campus leases; initial base terms only, no optional renewals",
+              "series_id": "APLD:CONTRACT-REFERENCE",
+              "basis": "Approximate initial base-term contracted revenue; excludes optional renewals, not total RPO or annual revenue",
+              "revision": {
+                "kind": "ORIGINAL"
+              },
+              "checked_at": "2026-10-23T10:55:49Z"
+            }
+          ],
+          "selection": {
+            "status": "OK",
+            "active": [
+              "APLD-SIGNED-COMMITMENTS-2026"
+            ],
+            "current_stock": null,
+            "schedule": null,
+            "filing": null,
+            "excluded": []
+          },
+          "periodic": null,
+          "stock_orders": null
+        }
+      },
+      "order_forecast_v3": {
+        "version": 3,
+        "issuer": "APLD",
+        "formula": "ORDERS-V3-01",
+        "status": "UNAVAILABLE",
+        "reason": "INPUTS_MISSING",
+        "revenue_status": "UNAVAILABLE",
+        "revenue_basis": null,
+        "revenue_reason": "INPUTS_MISSING",
+        "revenue_diagnostic": null,
+        "horizon_convention": "FISCAL_2Q_4Q",
+        "anchor_date": null,
+        "cutoff": "2026-10-23T12:00:00Z",
+        "m6": {
+          "status": "UNAVAILABLE",
+          "reason": "INPUTS_MISSING",
+          "scenario": {
+            "status": "NO_BASIS",
+            "reason": "NO_REVENUE_BASIS"
+          }
+        },
+        "m12": {
+          "status": "UNAVAILABLE",
+          "reason": "INPUTS_MISSING",
+          "scenario": {
+            "status": "NO_BASIS",
+            "reason": "NO_REVENUE_BASIS"
+          }
+        },
+        "reported_quarters": [],
+        "baseline_b": null,
+        "forward_quarters": [],
+        "warning": null,
+        "contracted_recognition": null,
+        "stock_sensitivity": null,
+        "order_view": {
+          "status": "UNAVAILABLE",
+          "reason": "NO_ORDERS",
+          "m6": {
+            "status": "UNAVAILABLE",
+            "reason": "NO_ORDERS",
+            "scenario": {
+              "status": "NO_BASIS",
+              "reason": "NO_ORDER_BASIS"
+            }
+          },
+          "m12": {
+            "status": "UNAVAILABLE",
+            "reason": "NO_ORDERS",
+            "scenario": {
+              "status": "NO_BASIS",
+              "reason": "NO_ORDER_BASIS"
+            }
+          }
+        },
+        "references": [
+          {
+            "kind": "CLAIM",
+            "claim_id": "APLD-SIGNED-COMMITMENTS-2026"
+          }
+        ],
+        "assumptions": "條件情境：營收依上述推估實現，P/S與股數不變；以最新已報四季為基準，非目標價、非今日起報酬",
+        "evidence": {
+          "revenue_registry_status": "OK",
+          "revenue_registry_sha256": "dd8bc9f4a651e50df90baafb70a18e10f845b9066a6baedfbd4aade8c135036b",
+          "cutoff": "2026-10-23T12:00:00Z",
+          "formula": "ORDERS-V3-01",
+          "horizon_convention": "FISCAL_2Q_4Q",
+          "consensus_enabled": false,
+          "url_prefixes": [],
+          "documents": [],
+          "claims": [],
+          "reported_quarters": [],
+          "forward_intervals": [],
+          "fy_reconciliation": null,
+          "latest_release_check": null,
+          "reviewed_later_documents": [],
+          "consensus": null,
+          "order_evidence": {
+            "registry_status": "OK",
+            "registry_sha256": "9b25a1ed05d353ff22723e31c8980813c2c3eb025f7e995490a960328e40917e",
+            "cutoff": "2026-10-23T12:00:00Z",
+            "url_prefixes": [
+              "https://ir.applieddigital.com/"
+            ],
+            "documents": [
+              {
+                "id": "APLD-RESULTS-2026-10-07",
+                "issuer": "APLD",
+                "publisher": "Applied Digital Corporation",
+                "title": "Fiscal First Quarter2027 Results",
+                "source_kind": "ISSUER_EARNINGS_RELEASE",
+                "url": "https://ir.applieddigital.com/sec-filings/all-sec-filings/content/0001144879-26-000057/apldq127earningsrelease.htm",
+                "published_date": "2026-10-07",
+                "retrieved_at": "2026-10-23T10:51:10Z",
+                "sha256": "b06280244f19c647ac185ee3075c57daf1ec9c05d0fd8962f9df81f121566674",
+                "byte_size": 344102,
+                "lineage_id": "APLD-RESULTS-2026-10-07"
+              }
+            ],
+            "claims": [
+              {
+                "id": "APLD-SIGNED-COMMITMENTS-2026",
+                "symbol": "APLD",
+                "document_id": "APLD-RESULTS-2026-10-07",
+                "locator": "HPC Hosting section, as-of-Aug31 paragraph",
+                "passage": "Those leases represent approximately $36 billion of contracted revenue over their initial base terms",
+                "summary": "HPC Hosting 五園區初始租期約 US$36B 合約營收；排除可選續約，非公司總 RPO",
+                "metric": "SIGNED_CONTRACT_VALUE",
+                "assertion_kind": "DISCLOSED_FACT",
+                "currency": "USD",
+                "unit_multiplier": 1000000000,
+                "amount": 36,
+                "as_of": "2026-08-31",
+                "scope": "CONTRACT",
+                "scope_label": "HPC Hosting five-campus leases; initial base terms only, no optional renewals",
+                "series_id": "APLD:CONTRACT-REFERENCE",
+                "basis": "Approximate initial base-term contracted revenue; excludes optional renewals, not total RPO or annual revenue",
+                "revision": {
+                  "kind": "ORIGINAL"
+                },
+                "checked_at": "2026-10-23T10:55:49Z"
+              }
+            ],
+            "selection": {
+              "status": "OK",
+              "active": [
+                "APLD-SIGNED-COMMITMENTS-2026"
+              ],
+              "current_stock": null,
+              "schedule": null,
+              "filing": null,
+              "excluded": []
+            },
+            "periodic": null,
+            "stock_orders": null
+          },
+          "release_channels": null,
+          "consensus_fault": null,
+          "release_check_fault": null,
+          "approval_sha256": null,
+          "approval_approved_at": null,
+          "approval_decisions": null
+        }
+      }
+    },
+    "NBIS": {
+      "orders": null,
+      "consensus": null,
+      "scenarios": [],
+      "consensus_second": null,
+      "order_forecast": {
+        "version": 2,
+        "issuer": "NBIS",
+        "status": "UNAVAILABLE",
+        "reason": "NO_ORDERS",
+        "m6": {
+          "status": "UNAVAILABLE",
+          "reason": "NO_ORDERS",
+          "scenario": {
+            "status": "NO_BASIS",
+            "reason": "NO_ORDER_BASIS"
+          }
+        },
+        "m12": {
+          "status": "UNAVAILABLE",
+          "reason": "NO_ORDERS",
+          "scenario": {
+            "status": "NO_BASIS",
+            "reason": "NO_ORDER_BASIS"
+          }
+        },
+        "stock_sensitivity": null,
+        "references": [
+          {
+            "kind": "CLAIM",
+            "claim_id": "NBIS-SIGNED-COMMITMENTS-2026"
+          }
+        ],
+        "evidence": {
+          "registry_status": "OK",
+          "registry_sha256": "9b25a1ed05d353ff22723e31c8980813c2c3eb025f7e995490a960328e40917e",
+          "cutoff": "2026-10-23T12:00:00Z",
+          "url_prefixes": [
+            "https://assets.nebius.com/"
+          ],
+          "documents": [
+            {
+              "id": "NBIS-RESULTS-2026-08-12",
+              "issuer": "NBIS",
+              "publisher": "Nebius Group N.V.",
+              "title": "Q2 2026 Shareholder Letter",
+              "source_kind": "ISSUER_EARNINGS_RELEASE",
+              "url": "https://assets.nebius.com/assets/a6ecfd85-a6cb-4967-8ef7-9a25bd261f9c/SHLQ226.pdf?cache-buster=2026-08-12T11:54:46.695Z",
+              "published_date": "2026-08-12",
+              "retrieved_at": "2026-10-23T10:51:11Z",
+              "sha256": "aec30236b7903532684ddf43fd5006ef89a945118366d767315434fd65b4dc29",
+              "byte_size": 1003545,
+              "lineage_id": "NBIS-RESULTS-2026-08-12"
+            }
+          ],
+          "claims": [
+            {
+              "id": "NBIS-SIGNED-COMMITMENTS-2026",
+              "symbol": "NBIS",
+              "document_id": "NBIS-RESULTS-2026-08-12",
+              "locator": "PDFp3 long-term-contracts; visible dehyphenated quote",
+              "passage": "with $40 billion in customer commitments",
+              "summary": "8/12 披露長期投資等級客戶承諾約 US$40B；非 6/30 RPO、非年度營收",
+              "metric": "SIGNED_CONTRACT_VALUE",
+              "assertion_kind": "DISCLOSED_FACT",
+              "currency": "USD",
+              "unit_multiplier": 1000000000,
+              "amount": 40,
+              "as_of": "2026-08-12",
+              "scope": "CONTRACT",
+              "scope_label": "Long-term investment-grade customer commitments disclosed August 12; not June 30 RPO or annual revenue",
+              "series_id": "NBIS:CONTRACT-REFERENCE",
+              "basis": "Long-term investment-grade customer commitments at statement date; no recognition or delivery schedule",
+              "revision": {
+                "kind": "ORIGINAL"
+              },
+              "checked_at": "2026-10-23T10:55:49Z"
+            }
+          ],
+          "selection": {
+            "status": "OK",
+            "active": [
+              "NBIS-SIGNED-COMMITMENTS-2026"
+            ],
+            "current_stock": null,
+            "schedule": null,
+            "filing": null,
+            "excluded": []
+          },
+          "periodic": null,
+          "stock_orders": null
+        }
+      },
+      "order_forecast_v3": {
+        "version": 3,
+        "issuer": "NBIS",
+        "formula": "ORDERS-V3-01",
+        "status": "UNAVAILABLE",
+        "reason": "FRESHNESS_UNVERIFIED",
+        "revenue_status": "UNAVAILABLE",
+        "revenue_basis": null,
+        "revenue_reason": "FRESHNESS_UNVERIFIED",
+        "revenue_diagnostic": "IR_COVERAGE_MISSING",
+        "horizon_convention": "FISCAL_2Q_4Q",
+        "anchor_date": "2026-06-30",
+        "cutoff": "2026-10-23T12:00:00Z",
+        "m6": {
+          "status": "UNAVAILABLE",
+          "reason": "FRESHNESS_UNVERIFIED",
+          "scenario": {
+            "status": "NO_BASIS",
+            "reason": "NO_REVENUE_BASIS"
+          }
+        },
+        "m12": {
+          "status": "UNAVAILABLE",
+          "reason": "FRESHNESS_UNVERIFIED",
+          "scenario": {
+            "status": "NO_BASIS",
+            "reason": "NO_REVENUE_BASIS"
+          }
+        },
+        "reported_quarters": [
+          {
+            "fiscal_label": "Q3 2025",
+            "start": "2025-07-01",
+            "end": "2025-09-30",
+            "revenue": 146100000.0,
+            "currency": "USD",
+            "scope": "COMPANY",
+            "accounting_basis": "GAAP",
+            "document_id": "NBIS-Q3-25",
+            "locator": "Three months ended September 30, 2025, Revenues 146.1 (USD millions)"
+          },
+          {
+            "fiscal_label": "Q4 2025",
+            "start": "2025-10-01",
+            "end": "2025-12-31",
+            "revenue": 227700000.0,
+            "currency": "USD",
+            "scope": "COMPANY",
+            "accounting_basis": "GAAP",
+            "document_id": "NBIS-Q4-25",
+            "locator": "Three months ended December 31, 2025, Revenues 227.7 (USD millions)"
+          },
+          {
+            "fiscal_label": "Q1 2026",
+            "start": "2026-01-01",
+            "end": "2026-03-31",
+            "revenue": 399000000.0,
+            "currency": "USD",
+            "scope": "COMPANY",
+            "accounting_basis": "GAAP",
+            "document_id": "NBIS-Q2-26",
+            "locator": "Six months ended June 30, 2026 Revenues 981.3 minus three months ended June 30, 2026 582.3 (USD millions)",
+            "derivation": {
+              "kind": "YTD_DIFFERENCE",
+              "longer_document_id": "NBIS-Q2-26",
+              "longer_value": 981300000.0,
+              "longer_start": "2026-01-01",
+              "shorter_document_id": "NBIS-Q2-26",
+              "shorter_value": 582300000.0,
+              "shorter_end": "2026-06-30",
+              "note": "the longer period ends at 2026-06-30 and the shorter value is the final quarter; Q1 = 6M - Q2"
+            }
+          },
+          {
+            "fiscal_label": "Q2 2026",
+            "start": "2026-04-01",
+            "end": "2026-06-30",
+            "revenue": 582300000.0,
+            "currency": "USD",
+            "scope": "COMPANY",
+            "accounting_basis": "GAAP",
+            "document_id": "NBIS-Q2-26",
+            "locator": "Three months ended June 30, 2026, Revenues 582.3 (USD millions)"
+          }
+        ],
+        "baseline_b": null,
+        "forward_quarters": [],
+        "warning": null,
+        "contracted_recognition": null,
+        "stock_sensitivity": null,
+        "order_view": {
+          "status": "UNAVAILABLE",
+          "reason": "NO_ORDERS",
+          "m6": {
+            "status": "UNAVAILABLE",
+            "reason": "NO_ORDERS",
+            "scenario": {
+              "status": "NO_BASIS",
+              "reason": "NO_ORDER_BASIS"
+            }
+          },
+          "m12": {
+            "status": "UNAVAILABLE",
+            "reason": "NO_ORDERS",
+            "scenario": {
+              "status": "NO_BASIS",
+              "reason": "NO_ORDER_BASIS"
+            }
+          }
+        },
+        "references": [
+          {
+            "kind": "CLAIM",
+            "claim_id": "NBIS-SIGNED-COMMITMENTS-2026"
+          }
+        ],
+        "assumptions": "條件情境：營收依上述推估實現，P/S與股數不變；以最新已報四季為基準，非目標價、非今日起報酬",
+        "evidence": {
+          "revenue_registry_status": "OK",
+          "revenue_registry_sha256": "dd8bc9f4a651e50df90baafb70a18e10f845b9066a6baedfbd4aade8c135036b",
+          "cutoff": "2026-10-23T12:00:00Z",
+          "formula": "ORDERS-V3-01",
+          "horizon_convention": "FISCAL_2Q_4Q",
+          "consensus_enabled": true,
+          "url_prefixes": [
+            "https://www.sec.gov/Archives/edgar/data/"
+          ],
+          "documents": [
+            {
+              "id": "NBIS-GUIDANCE-ORIG",
+              "issuer": "NBIS",
+              "publisher": "Nebius Group N.V.",
+              "title": "Nebius Q1 2026 shareholder letter (6-K EX-99.2)",
+              "source_kind": "SEC_6K_EXHIBIT",
+              "url": "https://www.sec.gov/Archives/edgar/data/1513845/000110465926059872/tm2614392d1_ex99-2.htm",
+              "published_date": "2026-05-13",
+              "retrieved_at": "2026-09-28T14:24:58Z",
+              "sha256": "dcc5870b6af07db9697e14d95b0f655676d5feb3b576b8a6a5cf24c2a8966d3a",
+              "byte_size": 56554,
+              "lineage_id": "NBIS-GUIDANCE-ORIG"
+            },
+            {
+              "id": "NBIS-GUIDANCE",
+              "issuer": "NBIS",
+              "publisher": "Nebius Group N.V.",
+              "title": "Nebius Q2 2026 shareholder letter (6-K EX-99.2)",
+              "source_kind": "SEC_6K_EXHIBIT",
+              "url": "https://www.sec.gov/Archives/edgar/data/1513845/000110465926094568/tm2622968d1_ex99-2.htm",
+              "published_date": "2026-08-12",
+              "retrieved_at": "2026-09-28T14:25:00Z",
+              "sha256": "5f0f3d33016966e32ab9b0071ff9cad49d6e91cdeb21822e35e0be8796d20aa5",
+              "byte_size": 53856,
+              "lineage_id": "NBIS-GUIDANCE"
+            },
+            {
+              "id": "NBIS-Q2-26",
+              "issuer": "NBIS",
+              "publisher": "Nebius Group N.V.",
+              "title": "Nebius Q2 2026 results (6-K EX-99.1)",
+              "source_kind": "SEC_6K_EXHIBIT",
+              "url": "https://www.sec.gov/Archives/edgar/data/1513845/000110465926094568/tm2622968d1_ex99-1.htm",
+              "published_date": "2026-08-12",
+              "retrieved_at": "2026-09-28T14:25:01Z",
+              "sha256": "20381c9bf3e0eb55e02d75b64f9aab8301ae3ffcfb18b8de1dd2665823547f3a",
+              "byte_size": 334947,
+              "lineage_id": "NBIS-Q2-26"
+            },
+            {
+              "id": "NBIS-Q3-25",
+              "issuer": "NBIS",
+              "publisher": "Nebius Group N.V.",
+              "title": "Nebius Q3 2025 results (6-K EX-99.1)",
+              "source_kind": "SEC_6K_EXHIBIT",
+              "url": "https://www.sec.gov/Archives/edgar/data/1513845/000110465925109806/tm2530882d1_ex99-1.htm",
+              "published_date": "2025-11-12",
+              "retrieved_at": "2026-09-28T14:25:02Z",
+              "sha256": "7a83bcf454d14c832f9dbf00f7a345de25e31deb010a530f167c1236d5e8ebb8",
+              "byte_size": 321257,
+              "lineage_id": "NBIS-Q3-25"
+            },
+            {
+              "id": "NBIS-Q4-25",
+              "issuer": "NBIS",
+              "publisher": "Nebius Group N.V.",
+              "title": "Nebius Q4 2025 results (6-K EX-99.1)",
+              "source_kind": "SEC_6K_EXHIBIT",
+              "url": "https://www.sec.gov/Archives/edgar/data/1513845/000110465926013946/tm266173d1_ex99-1.htm",
+              "published_date": "2026-02-12",
+              "retrieved_at": "2026-09-28T14:25:04Z",
+              "sha256": "5b9d77234486dbc0b23220d5217ca406424a643d2e5c0626c71bf84dce3638c2",
+              "byte_size": 374323,
+              "lineage_id": "NBIS-Q4-25"
+            }
+          ],
+          "claims": [
+            {
+              "id": "NBIS-FY-GUIDANCE",
+              "document_id": "NBIS-GUIDANCE-ORIG",
+              "locator": "2026 Guidance update",
+              "passage": "On track to achieve $3.0B–$3.4B revenue in 2026",
+              "metric": "REVENUE",
+              "assertion_kind": "COMPANY_GUIDANCE",
+              "currency": "USD",
+              "unit_multiplier": 1,
+              "amount": null,
+              "low": 3000000000.0,
+              "high": 3400000000.0,
+              "stated_point": null,
+              "original_representation": "$3.0B–$3.4B revenue in 2026",
+              "scope": "COMPANY",
+              "scope_label": "全公司",
+              "fiscal_label": "FY2026",
+              "period_kind": "FISCAL_YEAR",
+              "period_start": "2026-01-01",
+              "period_end": "2026-12-31",
+              "accounting_basis": "GAAP",
+              "reaffirmed_by": [
+                {
+                  "document_id": "NBIS-GUIDANCE",
+                  "locator": "Dear shareholders, Financial model proving itself as we scale",
+                  "passage": "We are reaffirming our full-year 2026 guidance across all metrics."
+                }
+              ]
+            }
+          ],
+          "reported_quarters": [
+            {
+              "fiscal_label": "Q3 2025",
+              "start": "2025-07-01",
+              "end": "2025-09-30",
+              "revenue": 146100000.0,
+              "currency": "USD",
+              "scope": "COMPANY",
+              "accounting_basis": "GAAP",
+              "document_id": "NBIS-Q3-25",
+              "locator": "Three months ended September 30, 2025, Revenues 146.1 (USD millions)"
+            },
+            {
+              "fiscal_label": "Q4 2025",
+              "start": "2025-10-01",
+              "end": "2025-12-31",
+              "revenue": 227700000.0,
+              "currency": "USD",
+              "scope": "COMPANY",
+              "accounting_basis": "GAAP",
+              "document_id": "NBIS-Q4-25",
+              "locator": "Three months ended December 31, 2025, Revenues 227.7 (USD millions)"
+            },
+            {
+              "fiscal_label": "Q1 2026",
+              "start": "2026-01-01",
+              "end": "2026-03-31",
+              "revenue": 399000000.0,
+              "currency": "USD",
+              "scope": "COMPANY",
+              "accounting_basis": "GAAP",
+              "document_id": "NBIS-Q2-26",
+              "locator": "Six months ended June 30, 2026 Revenues 981.3 minus three months ended June 30, 2026 582.3 (USD millions)",
+              "derivation": {
+                "kind": "YTD_DIFFERENCE",
+                "longer_document_id": "NBIS-Q2-26",
+                "longer_value": 981300000.0,
+                "longer_start": "2026-01-01",
+                "shorter_document_id": "NBIS-Q2-26",
+                "shorter_value": 582300000.0,
+                "shorter_end": "2026-06-30",
+                "note": "the longer period ends at 2026-06-30 and the shorter value is the final quarter; Q1 = 6M - Q2"
+              }
+            },
+            {
+              "fiscal_label": "Q2 2026",
+              "start": "2026-04-01",
+              "end": "2026-06-30",
+              "revenue": 582300000.0,
+              "currency": "USD",
+              "scope": "COMPANY",
+              "accounting_basis": "GAAP",
+              "document_id": "NBIS-Q2-26",
+              "locator": "Three months ended June 30, 2026, Revenues 582.3 (USD millions)"
+            }
+          ],
+          "forward_intervals": [
+            {
+              "fiscal_label": "Q3 2026",
+              "start": "2026-07-01",
+              "end": "2026-09-30",
+              "calendar_document_id": "NBIS-Q2-26",
+              "calendar_locator": "Calendar-year fiscal quarters (three months ended June 30 / six months ended June 30)"
+            },
+            {
+              "fiscal_label": "Q4 2026",
+              "start": "2026-10-01",
+              "end": "2026-12-31",
+              "calendar_document_id": "NBIS-Q2-26",
+              "calendar_locator": "Calendar-year fiscal quarters (three months ended June 30 / six months ended June 30)"
+            },
+            {
+              "fiscal_label": "Q1 2027",
+              "start": "2027-01-01",
+              "end": "2027-03-31",
+              "calendar_document_id": "NBIS-Q2-26",
+              "calendar_locator": "Calendar-year fiscal quarters (three months ended June 30 / six months ended June 30)"
+            },
+            {
+              "fiscal_label": "Q2 2027",
+              "start": "2027-04-01",
+              "end": "2027-06-30",
+              "calendar_document_id": "NBIS-Q2-26",
+              "calendar_locator": "Calendar-year fiscal quarters (three months ended June 30 / six months ended June 30)"
+            }
+          ],
+          "fy_reconciliation": {
+            "fy_claim_id": "NBIS-FY-GUIDANCE",
+            "ytd_start": "2026-01-01",
+            "ytd_end": "2026-06-30",
+            "ytd_revenue": 981300000.0,
+            "ytd_quarter_ends": [
+              "2026-03-31",
+              "2026-06-30"
+            ]
+          },
+          "latest_release_check": null,
+          "reviewed_later_documents": [
+            {
+              "id": "0001104659-26-098590",
+              "disposition": "REVIEWED_IRRELEVANT",
+              "reviewed_at": "2026-09-28T14:26:45Z",
+              "note": "6-K: launch of a convertible notes offering"
+            },
+            {
+              "id": "0001104659-26-098924",
+              "disposition": "REVIEWED_IRRELEVANT",
+              "reviewed_at": "2026-09-28T14:26:45Z",
+              "note": "6-K: pricing of the convertible notes offering"
+            },
+            {
+              "id": "0001104659-26-100347",
+              "disposition": "REVIEWED_IRRELEVANT",
+              "reviewed_at": "2026-09-28T14:26:45Z",
+              "note": "6-K: closing of the convertible notes offering and indentures"
+            },
+            {
+              "id": "0001104659-26-101076",
+              "disposition": "REVIEWED_IRRELEVANT",
+              "reviewed_at": "2026-09-28T14:26:45Z",
+              "note": "6-K: results of the annual general meeting"
+            },
+            {
+              "id": "0001104659-26-105749",
+              "disposition": "REVIEWED_IRRELEVANT",
+              "reviewed_at": "2026-09-28T14:26:45Z",
+              "note": "6-K: Palantir partnership press release"
+            },
+            {
+              "id": "https://group.nebius.com/newsroom/nebius-group-n-v-announces-results-of-its-annual-general-meeting-2026",
+              "disposition": "REVIEWED_IRRELEVANT",
+              "reviewed_at": "2026-09-28T14:26:45Z",
+              "note": "newsroom item: results of the annual general meeting (same event as reviewed wire item 0001104659-26-101076); no revenue or guidance statement"
+            },
+            {
+              "id": "https://www.nasdaq.com/press-release/nebius-group-nv-announces-results-its-annual-general-meeting-2026-08-26",
+              "disposition": "REVIEWED_IRRELEVANT",
+              "reviewed_at": "2026-09-28T14:26:45Z",
+              "note": "Wire release: results of the annual general meeting (same event as 6-K 0001104659-26-101076); no revenue or guidance statement"
+            },
+            {
+              "id": "0001104659-26-094568",
+              "disposition": "REVIEWED_IRRELEVANT",
+              "reviewed_at": "2026-09-28T15:32:15Z",
+              "note": "6-K: the filing that furnishes the reviewed guidance document itself (NBIS-GUIDANCE)"
+            },
+            {
+              "id": "0001104659-26-094844",
+              "disposition": "REVIEWED_IRRELEVANT",
+              "reviewed_at": "2026-09-28T15:32:15Z",
+              "note": "6-K on the guidance day: the periodic report / interim statements for the latest reported quarter (the reviewed actuals), not a newer period"
+            },
+            {
+              "id": "https://www.nasdaq.com/press-release/nebius-reports-second-quarter-2026-financial-results-2026-08-12",
+              "disposition": "REVIEWED_IRRELEVANT",
+              "reviewed_at": "2026-09-28T15:32:15Z",
+              "note": "wire distribution of the guidance-day results release itself (same event as the reviewed guidance document)"
+            },
+            {
+              "id": "0001104659-26-112824",
+              "disposition": "REVIEWED_IRRELEVANT",
+              "reviewed_at": "2026-10-13T14:43:17Z",
+              "note": "6-K: press release on the acquisition of Inferize (terms not disclosed); no results, revenue or guidance statement"
+            },
+            {
+              "id": "0001104659-26-117978",
+              "disposition": "REVIEWED_IRRELEVANT",
+              "reviewed_at": "2026-10-23T11:39:56Z",
+              "note": "Official 6-K furnishes financing-only Exhibit99.1; no changed revenue guidance; independently reviewed: CODEX-FRESHNESS-SOURCE-REVIEW-20261023.json"
+            }
+          ],
+          "consensus": null,
+          "order_evidence": {
+            "registry_status": "OK",
+            "registry_sha256": "9b25a1ed05d353ff22723e31c8980813c2c3eb025f7e995490a960328e40917e",
+            "cutoff": "2026-10-23T12:00:00Z",
+            "url_prefixes": [
+              "https://assets.nebius.com/"
+            ],
+            "documents": [
+              {
+                "id": "NBIS-RESULTS-2026-08-12",
+                "issuer": "NBIS",
+                "publisher": "Nebius Group N.V.",
+                "title": "Q2 2026 Shareholder Letter",
+                "source_kind": "ISSUER_EARNINGS_RELEASE",
+                "url": "https://assets.nebius.com/assets/a6ecfd85-a6cb-4967-8ef7-9a25bd261f9c/SHLQ226.pdf?cache-buster=2026-08-12T11:54:46.695Z",
+                "published_date": "2026-08-12",
+                "retrieved_at": "2026-10-23T10:51:11Z",
+                "sha256": "aec30236b7903532684ddf43fd5006ef89a945118366d767315434fd65b4dc29",
+                "byte_size": 1003545,
+                "lineage_id": "NBIS-RESULTS-2026-08-12"
+              }
+            ],
+            "claims": [
+              {
+                "id": "NBIS-SIGNED-COMMITMENTS-2026",
+                "symbol": "NBIS",
+                "document_id": "NBIS-RESULTS-2026-08-12",
+                "locator": "PDFp3 long-term-contracts; visible dehyphenated quote",
+                "passage": "with $40 billion in customer commitments",
+                "summary": "8/12 披露長期投資等級客戶承諾約 US$40B；非 6/30 RPO、非年度營收",
+                "metric": "SIGNED_CONTRACT_VALUE",
+                "assertion_kind": "DISCLOSED_FACT",
+                "currency": "USD",
+                "unit_multiplier": 1000000000,
+                "amount": 40,
+                "as_of": "2026-08-12",
+                "scope": "CONTRACT",
+                "scope_label": "Long-term investment-grade customer commitments disclosed August 12; not June 30 RPO or annual revenue",
+                "series_id": "NBIS:CONTRACT-REFERENCE",
+                "basis": "Long-term investment-grade customer commitments at statement date; no recognition or delivery schedule",
+                "revision": {
+                  "kind": "ORIGINAL"
+                },
+                "checked_at": "2026-10-23T10:55:49Z"
+              }
+            ],
+            "selection": {
+              "status": "OK",
+              "active": [
+                "NBIS-SIGNED-COMMITMENTS-2026"
+              ],
+              "current_stock": null,
+              "schedule": null,
+              "filing": null,
+              "excluded": []
+            },
+            "periodic": null,
+            "stock_orders": null
+          },
+          "release_channels": {
+            "sec_cik": 1513845,
+            "wire_symbol": "NBIS",
+            "wire_names": [
+              "Nebius"
+            ],
+            "ir": {
+              "kind": "NEWSROOM_HTML",
+              "url": "https://group.nebius.com/newsroom"
+            },
+            "ir_guidance_release_title": "Nebius reports second quarter 2026 financial results"
+          },
+          "consensus_fault": null,
+          "release_check_fault": null,
+          "approval_sha256": "86998771daa96831de785ce72f81dfedff5c7f5bfcc1f02f7ccedda2a69be2c3",
+          "approval_approved_at": "2026-10-23T11:40:17Z",
+          "approval_decisions": [
+            {
+              "kind": "CLAIM",
+              "ref": "NBIS-FY-GUIDANCE",
+              "decision": "VERBATIM_IN_SOURCE",
+              "reviewed_at": "2026-09-28T16:32:10Z"
+            },
+            {
+              "kind": "REAFFIRMATION",
+              "ref": "NBIS-FY-GUIDANCE",
+              "decision": "VERBATIM_IN_SOURCE",
+              "reviewed_at": "2026-09-28T16:32:10Z"
+            },
+            {
+              "kind": "ACTUAL",
+              "ref": "2025-09-30",
+              "decision": "VALUE_IN_SOURCE",
+              "reviewed_at": "2026-09-28T16:32:10Z"
+            },
+            {
+              "kind": "ACTUAL",
+              "ref": "2025-12-31",
+              "decision": "VALUE_IN_SOURCE",
+              "reviewed_at": "2026-09-28T16:32:10Z"
+            },
+            {
+              "kind": "ACTUAL",
+              "ref": "2026-03-31",
+              "decision": "DERIVATION_OPERANDS_IN_SOURCE",
+              "reviewed_at": "2026-09-28T16:32:10Z"
+            },
+            {
+              "kind": "ACTUAL",
+              "ref": "2026-06-30",
+              "decision": "VALUE_IN_SOURCE",
+              "reviewed_at": "2026-09-28T16:32:10Z"
+            },
+            {
+              "kind": "CALENDAR",
+              "ref": "calendar",
+              "decision": "RULE_QUOTED",
+              "reviewed_at": "2026-09-28T16:32:10Z"
+            },
+            {
+              "kind": "FY_RECONCILIATION",
+              "ref": "fy_reconciliation",
+              "decision": "DERIVATION_OPERANDS_IN_SOURCE",
+              "reviewed_at": "2026-09-28T16:32:10Z"
+            },
+            {
+              "kind": "ROUTING",
+              "ref": "routing",
+              "decision": "VERBATIM_IN_SOURCE",
+              "reviewed_at": "2026-10-23T11:40:17Z"
+            }
+          ]
+        }
+      }
+    }
+  },
+  "mixed": [
+    {
+      "orders": null,
+      "consensus": {
+        "revenue_fy0": null,
+        "revenue_fy1": null,
+        "revenue_growth": null,
+        "revenue_analysts": null,
+        "eps_fy0": 2.0,
+        "eps_fy1": 3.0,
+        "eps_growth": 0.5,
+        "eps_analysts": 1.0,
+        "target_mean": 125.0,
+        "target_analysts": 4.0,
+        "price": 100.0,
+        "target_upside": 0.25,
+        "source": "Yahoo Finance analyst estimates (unofficial)",
+        "source_url": "https://finance.yahoo.com/quote/SYNTH/analysis",
+        "asof": "2026-10-23"
+      },
+      "scenarios": [
+        {
+          "kind": "EPS_CONSTANT_PE",
+          "change": 0.5
+        },
+        {
+          "kind": "ANALYST_TARGET",
+          "change": 0.25
+        }
+      ],
+      "consensus_second": null
+    },
+    {
+      "orders": null,
+      "consensus": {
+        "revenue_fy0": null,
+        "revenue_fy1": null,
+        "revenue_growth": null,
+        "revenue_analysts": null,
+        "eps_fy0": 2.0,
+        "eps_fy1": 3.0,
+        "eps_growth": 0.5,
+        "eps_analysts": 5.0,
+        "target_mean": 125.0,
+        "target_analysts": 1.0,
+        "price": 100.0,
+        "target_upside": 0.25,
+        "source": "Yahoo Finance analyst estimates (unofficial)",
+        "source_url": "https://finance.yahoo.com/quote/SYNTH/analysis",
+        "asof": "2026-10-23"
+      },
+      "scenarios": [
+        {
+          "kind": "EPS_CONSTANT_PE",
+          "change": 0.5
+        },
+        {
+          "kind": "ANALYST_TARGET",
+          "change": 0.25
+        }
+      ],
+      "consensus_second": null
+    }
+  ],
+  "order_clocks": [
+    {
+      "input": null,
+      "outlook": {
+        "orders": null,
+        "consensus": {
+          "revenue_fy0": null,
+          "revenue_fy1": null,
+          "revenue_growth": null,
+          "revenue_analysts": null,
+          "eps_fy0": 2.0,
+          "eps_fy1": 3.0,
+          "eps_growth": 0.5,
+          "eps_analysts": 5.0,
+          "target_mean": 125.0,
+          "target_analysts": 4.0,
+          "price": 100.0,
+          "target_upside": 0.25,
+          "source": "Yahoo Finance analyst estimates (unofficial)",
+          "source_url": "https://finance.yahoo.com/quote/SYNTH/analysis",
+          "asof": "2026-10-23"
+        },
+        "scenarios": [
+          {
+            "kind": "EPS_CONSTANT_PE",
+            "change": 0.5
+          },
+          {
+            "kind": "ANALYST_TARGET",
+            "change": 0.25
+          }
+        ],
+        "consensus_second": null
+      }
+    },
+    {
+      "input": "2026-02-30",
+      "outlook": {
+        "orders": null,
+        "consensus": {
+          "revenue_fy0": null,
+          "revenue_fy1": null,
+          "revenue_growth": null,
+          "revenue_analysts": null,
+          "eps_fy0": 2.0,
+          "eps_fy1": 3.0,
+          "eps_growth": 0.5,
+          "eps_analysts": 5.0,
+          "target_mean": 125.0,
+          "target_analysts": 4.0,
+          "price": 100.0,
+          "target_upside": 0.25,
+          "source": "Yahoo Finance analyst estimates (unofficial)",
+          "source_url": "https://finance.yahoo.com/quote/SYNTH/analysis",
+          "asof": "2026-10-23"
+        },
+        "scenarios": [
+          {
+            "kind": "EPS_CONSTANT_PE",
+            "change": 0.5
+          },
+          {
+            "kind": "ANALYST_TARGET",
+            "change": 0.25
+          }
+        ],
+        "consensus_second": null
+      }
+    },
+    {
+      "input": "2026-10-24",
+      "outlook": {
+        "orders": null,
+        "consensus": {
+          "revenue_fy0": null,
+          "revenue_fy1": null,
+          "revenue_growth": null,
+          "revenue_analysts": null,
+          "eps_fy0": 2.0,
+          "eps_fy1": 3.0,
+          "eps_growth": 0.5,
+          "eps_analysts": 5.0,
+          "target_mean": 125.0,
+          "target_analysts": 4.0,
+          "price": 100.0,
+          "target_upside": 0.25,
+          "source": "Yahoo Finance analyst estimates (unofficial)",
+          "source_url": "https://finance.yahoo.com/quote/SYNTH/analysis",
+          "asof": "2026-10-23"
+        },
+        "scenarios": [
+          {
+            "kind": "EPS_CONSTANT_PE",
+            "change": 0.5
+          },
+          {
+            "kind": "ANALYST_TARGET",
+            "change": 0.25
+          }
+        ],
+        "consensus_second": null
+      }
+    },
+    {
+      "input": "2026-10-23",
+      "outlook": {
+        "orders": {
+          "kind": "RPO",
+          "amount": 100.0,
+          "currency": "USD",
+          "as_of": "2026-10-23",
+          "yoy": null,
+          "scope": null,
+          "source": "SEC",
+          "source_url": "https://data.sec.gov/x"
+        },
+        "consensus": {
+          "revenue_fy0": null,
+          "revenue_fy1": null,
+          "revenue_growth": null,
+          "revenue_analysts": null,
+          "eps_fy0": 2.0,
+          "eps_fy1": 3.0,
+          "eps_growth": 0.5,
+          "eps_analysts": 5.0,
+          "target_mean": 125.0,
+          "target_analysts": 4.0,
+          "price": 100.0,
+          "target_upside": 0.25,
+          "source": "Yahoo Finance analyst estimates (unofficial)",
+          "source_url": "https://finance.yahoo.com/quote/SYNTH/analysis",
+          "asof": "2026-10-23"
+        },
+        "scenarios": [
+          {
+            "kind": "EPS_CONSTANT_PE",
+            "change": 0.5
+          },
+          {
+            "kind": "ANALYST_TARGET",
+            "change": 0.25
+          }
+        ],
+        "consensus_second": null
+      }
+    },
+    {
+      "input": "2021-04-03",
+      "outlook": {
+        "orders": {
+          "kind": "RPO",
+          "amount": 100.0,
+          "currency": "USD",
+          "as_of": "2021-04-03",
+          "yoy": null,
+          "scope": null,
+          "source": "SEC",
+          "source_url": "https://data.sec.gov/x"
+        },
+        "consensus": {
+          "revenue_fy0": null,
+          "revenue_fy1": null,
+          "revenue_growth": null,
+          "revenue_analysts": null,
+          "eps_fy0": 2.0,
+          "eps_fy1": 3.0,
+          "eps_growth": 0.5,
+          "eps_analysts": 5.0,
+          "target_mean": 125.0,
+          "target_analysts": 4.0,
+          "price": 100.0,
+          "target_upside": 0.25,
+          "source": "Yahoo Finance analyst estimates (unofficial)",
+          "source_url": "https://finance.yahoo.com/quote/SYNTH/analysis",
+          "asof": "2026-10-23"
+        },
+        "scenarios": [
+          {
+            "kind": "EPS_CONSTANT_PE",
+            "change": 0.5
+          },
+          {
+            "kind": "ANALYST_TARGET",
+            "change": 0.25
+          }
+        ],
+        "consensus_second": null
+      }
+    }
+  ]
+}

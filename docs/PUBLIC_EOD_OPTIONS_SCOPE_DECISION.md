@@ -1,5 +1,9 @@
 # Public EOD options scope decision (O11/O12, DESIGN ONLY)
 
+<!-- DOCS-R1 scope -->
+> **Scope:** Design or candidate contract; existence of this file does not prove implementation, admission or rollout. Current acceptance and unresolved issues: [STATUS](../state/STATUS.md). The document itself does not authorize Production changes.
+<!-- /DOCS-R1 scope -->
+
 [Options source review](OPTIONS_SOURCE_REVIEW.md) · [Public options provider rights review](PUBLIC_OPTIONS_PROVIDER_RIGHTS_REVIEW.md) · [Public source rights review](PUBLIC_SOURCE_RIGHTS_REVIEW_20260909.md) · [Current acceptance](../state/STATUS.md)
 
 **Status: DESIGN_PROPOSED, awaiting an independent review and the operator's scope decision.** This document is not a rights decision and not an admission. It grants no rights, admits no provider or scope, enables nothing, and changes no code, catalog, validator, Worker surface or test. Public admissions stay NONE.

@@ -1,6 +1,10 @@
 # Weekly and Monthly Option BID/ASK Analysis
 
-_Last reconciled: 2026-08-25 Asia/Taipei_
+<!-- DOCS-R1 scope -->
+> **Scope:** Contractual safety/evidence boundary; retain exact normative markers and validate against runtime configuration. Current acceptance and unresolved issues: [STATUS](../state/STATUS.md). The document itself does not authorize Production changes.
+<!-- /DOCS-R1 scope -->
+
+_Last reconciled: 2026-11-02_
 
 ## Normative boundary
 
@@ -62,7 +66,7 @@ Local position analysis:
 - remains disabled by default;
 - runs outside LINE and Cloudflare Worker;
 - is never uploaded to public KV;
-- is never inserted into shared local-Qwen context;
+- is never inserted into shared local-model context;
 - is never sent through a LINE delivery helper;
 - contains no brokerage write path;
 - remains excluded from Git and release artifacts.
@@ -105,11 +109,20 @@ Annualized figures use at least one day (`max(DTE, 1)`), so a same-day expiry ne
 
 ### Monthly
 
-- target: 30 DTE;
-- accepted range: 21–45 DTE;
-- select the expiration nearest the target inside the range.
+Operator 2026-11-03: list the monthly of the month the viewer is looking at, at any distance, with no minimum DTE and no annualized-yield floor. Example: on 2026-11-03, SIVE.ST shows the 2026-11-20 expiry (17 DTE); on 2026-11-20 before the close it shows DTE 0.
 
-If no expiration qualifies, return `NO_EXPIRATION_IN_WINDOW` (for the weekly: no listed expiration this week or next). Never relabel another expiration as weekly or monthly. Use actual DTE for every calculation. When the current week's expiry is also the standard third-Friday monthly expiry, a weekly request still shows it as the week's weekly and notes that it is also the monthly expiry; the monthly request is unchanged.
+- the monthly is the NEAREST standard monthly expiry on or after the exchange-local as-of date (same as-of date as the weekly: the exchange-local calendar date of the observation instant, not the UTC date and not the requester's date);
+- a standard monthly is, per calendar month, the listed expiration on that month's third Friday; when the chain lists none on that day (an exchange holiday), it is the latest listed expiration of that Monday–Thursday before the Friday; any other expiration (a weekly, a quarterly that is off the third Friday) is never a monthly;
+- the expiry day (as-of date equal to the expiry) counts only before the venue's regular-session close, exactly like the weekly (US 16:00, Stockholm 17:30, TAIFEX 13:30, exchange local, no holiday calendar inferred); afterwards the earliest later standard monthly is taken (2026-11-20 after the close selects 2026-12-18);
+- when the current month's standard monthly is not listed at all, the earliest later standard monthly is taken;
+- only standard monthlies up to 60 DTE are considered (the validators' outer bound, `MONTHLY_DTE_BUCKET` = 0–60); no listed standard monthly inside it, or no valid real two-sided quote for the selected expiration, remains unavailable and the next monthly is not borrowed;
+- each public covered-call monthly row records the rule branch in the additive optional `monthly_rule`: `THIRD_FRIDAY` (the listed third Friday of the nearest eligible month), `HOLIDAY_SHIFT` (no expiration on that Friday; the latest listed expiration of its week) or `LATER_LISTED` (the nearest eligible month has no listed monthly, so a later month's was taken). Older readers ignore the key; the Python gate and the Worker validate it strictly when present (known value, never on a weekly row, expiry where the branch says) and never require it, so rows sealed by the previous producer (14–60 DTE, no marker) still load;
+- the Worker admits a monthly DTE of 0–60 (both the new producer's rows and the previous producer's 14–60 rows); a monthly above 60 DTE or below 0 is rejected. Cards no longer carry the former "extended monthly" disclosure and no monthly is labelled a fallback: a monthly with DTE 0–2 carries the same amplified-yield notice as the weekly, a `HOLIDAY_SHIFT` or `LATER_LISTED` row carries a one-line note saying why that date was shown;
+- there is no annualized-yield floor on any strike (covered call `HIGH_STRIKE`, cash-secured put, either cycle); the annualized yield stays displayed as a fact and the other filters stay (out of the money, valid two-sided quote, spread, delta caps and bands, two-decimal display).
+
+The shared definitions are `scripts/option_recommendation_rules.py` and `cloud/src/v213/option-recommendation-rules.ts`; the cross-language behavioral test consumes `tests/fixtures/monthly_expiry_cases.json` for selection and `tests/fixtures/options_window_cases.json` for executable collector/Python-validator/Worker admission parity. Collection/fetch bounds, sealed-product validators, selected-row Worker admission and manual/generic quote labels use those definitions. Selection never fabricates an expiration or quote and adds no Black-Scholes price fallback; pre-existing Greek estimation is unchanged.
+
+If no expiration qualifies, return `NO_EXPIRATION_IN_WINDOW` (for the weekly: no listed expiration this week or next). Never borrow another period's sealed row. Use actual DTE for every calculation. When the current week's expiry is also the standard third-Friday monthly expiry, a weekly request still shows it as the week's weekly and notes that it is also the monthly expiry. A navigation button to another period is not evidence that its quote exists.
 
 ## Quote fields and calculations
 
@@ -153,13 +166,25 @@ Local owner mode may label coverage only from authenticated local whole-share da
 
 Per underlying and cycle the sealed `v213:options:v2` row carries up to three strike tiers (operator 2026-09-26 and 2026-10-11):
 
-- `HIGH_STRIKE` (title "建議一：高履約價（不易被賣掉）"): the highest out-of-the-money strike whose bid pays at least 6% annualized with model Delta at most 0.20;
+- `HIGH_STRIKE` (title "建議一：高履約價（不易被賣掉）"): the highest out-of-the-money strike with a valid two-sided quote and model Delta at most 0.20; there is no annualized-yield floor (it was 6%, then 2% from operator 2026-10-19, removed by operator 2026-11-03), so a strike paying little is still listed with its annualized yield shown;
 - `MIDDLE` (optional, "中間型（權利金與被指派機率居中）"): a strike strictly between the two others, the one whose Delta is nearest 0.25 (the strike nearest 2.5% out of the money when a Delta is missing); absent when no listed strike lies between, never padded or duplicated;
 - `BALANCED` ("平衡型（收較多權利金）"): the lower strike whose Delta is nearest 0.30.
 
 Strikes are strictly descending HIGH > MIDDLE > BALANCED. Titles are numbered by display position (一, 二, 三) without gaps, so a row without a middle shows exactly the two earlier titles. Every tier carries its own sell limit (mid rounded down to the 0.01 tick when the spread is within 25% of mid, otherwise Bid plus a quarter of the spread, never below Bid or above mid); limit prices are not required to be ordered across tiers, only the strikes are.
 
 Compatibility: `suggestions` keeps one or two entries with the roles `HIGH_STRIKE` or `HIGH_STRIKE`,`BALANCED`, so a Worker that predates the middle tier ignores the additive `middle_suggestion` key and renders the two original tiers; rows sealed before the change simply have no middle tier and render two. The Python publish gate and the Worker validator both reject a malformed middle tier (wrong role, not strictly between, fewer than two neighbours, any failed per-item check) for that cycle only. The shared definition lives in `scripts/option_recommendation_rules.py` and its TypeScript twin `cloud/src/v213/option-recommendation-rules.ts`.
+
+#### Three conservative strategies per cycle (V21, operator 2026-10-19)
+
+Every weekly and monthly cycle carries a covered call, a cash-secured put (CSP) and a collar, conservative first, in the additive optional `strategies` object of the same sealed row (no new KV key; a row without it is an older row and shows the covered call only):
+
+- `cc`: present only as `{"unavailable": reason}` when the cycle has no covered-call strike (`suggestions` is then `[]`, allowed only beside a real `csp` or `collar` block);
+- `csp`: out-of-the-money puts with a two-sided quote, absolute Delta 0.20-0.30 (shared `CONSERVATIVE_DELTA_BAND`), no annualized-yield floor (removed 2026-11-03; yield is shown on the cash, strike x 100); `CONSERVATIVE` = Delta nearest 0.20, optional `BALANCED` = Delta nearest 0.30 at a higher strike; sell limit as for the covered call; carries cash required, break-even and downside buffer;
+- `collar`: long stock, a protective put (absolute Delta nearest 0.15 inside 0.05-0.25, buy limit = mid rounded up, never above Ask) and the short call in the same 0.20-0.30 band (nearest 0.20 first); net premium (credit positive), maximum loss, maximum gain, break-even and the worst-case net from Bid and Ask; no yield floor.
+
+Each of `csp` and `collar` is `{"unavailable": reason}` or a block with `rights_status`, `provider_id`, `quote_basis` and `timestamp` equal to the cycle's. A strategy whose leg lacks a valid two-sided quote or a Delta is unavailable on its own; nothing is modelled. The put side of Yahoo, Nasdaq US and Nasdaq Nordic is covered by the same `operator_accepted_unlicensed` label and decision as their calls; puts do not count towards `OPTION_TWO_SIDED_COVERAGE_LOW`. The Python publish gate degrades a failing `csp` or `collar` block to `{"unavailable": ...}` without dropping a good covered call, and drops the strategies first when the options object would exceed its size cap.
+
+The Worker mirrors those checks in `cloud/src/v213/covered-call.ts` (`validateCoveredCallCycle`): a failing `csp` or `collar` block becomes "no data" alone, `suggestions` may be empty only beside a real block, and a row without `strategies` shows both put-based strategies as no data. The LINE card is one flex message of at most four bubbles (overview, covered call, cash-secured put, collar; a strategy without data has no detail bubble), every bubble carrying the source and rights label, quote basis and capture time in its single disclosure line.
 
 ### Cash-secured put
 
@@ -260,7 +285,7 @@ Local owner position questions belong only to the separate local interface and a
 
 ## Acceptance tests
 
-1. Weekly/monthly selection uses actual DTE windows.
+1. Weekly selection uses the calendar-week rule and monthly selection the nearest standard monthly (third Friday), both on actual DTE.
 2. BID, ASK, midpoint and spread are calculated correctly.
 3. Last trade is never substituted for current BID/ASK.
 4. One-sided and stale quotes fail liquidity gates.

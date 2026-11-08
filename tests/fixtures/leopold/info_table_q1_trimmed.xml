@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<ns1:informationTable xmlns:ns1="http://www.sec.gov/edgar/document/thirteenf/informationtable">
+	<ns1:infoTable>
+		<ns1:nameOfIssuer>ASML HLDG NV N Y REGISTRY</ns1:nameOfIssuer>
+		<ns1:titleOfClass>SHS  </ns1:titleOfClass>
+		<ns1:cusip>N07059210</ns1:cusip>
+		<ns1:value>494122503</ns1:value>
+		<ns1:shrsOrPrnAmt>
+			<ns1:sshPrnamt>374100</ns1:sshPrnamt>
+			<ns1:sshPrnamtType>SH</ns1:sshPrnamtType>
+		</ns1:shrsOrPrnAmt>
+		<ns1:putCall>Put</ns1:putCall>
+		<ns1:investmentDiscretion>SOLE</ns1:investmentDiscretion>
+		<ns1:votingAuthority>
+			<ns1:Sole>0</ns1:Sole>
+			<ns1:Shared>0</ns1:Shared>
+			<ns1:None>374100</ns1:None>
+		</ns1:votingAuthority>
+	</ns1:infoTable>
+	<ns1:infoTable>
+		<ns1:nameOfIssuer>BLOOM ENERGY CORP</ns1:nameOfIssuer>
+		<ns1:titleOfClass>COM CL A  </ns1:titleOfClass>
+		<ns1:cusip>093712107</ns1:cusip>
+		<ns1:value>55347665</ns1:value>
+		<ns1:shrsOrPrnAmt>
+			<ns1:sshPrnamt>408500</ns1:sshPrnamt>
+			<ns1:sshPrnamtType>SH</ns1:sshPrnamtType>
+		</ns1:shrsOrPrnAmt>
+		<ns1:putCall>Call</ns1:putCall>
+		<ns1:investmentDiscretion>SOLE</ns1:investmentDiscretion>
+		<ns1:votingAuthority>
+			<ns1:Sole>0</ns1:Sole>
+			<ns1:Shared>0</ns1:Shared>
+			<ns1:None>0</ns1:None>
+		</ns1:votingAuthority>
+	</ns1:infoTable>
+	<ns1:infoTable>
+		<ns1:nameOfIssuer>CORE SCIENTIFIC INC NEW</ns1:nameOfIssuer>
+		<ns1:titleOfClass>COM  </ns1:titleOfClass>
+		<ns1:cusip>21874A106</ns1:cusip>
+		<ns1:value>389086756</ns1:value>
+		<ns1:shrsOrPrnAmt>
+			<ns1:sshPrnamt>26008473</ns1:sshPrnamt>
+			<ns1:sshPrnamtType>SH</ns1:sshPrnamtType>
+		</ns1:shrsOrPrnAmt>
+		<ns1:investmentDiscretion>SOLE</ns1:investmentDiscretion>
+		<ns1:votingAuthority>
+			<ns1:Sole>26008473</ns1:Sole>
+			<ns1:Shared>0</ns1:Shared>
+			<ns1:None>0</ns1:None>
+		</ns1:votingAuthority>
+	</ns1:infoTable>
+	<ns1:infoTable>
+		<ns1:nameOfIssuer>MICRON TECHNOLOGY INC</ns1:nameOfIssuer>
+		<ns1:titleOfClass>COM  </ns1:titleOfClass>
+		<ns1:cusip>595112103</ns1:cusip>
+		<ns1:value>5865578</ns1:value>
+		<ns1:shrsOrPrnAmt>
+			<ns1:sshPrnamt>17362</ns1:sshPrnamt>
+			<ns1:sshPrnamtType>SH</ns1:sshPrnamtType>
+		</ns1:shrsOrPrnAmt>
+		<ns1:investmentDiscretion>SOLE</ns1:investmentDiscretion>
+		<ns1:votingAuthority>
+			<ns1:Sole>17362</ns1:Sole>
+			<ns1:Shared>0</ns1:Shared>
+			<ns1:None>0</ns1:None>
+		</ns1:votingAuthority>
+	</ns1:infoTable>
+	<ns1:infoTable>
+		<ns1:nameOfIssuer>MICRON TECHNOLOGY INC</ns1:nameOfIssuer>
+		<ns1:titleOfClass>COM  </ns1:titleOfClass>
+		<ns1:cusip>595112103</ns1:cusip>
+		<ns1:value>583686168</ns1:value>
+		<ns1:shrsOrPrnAmt>
+			<ns1:sshPrnamt>1727700</ns1:sshPrnamt>
+			<ns1:sshPrnamtType>SH</ns1:sshPrnamtType>
+		</ns1:shrsOrPrnAmt>
+		<ns1:putCall>Put</ns1:putCall>
+		<ns1:investmentDiscretion>SOLE</ns1:investmentDiscretion>
+		<ns1:votingAuthority>
+			<ns1:Sole>0</ns1:Sole>
+			<ns1:Shared>0</ns1:Shared>
+			<ns1:None>1727700</ns1:None>
+		</ns1:votingAuthority>
+	</ns1:infoTable>
+	<ns1:infoTable>
+		<ns1:nameOfIssuer>SANDISK CORP</ns1:nameOfIssuer>
+		<ns1:titleOfClass>COM  </ns1:titleOfClass>
+		<ns1:cusip>80004C200</ns1:cusip>
+		<ns1:value>724363205</ns1:value>
+		<ns1:shrsOrPrnAmt>
+			<ns1:sshPrnamt>1140119</ns1:sshPrnamt>
+			<ns1:sshPrnamtType>SH</ns1:sshPrnamtType>
+		</ns1:shrsOrPrnAmt>
+		<ns1:investmentDiscretion>SOLE</ns1:investmentDiscretion>
+		<ns1:votingAuthority>
+			<ns1:Sole>1140119</ns1:Sole>
+			<ns1:Shared>0</ns1:Shared>
+			<ns1:None>0</ns1:None>
+		</ns1:votingAuthority>
+	</ns1:infoTable>
+	<ns1:infoTable>
+		<ns1:nameOfIssuer>SHARONAI HOLDINGS INC</ns1:nameOfIssuer>
+		<ns1:titleOfClass>COM CL A  ADDED</ns1:titleOfClass>
+		<ns1:cusip>778920306</ns1:cusip>
+		<ns1:value>18095535</ns1:value>
+		<ns1:shrsOrPrnAmt>
+			<ns1:sshPrnamt>796108</ns1:sshPrnamt>
+			<ns1:sshPrnamtType>SH</ns1:sshPrnamtType>
+		</ns1:shrsOrPrnAmt>
+		<ns1:investmentDiscretion>SOLE</ns1:investmentDiscretion>
+		<ns1:votingAuthority>
+			<ns1:Sole>796108</ns1:Sole>
+			<ns1:Shared>0</ns1:Shared>
+			<ns1:None>0</ns1:None>
+		</ns1:votingAuthority>
+	</ns1:infoTable>
+	<ns1:infoTable>
+		<ns1:nameOfIssuer>VANECK ETF TRUST</ns1:nameOfIssuer>
+		<ns1:titleOfClass>SEMICONDUCTR ETF  </ns1:titleOfClass>
+		<ns1:cusip>92189F676</ns1:cusip>
+		<ns1:value>10332630</ns1:value>
+		<ns1:shrsOrPrnAmt>
+			<ns1:sshPrnamt>26950</ns1:sshPrnamt>
+			<ns1:sshPrnamtType>SH</ns1:sshPrnamtType>
+		</ns1:shrsOrPrnAmt>
+		<ns1:investmentDiscretion>SOLE</ns1:investmentDiscretion>
+		<ns1:votingAuthority>
+			<ns1:Sole>26950</ns1:Sole>
+			<ns1:Shared>0</ns1:Shared>
+			<ns1:None>0</ns1:None>
+		</ns1:votingAuthority>
+	</ns1:infoTable>
+</ns1:informationTable>

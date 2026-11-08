@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import { parseQuery } from "../src/core";
 import { generalAnswer } from "../src/qa";
@@ -23,6 +24,11 @@ import type { LineEvent } from "../src/line";
 import { asKv, MemoryKv } from "./fake-kv";
 
 describe("lineAccessMode: only the exact value all_friends opens anything", () => {
+  it("production source template opts in explicitly, but absent runtime mode remains fail-closed", () => {
+    const template = readFileSync(new URL("../wrangler.v213.production.template.toml", import.meta.url), "utf8");
+    expect(template.match(/^\s*V213_LINE_ACCESS_MODE\s*=\s*"([^"]+)"\s*$/m)?.[1]).toBe("all_friends");
+    expect(lineAccessMode({})).toBe("owner_only");
+  });
   it.each([
     ["all_friends", "all_friends"],
     ["owner_only", "owner_only"],

@@ -15,6 +15,7 @@ import { pinPublicSnapshot } from "../src/v213/public-snapshot";
 import { v213PublicLineAnswer } from "../src/v213/rich-menu";
 import { SNAPSHOT_SEAL_KEY } from "../src/v213/snapshot-seal";
 import { asKv, MemoryKv } from "./fake-kv";
+import { humanizeStatusText } from "../src/v213/status-labels";
 import { sealUnboundReport } from "./sealed-report-migration";
 import { admitSyntheticTickers, resetAdmissionToReal, SYNTHETIC_PROVIDER_ID } from "./synthetic-option-admission";
 
@@ -309,7 +310,7 @@ function positive(reply: string, currency = "USD"): void {
     "身分已驗證", "已驗證身分", "不存在", "多來源交叉驗證"]) expect(reply).not.toContain(marker);
 }
 function conflict(reply: string, keys: string[], names = ["Synthetic Issuer"]): void {
-  expect(reply).toContain("IDENTITY_CONFLICT");
+  expect(reply).toContain("身分資料存在衝突");
   const sorted = [...keys].sort();
   expect(reply).toContain("顯示 " + Math.min(5, sorted.length) + "/" + sorted.length);
   expect(reply).toContain(sorted.slice(0, 5).join("、"));
@@ -331,7 +332,7 @@ function reads(fixture: Fixture, logical: string[], physical = logical): void {
   expect(physicalIdentity(fixture)).toEqual(physical);
 }
 function expiry(reply: string, ticker: string, query: string | null, readKey: string | null, rejects = false): void {
-  expect(reply).toContain(admission.OPTION_RIGHTS_NOT_ADMITTED);
+  expect(reply).toContain("期權資料未通過公開驗收");
   expect(reply).not.toContain("IDENTITY_CONFLICT");
   noQuote(reply);
   expect(vi.mocked(admission.admitPublicOption)).toHaveBeenCalledTimes(2);
@@ -505,7 +506,7 @@ describe("B2 integrated caller (D1-D5 synthetic seam scope)", () => {
         : mode === "stale-doc" ? "期權快照已逾時"
         : mode === "invalid-schema" || mode === "invalid-date" ? "封存期權物件無法驗證或讀取"
         : "封存之期權觀察未通過驗證";
-      expect(reply).toContain(reason); noQuote(reply);
+      expect(reply).toContain(humanizeStatusText(reason)); noQuote(reply);
       expect(reply).not.toContain("IDENTITY_CONFLICT");
       expect(trace.queries).toEqual([]);
       reads(f, []);
@@ -567,7 +568,7 @@ describe("B2 integrated caller (D1-D5 synthetic seam scope)", () => {
         // V11 (operator 2026-10-13): the root selection follows the enabled set (the pinned operator-accepted Yahoo provider may be enabled);
         // these rows claim no Yahoo identity, so the real catalog denies them either way.
         expect(catalog.production_quote_provider_selected).toBe(catalog.providers.some(provider => provider.runtime_enabled === true && provider.line_quote_eligible === true));
-        expect(reply).toContain(admission.OPTION_RIGHTS_NOT_ADMITTED);
+        expect(reply).toContain("期權資料未通過公開驗收");
         noQuote(reply);
         expect(reply).not.toContain("IDENTITY_CONFLICT");
         expect(trace.queries).toEqual([]);

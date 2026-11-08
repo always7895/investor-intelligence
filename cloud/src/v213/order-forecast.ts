@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { humanizeStatusText } from "./status-labels";
 import { validateMachineEnvelope, machineContextIsValid, machineEffectiveReceipt,
   type MachineBindings, type MachineAdmissionContext } from "./revenue-guidance-machine";
 import { HISTORY_ELIGIBLE_REASONS, historyBlockLines, type HistoryInputs, type HistoryView } from "./revenue-history-model";
@@ -1249,7 +1250,7 @@ function checkV3Evidence(value: any, ev: any, issuer: string, reportDay: string,
       // The official IR channel (Astra W1 ruling, astra-ir-coverage): a reviewed feed kind and its https base
       // (<=400 chars), with the reviewed guidance-release title (<=200) required alongside it.
       && (rc.ir === undefined || rc.ir === null || (isObject(rc.ir)
-        && (rc.ir.kind === "Q4_PRESS_RELEASES" || rc.ir.kind === "RSS" || rc.ir.kind === "NEWSROOM_HTML")
+        && (rc.ir.kind === "Q4_PRESS_RELEASES" || rc.ir.kind === "RSS" || rc.ir.kind === "NEWSROOM_HTML" || rc.ir.kind === "TSMC_NEWS_HTML")
         && typeof rc.ir.url === "string" && rc.ir.url.startsWith("https://") && rc.ir.url.length > 8 && rc.ir.url.length <= 400))
       && (rc.ir === undefined || rc.ir === null || typeof rc.ir_guidance_release_title === "string"
         && rc.ir_guidance_release_title.length > 0 && rc.ir_guidance_release_title.length <= 200)), "V3_RELEASE_CHANNELS");
@@ -1438,7 +1439,7 @@ function checkV3Evidence(value: any, ev: any, issuer: string, reportDay: string,
   // reviewed IR channel the company-guidance path is suspended with the distinct IR_COVERAGE_MISSING diagnostic
   // (never NOT_DISCLOSED, zero or consensus), while order recognition stays independent.
   const irSpec = rc && isObject(rc) && isObject(rc.ir)
-    && (rc.ir.kind === "Q4_PRESS_RELEASES" || rc.ir.kind === "RSS" || rc.ir.kind === "NEWSROOM_HTML")
+    && (rc.ir.kind === "Q4_PRESS_RELEASES" || rc.ir.kind === "RSS" || rc.ir.kind === "NEWSROOM_HTML" || rc.ir.kind === "TSMC_NEWS_HTML")
     && typeof rc.ir.url === "string" ? rc.ir : null;
   let irHost: string | null = null;
   if (irSpec) {
@@ -2131,7 +2132,7 @@ function parseV3(value: any, reportDay: string, issuer: string, generatedAt: str
       const rc = isObject(ev.release_channels) ? ev.release_channels : null;
       // The official IR host (Astra W1 ruling): when the record carries the reviewed IR wiring, the recompute binds
       // the ISSUER_IR channel to that host and requires it in the channel set.
-      const irUrl = rc && isObject(rc.ir) && (rc.ir.kind === "Q4_PRESS_RELEASES" || rc.ir.kind === "RSS" || rc.ir.kind === "NEWSROOM_HTML")
+      const irUrl = rc && isObject(rc.ir) && (rc.ir.kind === "Q4_PRESS_RELEASES" || rc.ir.kind === "RSS" || rc.ir.kind === "NEWSROOM_HTML" || rc.ir.kind === "TSMC_NEWS_HTML")
         && typeof rc.ir.url === "string" ? rc.ir.url : null;
       let irHostBind: string | undefined;
       if (irUrl) { try { irHostBind = new URL(irUrl).host; } catch { irHostBind = undefined; } }
@@ -2608,7 +2609,7 @@ export function parseOrderForecastV3Machine(raw: unknown, reportDay: string, iss
       const rc = record.release_channels;
       if (!isObject(rc) || !isObject(rc.ir) || receipt.coverage !== "SEC_WIRE_IR") return "FRESHNESS_UNVERIFIED";
       let host: string; try { host = new URL(rc.ir.url).host; } catch { return "FRESHNESS_UNVERIFIED"; }
-      if (!["Q4_PRESS_RELEASES", "RSS", "NEWSROOM_HTML"].includes(rc.ir.kind)) return "FRESHNESS_UNVERIFIED";
+      if (!["Q4_PRESS_RELEASES", "RSS", "NEWSROOM_HTML", "TSMC_NEWS_HTML"].includes(rc.ir.kind)) return "FRESHNESS_UNVERIFIED";
       const doc = record.documents.find((d: any) => d.id === receipt.guidance_document_id);
       if (!doc) return "FRESHNESS_UNVERIFIED";
       return recomputeReceiptStatus(receipt, [], cutoff.slice(0,10), doc.published_date, Date.parse(cutoff), rc.sec_cik, rc.wire_symbol, host);
@@ -2705,7 +2706,8 @@ const METRIC_TEXT: Record<string, string> = { RPO_STOCK: "RPO", BACKLOG_STOCK: "
   ORDER_INTAKE: "新接訂單", ORDER_GUIDANCE: "公司訂單指引", RECOGNITION_SCHEDULE: "認列時程" };
 export const CONDITION_TEXT = "條件情境：營收達預計認列額，P/S與股數不變；非目標價、非今日起報酬";
 export const CONDITION_TEXT_V3 = "條件情境：營收依上述推估實現，P/S與股數不變；以最新已報四季為基準，非目標價、非今日起報酬";
-export const RPO_TEXT = "RPO 為剩餘履約義務，非全部訂單；預計認列非保證";
+export const RPO_MEANING = "RPO 為剩餘履約義務，非全部訂單";
+export const RPO_TEXT = `${RPO_MEANING}；預計認列非保證`;
 export const SENSITIVITY_TITLE = "訂單餘額外推敏感度（非訂單實現情境）";
 export const SENSITIVITY_TEXT = "模型推估，非公司揭露、非期間認列";
 
@@ -3031,6 +3033,9 @@ function forecastCardV3(forecast: OrderForecast, money: Money, history: HistoryV
     }
   }
 
+  if (forecast.supplements?.length || forecast.superseded?.length) {
+    for (const line of supplementLines(forecast, money, false)) lines.push([line, false]);
+  }
   return lines;
 }
 
@@ -3063,6 +3068,7 @@ function forecastTextV3(forecast: OrderForecast, money: Money, history: HistoryV
       parts.push(`另列已簽約預計認列：1年期 ${money(rec.m12.amount, rec.m12.currency)}（起訖日 ${rec.m12.start}–${rec.m12.end}；不相加）`);
     }
   }
+  if (forecast.supplements?.length || forecast.superseded?.length) parts.push(...supplementLines(forecast, money, false));
   return parts.join("｜");
 }
 
@@ -3158,9 +3164,10 @@ function forecastLinesV3(forecast: OrderForecast, money: Money, history: History
   if (lrc) {
     // The channel text follows the receipt's coverage: the official IR channel is listed only when it was checked.
     const coverageText = lrc.coverage === "SEC_WIRE_IR" ? "SEC 申報、通訊社新聞稿與官方IR" : "SEC 申報與通訊社新聞稿";
-    lines.push(`最新發布查核：${lrc.checked_at}；查核管道：${lrc.coverage}（${coverageText}）；狀態：${lrc.status}`);
+    lines.push(`最新發布查核：${lrc.checked_at}；查核管道：${lrc.coverage}（${coverageText}）；狀態：${humanizeStatusText(lrc.status)}`);
   }
 
+  if (forecast.supplements?.length || forecast.superseded?.length) lines.push(...supplementLines(forecast, money, true));
   return lines;
 }
 

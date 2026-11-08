@@ -2311,6 +2311,18 @@
      "disposition": "REVIEWED_IRRELEVANT",
      "reviewed_at": "2026-09-28T15:32:15Z",
      "note": "wire distribution of the guidance-day results release itself (same event as the reviewed guidance document)"
+    },
+    {
+     "id": "https://investors.ao-inc.com/news-releases/news-release-details/applied-optoelectronics-announces-date-third-quarter-2026",
+     "disposition": "REVIEWED_IRRELEVANT",
+     "reviewed_at": "2026-10-23T11:39:56Z",
+     "note": "Oct15 notice schedules Nov5 results call, no numeric guidance; independently reviewed: CODEX-FRESHNESS-SOURCE-REVIEW-20261023.json"
+    },
+    {
+     "id": "https://www.nasdaq.com/press-release/applied-optoelectronics-announces-date-third-quarter-2026-financial-results",
+     "disposition": "REVIEWED_IRRELEVANT",
+     "reviewed_at": "2026-10-23T11:39:56Z",
+     "note": "Same original Oct15 notice lineage; exact API id retained; independently reviewed: CODEX-FRESHNESS-SOURCE-REVIEW-20261023.json"
     }
    ]
   },
@@ -2612,23 +2624,49 @@
      "sha256": "043fdf0da3e759f3681592c8ed7c10fae3fbe1e309500a6b907a489fda19f866",
      "byte_size": 1723098,
      "lineage_id": "BE-0001628280-26-028021"
+    },
+    {
+     "id": "BE-Q3-26-10Q",
+     "issuer": "BE",
+     "publisher": "Bloom Energy Corporation",
+     "title": "Bloom Energy Form 10-Q for September 30, 2026",
+     "source_kind": "SEC_PERIODIC",
+     "url": "https://www.sec.gov/Archives/edgar/data/1664703/000162828026066931/be-20260930.htm",
+     "published_date": "2026-10-22",
+     "retrieved_at": "2026-10-23T11:23:44Z",
+     "sha256": "5f46420b4cf0ba936041471bbf7d7240279e1aec61d055f8a0414964ddfbf3de",
+     "byte_size": 2231859,
+     "lineage_id": "BE-Q3-2026-RESULTS"
+    },
+    {
+     "id": "BE-Q3-26-GUIDANCE",
+     "issuer": "BE",
+     "publisher": "Bloom Energy Corporation",
+     "title": "Bloom Energy Reports Record Third Quarter 2026 Financial Results and Raises Full Year 2026 Guidance",
+     "source_kind": "SEC_8K_EXHIBIT",
+     "url": "https://www.sec.gov/Archives/edgar/data/1664703/000162828026066890/ex991_q326financialresults.htm",
+     "published_date": "2026-10-22",
+     "retrieved_at": "2026-10-23T11:23:43Z",
+     "sha256": "ef3522305443821253e38780fa3332f38984153b7d3ca9f430103474b1971e11",
+     "byte_size": 528959,
+     "lineage_id": "BE-Q3-2026-RESULTS"
     }
    ],
    "claims": [
     {
      "id": "BE-FY-GUIDANCE",
-     "document_id": "BE-GUIDANCE",
-     "locator": "Outlook",
-     "passage": "Bloom Energy is increasing its financial guidance for full-year 2026 as follows: • Revenue: $3.9B - $4.2B",
+     "document_id": "BE-Q3-26-GUIDANCE",
+     "locator": "Guidance; Revenue",
+     "passage": "Revenue: $4.4B - $4.6B",
      "metric": "REVENUE",
      "assertion_kind": "COMPANY_GUIDANCE",
      "currency": "USD",
      "unit_multiplier": 1,
      "amount": null,
-     "low": 3900000000.0,
-     "high": 4200000000.0,
+     "low": 4400000000.0,
+     "high": 4600000000.0,
      "stated_point": null,
-     "original_representation": "$3.9B - $4.2B",
+     "original_representation": "$4.4B - $4.6B",
      "scope": "COMPANY",
      "scope_label": "全公司",
      "accounting_basis": "GAAP",
@@ -2639,17 +2677,6 @@
     }
    ],
    "reported_quarters": [
-    {
-     "fiscal_label": "Q3 2025",
-     "start": "2025-07-01",
-     "end": "2025-09-30",
-     "revenue": 519048000.0,
-     "currency": "USD",
-     "scope": "COMPANY",
-     "accounting_basis": "GAAP",
-     "document_id": "BE-0001628280-25-046844",
-     "locator": "XBRL us-gaap:Revenues 2025-07-01..2025-09-30"
-    },
     {
      "fiscal_label": "Q4 2025",
      "start": "2025-10-01",
@@ -2691,16 +2718,20 @@
      "accounting_basis": "GAAP",
      "document_id": "BE-GUIDANCE",
      "locator": "Condensed Consolidated Statements of Operations, Three Months Ended June 30, 2026, Total revenue ($000) 1,065,365"
+    },
+    {
+     "fiscal_label": "Q3 2026",
+     "start": "2026-07-01",
+     "end": "2026-09-30",
+     "revenue": 1235837000.0,
+     "currency": "USD",
+     "scope": "COMPANY",
+     "accounting_basis": "GAAP",
+     "document_id": "BE-Q3-26-10Q",
+     "locator": "Inline XBRL us-gaap:Revenues context c-25 (no segment), USD scale 3, 1,235,837; July 1..September 30, 2026"
     }
    ],
    "forward_intervals": [
-    {
-     "fiscal_label": null,
-     "start": "2026-07-01",
-     "end": "2026-09-30",
-     "calendar_document_id": "BE-10K",
-     "calendar_locator": "During the year ended December 31, 2025, revenue from three of these customers and distributors, the first of which is related party, accounted for approximately 43%, 13% and 12% of our total revenue."
-    },
     {
      "fiscal_label": null,
      "start": "2026-10-01",
@@ -2721,16 +2752,24 @@
      "end": "2027-06-30",
      "calendar_document_id": "BE-10K",
      "calendar_locator": "During the year ended December 31, 2025, revenue from three of these customers and distributors, the first of which is related party, accounted for approximately 43%, 13% and 12% of our total revenue."
+    },
+    {
+     "fiscal_label": null,
+     "start": "2027-07-01",
+     "end": "2027-09-30",
+     "calendar_document_id": "BE-10K",
+     "calendar_locator": "During the year ended December 31, 2025, revenue from three of these customers and distributors, the first of which is related party, accounted for approximately 43%, 13% and 12% of our total revenue."
     }
    ],
    "fy_reconciliation": {
     "fy_claim_id": "BE-FY-GUIDANCE",
     "ytd_start": "2026-01-01",
-    "ytd_end": "2026-06-30",
-    "ytd_revenue": 1816419000.0,
+    "ytd_end": "2026-09-30",
+    "ytd_revenue": 3052256000.0,
     "ytd_quarter_ends": [
      "2026-03-31",
-     "2026-06-30"
+     "2026-06-30",
+     "2026-09-30"
     ]
    },
    "release_channels": {
@@ -2743,7 +2782,7 @@
      "kind": "Q4_PRESS_RELEASES",
      "url": "https://investor.bloomenergy.com/feed/PressRelease.svc/GetPressReleaseList"
     },
-    "ir_guidance_release_title": "Bloom Energy Reports Record Second Quarter 2026 Financial Results and Raises Full Year 2026 Guidance"
+    "ir_guidance_release_title": "Bloom Energy Reports Record Third Quarter 2026 Financial Results and Raises Full Year 2026 Guidance"
    },
    "reviewed_later_documents": [
     {
@@ -2763,6 +2802,24 @@
      "disposition": "REVIEWED_IRRELEVANT",
      "reviewed_at": "2026-09-28T15:32:15Z",
      "note": "wire distribution of the guidance-day results release itself (same event as the reviewed guidance document)"
+    },
+    {
+     "id": "0001628280-26-066890",
+     "disposition": "REVIEWED_IRRELEVANT",
+     "reviewed_at": "2026-10-23T11:39:56Z",
+     "note": "Same-day 8-K furnishes newly reviewed Q3 guidance reference; independently reviewed: CODEX-FRESHNESS-SOURCE-REVIEW-20261023.json"
+    },
+    {
+     "id": "0001628280-26-066931",
+     "disposition": "REVIEWED_IRRELEVANT",
+     "reviewed_at": "2026-10-23T11:39:56Z",
+     "note": "Same-day 10-Q is newly reviewed Q3 actual reference; independently reviewed: CODEX-FRESHNESS-SOURCE-REVIEW-20261023.json"
+    },
+    {
+     "id": "https://www.nasdaq.com/press-release/bloom-energy-reports-record-third-quarter-2026-financial-results-and-raises-full-year",
+     "disposition": "REVIEWED_IRRELEVANT",
+     "reviewed_at": "2026-10-23T11:39:56Z",
+     "note": "Same-day wire mirror of newly reviewed guidance reference; independently reviewed: CODEX-FRESHNESS-SOURCE-REVIEW-20261023.json"
     }
    ]
   },
@@ -3340,6 +3397,12 @@
      "disposition": "REVIEWED_IRRELEVANT",
      "reviewed_at": "2026-10-13T14:43:17Z",
      "note": "6-K: press release on the acquisition of Inferize (terms not disclosed); no results, revenue or guidance statement"
+    },
+    {
+     "id": "0001104659-26-117978",
+     "disposition": "REVIEWED_IRRELEVANT",
+     "reviewed_at": "2026-10-23T11:39:56Z",
+     "note": "Official 6-K furnishes financing-only Exhibit99.1; no changed revenue guidance; independently reviewed: CODEX-FRESHNESS-SOURCE-REVIEW-20261023.json"
     }
    ]
   },
@@ -4491,8 +4554,33 @@
     }
    ],
    "fy_reconciliation": null,
-   "release_channels": {},
-   "reviewed_later_documents": []
+   "release_channels": {
+    "sec_cik": 1046179,
+    "wire_symbol": "TSM",
+    "wire_names": [
+     "TSMC",
+     "Taiwan Semiconductor"
+    ],
+    "ir": {
+     "kind": "TSMC_NEWS_HTML",
+     "url": "https://pr.tsmc.com/english/latest-news"
+    },
+    "ir_guidance_release_title": "TSMC Reports Third Quarter EPS of NT$29.43"
+   },
+   "reviewed_later_documents": [
+    {
+     "id": "0001046179-26-000726",
+     "disposition": "REVIEWED_IRRELEVANT",
+     "reviewed_at": "2026-10-23T11:39:56Z",
+     "note": "Oct15 6-K furnishes exact reviewed Q3 release/reference and earnings presentation; Q4 revenue guidance USD52.3..54.3B matches reference; independently reviewed: CODEX-FRESHNESS-SOURCE-REVIEW-20261023.json"
+    },
+    {
+     "id": "0001046179-26-000728",
+     "disposition": "REVIEWED_IRRELEVANT",
+     "reviewed_at": "2026-10-23T11:39:56Z",
+     "note": "Oct22 month-end ownership/pledges/assets/capital/bonds/cancellation report for September; no results or revenue guidance; independently reviewed: CODEX-FRESHNESS-SOURCE-REVIEW-20261023.json"
+    }
+   ]
   }
  ]
 }

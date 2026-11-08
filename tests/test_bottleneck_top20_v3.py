@@ -51,6 +51,113 @@ FACTS = {"facts": {"us-gaap": {
 
 
 class QuarterSeriesTests(unittest.TestCase):
+    def test_malformed_rows_do_not_hide_other_valid_fundamentals(self):
+        import copy
+        facts = copy.deepcopy(FACTS)
+        rows = facts["facts"]["us-gaap"]["RevenueFromContractWithCustomerIncludingAssessedTax"]["units"]["USD"]
+        expected = engine.sec_fundamentals("X", 1, facts)
+        rows += [None, [], 3, "junk", fact("2025-06-29", "2026-06-27", float("inf"), "2026-09-15"),
+                 fact("2025-06-29", "2026-06-27", 10**5000, "2026-09-15")]
+        self.assertEqual(engine.sec_fundamentals("X", 1, facts), expected)
+        instant = {"facts": {"us-gaap": {"R": {"units": {"USD": [None, [], 3, "junk",
+            {"end": "2026-06-27", "filed": "2026-08-15", "val": 150},
+            {"end": "2026-06-27", "filed": "2026-09-15", "val": 10**5000}]}}}}}
+        self.assertEqual(engine._instant_series(instant, [("us-gaap", "R")])[1][0]["val"], 150)
+    def test_amended_annual_ytd_and_rpo_are_order_independent_through_compact_publisher(self):
+        import copy
+        for kind, value in (("annual", 130), ("ytd", 180)):
+            facts = copy.deepcopy(FACTS)
+            rows = facts["facts"]["us-gaap"]["RevenueFromContractWithCustomerIncludingAssessedTax"]["units"]["USD"]
+            rows.append(fact("2025-06-29", "2026-06-27" if kind == "annual" else "2026-03-28",
+                             680 if kind == "annual" else 650, "2026-09-15"))
+            rpo = [{"end": "2025-06-28", "val": 100, "filed": "2025-08-15"},
+                   {"end": "2026-06-27", "val": 200, "filed": "2026-08-15"},
+                   {"end": "2026-06-27", "val": 150, "filed": "2026-09-15"}]
+            facts["facts"]["us-gaap"]["RevenueRemainingPerformanceObligation"] = {"units": {"USD": rpo}}
+            results = []
+            for shift in range(3):
+                rows[:] = rows[shift:] + rows[:shift]
+                if shift % 2: rows.reverse()
+                rpo.reverse()
+                fund = engine.sec_fundamentals("X", 1, facts)
+                self.assertEqual(fund["revenue"], value)
+                self.assertEqual((fund["filed"], fund["rpo"], fund["rpo_yoy"]), ("2026-09-15", 150, .5))
+                self.assertEqual(len(fund["revenue_operands"]), 2)
+                sealed = OfficialPreviousQuarterTests()._seal(fund)
+                self.assertEqual(sealed["revenue_operands"], fund["revenue_operands"])
+                self.assertEqual(sealed["rpo_filed"], "2026-09-15")
+                results.append((fund, engine.capture_score(fund), sealed))
+            self.assertEqual(results[0], results[1])
+            self.assertEqual(results[0], results[2])
+
+    def test_same_filed_value_conflict_and_invalid_dates_are_not_arbitrarily_admitted(self):
+        import copy
+        facts = copy.deepcopy(FACTS)
+        rows = facts["facts"]["us-gaap"]["RevenueFromContractWithCustomerIncludingAssessedTax"]["units"]["USD"]
+        rows += [fact("2025-06-29", "2026-06-27", 680, "2026-09-15"),
+                 fact("2025-06-29", "2026-06-27", 690, "2026-09-15"),
+                 fact("2025-06-29", "2026-06-27", 999, "invalid")]
+        for reverse in (False, True):
+            if reverse: rows.reverse()
+            self.assertNotIn("2026-06-27", engine._quarter_series(facts, engine.REVENUE_TAGS)[1])
+        instants = {"facts": {"us-gaap": {"R": {"units": {"USD": [
+            {"end": "2026-06-27", "val": 10, "filed": "2026-09-15"},
+            {"end": "2026-06-27", "val": 11, "filed": "2026-09-15"}]}}}}}
+        self.assertEqual(engine._instant_series(instants, [("us-gaap", "R")]), (None, []))
+
+    def test_conflicted_direct_quarter_cannot_reappear_from_older_annual_minus_ytd(self):
+        import copy
+        facts = copy.deepcopy(FACTS)
+        rows = facts["facts"]["us-gaap"]["RevenueFromContractWithCustomerIncludingAssessedTax"]["units"]["USD"]
+        rows += [fact("2026-03-29", "2026-06-27", 999, "2026-09-15"),
+                 fact("2026-03-29", "2026-06-27", 1000, "2026-09-15")]
+        results = []
+        for reverse in (False, True):
+            if reverse: rows.reverse()
+            self.assertNotIn("2026-06-27", engine._quarter_series(facts, engine.REVENUE_TAGS)[1])
+            fund = engine.sec_fundamentals("X", 1, facts)
+            self.assertEqual(fund["quarter_end"], "2026-03-28")
+            sealed = OfficialPreviousQuarterTests()._seal(fund)
+            self.assertEqual(sealed["quarter_end"], "2026-03-28")
+            self.assertEqual(sealed["revenue_operands"][0]["end"], "2026-03-28")
+            results.append((fund, sealed))
+        self.assertEqual(results[0], results[1])
+
+    def test_direct_quarter_precedes_derived_and_incoherent_q4_is_refused(self):
+        import copy
+        facts = copy.deepcopy(FACTS)
+        rows = facts["facts"]["us-gaap"]["RevenueFromContractWithCustomerIncludingAssessedTax"]["units"]["USD"]
+        rows.append(fact("2026-03-29", "2026-06-27", 999, "2026-08-15"))
+        self.assertEqual(engine.sec_fundamentals("X", 1, facts)["revenue"], 999)
+        rows.pop()
+        for row in rows:
+            if row["end"] == "2026-03-28" and row["start"] == "2025-06-29": row["start"] = "2025-07-01"
+        self.assertNotIn("2026-06-27", engine._quarter_series(facts, engine.REVENUE_TAGS)[1])
+
+    def test_compact_publisher_projects_only_typed_bounded_financial_lineage(self):
+        import copy
+        fund = engine.sec_fundamentals("X", 1, FACTS)
+        noisy = copy.deepcopy(fund)
+        noisy["revenue_operands"][0]["raw_unknown"] = {"sentinel": "MUST_NOT_PUBLISH"}
+        sealed = OfficialPreviousQuarterTests()._seal(noisy)
+        self.assertNotIn("MUST_NOT_PUBLISH", json.dumps(sealed))
+        for row in sealed["revenue_operands"]:
+            self.assertEqual(set(row), {"start", "end", "filed", "val", "unit"})
+        mutations = [lambda f: f.update(revenue_operands=[]),
+                     lambda f: f.update(revenue_operands=[{}, {}, {}]),
+                     lambda f: f.update(revenue_operands={"val": 1}),
+                     lambda f: f["revenue_operands"][0].update(val="830"),
+                     lambda f: f["revenue_operands"][0].update(unit=["USD"]),
+                     lambda f: f["revenue_operands"][1].update(start="2025-07-01"),
+                     lambda f: f["revenue_operands"][0].update(filed="20260915"),
+                     lambda f: f["revenue_operands"][0].update(val=831),
+                     lambda f: f["revenue_operands"][0].update(val=10**400),
+                     lambda f: f.update(rpo_filed={"untrusted": "raw"}),
+                     lambda f: f.update(rpo_prior_filed="2026-99-99")]
+        for mutation in mutations:
+            bad = copy.deepcopy(fund)
+            mutation(bad)
+            self.assertIsNone(OfficialPreviousQuarterTests()._seal(bad))
     def test_fiscal_quarters_and_derived_fourth_quarter(self):
         tag, series = engine._quarter_series(FACTS, engine.REVENUE_TAGS)
         self.assertEqual(tag, "us-gaap:RevenueFromContractWithCustomerIncludingAssessedTax")
@@ -262,7 +369,8 @@ class OutlookTests(unittest.TestCase):
     def test_sec_fundamentals_carry_the_latest_rpo_amount(self):
         facts = json.loads(json.dumps(FACTS))
         facts["facts"]["us-gaap"]["RevenueRemainingPerformanceObligation"] = {"units": {"USD": [
-            {"end": "2025-06-28", "val": 100}, {"end": "2026-06-27", "val": 150}]}}
+            {"end": "2025-06-28", "val": 100, "filed": "2025-08-15"},
+            {"end": "2026-06-27", "val": 150, "filed": "2026-08-15"}]}}
         fundamentals = engine.sec_fundamentals("X", 1, facts)
         self.assertEqual((fundamentals["rpo"], fundamentals["rpo_end"], fundamentals["rpo_unit"]), (150, "2026-06-27", "USD"))
         self.assertAlmostEqual(fundamentals["rpo_yoy"], 0.5)
@@ -282,6 +390,126 @@ class ScoringTests(unittest.TestCase):
         self.assertEqual(engine.size_score(5e9), 8)
         self.assertEqual(engine.size_score(3e11), 1.0)
         self.assertEqual(engine.size_score(None), 0.0)
+
+
+class LeadMathV16Tests(unittest.TestCase):
+    NOW = datetime(2026, 10, 18, 11, 0, tzinfo=timezone.utc)
+    FILING = {"period": "2026-06-30"}
+
+    def test_effective_weight_applies_currency_and_age(self):
+        self.assertAlmostEqual(engine.effective_13f_weight({"long_weight": 0.28, "currency_factor": 0.25}, self.FILING, self.NOW)[0], 0.07)
+        self.assertEqual(engine.effective_13f_weight({"long_weight": 0.28}, self.FILING, self.NOW), (0.28, None))
+        self.assertEqual(engine.effective_13f_weight({"long_weight": 0.28}, None, self.NOW), (0.28, None))
+        # 200 days after 2026-06-30 is 2027-01-16: still current; one day later it is stale
+        edge = datetime(2027, 1, 16, 11, tzinfo=timezone.utc)
+        self.assertEqual(engine.effective_13f_weight({"long_weight": 0.2}, self.FILING, edge)[1], None)
+        self.assertEqual(engine.effective_13f_weight({"long_weight": 0.2}, self.FILING, edge + timedelta(days=1)), (0.0, "STALE_13F"))
+
+    def test_direction_factor_table(self):
+        base = {"long_weight": 0.2, "long_value_usd": 1000.0, "prior_shares": 100.0, "put_notional_usd": 0.0}
+        cases = [
+            ({**base, "shares_change": 0.0}, 1.0, []),
+            ({**base, "shares_change": -49.0}, 1.0, []),
+            ({**base, "shares_change": -50.0}, 0.5, ["TRIM"]),  # equality counts as a trim
+            ({**base, "shares_change": -100.0}, 0.5, ["TRIM"]),
+            ({**base, "shares_change": 40.0}, 1.0, []),
+            ({**base, "shares_change": None, "prior_shares": None}, 1.0, []),  # NEW
+            ({**base, "shares_change": -5.0, "prior_shares": 0.0}, 1.0, []),  # prior 0 never trims
+            ({**base, "shares_change": 0.0, "put_notional_usd": 499.0}, 1.0, []),
+            ({**base, "shares_change": 0.0, "put_notional_usd": 500.0}, 0.75, ["HEDGED"]),
+            ({**base, "shares_change": -60.0, "put_notional_usd": 900.0}, 0.375, ["TRIM", "HEDGED"]),
+            ({**base, "shares_change": 0.0, "put_notional_usd": 900.0, "long_value_usd": 0.0}, 1.0, []),
+            ({"long_weight": 0.2}, 1.0, []),
+            ({"long_weight": 0.2, "shares_change": "x", "prior_shares": float("nan")}, 1.0, []),
+        ]
+        for pos, factor, reasons in cases:
+            self.assertEqual(engine.direction_factor(pos), (factor, reasons), pos)
+        self.assertEqual(engine.direction_factor(None), (1.0, []))
+        self.assertLessEqual((engine.TRIM_FACTOR, engine.HEDGE_FACTOR), (0.5, 0.75))
+
+    def test_direction_scales_the_effective_weight_and_old_rows_stay_identical(self):
+        old = {"long_weight": 0.28, "currency_factor": 0.25}
+        self.assertEqual(engine.effective_13f_weight(old, self.FILING, self.NOW), (0.28 * 0.25, None))
+        trimmed = {**old, "shares_change": -60.0, "prior_shares": 100.0, "long_value_usd": 10.0, "put_notional_usd": 9.0}
+        weight, reason = engine.effective_13f_weight(trimmed, self.FILING, self.NOW)
+        self.assertAlmostEqual(weight, 0.28 * 0.25 * 0.375)
+        self.assertIsNone(reason)
+        self.assertEqual(engine.effective_13f_weight(trimmed, {"period": "2026-01-01"}, self.NOW), (0.0, "STALE_13F"))
+
+    def test_trimmed_name_ranks_below_an_otherwise_equal_name(self):
+        held = {"long_weight": 0.2, "currency_factor": 1.0, "shares_change": 0.0, "prior_shares": 100.0}
+        trimmed = {**held, "shares_change": -80.0}
+        lead_held = engine.company_lead(None, held, 1.0, 1.0, "EXPLOSION", self.FILING, self.NOW)
+        lead_trimmed = engine.company_lead(None, trimmed, 1.0, 1.0, "EXPLOSION", self.FILING, self.NOW)
+        self.assertGreater(lead_held, lead_trimmed)
+        self.assertAlmostEqual(lead_trimmed, engine.fund_lead_part(0.1) * 30)
+        rows = [{"leopold": held}, {"leopold": trimmed}]
+        raw, eff = engine.layer_fund_weight(rows, self.FILING, self.NOW)
+        self.assertAlmostEqual(raw, 0.4)  # the sealed raw sum is untouched
+        self.assertAlmostEqual(eff, 0.3)
+
+    def test_concave_13f_part(self):
+        self.assertAlmostEqual(engine.fund_lead_part(0.30), 0.3)
+        self.assertAlmostEqual(engine.fund_lead_part(0.60), 0.3)  # saturates at the same maximum as before
+        self.assertAlmostEqual(engine.fund_lead_part(0.07), 0.3 * (0.07 / 0.30) ** 0.5)
+        self.assertGreater(engine.fund_lead_part(0.28), 0.28)  # far above the old 0.05 saturation value
+        self.assertGreater(engine.fund_lead_part(0.28), engine.fund_lead_part(0.05) * 2)
+        self.assertEqual(engine.fund_lead_part(0.0), 0.0)
+
+    def test_company_lead_uses_raw_max_intensity_and_the_mirror_factor(self):
+        sig = {"intensity": 4.0, "stance": "BULLISH"}
+        full = engine.company_lead(sig, None, 10.0, 1.0, "EXPLOSION")
+        half = engine.company_lead(sig, None, 10.0, 0.5, "EXPLOSION")
+        self.assertAlmostEqual(full, 0.7 * (4.0 / 5.0) * 30)
+        self.assertAlmostEqual(half, 0.7 * (2.0 / 5.0) * 30)
+        self.assertEqual(engine.company_lead(sig, None, 10.0, 0.0, "COMPOUNDER"), 0.0)
+        # the clip is against the raw maximum, never the scaled one
+        self.assertAlmostEqual(engine.company_lead({"intensity": 9.0}, None, 10.0, 1.0, "COMPOUNDER"), 0.7 * 1.0 * 20)
+        bear = engine.company_lead({"intensity": 4.0, "stance": "BEARISH"}, None, 10.0, 1.0, "EXPLOSION")
+        self.assertAlmostEqual(bear, full * 0.3)
+        both = engine.company_lead(sig, {"long_weight": 0.28, "currency_factor": 0.25}, 10.0, 1.0, "COMPOUNDER", self.FILING, self.NOW)
+        self.assertAlmostEqual(both, (0.7 * 0.8 + engine.fund_lead_part(0.07)) * 20)
+        self.assertEqual(engine.company_lead(None, {"long_weight": 0.3}, 1.0, 1.0, "EXPLOSION", self.FILING, self.NOW), 0.3 * 30)
+
+    def test_mirror_levels_with_a_fixed_now(self):
+        def at(hours):
+            return {"latest_post_at": (self.NOW - timedelta(hours=hours)).strftime("%Y-%m-%dT%H:%M:%SZ")}
+        self.assertEqual(engine.serenity_mirror_factor(at(1), self.NOW), 1.0)
+        self.assertEqual(engine.serenity_mirror_factor(at(72), self.NOW), 1.0)
+        self.assertEqual(engine.serenity_mirror_factor(at(72.1), self.NOW), 0.5)
+        self.assertEqual(engine.serenity_mirror_factor(at(14 * 24), self.NOW), 0.5)
+        self.assertEqual(engine.serenity_mirror_factor(at(14 * 24 + 1), self.NOW), 0.0)
+        for source in (None, {}, {"latest_post_at": None}, {"latest_post_at": "garbage"}):
+            self.assertEqual(engine.serenity_mirror_factor(source, self.NOW), 1.0)
+
+    def test_layer_weight_keeps_the_raw_sum_and_adds_the_effective_sum(self):
+        rows = [{"leopold": {"long_weight": 0.2, "currency_factor": 0.25}}, {"leopold": {"long_weight": 0.1}}, {"leopold": None}]
+        raw, eff = engine.layer_fund_weight(rows, self.FILING, self.NOW)
+        self.assertAlmostEqual(raw, 0.3)
+        self.assertAlmostEqual(eff, 0.15)
+        self.assertEqual(engine.layer_fund_weight(rows, {"period": "2026-01-01"}, self.NOW), (raw, 0.0))
+
+    def test_exclusion_rules_schema_2_and_schema_1(self):
+        self.assertTrue(engine.serenity_excluded({"stance": "BEARISH", "bearish": 2, "bullish": 6, "bearish_decayed": 2.0, "bullish_decayed": 1.0}))
+        self.assertFalse(engine.serenity_excluded({"stance": "BEARISH", "bearish": 1, "bullish": 0, "bearish_decayed": 2.0, "bullish_decayed": 0.0}))
+        self.assertFalse(engine.serenity_excluded({"stance": "BEARISH", "bearish": 3, "bullish": 0, "bearish_decayed": 1.0, "bullish_decayed": 0.6}))
+        self.assertFalse(engine.serenity_excluded({"stance": "BULLISH", "bearish": 5, "bearish_decayed": 5.0, "bullish_decayed": 0.0}))
+        # schema 1 rows (or a schema 2 row without the decayed fields) keep the old rule
+        self.assertTrue(engine.serenity_excluded({"stance": "BEARISH", "bearish": 3, "bullish": 0}))
+        self.assertFalse(engine.serenity_excluded({"stance": "BEARISH", "bearish": 2, "bullish": 0}))
+        self.assertFalse(engine.serenity_excluded({"stance": "BEARISH", "bearish": 3, "bullish": 1}))
+        self.assertFalse(engine.serenity_excluded(None))
+
+    def test_chain_weights_come_from_config_with_a_fallback(self):
+        config = json.loads((ROOT / "config" / "bottleneck-layers-v3.json").read_text(encoding="utf-8"))
+        self.assertEqual(engine.chain_weights(config), {1: 1.0, 2: 1.0, 3: 0.85, 4: 0.9, 5: 0.8, 6: 0.6, 7: 0.5})
+        self.assertTrue(config["chain_weights_rationale"] and config["chain_weights_source"]["url"])
+        self.assertEqual(engine.chain_weights({"layers": []}), engine.DEFAULT_CHAIN_WEIGHTS)
+        changed = engine.chain_weights({"chain_weights": {"4": 0.5, "x": 1, "5": "bad", "6": 9}})
+        self.assertEqual(changed[4], 0.5)
+        self.assertEqual((changed[5], changed[6]), (0.8, 0.6))
+        ranks = {layer["chain_rank"] for layer in config["layers"]}
+        self.assertTrue(ranks <= set(engine.DEFAULT_CHAIN_WEIGHTS))
 
 
 class LeadTests(unittest.TestCase):

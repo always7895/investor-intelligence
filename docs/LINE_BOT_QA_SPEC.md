@@ -1,5 +1,9 @@
 # LINE Bot Full Natural-Language Q&A Specification
 
+<!-- DOCS-R1 scope -->
+> **Scope:** Contractual safety/evidence boundary; retain exact normative markers and validate against runtime configuration. Current acceptance and unresolved issues: [STATUS](../state/STATUS.md). The document itself does not authorize Production changes.
+<!-- /DOCS-R1 scope -->
+
 _Last reconciled: 2026-08-25 Asia/Taipei_
 
 ## Goal
@@ -25,7 +29,7 @@ FREE_ONLY_MODE=FAIL_CLOSED
 - `FREE_ONLY_MODE=true`.
 - No paid model, search, news, quote or market-data dependency.
 - No automatic plan upgrade, payment activation or paid fallback.
-- General generation uses only the authenticated private local Qwen/llama.cpp route.
+- General generation uses only the authenticated private local model route (the served model is auto-detected).
 - Current claims require timestamped reviewed public data.
 - Scheduled and delayed LINE push are disabled.
 - No order, transfer, funding, subscription or brokerage mutation exists.
@@ -39,7 +43,7 @@ LINE direct user webhook
   -> event freshness and hashed deduplication
   -> disabled/HMAC-allowlist admission
   -> public-only intent router
-  -> deterministic public tool or authenticated local Qwen
+  -> deterministic public tool or authenticated local model
   -> LINE reply or controlled unavailable response
 ```
 
@@ -64,7 +68,7 @@ Only direct user events are eligible. Group and room events are rejected before 
 - Missing secrets or invalid configuration: silent fail closed.
 - Non-allowlisted user: silent fail closed before reply, dedupe completion or rate mutation.
 - Shared-bot owner/operator role: none.
-- The Production owner-line Worker (`V213_LINE_ACCESS_MODE`, default `owner_only`) is a separate entrypoint; its all-friends mode is specified in [LINE_ALL_FRIENDS_ACCESS](LINE_ALL_FRIENDS_ACCESS.md) and does not change these shared-bot rules.
+- The Production owner-line Worker (`V213_LINE_ACCESS_MODE`, source-template default `all_friends`; missing/invalid runtime value fails closed to `owner_only`) is a separate entrypoint; its all-friends mode is specified in [LINE_ALL_FRIENDS_ACCESS](LINE_ALL_FRIENDS_ACCESS.md) and does not change these shared-bot rules.
 - Group/room enable switch: none.
 
 ## Public intent router
@@ -77,7 +81,7 @@ Supported public intents include:
 - source views with author/date/URL;
 - public option BID/ASK observations;
 - data freshness and static safety posture;
-- general non-personal knowledge via local Qwen.
+- general non-personal knowledge via the local model.
 
 No intent may expose or use:
 

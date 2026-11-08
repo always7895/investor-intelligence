@@ -1,0 +1,368 @@
+// V21 (operator 2026-10-19), Worker half: validator for the additive `strategies` object, the three-strategy card, the zero-covered-call rule and
+// the block-level degradation. Cycles come from the real Python producer on the synthetic chains of tests/fixtures/v21_put_chains.py
+// (regenerate: `python -m tests.fixtures.v21_worker_cases`). Synthetic data only.
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import fixture from "./fixtures/v21-three-strategies.json";
+import type { LineOutboundMessage } from "../src/line-messages";
+import { STRATEGY_DEGRADED_TEXT, buildCoveredCallMessages, validateCoveredCallCycle } from "../src/v213/covered-call";
+import { BULLET_DOT_SIZE } from "../src/v213/line-theme";
+import * as admission from "../src/v213/public-options-admission";
+import { admitSyntheticTickers, resetAdmissionToReal } from "./synthetic-option-admission";
+
+vi.mock("../src/v213/public-options-admission", async importOriginal => {
+  const real = await importOriginal<typeof import("../src/v213/public-options-admission")>();
+  return { ...real, admitPublicOption: vi.fn(real.admitPublicOption) };
+});
+beforeEach(() => { resetAdmissionToReal(); });
+
+type Json = Record<string, any>;
+const STAMP: string = fixture.stamp;
+const NOW = Date.parse(STAMP) + 60_000;
+const cases = fixture.cases as unknown as Record<string, Json>;
+const clone = (name: string): Json => structuredClone(cases[name]!);
+const check = (raw: unknown) => validateCoveredCallCycle(raw, NOW, STAMP, "monthly") as Json | null;
+const render = (cycle: Json, style: "flex" | "text" = "flex") => {
+  admitSyntheticTickers(cycle.ticker);
+  return buildCoveredCallMessages(check(cycle) as never, "每月期權", style);
+};
+const bubbles = (messages: LineOutboundMessage[]): Json[] => messages.flatMap(message => message.type === "flex" ? (message.contents as Json).contents as Json[] : []);
+const size = (value: unknown) => new TextEncoder().encode(JSON.stringify(value)).length;
+const texts = (node: unknown, out: string[] = []): string[] => {
+  if (Array.isArray(node)) node.forEach(child => texts(child, out));
+  else if (node && typeof node === "object") {
+    const record = node as Json;
+    if (record.type === "text") {
+      if (typeof record.text === "string") out.push(record.text);
+      else if (Array.isArray(record.contents)) out.push((record.contents as Json[]).map(span => String(span.text ?? "")).join(""));
+      return out;
+    }
+    Object.values(record).forEach(child => texts(child, out));
+  }
+  return out;
+};
+const joined = (node: unknown) => texts(node).join("\n").replace(/\s+/g, " ");
+const unavailable = { unavailable: STRATEGY_DEGRADED_TEXT };
+/** The full cycle with its covered call removed (the shape the producer emits when only the put side qualifies). */
+const withoutCoveredCall = (): Json => {
+  const cycle = clone("yahoo_monthly_full");
+  cycle.suggestions = []; delete cycle.middle_suggestion;
+  cycle.strategies = { cc: { unavailable: "本次回應有效買權不足，不提供備兌買權建議" }, ...cycle.strategies };
+  return cycle;
+};
+
+describe("V21 validator: positives from the Python producer", () => {
+  it("accepts the full Yahoo cycle, the covered-call-less cycle and the Nordic SEK cycle", () => {
+    for (const name of Object.keys(cases)) {
+      const cycle = check(clone(name));
+      expect(cycle, name).not.toBeNull();
+      expect(Object.keys(cycle!.strategies).sort(), name).toEqual(name === "yahoo_monthly_no_covered_call" ? ["cc", "collar", "csp"] : ["collar", "csp"]);
+    }
+    expect(check(clone("nordic_monthly_sek"))!.currency).toBe("SEK");
+  });
+
+  it("zero covered-call suggestions are allowed only beside a real csp or collar block and a cc unavailable block", () => {
+    const cycle = withoutCoveredCall();
+    expect(cycle.suggestions).toEqual([]);
+    expect(check(cycle)).not.toBeNull();
+    const cspOnly = withoutCoveredCall(); cspOnly.strategies.collar = { unavailable: "x" };
+    expect(check(cspOnly)).not.toBeNull();
+    const collarOnly = withoutCoveredCall(); collarOnly.strategies.csp = { unavailable: "x" };
+    expect(check(collarOnly)).not.toBeNull();
+    const nothingReal = withoutCoveredCall(); nothingReal.strategies.csp = { unavailable: "x" }; nothingReal.strategies.collar = { unavailable: "x" };
+    expect(check(nothingReal)).toBeNull();
+    const noCcBlock = withoutCoveredCall(); delete noCcBlock.strategies.cc;
+    expect(check(noCcBlock)).toBeNull();
+    const noStrategies = withoutCoveredCall(); delete noStrategies.strategies;
+    expect(check(noStrategies)).toBeNull();
+    const everyRealBlockBad = withoutCoveredCall(); everyRealBlockBad.strategies.csp.suggestions[0].premium_per_contract = 1;
+    everyRealBlockBad.strategies.collar.put.strike = 120;  // the bad blocks degrade, nothing real is left: the cycle is invalid
+    expect(check(everyRealBlockBad)).toBeNull();
+    const ccBeside = clone("yahoo_monthly_full"); ccBeside.strategies.cc = { unavailable: "x" };
+    expect(check(ccBeside)).toBeNull();  // a cc block beside real covered-call tiers is a contradiction
+  });
+
+  it("an old cycle without strategies is unchanged, and a malformed strategies value or unknown name never reaches the card", () => {
+    const old = clone("yahoo_monthly_full"); delete old.strategies;
+    expect(check(old)).toEqual(old);
+    const wrongType = clone("yahoo_monthly_full"); wrongType.strategies = "x";
+    const stripped = check(wrongType)!;
+    expect(stripped).not.toBeNull();
+    expect("strategies" in stripped).toBe(false);
+    const unknown = clone("yahoo_monthly_full"); unknown.strategies.straddle = { suggestions: [] };
+    expect(Object.keys(check(unknown)!.strategies).sort()).toEqual(["collar", "csp"]);
+  });
+});
+
+describe("V21 validator: a bad block degrades alone", () => {
+  const mutants: [string, (cycle: Json) => void, "csp" | "collar"][] = [
+    ["csp strike above the spot", c => { c.strategies.csp.suggestions[0].strike = 101; }, "csp"],
+    ["csp premium not limit x 100", c => { c.strategies.csp.suggestions[0].premium_per_contract += 5; }, "csp"],
+    ["csp cash not strike x 100", c => { c.strategies.csp.suggestions[0].cash_required = 1; }, "csp"],
+    ["csp annualized wrong", c => { c.strategies.csp.suggestions[0].annualized_yield = 0.9; }, "csp"],
+    ["csp limit above the mid", c => { c.strategies.csp.suggestions[0].limit_price = 1.02; }, "csp"],
+    ["csp delta below the band", c => { c.strategies.csp.suggestions[0].delta = 0.1; }, "csp"],
+    ["csp delta above the band", c => { c.strategies.csp.suggestions[0].delta = 0.35; }, "csp"],
+    ["csp unknown delta basis", c => { c.strategies.csp.suggestions[0].delta_basis = "GUESSED"; }, "csp"],
+    ["csp extra key", c => { c.strategies.csp.suggestions[0].extra = 1; }, "csp"],
+    ["csp missing key", c => { delete c.strategies.csp.suggestions[0].breakeven; }, "csp"],
+    ["csp balanced strike not higher", c => { c.strategies.csp.suggestions[1].strike = 90; c.strategies.csp.suggestions[1].cash_required = 9000; }, "csp"],
+    ["csp wrong roles", c => { c.strategies.csp.suggestions[0].role = "BALANCED"; }, "csp"],
+    ["csp label mismatch", c => { c.strategies.csp.timestamp = "2026-09-30T16:00:00Z"; }, "csp"],
+    ["csp label key missing", c => { delete c.strategies.csp.provider_id; }, "csp"],
+    ["csp NaN-like string", c => { c.strategies.csp.suggestions[0].bid = "0.98"; }, "csp"],
+    ["csp three items", c => { c.strategies.csp.suggestions.push(structuredClone(c.strategies.csp.suggestions[1])); }, "csp"],
+    ["collar put above the spot", c => { c.strategies.collar.put.strike = 101; }, "collar"],
+    ["collar put buy limit below the mid", c => { c.strategies.collar.put.limit_price = 0.59; }, "collar"],
+    ["collar put delta outside the window", c => { c.strategies.collar.put.delta = 0.4; }, "collar"],
+    ["collar call below the spot", c => { c.strategies.collar.items[0].call.strike = 99; }, "collar"],
+    ["collar net wrong", c => { c.strategies.collar.items[0].net_premium_per_share = 5; }, "collar"],
+    ["collar max loss wrong", c => { c.strategies.collar.items[0].max_loss_per_share = 1; }, "collar"],
+    ["collar max gain wrong", c => { c.strategies.collar.items[0].max_gain_per_share = 99; }, "collar"],
+    ["collar break-even wrong", c => { c.strategies.collar.items[0].break_even = 50; }, "collar"],
+    ["collar worst case wrong", c => { c.strategies.collar.items[0].worst_case_net_per_share = 9; }, "collar"],
+    ["collar balanced call not lower", c => { c.strategies.collar.items[1].call = structuredClone(c.strategies.collar.items[0].call); }, "collar"],
+    ["collar put leg extra key", c => { c.strategies.collar.put.iv = 0.3; }, "collar"],
+    ["collar label mismatch", c => { c.strategies.collar.rights_status = "reviewed_public_access"; }, "collar"],
+    ["collar block that is an array", c => { c.strategies.collar = []; }, "collar"],
+    ["unavailable plus data", c => { c.strategies.collar.unavailable = "x"; }, "collar"],
+  ];
+  for (const [name, mutate, which] of mutants) {
+    it(`${name}: only that strategy becomes no data; the covered call and the other strategy survive`, () => {
+      const original = clone("yahoo_monthly_full");
+      const cycle = clone("yahoo_monthly_full");
+      mutate(cycle);
+      const out = check(cycle);
+      expect(out, name).not.toBeNull();
+      const other = which === "csp" ? "collar" : "csp";
+      expect(out!.strategies[which]).toEqual(unavailable);
+      expect(out!.strategies[other]).toEqual(original.strategies[other]);
+      expect(out!.suggestions).toEqual(original.suggestions);
+    });
+  }
+
+  it("a bad block renders a compact no-data overview and keeps the exact reason on Flex and text", () => {
+    const cycle = clone("yahoo_monthly_full");
+    cycle.strategies.csp.suggestions[0].premium_per_contract = 1;
+    const list = bubbles(render(cycle));
+    expect(list).toHaveLength(4);  // overview, covered call, collar, disclosure
+    expect(joined(list[0])).toContain("無資料");
+    expect(joined(list.at(-1))).toContain(STRATEGY_DEGRADED_TEXT);
+    expect(joined(list[1])).toContain("建議一：高履約價");
+    expect(joined(list[2])).toContain("領口策略");
+    // V25-FIX3 inspects the actual joined reply, so a leaked CSP cash requirement cannot pass through an empty traversal.
+    const visible = list.map(joined).join("\n");
+    expect(visible).not.toMatch(/現金 \$[\d,.]+/);
+    expect(joined(render(cycle, "text"))).toContain(`無資料：${STRATEGY_DEGRADED_TEXT}`);
+  });
+});
+
+describe("V21 card", () => {
+  const full = () => render(clone("yahoo_monthly_full"));
+
+  it("is one flex message of five bubbles: overview, three strategies and shared disclosure", () => {
+    const messages = full();
+    expect(messages).toHaveLength(1);
+    expect(messages[0]!.type).toBe("flex");
+    const list = bubbles(messages);
+    expect(list).toHaveLength(5);
+    const headers = list.map(bubble => texts(bubble.header)[0]!);
+    expect(headers[0]).toContain("三種保守期權策略");
+    expect(headers[1]).toContain("備兌買權");
+    expect(headers[2]).toContain("現金擔保賣權");
+    expect(headers[3]).toContain("領口策略");
+    expect(joined(list[4]!.header)).toContain("資料來源與說明");
+    // overview: covered call, then the put, then the collar
+    const overview = joined(list[0]);
+    expect(overview.indexOf("備兌買權")).toBeLessThan(overview.indexOf("現金擔保賣權"));
+    expect(overview.indexOf("現金擔保賣權")).toBeLessThan(overview.indexOf("領口策略"));
+    expect(overview).toContain("可用策略");
+    // conservative first inside each detail
+    const csp = joined(list[2]);
+    expect(csp.indexOf("保守型")).toBeLessThan(csp.indexOf("平衡型"));
+    const collar = joined(list[3]);
+    expect(collar.indexOf("保守型")).toBeLessThan(collar.indexOf("平衡型"));
+  });
+
+  it("keeps compact strategy figures and preserves complete same-reply qualifications", () => {
+    const list = bubbles(full());
+    const overview = joined(list[0]);
+    const disclosure = joined(list[4]);
+    for (const expected of ["$94.00", "年化", "$107.00", "+$46.00", "以備妥現金計"]) expect(overview).toContain(expected);
+    for (const expected of ["$1.00", "$100.00", "$9400.00", "$9600.00", "$92.00", "$107.00",
+      "Bid/Mid/Ask 備兌 $0.36/$0.38/$0.40", "Bid/Mid/Ask 賣沽 $0.98/$1.00/$1.02",
+      "領口 Put Bid/Mid/Ask $0.59/$0.61/$0.63", "Call Bid/Mid/Ask $1.05/$1.07/$1.09",
+      "年化 13.9%（以備妥現金計）", "損益兩平 $93.00", "Delta 0.20", "Bid $0.98",
+      "Bid $0.59", "Bid $1.05", "$754.00", "$746.00", "$99.54", "模型值，依報價隱含波動率"]) {
+      expect(disclosure, expected).toContain(expected);
+    }
+    expect(JSON.stringify(list[0])).toContain("AAA 每月期權 文字");
+    expect(overview).not.toContain("後續頁面");
+    expect(joined(list[2])).toContain("以備妥現金計");
+    expect(joined(list[3])).toContain("買賣相抵");
+    const cc = joined(list[1]);
+    expect(cc).toContain("Bid $0.36");
+    expect(joined(list[4])).toContain("年化收益＝期間收益×365÷DTE");
+    expect(joined(list[4])).toContain("模型值，依報價隱含波動率 30%");
+    const text = joined(render(clone("yahoo_monthly_full"), "text"));
+    for (const expected of ["$94.00", "$96.00", "$9400.00", "$9600.00", "損益兩平 $93.00", "$92.00", "$107.00",
+      "每口淨權利金（收入）$46.00", "最大損失 $754.00／口", "最大獲利 $746.00／口", "保護賣權（買進）履約價 $92.00"]) {
+      expect(text, expected).toContain(expected);
+    }
+  });
+
+  it("keeps immediate warnings on each strategy and complete qualifications in the shared disclosure", () => {
+    const cycle = clone("yahoo_monthly_full");
+    admitSyntheticTickers(cycle.ticker);
+    vi.mocked(admission.admitPublicOption).mockImplementation(() => ({ ok: true, provider_id: "synthetic-test-only-not-in-catalog", operator_accepted: true }) as never);
+    const list = bubbles(buildCoveredCallMessages(check(cycle) as never, "每月期權", "flex"));
+    const byEyebrow = (eyebrow: string) => {
+      const found = list.filter(bubble => joined(bubble.header).includes(`${eyebrow} · `));
+      expect(found, eyebrow).toHaveLength(1);
+      return joined(found[0]);
+    };
+    expect(byEyebrow("備兌買權")).toContain("正股仍有下跌風險");
+    expect(byEyebrow("現金擔保賣權")).toContain("損失可超過權利金");
+    const collar = byEyebrow("領口策略");
+    for (const required of ["每組100股＋買1口Put＋賣1口Call", "下跌有界、上漲封頂", "最大損失"])
+      expect(collar).toContain(required);
+    const disclosure = joined(list[list.length - 1]);
+    for (const required of ["正股仍有下跌風險", "損失可大於權利金", "最大盈虧為到期估算", "買進Put取Ask－四分之一價差"])
+      expect(disclosure).toContain(required);
+  });
+
+  it("shares source, rights, capture time and quote rules in one final disclosure", () => {
+    const cycle = clone("yahoo_monthly_full");
+    admitSyntheticTickers(cycle.ticker);
+    vi.mocked(admission.admitPublicOption).mockImplementation(() => ({ ok: true, provider_id: "synthetic-test-only-not-in-catalog", operator_accepted: true }) as never);
+    const list = bubbles(buildCoveredCallMessages(check(cycle) as never, "每月期權", "flex"));
+    const disclosure = joined(list[list.length - 1]);
+    for (const required of ["資料來源與說明", "Yahoo Finance 期權鏈（非官方，延遲）", "10-24 01:00（台北）", "擷取時間",
+      "依營運者決定顯示；本資料未取得再散布授權", "非投資建議", "不下單",
+      "價差25%內取中間價；較寬時賣出腿取Bid＋四分之一價差、買進Put取Ask－四分之一價差"])
+      expect(disclosure).toContain(required);
+    expect(list.filter(bubble => joined(bubble.header).includes("資料來源與說明"))).toHaveLength(1);
+    for (const bubble of list.slice(0, -1)) {
+      const footer = joined(bubble.footer);
+      expect(footer).toContain("非投資建議");
+      expect(footer).toContain("不下單");
+      expect(footer).not.toContain(STAMP);
+    }
+    const text = joined(render(cycle, "text"));
+    expect(text).toContain("被指派時需以履約價買進正股");
+    expect(text).toContain("保護賣權需付權利金");
+  });
+
+  it("stays under the 46 KB packing size and the LINE altText limits", () => {
+    const messages = full();
+    expect(size(messages[0]!.type === "flex" ? (messages[0] as Json).contents : null)).toBeLessThan(46_000);
+    const alt = (messages[0] as Json).altText as string;
+    expect(Array.from(alt).length).toBeLessThanOrEqual(120);
+    expect(alt.split("｜").length).toBeGreaterThanOrEqual(3);
+    expect(alt).toContain("AAA");
+    for (const bubble of bubbles(messages)) expect(size(bubble)).toBeLessThan(14_000);
+  });
+
+  it("density budget: bulleted, one disclosure line, no maxLines, specific button labels", () => {
+    const list = bubbles(full()).slice(0, -1);
+    const metrics = list.map(bubble => {
+      let bullets = 0; let textCount = 0; let chars = 0; let maxLines = 0; let xxs = 0;
+      const buttons: string[] = []; const commands: string[] = [];
+      const walk = (node: any) => {
+        if (Array.isArray(node)) { node.forEach(walk); return; }
+        if (!node || typeof node !== "object") return;
+        if (node.type === "button") { buttons.push(node.action.label); commands.push(node.action.text); return; }
+        if (node.type === "box" && node.layout === "horizontal" && node.contents?.length === 2 && node.contents[0]?.width === BULLET_DOT_SIZE) bullets += 1;
+        if (node.type === "text") {
+          const text = typeof node.text === "string" ? node.text
+            : Array.isArray(node.contents) ? node.contents.map((span: any) => String(span.text ?? "")).join("") : "";
+          textCount += 1; chars += Array.from(text).length; if (node.maxLines) maxLines += 1; if (node.size === "xxs") xxs += 1; return;
+        }
+        Object.values(node).forEach(walk);
+      };
+      walk(bubble);
+      return { bullets, textCount, chars, maxLines, xxs, buttons, commands };
+    });
+    // overview: three strategies of one hero figure and at most three bullets each, no more than three labelled disclosures
+    expect(metrics[0]!.bullets).toBeLessThanOrEqual(9);
+    expect(metrics[0]!.textCount).toBeLessThanOrEqual(36);
+    expect(metrics[0]!.chars).toBeLessThanOrEqual(800);
+    for (const item of metrics) {
+      expect(item.maxLines).toBe(0);
+      expect(item.xxs).toBeLessThanOrEqual(3 + 8);  // up to three disclosure labels plus section/footnote captions
+      expect(item.textCount).toBeLessThanOrEqual(56);
+      for (const label of item.buttons) {
+        expect(Array.from(label).length).toBeLessThanOrEqual(20);
+        expect(label).not.toMatch(/^(?:詳情|更多|詳細|查看)$/);
+      }
+    }
+    expect(metrics[0]!.commands.join("|")).toContain("AAA 每月期權 文字");
+    expect(metrics.slice(1).every(item => item.buttons.length >= 2)).toBe(true);
+  });
+
+  it("an old cycle keeps the covered call summary and exposes no-data reasons in text", () => {
+    const old = clone("yahoo_monthly_full"); delete old.strategies;
+    const list = bubbles(render(old));
+    expect(list).toHaveLength(3);
+    const overview = joined(list[0]);
+    expect(overview.match(/無資料/g)).toHaveLength(2);
+    const disclosure = joined(list.at(-1));
+    expect(disclosure).toContain("現金擔保賣權（備足現金賣出賣權）】無資料：此筆為舊版資料，未含此策略報價");
+    expect(disclosure).toContain("領口策略（持股＋買保護賣權＋賣買權）】無資料：此筆為舊版資料，未含此策略報價");
+    expect(overview).toContain("備兌買權");
+    expect(joined(list[1])).toContain("建議一：高履約價（不易被賣掉）");
+    const text = joined(render(old, "text"));
+    expect(text.match(/無資料：此筆為舊版資料，未含此策略報價/g)).toHaveLength(2);
+    expect(text).toContain("備兌買權（持股賣出買權）");
+  });
+
+  it("a cycle without a covered call keeps the no-data label, with details reachable in the text edition", () => {
+    const cycle = withoutCoveredCall();
+    const list = bubbles(render(cycle));
+    expect(list).toHaveLength(4);  // overview, put, collar, disclosure
+    const overview = joined(list[0]);
+    expect(overview).toContain("備兌買權");
+    expect(overview).toContain("無資料");
+    expect(joined(list.at(-1))).toContain("備兌買權】無資料：本次回應有效買權不足");
+    expect(joined(list[1])).toContain("需備現金 $");
+    expect(joined(list[2])).toContain("最大損失");
+    expect(joined(render(cycle, "text"))).toContain("無資料：本次回應有效買權不足");
+  });
+
+  it("the Nordic SEK cycle prices every figure in SEK", () => {
+    const list = bubbles(render(clone("nordic_monthly_sek")));
+    expect(list).toHaveLength(5);
+    expect(joined(list[2])).toContain("9400.00 SEK");
+    expect(joined(list[3])).toContain("754.00 SEK");
+    expect(joined(list[4])).toContain("Nasdaq Nordic");
+  });
+
+  it("the text edition lists all three strategies untruncated, with the standing disclaimers", () => {
+    const cycle = clone("yahoo_monthly_full");
+    admitSyntheticTickers(cycle.ticker);
+    vi.mocked(admission.admitPublicOption).mockImplementation(() => ({ ok: true, provider_id: "synthetic-test-only-not-in-catalog", operator_accepted: true }) as never);
+    const messages = buildCoveredCallMessages(check(cycle) as never, "每月期權", "text") as { type: "text"; text: string }[];
+    expect(messages).toHaveLength(1);
+    const text = messages[0]!.text;
+    expect(text.length).toBeLessThan(4900);
+    expect(text).toContain("【備兌買權建議｜AAA");
+    for (const expected of ["現金擔保賣權", "領口策略", "需備現金 $9400.00", "最大損失 $754.00／口", "最大獲利 $746.00／口", "保護賣權（買進）履約價 $92.00"]) expect(text).toContain(expected);
+    expect(text.indexOf("備兌買權")).toBeLessThan(text.indexOf("現金擔保賣權"));
+    expect(text.indexOf("現金擔保賣權")).toBeLessThan(text.indexOf("領口策略"));
+    expect(text).toContain("本服務不下單。");
+    expect(text).toContain("10-24 01:00（台北）");
+    expect(text).toContain("未取得再散布授權");
+  });
+
+  it("no advice or guarantee phrasing, and a denied public admission renders nothing", () => {
+    const rendered = JSON.stringify(full());
+    for (const forbidden of ["保證獲利", "一定賺", "建議買進", "建議你", "穩賺"]) expect(rendered).not.toContain(forbidden);
+    vi.mocked(admission.admitPublicOption).mockImplementation(() => ({ ok: false }) as never);
+    expect(() => buildCoveredCallMessages(check(clone("yahoo_monthly_full")) as never, "每月期權", "flex")).toThrow();
+  });
+
+  it("no card claims an annualized-yield floor (the 6% and then 2% floors were removed on 2026-11-03)", () => {
+    const text = JSON.stringify(full());
+    expect(text).toContain("不設年化收益下限");
+    for (const stale of ["至少 2%", "至少 6%", "年化權利金至少"]) expect(text).not.toContain(stale);
+  });
+});

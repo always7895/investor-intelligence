@@ -22,7 +22,7 @@ try {
         throw "Exact checkout mismatch: expected=$env:GITHUB_SHA actual=$sha"
     }
 
-    $portableRoot = Join-Path $(if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { [IO.Path]::GetTempPath() }) 'ii-r75-python-3.12.10'
+    $portableRoot = Join-Path $(if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { [IO.Path]::GetTempPath() }) ('ii-r75-python-3.12.10-'+[guid]::NewGuid().ToString('N'))
     $resolvedPython = @(
         & .\scripts\bootstrap_portable_python.ps1 -DestinationPath $portableRoot
     ) | Select-Object -Last 1

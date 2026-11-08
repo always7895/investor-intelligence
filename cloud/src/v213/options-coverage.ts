@@ -3,9 +3,9 @@
  *
  * Sealed lazy object `v213:options-coverage:v1`, produced by scripts/publish_sealed_snapshot.py and bound by the same seal. Nothing in the body
  * is authority. The loader (1) rejects a raw body over 200000 UTF-8 bytes BEFORE JSON.parse, (2) validates the strict bounded shape,
- * (3) DERIVES every declared section itself from the SAME canonical catalog and the SAME unchanged ADR routing map this Worker imports
- * (provider rows including name, the jurisdiction -> unique provider-id relation with the literal declared codes only, and the local
- * covered-call routing markets from the covered_markets KEYS) and requires exact equality, and the page prints only that derived projection;
+ * (3) DERIVES every displayed declared section from either the bundled current catalog or its pinned predecessor, plus the unchanged ADR map
+ * (provider rows including name, the jurisdiction -> unique provider-id relation with literal codes, and local covered-call routing markets),
+ * requires exact equality to one whole projection, and prints only that projection;
  * (4) rechecks the options link by sha256 and byte length of the sealed options body and recomputes every observed row under the SAME rules
  * as the real public loader (loadDetailedOptionObservation: canonical document clock, at most 5 minutes in the future and 6 hours old,
  * v2 shape, ONLY weekly and monthly, producer-unavailable stays unavailable, validateCoveredCallCycle with its period) plus the canonical
@@ -21,7 +21,10 @@
  * broadened to EOD, index or Delta data. No private, raw strike/bid/ask, settlement, Delta or premium field exists in this DTO. */
 import adrMap from "../../../config/option-adr-map-v1.json";
 import catalog from "../../../config/public-options-provider-candidates.json";
+import predecessorCatalog from "./options-provider-catalog-4065fbe.json";
 import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
+import { statusLabelZh } from "./status-labels";
+import { formatTaipeiTimestamp, formatVisibleMoment } from "./line-formatters";
 import { isValidUtcIsoInstant, validateCoveredCallCycle } from "./covered-call";
 import { OPTIONS_KEY } from "./market-observations";
 import { admitPublicOption } from "./public-options-admission";
@@ -42,7 +45,17 @@ const COVERAGE_NOTES = new Set([
   "CATALOG_COUNT_IS_NOT_INDEPENDENT_CONFIRMATION", "DECLARED_IS_NOT_COLLECTED_OR_LIVE", "EOD_INDEX_AND_DELTA_NOT_ADMITTED_BY_THIS_VIEW",
   "NO_RAW_QUOTES_IN_THIS_OBJECT", "ORIGIN_LINEAGE_UNKNOWN_NO_CORROBORATION_METRIC", "UNCATALOGUED_JURISDICTIONS_ARE_NOT_COVERAGE",
 ]);
-const RIGHTS_STATUSES = new Set(["review_before_enable", "reviewed_public_access", "automated_access_prohibited", "operator_accepted_unlicensed"]);
+const RIGHTS_STATUSES = new Set(["review_before_enable", "reviewed_public_access", "automated_access_prohibited", "licence_required", "operator_accepted_unlicensed"]);
+/** Rights status is a catalog declaration, never a public-data admission. */
+const RIGHTS_ZH: Readonly<Record<string, string>> = Object.freeze({
+  review_before_enable: "啟用前需審查", reviewed_public_access: "已審閱公開存取條件（非已准入）",
+  automated_access_prohibited: "禁止自動存取", licence_required: "須授權",
+  operator_accepted_unlicensed: "操作者接受未授權風險（非已准入）",
+});
+const ADAPTER_ZH: Readonly<Record<string, string>> = Object.freeze({
+  not_implemented: "未實作", candidate_implemented: "候選已實作（未驗收）",
+  adapter_reviewed: "轉接器已審閱（非報價准入）", not_permitted: "禁止使用",
+});
 const ADAPTER_STATUSES = new Set(["not_implemented", "candidate_implemented", "adapter_reviewed", "not_permitted"]);
 const ID_RE = /^[a-z0-9_]{1,64}$/;
 const CODE_RE = /^[A-Z0-9_]{1,12}$/;
@@ -201,9 +214,8 @@ interface Derived {
   providers: CoverageProvider[]; jurisdictions: CoverageJurisdiction[]; local_markets: string[]; production_selected: boolean;
 }
 
-/** Everything the page may declare, derived ONLY from the canonical catalog JSON and the ADR map keys imported by this Worker. */
-function deriveFromCanonical(): Derived | null {
-  const root: unknown = catalog;
+/** Derive the complete displayed projection from one bundled catalog and the unchanged ADR map. */
+function deriveFromCatalog(root: unknown): Derived | null {
   if (!isRecord(root) || !Array.isArray(root.providers) || root.providers.length > MAX_PROVIDERS || typeof root.production_quote_provider_selected !== "boolean") return null;
   const providers: CoverageProvider[] = [];
   const byCode = new Map<string, string[]>();
@@ -262,8 +274,15 @@ async function recomputeObserved(view: PublicSnapshotView, link: NonNullable<Val
 Promise<{ rows: CoverageObserved[]; validUntil: number } | null> {
   const text = await view.text([OPTIONS_KEY]);
   if (text === null) return null;
-  const measured = await sha256Hex(text);
-  if (measured.hex !== link.sha256 || measured.bytes !== link.utf8_bytes) return null;
+  // view.text() only ever returns bytes that matched their sealed (sha256, length), so comparing the link with that sealed pair is the same
+  // proof as hashing the text again; a view without the sealed pair (a test double) still hashes.
+  const sealed = typeof view.sealedDigest === "function" ? view.sealedDigest(OPTIONS_KEY) : undefined;
+  if (sealed !== undefined) {
+    if (sealed.sha256 !== link.sha256 || sealed.utf8_bytes !== link.utf8_bytes) return null;
+  } else {
+    const measured = await sha256Hex(text);
+    if (measured.hex !== link.sha256 || measured.bytes !== link.utf8_bytes) return null;
+  }
   let doc: unknown;
   try { doc = JSON.parse(text); } catch { return null; }
   if (!isRecord(doc) || doc.schema !== "v213-options-v2" || !isRecord(doc.options) || !isValidUtcIsoInstant(doc.generated_at)) return null;
@@ -315,8 +334,14 @@ export async function loadOptionsCoverage(view: PublicSnapshotView, now: number 
   let raw: unknown;
   try { raw = JSON.parse(text); } catch { return plain("COVERAGE_SCHEMA_INVALID"); }
   const valid = validateOptionsCoverage(raw);
-  const derived = deriveFromCanonical();
-  if (!valid || !derived || !matchesDerived(valid, derived)) return plain("COVERAGE_SCHEMA_INVALID");
+  const current = deriveFromCatalog(catalog);
+  if (!valid || !current) return plain("COVERAGE_SCHEMA_INVALID");
+  // Rollout is new Worker first, then catalog sync and sealed publication. Old Worker + new catalog is unsupported.
+  // Accept exactly one whole projection, never a mixture; observed quote admission still uses the current policy.
+  const currentMatches = matchesDerived(valid, current);
+  const predecessor = currentMatches ? null : deriveFromCatalog(predecessorCatalog);
+  const derived = currentMatches ? current : predecessor && matchesDerived(valid, predecessor) ? predecessor : null;
+  if (!derived) return plain("COVERAGE_SCHEMA_INVALID");
   const generated = Date.parse(valid.generated_at);
   if (generated - now > FUTURE_SKEW_MS) return plain("COVERAGE_SCHEMA_INVALID");
   if (now - generated > MAX_AGE_MS) return plain("COVERAGE_STALE", valid.generated_at);
@@ -380,7 +405,7 @@ function unavailable(status: string, generatedAt?: unknown): LineOutboundMessage
     : known === "COVERAGE_ABSENT" ? "當輪已封存快照不含來源與缺口物件。"
       : known === "COVERAGE_STALE" ? `來源與缺口物件已逾時（產生於 ${validInstant(generatedAt) ? generatedAt : "未知"}，超過 6 小時有效上限）。`
         : "來源與缺口物件未通過驗證、與目錄不符或不是由本模組驗證簽發，已拒絕顯示。";
-  return toMessages([[TITLE, `OPTIONS_COVERAGE_UNAVAILABLE（${known}）：${reason}`, "不以舊資料、快取或推測代替；沒有任何報價因此被視為可用。"]]);
+  return toMessages([[TITLE, `【注意】來源與缺口資訊暫不可用（${statusLabelZh(known)}）：${reason}`, "不以舊資料、快取或推測代替；沒有任何報價因此被視為可用。"]]);
 }
 
 /** Text presentation (both LINE modes). Only the module-private verified projection is printed, never a caller-held field. */
@@ -397,11 +422,11 @@ export function buildOptionsCoverageMessages(result: OptionsCoverageResult, _isT
     observed = null;  // a counted cycle aged out or an admission window changed since loading: no late stale-positive count
     observedState = "UNKNOWN_LINK_OR_COUNT_MISMATCH";
   }
-  const lines: string[] = [TITLE, `快照產生時間：${projection.generated_at}`, "以下只是來源與缺口的中繼資料，不含任何價格。"];
+  const lines: string[] = [TITLE, `快照產生時間：${formatTaipeiTimestamp(projection.generated_at)}`, "以下只是來源與缺口的中繼資料，不含任何價格。"];
   if (observedState === "VERIFIED_ADMITTED_ROWS" && observed && observed.length > 0) {
     lines.push("已驗證的公開准入資料（本 Worker 依自身目錄與封存期權本文重新計算；延遲備兌買權，非 EOD、非指數；標的數為封存期權文件的不同代號鍵，不是原生標的）：");
     for (const row of observed.slice(0, OBSERVED_SHOWN)) {
-      lines.push(`• ${row.provider_id}｜${row.jurisdiction}/${row.venue}｜${row.cycle_count} 個週期、${row.ticker_key_count} 個代號鍵｜最新報價時間 ${row.quote_as_of_max}`);
+      lines.push(`• ${row.provider_id}｜${row.jurisdiction}/${row.venue}｜${row.cycle_count} 個週期、${row.ticker_key_count} 個代號鍵｜最新報價時間 ${formatVisibleMoment(row.quote_as_of_max)}`);
     }
     if (observed.length > OBSERVED_SHOWN) lines.push(`（共 ${observed.length} 列，顯示 ${OBSERVED_SHOWN} 列，另有 ${observed.length - OBSERVED_SHOWN} 列未顯示）`);
   } else if (observedState === "VERIFIED_NO_ADMITTED_ROWS_IN_SEALED_OPTIONS_BODY") {
@@ -413,7 +438,7 @@ export function buildOptionsCoverageMessages(result: OptionsCoverageResult, _isT
     lines.push(`本機路由宣告（來自備兌買權路由設定，不是觀察到的資料；此本機生產路徑未取得目錄身分，不代表整個國家沒有目錄來源）：${projection.local_markets.join("、")}。`);
   }
   const providerLines = projection.providers.map(row =>
-    `• ${row.provider_id}｜${row.authority}｜${row.jurisdictions.join("/")}｜權利:${row.rights_status}｜轉接:${row.adapter_status}｜宣告未驗證`);
+    `• ${row.provider_id}｜${row.authority}｜${row.jurisdictions.join("/")}｜權利:${RIGHTS_ZH[row.rights_status] ?? "權利未核實"}｜轉接:${ADAPTER_ZH[row.adapter_status] ?? "未核實"}｜宣告未驗證`);
   const jurisdictionLines = projection.jurisdictions.map(row => `• ${row.code}：目錄來源 ${row.catalog_provider_count} 筆（宣告，不代表已收集或可用）`);
   const tail = ["未列出的國家或地區：沒有目錄來源或屬未知，未列出不代表涵蓋；ADR 路徑是替代標的，不是本地市場期權。",
     "目錄筆數只是目錄筆數，不是獨立佐證；原始生產者血緣未知，不計佐證。"];

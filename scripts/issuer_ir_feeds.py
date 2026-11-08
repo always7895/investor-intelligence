@@ -30,7 +30,7 @@ USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTM
 FALLBACK_USER_AGENT = "Mozilla/5.0 (InvestorIntelligence public observation)"
 MAX_BYTES = 8_000_000
 TIMEOUT_SECONDS = 30
-KINDS = ("Q4_PRESS_RELEASES", "RSS", "NEWSROOM_HTML")
+KINDS = ("Q4_PRESS_RELEASES", "RSS", "NEWSROOM_HTML", "TSMC_NEWS_HTML")
 Q4_CATEGORY = "1cb807d2-208f-4bc3-9133-6a9ad45ac3b0"  # the Q4 platform's press-release category
 MONTHS = {name: index for index, name in enumerate(
     ("January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"), 1)}
@@ -108,6 +108,40 @@ def rss_items(url: str, since: date, fetch: Callable[[str], bytes]) -> tuple[lis
 def newsroom_items(url: str, since: date, fetch: Callable[[str], bytes]) -> tuple[list[dict[str, str]], bool]:
     text = fetch(url).decode("utf-8", "replace")
     base = urllib.parse.urlsplit(url)
+    embedded = re.search(r'<script\b[^>]*id="__NEXT_DATA__"[^>]*>(.*?)</script>', text, re.S)
+    if re.search(r'<script\b[^>]*id="__NEXT_DATA__"', text) and not embedded:
+        raise IrFeedError("NEWSROOM_ARCHIVE_TRUNCATED")
+    if embedded and base.netloc in ("group.nebius.com", "nebius.com") and base.path == "/newsroom":
+        # This exact observed query requests the entire archive, not a visible-card page.
+        # Resolve only public press-release fields; unrelated embedded state is never inspected or retained.
+        try:
+            data = json.loads(embedded.group(1))
+            state = data["props"]["pageProps"]["__APOLLO_STATE__"]
+            refs = state["ROOT_QUERY"]['press_releases({"limit":-1,"sort":["-date","-publication_datetime"]})']
+            if not isinstance(refs, list) or not 1 <= len(refs) <= 2000:
+                raise ValueError()
+            items, seen = [], set()
+            for ref in refs:
+                if not isinstance(ref, dict) or set(ref) != {"__ref"} or not isinstance(ref["__ref"], str):
+                    raise ValueError()
+                key = ref["__ref"]
+                if not key.startswith("press_releases:") or key in seen:
+                    raise ValueError()
+                seen.add(key)
+                row = state[key]
+                if row.get("__typename") != "press_releases":
+                    raise ValueError()
+                day, title, slug = row["date"], row["title"], row["name"]
+                if (not isinstance(day, str) or date.fromisoformat(day).isoformat() != day
+                        or not isinstance(title, str) or not 1 <= len(title) <= 1000
+                        or not isinstance(slug, str) or not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,300}", slug)):
+                    raise ValueError()
+                items.append({"date": day, "title": title[:200], "id": f"{base.scheme}://{base.netloc}/newsroom/{slug}"})
+            if len({item["id"] for item in items}) != len(items):
+                raise ValueError()
+        except (KeyError, TypeError, ValueError, AttributeError) as error:
+            raise IrFeedError("NEWSROOM_ARCHIVE_SHAPE") from error
+        return items, min(item["date"] for item in items) < since.isoformat()
     items = []
     for href, inner in re.findall(r'<a[^>]+href="(/newsroom/[^"#?]+)"[^>]*>(.*?)</a>', text, re.S):
         # Since October 2026 each card carries a category tag ("Press release") in front of its title: it is not part of the title.
@@ -124,6 +158,40 @@ def newsroom_items(url: str, since: date, fetch: Callable[[str], bytes]) -> tupl
     return items, min(item["date"] for item in items) < since.isoformat()
 
 
+def tsmc_news_items(url: str, since: date, fetch: Callable[[str], bytes]) -> tuple[list[dict[str, str]], bool]:
+    """TSMC's dated latest-news cards; an incomplete list never renews coverage."""
+    if url != "https://pr.tsmc.com/english/latest-news":
+        raise IrFeedError("TSMC_CHANNEL_URL")
+    text = fetch(url).decode("utf-8", "strict")
+    items = []
+    blocks = re.findall(r"<article\b[^>]*>.*?</article>", text, re.S)
+    if len(re.findall(r"<article\b", text)) != len(blocks):
+        raise IrFeedError("TSMC_HTML_TRUNCATED")
+    for block in blocks:
+        if 'node--type-news' not in block:
+            continue
+        link = re.search(r'href="(/english/news/\d+)"', block)
+        stamp = re.search(r'<time\b[^>]*datetime="(\d{4}-\d{2}-\d{2})T[^"<>]+"', block)
+        title = re.search(r'<h2\b[^>]*>(.*?)</h2>', block, re.S)
+        if not link or not stamp or not title:
+            raise IrFeedError("TSMC_ITEM_SHAPE")
+        day = date.fromisoformat(stamp.group(1))
+        label = _clean(title.group(1))
+        if not label or len(label) > 200:
+            raise IrFeedError("TSMC_ITEM_TITLE")
+        items.append({"date": day.isoformat(), "title": label, "id": "https://pr.tsmc.com" + link.group(1)})
+    if not items:
+        raise IrFeedError("TSMC_NEWS_EMPTY")
+    return items, min(item["date"] for item in items) < since.isoformat()
+
+
+def safe_error_code(error: Exception) -> str:
+    """Public bounded diagnostic only; never include exception URLs, headers or bodies."""
+    if isinstance(error, urllib.error.HTTPError):
+        return "HTTP_" + str(error.code) if type(error.code) is int else "HTTP_ERROR"
+    return (str(error) if isinstance(error, IrFeedError) else type(error).__name__)[:60]
+
+
 def read_channel(channel: Mapping[str, Any], since: date, today: date, fetch: Callable[[str], bytes] = fetch_bytes) -> dict[str, Any]:
     """{"kind", "url", "status": OK|FAILED, "complete", "items": [...] (items dated on or after `since`)}; any failure is
     FAILED and incomplete, with no items."""
@@ -136,9 +204,11 @@ def read_channel(channel: Mapping[str, Any], since: date, today: date, fetch: Ca
             items, complete = q4_items(url, since, today, fetch)
         elif kind == "RSS":
             items, complete = rss_items(url, since, fetch)
-        else:
+        elif kind == "NEWSROOM_HTML":
             items, complete = newsroom_items(url, since, fetch)
+        else:
+            items, complete = tsmc_news_items(url, since, fetch)
     except Exception as error:  # noqa: BLE001 - a channel that cannot be read is unverified, never "no release"
-        return {**result, "error": (str(error) if isinstance(error, IrFeedError) else type(error).__name__)[:60]}
+        return {**result, "error": safe_error_code(error)}
     later = sorted((item for item in items if item["date"] >= since.isoformat()), key=lambda item: (item["date"], item["id"]))
     return {**result, "status": "OK", "complete": complete, "items": later}

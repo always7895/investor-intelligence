@@ -1,6 +1,7 @@
 import { sealUnboundReport } from "./sealed-report-migration";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { assertLineMessages } from "../src/line-messages";
+import { humanizeStatusText } from "../src/v213/status-labels";
 import { processAuthorizedLineEvent } from "../src/v211/worker";
 import { freeRelayRequestEnv } from "../src/v213/production-worker";
 import {
@@ -127,7 +128,7 @@ describe("v213 text presentation hotfix through actual authorized Line event cal
     expect(messages.length).toBeGreaterThan(0);
     expect(messages.every(m => m.type === "text")).toBe(true);
     const body = JSON.stringify(messages);
-    expect(body).toContain(required);
+    expect(body).toContain(humanizeStatusText(required));
   });
 
   it("main macro entry 宏觀產業分析 in text env routes to shortfall report", async () => {
@@ -135,7 +136,7 @@ describe("v213 text presentation hotfix through actual authorized Line event cal
     const messages = await actualReply("宏觀產業分析", f);
     expect(messages.every(m => m.type === "text")).toBe(true);
     const body = JSON.stringify(messages);
-    expect(body).toContain("MACRO_TOP5_SHORTFALL");
+    expect(body).toContain("TOP5合格產業不足");
     expect(body).not.toContain("當輪產業分布");
   });
 
@@ -149,7 +150,7 @@ describe("v213 text presentation hotfix through actual authorized Line event cal
       expect(body).toContain(row.ticker);
     }
     expect(body).not.toContain("摘要顯示");
-    expect(body).toContain("MACRO_PRODUCT_NOT_SEALED");
+    expect(body).toContain("宏觀資料尚未封存");
   });
 
   it("compatibility industry distribution on unavailable returns bounded text messages with navigation", async () => {
@@ -261,7 +262,7 @@ describe("v213 text presentation hotfix through actual authorized Line event cal
     const messages = await actualReply("最新期權", f);
     expect(messages.every(m => m.type === "text")).toBe(true);
     const body = JSON.stringify(messages);
-    expect(body).toContain("OPTION_DATA_NOT_ADMITTED");
+    expect(body).toContain("期權資料未通過公開驗收");
     expect(body).toContain("期權策略教學：期權教學");
     expect(body).toContain("期權試算說明：期權試算說明");
     expect(body).toContain("TOP20 個股入口：TOP20");

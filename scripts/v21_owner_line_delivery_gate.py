@@ -22,12 +22,20 @@ ROOT = Path(__file__).resolve().parents[1]
 # from 798839536229943e6a5c2cbb19be7a8f1f198cd8: it imports the shared WEEKLY_DTE_BUCKET / limitMiddle / roundTick
 # from v213/option-recommendation-rules.ts, labels the weekly period with that bucket and adds the middle limit tier
 # to one display line. Review: no LINE, storage, push or owner-routing code changed; certified qa.ts unchanged.
+# manual-options.ts alone was changed again in V29 (4065fbe, master-accepted R/MASTER-V29-ACCEPT-CLAUDECODE-a43bef58.txt)
+# from 6768e8c31a01b0cf764b9397fa158f4576787c1c: it also imports MONTHLY_DTE_BUCKET / monthlyFallbackNoticeZh, labels the
+# monthly and extended monthly periods with them and adds the monthly fallback notice line. Review: no LINE, storage, push or
+# owner-routing code changed; certified qa.ts unchanged.
+# manual-options.ts alone was changed again in V33a (a7286a4, operator 2026-11-03: nearest monthly, no minimum DTE)
+# from 2c23629a4721b13fbfbb84110dc5dc43c6678f4a: it imports shortDteNoticeZh instead of monthlyFallbackNoticeZh, drops the
+# extended monthly label and shows the short-DTE notice line. Review: no LINE, storage, push or owner-routing code changed;
+# certified qa.ts unchanged.
 LEGACY_GIT_BLOBS = {
     "cloud/src/worker.ts": "4e0f78af402bcb6103812a3c1e06160cd838bdba",
     "cloud/src/line.ts": "618610bb277eb2949af0657609569ec5c490a1bb",
     "cloud/src/storage.ts": "5dac013712df2bea6dfcea9edecb71d31f22e43d",
     "cloud/src/qa.ts": "94184bc8937b413eb327b3d773926db00e22b3b9",
-    "cloud/src/manual-options.ts": "6768e8c31a01b0cf764b9397fa158f4576787c1c",
+    "cloud/src/manual-options.ts": "f283b6356efbd2e0b2bc94b0a7742a59dc0be783",
 }
 
 REQUIRED_FILES = (

@@ -1,5 +1,9 @@
 # 卡片摘要與深度報告：資料驗收要求
 
+<!-- DOCS-R1 scope -->
+> **Scope:** Technical reference; verify executable behavior against code and current source-bound evidence. Current acceptance and unresolved issues: [STATUS](../state/STATUS.md). The document itself does not authorize Production changes.
+<!-- /DOCS-R1 scope -->
+
 這是待落實的資料／介面要求，不是已完成的深度分析或新發布資格。
 
 ## 已確認的缺口

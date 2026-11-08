@@ -40,6 +40,7 @@ ALLOWED_RIGHTS_STATUSES = {
     "review_before_enable",
     "reviewed_public_access",
     "automated_access_prohibited",
+    "licence_required",
     OPERATOR_ACCEPTED_STATUS,
 }
 ALLOWED_ADAPTER_STATUSES = {
@@ -56,7 +57,8 @@ AUTOMATION_PROHIBITED_PROVIDER_IDS = {
 }
 ADAPTER_REVIEWED = "adapter_reviewed"
 # Operator-accepted display WITHOUT a redistribution licence (operator 2026-10-13, R/OPERATOR-DECISION-OPTIONS-DISPLAY-ALL-20261013.txt;
-# operator 2026-10-17, R/OPERATOR-DECISION-OPTIONS-NORDIC-DISPLAY-20261017.txt,
+# operator 2026-10-17, R/OPERATOR-DECISION-OPTIONS-NORDIC-DISPLAY-20261017.txt; operator 2026-10-19,
+# R/OPERATOR-DECISION-V18-BOUNDARY-ITEMS-A1-A4-C1-C3-20261019.txt (Nasdaq US option chain),
 # recorded in docs/PUBLIC_OPTIONS_PROVIDER_RIGHTS_REVIEW.md). It is NOT a rights review and never a licence. It is pinned like the
 # automation-prohibited decisions: only these provider ids, with exactly this decision, and only (a subset of) these admitted scopes
 # can carry the status; any other provider claiming it is a finding and is never admitted. Mirrored in
@@ -82,6 +84,16 @@ OPERATOR_ACCEPTED_PROVIDERS = {
         },
         "scopes": frozenset({
             ("SE", "NASDAQ_STOCKHOLM_OPTIONS", "equity_option", "delayed", "public_line_quote"),
+        }),
+    },
+    "nasdaq_public_option_chain": {
+        "operator_decision": {
+            "decision_id": "OPERATOR-DECISION-V18-BOUNDARY-ITEMS-A1-A4-C1-C3-20261019",
+            "decided_at": "2026-10-19",
+            "record": "docs/PUBLIC_OPTIONS_PROVIDER_RIGHTS_REVIEW.md",
+        },
+        "scopes": frozenset({
+            ("US", "US_LISTED_OPTIONS", "equity_option", "delayed", "public_line_quote"),
         }),
     },
 }
@@ -355,6 +367,13 @@ def audit_public_options_providers(root: Path = ROOT, today: date | None = None)
                 findings.append(f"{provider_id}: prohibited source requires a review date")
             if adapter_status != "not_permitted":
                 findings.append(f"{provider_id}: prohibited source adapter must be not_permitted")
+        elif rights_status == "licence_required":
+            if automation_allowed is not False:
+                findings.append(f"{provider_id}: licence-required source cannot allow unlicensed automated access")
+            if not _review_date(reviewed_at):
+                findings.append(f"{provider_id}: licence-required source requires a review date")
+            if adapter_status != "not_permitted":
+                findings.append(f"{provider_id}: licence-required source adapter must be not_permitted")
         elif rights_status == "reviewed_public_access":
             reviewed_access_count += 1
             if automation_allowed is not True:

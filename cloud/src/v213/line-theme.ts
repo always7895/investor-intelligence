@@ -1,4 +1,6 @@
-import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
+import { assertLineMessages, LINE_CAROUSEL_FRAME_BYTES, plainBubbleArray, type LineOutboundMessage } from "../line-messages";
+import { formatDate } from "./line-formatters";
+import { humanizeStatusText } from "./status-labels";
 
 /** Ink monochrome palette, matched to the bot's black-and-white line-art identity.
  * Hierarchy comes from lightness, not hue: a three-stop black-to-graphite
@@ -20,13 +22,30 @@ export const LINE_THEME = Object.freeze({ ink: "#111418", muted: "#4A5058", pape
   button: "#ECEEF1", onAccent: "#111418", onInk: "#FFFFFF",
   // Option cycle outside its DTE window: the original yellow pill (operator 2026-09-25: red read as an error).
   cycleCaution: "#FDE68A", cycleCautionText: "#78350F",
-  negative: "#B42318", paleNegative: "#FEF3F2", caution: "#9A3412", paleCaution: "#FFF7ED" });
+  negative: "#B42318", paleNegative: "#FEF3F2", caution: "#9A3412", paleCaution: "#FFF7ED",
+  accent: "#344F70", accentTint: "#EEF3F8" });
 
-export const menuText = (text: string, size = "sm", color: string = LINE_THEME.ink) => ({ type: "text", text, size, color, wrap: true });
+export const menuText = (text: string, size = "sm", color: string = LINE_THEME.ink) => ({ type: "text", text: humanizeStatusText(text), size, color, wrap: true });
 export const menuBox = (contents: unknown[], extra: Record<string, unknown> = {}) => ({ type: "box", layout: "vertical", spacing: "md", contents, ...extra });
-/** Shared action contract: every product button is a secondary (light grey, ink label), md-height mobile tap target. */
+/** Six-character mobile buttons; commands remain verbatim, without routing changes. */
+export function shortActionLabel(label: string): string {
+  const clean = label.trim();
+  if (Array.from(clean).length <= 6) return clean;
+  if (/每週期權|每周期權/.test(clean) && /查/.test(clean)) return "查週選";
+  if (/每月期權/.test(clean) && /查/.test(clean)) return "查月選";
+  if (/TOP20 個股入口|每日 TOP20|TOP20 榜單/.test(clean)) return "看TOP20";
+  if (/期權與個股快查/.test(clean)) return "期權快查";
+  if (/完整產業分布文字/.test(clean)) return "產業文字";
+  if (/深度化分析|深度分析/.test(clean)) return "深度分析";
+  if (/瓶頸詳情|完整數據與網址/.test(clean)) return "瓶頸詳情";
+  if (/策略教學|期權教學/.test(clean)) return "策略教學";
+  if (/返回.*TOP20|回.*TOP20/i.test(clean)) return "回TOP20";
+  if (/回功能選單/.test(clean)) return "回選單";
+  return clampText(clean, 6);
+}
+/** Shared action contract: secondary, md-height mobile tap target, at most six visible characters. */
 export const menuAction = (label: string, command: string) => ({ type: "button", style: "secondary", height: "md", color: LINE_THEME.button,
-  action: { type: "message", label, text: command } });
+  action: { type: "message", label: shortActionLabel(label), text: command } });
 
 const T = LINE_THEME;
 
@@ -48,7 +67,7 @@ export function signColor(value: string): string {
 }
 
 export const uiText = (text: string, size = "sm", color: string = T.ink, extra: Record<string, unknown> = {}) =>
-  ({ type: "text", text, size, color, wrap: true, ...extra });
+  ({ type: "text", text: humanizeStatusText(text), size, color, wrap: true, ...extra });
 
 export const uiBox = (contents: unknown[], extra: Record<string, unknown> = {}) =>
   ({ type: "box", layout: "vertical", spacing: "sm", contents, ...extra });
@@ -61,7 +80,7 @@ export const chip = (text: string, backgroundColor: string = T.paper, color: str
   });
 
 /** Small ink heading (used outside framed sections). */
-export const sectionTitle = (text: string, color: string = T.ink) => uiText(text, "xxs", color, { weight: "bold" });
+export const sectionTitle = (text: string, color: string = T.ink, afterFirst = false) => uiText(text, "xs", color, { weight: "bold", ...(afterFirst ? { margin: "lg" } : {}) });
 
 /** Label immediately followed by its value (seven-field inspectors rely on this order). */
 export const labelValue = (label: string, value: string, valueExtra: Record<string, unknown> = {}, flex = 1) =>
@@ -70,8 +89,32 @@ export const labelValue = (label: string, value: string, valueExtra: Record<stri
 /** KPI tile: muted label, large sign-coloured value. Long values step down in size. */
 export const kpiTile = (label: string, value: string, color: string = signColor(value)) => uiBox([
   uiText(label, "xxs", T.subtle),
-  uiText(value, value.length > 8 ? "sm" : "xl", color, { weight: "bold" }),
+  uiText(value, value.length > 10 ? "md" : value.length > 7 ? "lg" : "xl", color, { weight: "bold" }),
 ], { flex: 1, spacing: "xs", backgroundColor: T.soft, cornerRadius: "md", paddingAll: "md" });
+
+/** Two-column cards use a cool slate tint; numeric contrast remains on the ink scale. */
+export const accentKpiTile = (label: string, value: string) => {
+  const color = /^≥[-−]\d/.test(value) ? T.negative : /^(?:≥[+\d]|(?:US)?[$€£]\d)/.test(value) ? T.ink : signColor(value);
+  const missing = ["未揭露", "需新訂單"].includes(value);
+  return uiBox(missing ? [
+    uiText(label, "xs", T.subtle),
+    uiBox([uiBox([uiText(value, "xs", T.ink, { weight: "bold", wrap: false })], {
+      flex: 0, backgroundColor: T.paper, cornerRadius: "xxl",
+      paddingStart: "sm", paddingEnd: "sm", paddingTop: "xs", paddingBottom: "xs",
+    })], { layout: "horizontal" }),
+  ] : [{
+    type: "text", size: "sm", wrap: true, contents: [
+      { type: "span", text: `${label}\n`, size: "xs", color: T.subtle },
+      { type: "span", text: value, size: value.length > 10 ? "md" : value.length > 7 ? "lg" : "xl", color, weight: "bold" },
+    ],
+  }], { flex: 1, spacing: "xs", backgroundColor: T.accentTint, cornerRadius: "md", paddingAll: "sm" });
+};
+
+/** Compact section label with the brand accent rail. */
+export const accentHeading = (title: string) => uiBox([
+  uiBox([], { width: "3px", height: "16px", flex: 0, backgroundColor: T.accent }),
+  uiText(title, "xs", T.ink, { weight: "bold" }),
+], { layout: "horizontal", spacing: "sm" });
 
 /** Information levels by lightness: key (ink strip with a short gradient), detail (grey), forward/context (pale). */
 const SECTION_TONES = Object.freeze({
@@ -100,16 +143,42 @@ export const panel = (contents: unknown[], tone: "soft" | "neutral" | "caution" 
   borderWidth: "light", cornerRadius: "md", paddingAll: "lg", spacing: "md",
 });
 
-export const divider = () => ({ type: "separator", color: T.border });
+export const divider = () => ({ type: "separator", color: T.border, margin: "md" });
 
 /** Shared product header: eyebrow line and bold title on the dark identity band. */
 export const productHeader = (eyebrow: string, title: string, extra: unknown[] = []) => uiBox([
-  uiText(eyebrow, "xxs", T.headerMuted, { weight: "bold" }),
-  uiText(title, "xl", T.headerText, { weight: "bold" }),
+  uiText(eyebrow, "xs", T.headerMuted),
+  uiText(title, "lg", T.headerText, { weight: "bold" }),
   ...extra,
 ], { ...headerStyle, spacing: "sm" });
 
 /** Compact footnote text for disclosures that must remain visible. */
+/** A full-width status notice; the 4px rail substitutes for unsupported CSS border-left. */
+/** Body strings from upstream may already begin with the exact notice label. */
+const noticeBody = (title: string, body?: string): string | undefined => {
+  if (!body) return body;
+  const trimmed = body.trimStart();
+  if (trimmed === title) return "";
+  for (const delimiter of ["：", ":"]) {
+    const prefix = `${title}${delimiter}`;
+    if (trimmed.startsWith(prefix)) return trimmed.slice(prefix.length).trimStart();
+  }
+  return body;
+};
+export function noticeBanner(kind: "caution" | "info" | "negative", title: string, body?: string) {
+  const [tint, strong] = kind === "caution" ? [T.paleCaution, T.caution]
+    : kind === "negative" ? [T.paleNegative, T.negative] : [T.accentTint, T.accent];
+  const normalizedBody = noticeBody(title, body);
+  return uiBox([
+    uiBox([], { backgroundColor: strong, width: "4px", flex: 0, cornerRadius: "2px" }),
+    uiBox([uiText(title, "sm", strong, { weight: "bold" }),
+      ...(normalizedBody ? [uiText(normalizedBody, "xs", T.ink)] : [])], { flex: 1, spacing: "xs" }),
+  ], { layout: "horizontal", spacing: "md", backgroundColor: tint, cornerRadius: "md", paddingAll: "md" });
+}
+export const noticeText = (title: string, body?: string) => {
+  const normalizedBody = noticeBody(title, body);
+  return `【注意】${title}${normalizedBody ? `：${normalizedBody}` : ""}`;
+};
 export const footnote = (text: string) => uiText(text, "xxs", T.subtle);
 
 // Body visuals (operator 2026-09-25: card bodies read as flat text). Text keeps LINE size keywords;
@@ -136,7 +205,7 @@ const clampPct = (value: number) => Math.max(0, Math.min(100, Math.round(value))
 export const meter = (value: number, max = 100, fill: string = T.ink, grow = false) => ({
   type: "box", layout: "vertical", backgroundColor: T.border, height: "6px", cornerRadius: "3px", ...(grow ? { flex: 1 } : {}),
   contents: [{ type: "box", layout: "vertical", contents: [], width: `${Math.max(2, clampPct((value / max) * 100))}%`,
-    height: "6px", cornerRadius: "3px", background: { type: "linearGradient", angle: "90deg", startColor: T.strongEnd, endColor: fill }, backgroundColor: fill }],
+    height: "6px", cornerRadius: "3px", backgroundColor: fill }],
 });
 
 /** Square rank badge: the leader is solid ink, the rest graphite outline. */
@@ -171,7 +240,7 @@ export const timelineStep = (marker: string, contents: unknown[], last = false, 
 /** Stat tile with an optional meter under the value (for bounded percentages). */
 export const statTile = (label: string, value: string, bar?: number, sub?: string) => uiBox([
   uiText(label, "xxs", T.subtle),
-  uiText(value, value.length <= 4 ? "xl" : value.length <= 6 ? "lg" : "md", signColor(value), { weight: "bold" }),
+  uiText(value, value.length > 10 ? "md" : value.length > 7 ? "lg" : "xl", signColor(value), { weight: "bold" }),
   ...(bar === undefined ? [] : [meter(bar)]),
   ...(sub ? [uiText(sub, "xxs", T.subtle)] : []),
 ], { flex: 1, spacing: "xs", backgroundColor: T.soft, cornerRadius: "md", paddingAll: "md" });
@@ -206,16 +275,133 @@ export const stackedBar = (parts: readonly { label: string; weight: number }[]) 
   ], { spacing: "sm" });
 };
 
-/** Carousels of at most five bubbles and 46 KB each (LINE caps a carousel at 50 KB); validated before return. */
-export function packCarousels(bubbles: readonly unknown[], altText: (index: number, total: number) => string): LineOutboundMessage[] {
+// --- V20 density primitives (additive): one glance = headline number + a few bullets; detail behind a specific button. ---
+
+/** Code-point-safe ellipsis for non-required prose only (never for disclosures, figures or source names). */
+export function clampText(text: string, maxChars: number): string {
+  const chars = Array.from(text);
+  return chars.length <= maxChars ? text : `${chars.slice(0, Math.max(1, maxChars - 1)).join("")}…`;
+}
+
+/** Small ink dot that marks a bullet (6px, `flex:0`); the density test recognises bullet rows by it. */
+export const BULLET_DOT_SIZE = "6px";
+const bulletDot = () => ({ type: "box", layout: "vertical", contents: [], width: BULLET_DOT_SIZE, height: BULLET_DOT_SIZE,
+  cornerRadius: "3px", backgroundColor: T.ink, flex: 0, offsetTop: "6px" });
+
+/** One bullet: ink dot plus wrapping text. `maxLines` only for prose whose truncation cannot hide a figure or disclosure. */
+export function bulletRow(text: string, options: { size?: string; maxLines?: number; color?: string; weight?: "bold" | "regular" } = {}) {
+  const { size = "xs", maxLines, color = T.ink, weight } = options;
+  return uiBox([bulletDot(), uiText(text, size, color, { flex: 1, ...(maxLines ? { maxLines } : {}), ...(weight === "bold" ? { weight } : {}) })],
+    { layout: "horizontal", spacing: "sm" });
+}
+
+/** Specific button: "<verb> <target>" naming what opens; vague labels are rejected. */
+/** LINE rejects a message action label over 20 characters. */
+export const BUTTON_LABEL_MAX = 20;
+const VAGUE_LABELS = new Set(["詳情", "更多", "詳細", "查看", "查看更多", "Details", "More", "details", "more"]);
+export function detailsButton(label: string, command: string) {
+  if (VAGUE_LABELS.has(label.trim())) throw new Error("V20_BUTTON_LABEL_VAGUE");
+  return menuAction(clampText(label, BUTTON_LABEL_MAX), command);
+}
+
+/** At most `max` bullets; when more exist a muted "另有 N 項" row (and, if given, a details button) follows. Never use it
+ * to drop a required disclosure: disclosures go through `disclosureLine`. */
+export function bulletList(items: readonly string[], options: { max?: number; size?: string; maxLines?: number;
+  more?: { label: string; command: string } } = {}): unknown[] {
+  const { max = 5, size = "xs", maxLines, more } = options;
+  const shown = items.slice(0, max);
+  const rest = items.length - shown.length;
+  return [
+    ...shown.map(item => bulletRow(item, { size, maxLines })),
+    ...(rest > 0 ? [uiText(`另有 ${rest} 項`, "xs", T.subtle), ...(more ? [detailsButton(more.label, more.command)] : [])] : []),
+  ];
+}
+
+/** Label/value row: muted label (`flex:2`), bold right-aligned value (`flex:3`), sign-coloured. Wraps by default (a figure is never cut). */
+export function kvRow(label: string, value: string, options: { emphasis?: boolean; maxLines?: number; color?: string; sub?: string } = {}) {
+  const { emphasis = false, maxLines, color = signColor(value), sub } = options;
+  const row = uiBox([
+    uiText(label, "xs", T.subtle, { flex: 2, gravity: "top" }),
+    uiText(value, emphasis ? "md" : "sm", color, { flex: 3, align: "end", weight: "bold", ...(maxLines ? { maxLines } : {}) }),
+  ], { layout: "horizontal", spacing: "sm" });
+  return sub === undefined ? row : uiBox([row, uiText(sub, "xs", T.subtle, { align: "end" })], { spacing: "xs" });
+}
+
+/** Label, a bar proportional to value/max, and the displayed value. */
+export const barRow = (label: string, value: number, display: string, max = 100) => uiBox([
+  uiText(label, "xs", T.subtle, { flex: 2 }),
+  uiBox([meter(value, max, T.ink, true)], { flex: 3, justifyContent: "center" }),
+  uiText(display, "xs", signColor(display), { flex: 2, align: "end", weight: "bold" }),
+], { layout: "horizontal", spacing: "sm", alignItems: "center" });
+
+/** ONE xxs line for every required disclosure and source label, parts joined by "｜". Not clamped: the long form of each
+ * part stays reachable through a details button. */
+export const disclosureLine = (parts: readonly string[]) => uiText(parts.filter(part => part.length > 0).join("｜"), "xxs", T.subtle);
+export interface DisclosureGroup { label: string; text: string }
+
+/** At most three short, muted qualifier lines; the label is bold and the complete line is never clipped. Empty groups are
+ * skipped. The 110-code-point line budget is asserted by the designer test on the fixtures, never by throwing on live data:
+ * a long source or warning must still reach the user. */
+export function disclosureGroups(groups: readonly DisclosureGroup[]) {
+  if (groups.length > 3) throw new Error("LINE_DISCLOSURE_GROUP_LIMIT");
+  return groups.filter(({ label, text }) => label.trim() && text.trim()).map(({ label, text }) => ({
+    type: "text", size: "xxs", color: T.subtle, wrap: true, contents: [
+      { type: "span", text: `${label}｜`, color: T.subtle, weight: "bold" },
+      { type: "span", text: text.replace(/[\r\n]+/g, " "), color: T.subtle },
+    ],
+  }));
+}
+
+/** The card's headline number: muted label, one large figure, optional sub line. */
+export const heroStat = (label: string, value: string, sub?: string, color: string = signColor(value)) => uiBox([
+  uiText(label, "xs", T.subtle),
+  uiText(value, value.length > 10 ? "xl" : "3xl", color, { weight: "bold" }),
+  ...(sub ? [uiText(sub, "xs", T.subtle)] : []),
+], { spacing: "xs" });
+/** One short summary line; absent or overlong source data is omitted, never clipped. */
+export function verdictLine(text: string | null | undefined) {
+  if (!text || /^\s*$/.test(text)) return undefined;
+  let codePoints = 0;
+  for (const _ of text) if (++codePoints > 24) return undefined;
+  return uiText(text, "sm", T.ink, { weight: "bold" });
+}
+
+/** Short accessible alt text always includes the screen name and report or view date. */
+export function altSummary(parts: { topic: string; status: string; next: string; date?: string }): string {
+  const date = formatDate(parts.date ?? new Date());
+  return clampText(`${clampText(parts.topic, 28)}｜${date}｜${clampText(parts.status, 12)}｜${clampText(parts.next, 10)}`, 60);
+}
+export function shortAltText(text: string, date?: string): string {
+  const stamp = formatDate(date ?? new Date());
+  return clampText(`${clampText(text, 42)}｜${stamp}`, 60);
+}
+
+/** Carousels of at most five bubbles and 46 KB each (LINE caps a carousel at 50 KB); validated before return.
+ * Count ordinary bubble JSON once per call. No retained counts, reply cache, snapshot or user state. */
+export function packCarousels(bubbles: readonly unknown[], altText: (index: number, total: number) => string, asOf?: string): LineOutboundMessage[] {
   const size = (value: unknown) => new TextEncoder().encode(JSON.stringify(value)).length;
   const groups: unknown[][] = [];
-  for (const bubble of bubbles) {
+  const additive = plainBubbleArray(bubbles);
+  let lastBytes: number | null = null;
+  const append = (bubble: unknown) => {
     const last = groups[groups.length - 1];
-    if (last && last.length < 5 && size({ type: "carousel", contents: [...last, bubble] }) <= 46_000) last.push(bubble);
-    else groups.push([bubble]);
+    let bubbleBytes = 0;
+    if (last && last.length < 5 && (additive
+      ? ((lastBytes ??= LINE_CAROUSEL_FRAME_BYTES + size(last[0])), (bubbleBytes = size(bubble)), lastBytes + 1 + bubbleBytes <= 46_000)
+      : size({ type: "carousel", contents: [...last, bubble] }) <= 46_000)) {
+      last.push(bubble);
+      if (lastBytes !== null) lastBytes += 1 + bubbleBytes;
+    } else {
+      groups.push([bubble]);
+      lastBytes = null;
+    }
+  };
+  if (additive) {
+    for (let i = 0; i < bubbles.length; i++) append(bubbles[i]);
+  } else {
+    for (const bubble of bubbles) append(bubble);
   }
-  const messages: LineOutboundMessage[] = groups.map((contents, index) => ({ type: "flex", altText: altText(index, groups.length),
+  const messages: LineOutboundMessage[] = groups.map((contents, index) => ({ type: "flex", altText: shortAltText(altText(index, groups.length), asOf),
     contents: { type: "carousel", contents } }));
   assertLineMessages(messages);
   return messages;

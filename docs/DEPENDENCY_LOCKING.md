@@ -1,5 +1,9 @@
 # Locked dependencies and local validation
 
+<!-- DOCS-R1 scope -->
+> **Scope:** Technical reference; verify executable behavior against code and current source-bound evidence. Current acceptance and unresolved issues: [STATUS](../state/STATUS.md). The document itself does not authorize Production changes.
+<!-- /DOCS-R1 scope -->
+
 ## Authority
 
 Exact dependencies are in [requirements-ci.txt](../requirements-ci.txt) and [cloud/package-lock.json](../cloud/package-lock.json), not a version table in documentation. Both locks exist. Source and installed runtimes require separate validation; do not upgrade packages just to make a benchmark pass.
@@ -32,6 +36,8 @@ The locked install the resolver runs (also what CI and R70 run explicitly):
 & $env:PROJECT_PYTHON -m pip check
 ```
 
+The workflow gate also rejects `${{ github.event.* }}`, `${{ github.head_ref }}` and `${{ inputs.* }}` inside a `run:` script; such values reach the shell only through `env:`.
+
 Commands run from the development root; stop at each nonzero exit. `PYTHONUTF8=1` matches CI (without it a CLI test fails on cp950 consoles). R75's existing validator enforces failures. Live providers require separate access/rights and source-bound acceptance; successful dependency installation is not that proof.
 
 [scripts/run_offline_tests.py](../scripts/run_offline_tests.py) supplies import stubs **only for absent optional packages**. It is not a network sandbox: installed requests/yfinance are real modules. Tests must mock live transport; never interpret the runner name as permission to fetch or publish. Distribution mode excludes repository-only metadata tests, not production acceptance requirements.
@@ -47,6 +53,8 @@ npm test
 ```
 
 `npm ci` is a clean frozen install: it fails on package/lock disagreement, removes existing node_modules and does not rewrite the lock. `--ignore-scripts` disables install lifecycle scripts; explicit `npm test` / `npm run` still execute their requested scripts. Do not replace it with `npm install` or omit devDependencies needed by tsc/Vitest/Wrangler.
+
+Node major: the gates were run with Node 24.x (observed on the Windows host); the CI workflows have no `setup-node` step, so the runner's preinstalled Node is used. `cloud/package.json` keeps `engines.node` at `>=20.0.0` and the lockfile is unchanged.
 
 ## CI and efficiency
 

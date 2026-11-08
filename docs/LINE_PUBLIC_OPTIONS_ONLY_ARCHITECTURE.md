@@ -1,5 +1,9 @@
 # LINE Public-Options-Only Architecture
 
+<!-- DOCS-R1 scope -->
+> **Scope:** Technical reference; verify executable behavior against code and current source-bound evidence. Current acceptance and unresolved issues: [STATUS](../state/STATUS.md). The document itself does not authorize Production changes.
+<!-- /DOCS-R1 scope -->
+
 _Last updated: 2026-08-24 Asia/Taipei_
 
 ## Non-negotiable boundary
@@ -46,7 +50,7 @@ Removing account identifiers or share quantities is not enough. A record derived
 - Both tenant-hash and tenant-data encryption secrets must exist before allowlist operation can answer.
 - The model cannot elevate a tenant or alter the allowlist.
 
-The Production owner-line Worker is a different entrypoint with its own switch, `V213_LINE_ACCESS_MODE` (default `owner_only`; see [LINE_ALL_FRIENDS_ACCESS](LINE_ALL_FRIENDS_ACCESS.md)); the shared bot's `LINE_ACCESS_MODE` values and silent-denial rules above are unchanged by it.
+The Production owner-line Worker is a different entrypoint with its own switch, `V213_LINE_ACCESS_MODE` (source-template default `all_friends`; missing/invalid runtime value fails closed to `owner_only`; see [LINE_ALL_FRIENDS_ACCESS](LINE_ALL_FRIENDS_ACCESS.md)); the shared bot's `LINE_ACCESS_MODE` values and silent-denial rules above are unchanged by it.
 
 The silent-denial rule protects the free LINE reply quota and prevents an unapproved user from probing friend membership or bot readiness through different error messages.
 
@@ -111,7 +115,7 @@ The public option builder uses an owner-independent symbol catalog and a public 
 
 The KV publisher fails the entire promotion when it sees portfolio, position, account, quantity, coverage, cost/P&L, IBKR or brokerage lineage. It does not silently redact and continue.
 
-Public option chains are deterministic-tool-only. They are read, ticker-filtered, freshness-checked and formatted only by the dedicated option intent. They are never inserted into an arbitrary local-Qwen prompt merely because a general question contains a ticker. This prevents stale or unnecessarily broad chain data from becoming free-form model context.
+Public option chains are deterministic-tool-only. They are read, ticker-filtered, freshness-checked and formatted only by the dedicated option intent. They are never inserted into an arbitrary local-model prompt merely because a general question contains a ticker. This prevents stale or unnecessarily broad chain data from becoming free-form model context.
 
 ## Tenant data and sensitive input
 
@@ -127,7 +131,7 @@ Optional conversation memory is:
 
 This memory contains only what that LINE user sent to the bot. No owner portfolio or broker data is preloaded into any tenant.
 
-First-person financial disclosures are rejected before model use or memory storage. Messages that disclose a user's holdings, portfolio, account, quantity, cost basis, P&L, margin, buying power or completed trades receive a fixed refusal and are not sent to Qwen or persisted as conversation memory. Users must rephrase educational questions as non-personal hypotheticals.
+First-person financial disclosures are rejected before model use or memory storage. Messages that disclose a user's holdings, portfolio, account, quantity, cost basis, P&L, margin, buying power or completed trades receive a fixed refusal and are not sent to the local model or persisted as conversation memory. Users must rephrase educational questions as non-personal hypotheticals.
 
 ## Local-model egress
 
@@ -141,7 +145,7 @@ Local-model egress is exact-host allowlisted. A configured `LOCAL_LLM_BASE_URL` 
 - redirects are rejected;
 - request caching is disabled.
 
-This prevents a configuration typo or compromised prompt path from forwarding tenant conversation data to an arbitrary remote endpoint. The intended deployment is an authenticated private tunnel to the owner's local llama.cpp/Qwen service, never a general cloud-model URL.
+This prevents a configuration typo or compromised prompt path from forwarding tenant conversation data to an arbitrary remote endpoint. The intended deployment is an authenticated private tunnel to the owner's local model service, never a general cloud-model URL.
 
 ## Public health surface
 
@@ -182,7 +186,7 @@ A release is rejected unless all of the following pass against the exact release
 10. raw LINE ID and event-ID non-persistence tests;
 11. cross-tenant encryption and deletion tests;
 12. arbitrary-model-context test proving legacy private KV records and public option chains are ignored;
-13. sensitive-disclosure test proving first-person financial data is neither sent to Qwen nor saved to memory;
+13. sensitive-disclosure test proving first-person financial data is neither sent to the local model nor saved to memory;
 14. local-model route tests for exact host allowlisting, required authentication, IP/port rejection and redirect denial;
 15. Worker test proving `/internal/private-sync` returns `404`;
 16. minimal public-health test proving no snapshot, pipeline or model-route metadata is exposed;

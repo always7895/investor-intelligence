@@ -461,7 +461,7 @@ const ROW_TABLE = [
 
 describe("G4b-3 synthetic NBIS paired declarations", () => {
   it("T0 frozen synthetic fixture SHA256 and scope", () => {
-    expect(createHash("sha256").update(rawFixture).digest("hex")).toBe("0364c967f6841db57a1b2b607dc740376a75161fa2a58c687b1aadd13dec962b");
+    expect(createHash("sha256").update(rawFixture).digest("hex")).toBe("7074c6d121bb0ef986c1f99c891626625c32c4cc1051ae8dc29092367b27b2ec");
     expect(fixture.scope).toBe("SYNTHETIC_NBIS_AUTO_NOT_GENUINE_NATIVE_OR_LIVE");
   });
   for (const row of ROW_TABLE) it(row.id + " " + row.kind, async () => {

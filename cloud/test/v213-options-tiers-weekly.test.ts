@@ -23,7 +23,7 @@ const LISTED = ["2026-10-09", "2026-10-16"];
 describe("shared rules: constants (parity with scripts/option_recommendation_rules.py)", () => {
   it("pins the windows, the tiny-DTE floor and the middle-tier targets", () => {
     expect(WEEKLY_DTE_BUCKET).toEqual([0, 14]);
-    expect(MONTHLY_DTE_BUCKET).toEqual([21, 45]);
+    expect(MONTHLY_DTE_BUCKET).toEqual([0, 60]);
     expect([MIN_ANNUALIZATION_DAYS, SHORT_DTE_NOTICE_MAX, MIDDLE_DELTA, MIDDLE_MONEYNESS]).toEqual([1, 2, 0.25, 1.025]);
     expect(EXPIRY_DAY_CLOSE_LOCAL_MINUTES).toEqual({ US: 960, STOCKHOLM: 1050, TAIFEX: 810 });
     expect([0, 1, 2, 30].map(effectiveDays)).toEqual([1, 1, 2, 30]);
@@ -260,7 +260,8 @@ describe("LINE card: three tiers, week marker, tiny-DTE notice", () => {
     expect(two).toBeGreaterThan(one);
     expect(three).toBeGreaterThan(two);
     for (const strike of ["$112.00", "$108.00", "$106.00"]) expect(flex).toContain(strike);
-    expect(flex).toContain("履約價與權利金介於高履約價與平衡型之間；被指派機率也居中。");
+    // V20: the tier note was removed from the flex card; its meaning is carried by the tier title.
+    expect(flex).toContain("建議二：中間型（權利金與被指派機率居中）");
   });
   it("without a middle the two original titles are unchanged", () => {
     const flex = render(tierCycle({ middle: false }));

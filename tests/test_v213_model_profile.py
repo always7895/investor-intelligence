@@ -144,6 +144,17 @@ class ModelProfileTests(unittest.TestCase):
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn(b'ROUTING_CHECK_ARGUMENT_CONFLICT', result.stdout + result.stderr)
             self.assertEqual(paths, [])
+            # No profile anywhere (no environment copy, no state-root file, no project default) and no explicit binding.
+            (exe.parent / 'config/v213-model-profile-v1.json').unlink()
+            no_profile_env = {k: v for k, v in child_env.items() if k != 'V213_MODEL_PROFILE_JSON'}
+            mode[0] = 'route_good'; paths.clear()
+            result = subprocess.run(['powershell.exe', '-NoProfile', '-File',
+                str(exe.parent / 'scripts/run_v213_local_llm_bridge_core.ps1'), '-RoutingCheckOnly',
+                '-LlamaBaseUrl', base, '-Model', PROFILE['model']],
+                env=no_profile_env, capture_output=True, timeout=60)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn(b'MODEL_PROFILE_REQUIRED', result.stdout + result.stderr)
+            self.assertNotIn('/v1/chat/completions', paths, 'Missing profile must stop before the route probe')
         finally:
             server.shutdown(); server.server_close(); thread.join(timeout=5)
 

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import socket
 import sys
 import tempfile
@@ -78,18 +79,15 @@ class StageCase(unittest.TestCase):
         ]
         for patcher in self.patchers:
             patcher.start()
+            self.addCleanup(patcher.stop)
         self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
         self.base = Path(self.tmp.name).resolve()
         self.run_dir = self.base / "run"
         self.run_dir.mkdir()
         self.out = self.base / "nested" / "kv"
         self.assertEqual(self.base.is_relative_to(ROOT.resolve()), False)
         self.assertEqual(self.out.resolve().is_relative_to(ROOT.resolve()), False)
-
-    def tearDown(self):
-        for patcher in reversed(self.patchers):
-            patcher.stop()
-        self.tmp.cleanup()
 
     def fixture(self, objects=OBJECTS_BYTES, pointer=POINTER_BYTES):
         if objects is not None:
@@ -125,6 +123,44 @@ class StageCase(unittest.TestCase):
         return {"outcome": outcome, "top_level": tuple(sorted(p.name for p in self.base.iterdir())),
                 "listing": listing, "index_order": index_order, "write_log": tuple(log),
                 "guard_counts": (self.counts["run"], self.counts["vitest"]), "out_exists": self.out.exists()}
+
+
+class SetupCleanupTests(unittest.TestCase):
+    def test_inside_root_setup_failure_restores_guards_and_temp_ownership(self):
+        ran = []
+
+        class InsideRootCase(StageCase):
+            def runTest(self):
+                ran.append(True)
+
+        original_tempdir = tempfile.TemporaryDirectory
+        originals = replay.subprocess.run, replay.vitest_runner, socket.create_connection, socket.getaddrinfo
+        original_modules = {name: sys.modules[name] for name in ("socket", "subprocess", "tempfile", replay.__name__)}
+        original_environment = dict(os.environ)
+        owned = []
+        with original_tempdir() as directory:
+            root = Path(directory).resolve()
+
+            def temporary_directory():
+                temp = original_tempdir(dir=root)
+                owned.append(temp)
+                return temp
+
+            case = InsideRootCase()
+            result = unittest.TestResult()
+            with mock.patch(__name__ + ".ROOT", root), \
+                    mock.patch.object(tempfile, "TemporaryDirectory", temporary_directory):
+                case.run(result)
+            self.assertEqual((result.testsRun, len(result.failures), result.errors), (1, 1, []))
+            self.assertEqual(ran, [])
+            for actual, original in zip(
+                    (replay.subprocess.run, replay.vitest_runner, socket.create_connection, socket.getaddrinfo), originals):
+                self.assertIs(actual, original)
+            self.assertEqual(len(owned), 1)
+            self.assertFalse(Path(owned[0].name).exists())
+        for name, module in original_modules.items():
+            self.assertIs(sys.modules[name], module)
+        self.assertEqual(dict(os.environ), original_environment)
 
 
 class StageRows(StageCase):

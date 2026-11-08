@@ -206,7 +206,7 @@ describe("OPTIONS-GLOBAL-01 acceptance regression tests", () => {
     });
     for (const command of ["NVDA 期權指引", "NVDA 選擇權推薦", "NVDA covered call", "NVDA 每月期權指引", "NVDA monthly covered call"]) {
       const reply = await actualReply(env, command);
-      expect(reply).toContain("OPTION_RIGHTS_NOT_ADMITTED");
+      expect(reply).toContain("期權資料未通過公開驗收");
       expect(reply).not.toContain("330.00");
       expect(reply).not.toContain("$2.05");
     }
@@ -253,6 +253,8 @@ describe("OPTIONS-GLOBAL-01 acceptance regression tests", () => {
     });
     const reply = await actualReply(env, "NVDA covered call 文字！");
     expect(reply).toContain("330.00");
+    // V25-FIX3: this real Worker text route retains the limit-selection rule for its displayed limits.
+    expect(reply).toContain("限價選取：價差25%內取中間價，較寬時取Bid＋四分之一價差");
     expect(reply).toContain("【備兌買權建議｜NVDA");
   });
 
@@ -280,11 +282,11 @@ describe("OPTIONS-GLOBAL-01 acceptance regression tests", () => {
   it("differentiates all Section C failure states", async () => {
     // 1. SNAPSHOT_UNAVAILABLE
     const unsealedEnv = { PUBLIC_CACHE: asKv(new MemoryKv()), TENANT_PRIVATE_CACHE: asKv(new MemoryKv()), EPHEMERAL_SECURITY_CACHE: asKv(new MemoryKv()), V213_LINE_PRESENTATION: "text" };
-    expect(await actualReply(unsealedEnv, "TSM 每月期權")).toContain("OPTION_DATA_UNAVAILABLE");
+    expect(await actualReply(unsealedEnv, "TSM 每月期權")).toContain("期權報價不可用");
 
     // 2. DOCUMENT_ABSENT
     const absentDocEnv = await sealedEnv(() => {}, false, true);
-    expect(await actualReply(absentDocEnv, "TSM 每月期權")).toContain("OPTION_DATA_NOT_ADMITTED");
+    expect(await actualReply(absentDocEnv, "TSM 每月期權")).toContain("期權資料未通過公開驗收");
 
     // 3. DOCUMENT_INVALID_OR_UNREADABLE (tampered blob)
     const tamperedEnv = await sealedEnv(() => {}, true);
@@ -324,7 +326,7 @@ describe("OPTIONS-GLOBAL-01 acceptance regression tests", () => {
 
     // IQE -> Unsupported market
     const iqeReply = await actualReply(env, "IQE 每月期權");
-    expect(iqeReply).toContain("尚未採用此市場");
+    expect(iqeReply).toContain("尚無可免費自動公開散布的授權個股期權報價來源");
 
     // Ambiguous dual listing
     const dualReply = await actualReply(env, "合成雙掛 每月期權");
@@ -357,9 +359,9 @@ describe("OPTIONS-GLOBAL-01 acceptance regression tests", () => {
     const monthlyReply = await actualReply(await sealedEnv(lazy => {
       const cycle = structuredClone(TSM_MONTHLY);
       cycle.ticker = "NVDA";
-      cycle.dte = 7;
-      cycle.expiry = new Date(FIXED_NOW + 7 * 86400000).toISOString().slice(0, 10);
-      cycle.suggestions[0]!.annualized_yield = cycle.suggestions[0]!.limit_price / cycle.spot * 365 / 7;
+      cycle.dte = 61;  // the monthly bucket is 0-60
+      cycle.expiry = new Date(FIXED_NOW + 61 * 86400000).toISOString().slice(0, 10);
+      cycle.suggestions[0]!.annualized_yield = cycle.suggestions[0]!.limit_price / cycle.spot * 365 / 61;
       lazy["v213:options:v2"].options.NVDA = { monthly: cycle };
     }), "NVDA 每月期權");
     expect(monthlyReply).not.toContain("330.00");
@@ -385,26 +387,47 @@ describe("OPTIONS-GLOBAL-01 acceptance regression tests", () => {
     expect(missingBlobReply).not.toContain("OPTION_DATA_NOT_ADMITTED");
   });
 
-  it("B4: healthy flex exposes provenance, currency, mid, liquidity and delta basis with no NaN", async () => {
+  it("B4: quote bands stay in compact Flex while the text command preserves full liquidity and delta basis", async () => {
     admitSyntheticTickers("TSM");
-    const reply = await actualReply({ ...(await sealedEnv()), V213_LINE_PRESENTATION: "flex" }, "TSM 每月期權");
-    expect(reply).toContain("https://finance.yahoo.com/quote/TSM/options");
-    expect(reply).toContain("計價 USD");
-    expect(reply).toContain("中價 $2.05");
-    expect(reply).toContain("OI 900");
-    expect(reply).toContain("成交量 50");
-    expect(reply).toContain("依報價隱含波動率");
-    expect(reply).not.toContain("NaN");
+    const env = await sealedEnv();
+    const flex = await actualReply({ ...env, V213_LINE_PRESENTATION: "flex" }, "TSM 每月期權");
+    // V25-D4 keeps the exact source label in compact Flex and the full URL on the existing text command.
+    expect(flex).toContain("Yahoo Finance 期權鏈（非官方，延遲）");
+    expect(flex).toContain("計價 USD");
+    expect(flex).toContain("TSM 每月期權 文字");
+    expect(flex).not.toContain("NaN");
+    expect(flex).toContain("Bid ");
+    expect(flex).toContain("Mid");
+    expect(flex).toContain("Ask ");
+    // V25-FIX1 restores Bid/Mid/Ask beside each visible limit; the full liquidity diagnostics remain on the text route.
+    const text = await actualReply({ ...env, V213_LINE_PRESENTATION: "flex" }, "TSM 每月期權 文字");
+    expect(text).toContain("https://finance.yahoo.com/quote/TSM/options");
+    for (const field of ["中價 $2.05", "OI 900", "成交量 50", "依報價隱含波動率"]) expect(text).toContain(field);
+    expect(text).not.toContain("NaN");
   });
 
-  it("B4: an omitted spread renders unknown, never NaN, in both flex and text", async () => {
+  it("renders the admitted public covered-call cycle with its validated annualized premium and risk", async () => {
+    admitSyntheticTickers("TSM");
+    const env = await sealedEnv();
+    const messages = JSON.parse(await actualReply({ ...env, V213_LINE_PRESENTATION: "flex" }, "TSM 每月期權"));
+    const bubble = messages[0].contents.contents.find((item: any) => JSON.stringify(item.header).includes("備兌買權"));
+    expect(bubble).toBeDefined();
+    const body = JSON.stringify(bubble.body);
+    expect(body).toContain(`${(TSM_MONTHLY.suggestions[0]!.annualized_yield * 100).toFixed(1)}%`);
+    expect(body).toContain("3xl");
+    expect(body).toContain("$330.00");
+    expect(body).toContain("$205.00");
+    expect(JSON.stringify(bubble)).toContain("正股仍有下跌風險");
+  });
+
+  it("B4: an omitted spread stays unknown in full text, never NaN, with the compact Flex route intact", async () => {
     admitSyntheticTickers("TSM");
     const drop = (lazy: any) => { delete lazy["v213:options:v2"].options.TSM.monthly.suggestions[0].spread_pct; };
-    const flexReply = await actualReply({ ...(await sealedEnv(drop)), V213_LINE_PRESENTATION: "flex" }, "TSM 每月期權");
-    expect(flexReply).toContain("330.00");
+    const env = await sealedEnv(drop);
+    const flexReply = await actualReply({ ...env, V213_LINE_PRESENTATION: "flex" }, "TSM 每月期權");
+    expect(flexReply).toContain("TSM 每月期權 文字");
     expect(flexReply).not.toContain("NaN");
-    expect(flexReply).toContain("價差占中價 未提供");
-    const textReply = await actualReply(await sealedEnv(drop), "TSM 每月期權");
+    const textReply = await actualReply({ ...env, V213_LINE_PRESENTATION: "flex" }, "TSM 每月期權 文字");
     expect(textReply).not.toContain("NaN");
     expect(textReply).toContain("價差占中價 未提供");
   });
@@ -455,7 +478,7 @@ describe("OPTIONS-GLOBAL-01 round2 I1 nonfinite/malformed optional liquidity fie
     });
   }
   for (const style of ["text", "flex"] as const) {
-    it(`${style}: null and missing optional fields stay 未提供, never NaN`, async () => {
+    it(`${style}: null and missing optional fields stay 未提供 in the full quote, never NaN`, async () => {
       admitSyntheticTickers("TSM");
       const nulled = await sealedEnv(l => {
         for (const k of ["oi", "volume", "spread_pct"]) l[KEY].options.TSM.monthly.suggestions[0][k] = null;
@@ -463,8 +486,10 @@ describe("OPTIONS-GLOBAL-01 round2 I1 nonfinite/malformed optional liquidity fie
       nulled.V213_LINE_PRESENTATION = style;
       const nreply = await actualReply(nulled, "TSM 每月期權");
       expect(nreply).toContain("330.00");
-      for (const word of ["OI 未提供", "成交量 未提供", "價差占中價 未提供"]) expect(nreply).toContain(word);
       expect(nreply).not.toMatch(/NaN|Infinity|undefined/);
+      // V25 keeps the complete unknown-field labels on the existing text command when Flex is intentionally compact.
+      const fullNull = style === "flex" ? await actualReply(nulled, "TSM 每月期權 文字") : nreply;
+      for (const word of ["OI 未提供", "成交量 未提供", "價差占中價 未提供"]) expect(fullNull).toContain(word);
       const missing = await sealedEnv(l => {
         for (const k of ["oi", "volume", "spread_pct"]) delete l[KEY].options.TSM.monthly.suggestions[0][k];
       });
@@ -472,6 +497,8 @@ describe("OPTIONS-GLOBAL-01 round2 I1 nonfinite/malformed optional liquidity fie
       const mreply = await actualReply(missing, "TSM 每月期權");
       expect(mreply).toContain("330.00");
       expect(mreply).not.toMatch(/NaN|Infinity|undefined/);
+      const fullMissing = style === "flex" ? await actualReply(missing, "TSM 每月期權 文字") : mreply;
+      for (const word of ["OI 未提供", "成交量 未提供", "價差占中價 未提供"]) expect(fullMissing).toContain(word);
     });
   }
 });

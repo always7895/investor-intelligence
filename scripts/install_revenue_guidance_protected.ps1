@@ -186,6 +186,7 @@ try {
         'scripts/revenue_guidance_machine.py',
         'scripts/revenue_guidance_provider.psm1', 'scripts/revenue_guidance_orchestration.psm1',
         'scripts/bottleneck_top20_v3.py', 'scripts/publish_sealed_snapshot.py',
+        'scripts/corporate_actions.py', 'config/corporate-actions-v1.json',
         'scripts/bottleneck_ranking.py', 'scripts/bottleneck_claim_admission.py',
         'scripts/company_claim_admission_bridge.py', 'scripts/multilineage_claim_bundle.py',
         'scripts/source_registry.py', 'scripts/adapters/__init__.py', 'scripts/adapters/base.py',
@@ -195,7 +196,7 @@ try {
         'scripts/listing_lineage.py', 'scripts/order_forecast.py', 'scripts/order_claims.py',
         'scripts/revenue_consensus_quarterly.py', 'scripts/revenue_guidance_wire.py',
         'scripts/top20_carry_forward.py', 'scripts/v213_evidence_policy.py',
-        'scripts/official_quarterly_revenue.py', 'config/bottleneck-layers-v3.json',
+        'scripts/official_quarterly_revenue.py', 'scripts/revenue_trend.py', 'config/bottleneck-layers-v3.json',
         'config/listing-lineage-v1.json', 'config/official-quarterly-revenue-v1.json',
         'config/company-zh-names-v1.json', 'config/order-claims-v2.json',
         'config/korea-ir-orders-v1.json', 'config/korea-ir-fundamentals-v1.json')

@@ -12,7 +12,7 @@ import {
   identityNameBucket, identitySymbolBucket, identityTokenBucket, identityTokenKey, leadingTokenQuery, loadIdentityCatalogForQuery, nameTokens,
 } from "../src/v213/identity-shards";
 import { freeRelayRequestEnv } from "../src/v213/production-worker";
-import { pinPublicSnapshot } from "../src/v213/public-snapshot";
+import { clearVerifiedLazyBodies, pinPublicSnapshot } from "../src/v213/public-snapshot";
 import { SNAPSHOT_LAZY_KEY_RE, SNAPSHOT_SEAL_KEY } from "../src/v213/snapshot-seal";
 import { asKv, MemoryKv } from "./fake-kv";
 import { sealUnboundReport } from "./sealed-report-migration";
@@ -131,6 +131,7 @@ interface SealOptions { tokens?: boolean; edit?: (objects: Shards) => void; tamp
 
 /** A sealed run whose manifest lists the identity shards as lazy objects stored under blob:v1:<sha256>. */
 async function sealed(options: SealOptions = {}): Promise<Sealed> {
+  clearVerifiedLazyBodies();  // each sealed() call is a new snapshot whose blobs may be dropped or altered under the same digests
   const kv = new MemoryKv();
   const stamp = new Date(Date.now() - 60_000).toISOString().replace(/\.\d{3}Z$/, "Z");
   kv.values.set("v213:top20-report:latest", JSON.stringify({ synthetic: "report" }));
@@ -189,7 +190,7 @@ async function line(env: Record<string, unknown>, text: string, extra: Record<st
 
 const UNIQUE_NOTE = "名稱比對：輸入文字是封存名錄中唯一一家公司名稱的開頭字詞";
 const MANY_NOTE = "名稱比對：輸入文字是多家公司名稱的開頭字詞";
-const SIVERS_ABSENT = "IDENTIFIER_UNAVAILABLE: 代號「SIVERS」目前未在已封存公開身分目錄中";
+const SIVERS_ABSENT = "識別代號暫不可用：代號「SIVERS」目前未在已封存公開身分目錄中";
 const bullets = (text: string) => text.split("\n").filter(item => item.startsWith("• "));
 
 afterEach(() => vi.unstubAllGlobals());
@@ -254,7 +255,7 @@ describe("V11 W5 name lookup through the real LINE entry", () => {
     const { env } = await sealed();
     for (const input of ["Siver", "Micro"]) {
       const reply = await line(env, input);
-      expect(reply.text, input).toContain(`IDENTIFIER_UNAVAILABLE: 代號「${input.toUpperCase()}」`);
+      expect(reply.text, input).toContain(`識別代號暫不可用：代號「${input.toUpperCase()}」`);
       expect(reply.text, input).not.toContain("公司名稱（原文）：Sivers");
       expect(reply.text, input).not.toContain("Micron");
     }
@@ -267,7 +268,7 @@ describe("V11 W5 name lookup through the real LINE entry", () => {
   it("refuses a token shorter than four letters", async () => {
     const { env } = await sealed();
     const short = await line(env, "Abc");
-    expect(short.text).toContain("IDENTIFIER_UNAVAILABLE: 代號「ABC」");
+    expect(short.text).toContain("識別代號暫不可用：代號「ABC」");
     expect(short.text).not.toContain("ABCH");
     // The gate counts the letters of the whole input, so a longer input with a short first word still matches.
     expect((await line(env, "Abc Holdings")).text).toContain("ABCH");
@@ -302,7 +303,7 @@ describe("V11 W5 name lookup through the real LINE entry", () => {
     expect((await line(env, "輝達")).text).toContain("個股快查 · NVDA");
     expect((await line(env, "股票 台積")).text).not.toContain("個股快查 · 2330");  // a prefix of the Chinese name is not a name
     expect((await line(env, "公司 台灣積體")).text).not.toContain("個股快查 · 2330");
-    expect((await line(env, "公司 台灣積體")).text).toContain("COMPANY_NAME_UNAVAILABLE");
+    expect((await line(env, "公司 台灣積體")).text).toContain("公司名稱暫不可用");
     expect((await line(env, "2330")).text).toContain("個股快查 · 2330");
     expect((await line(env, "SIVE")).text).toContain("個股快查 · SIVE");
     expect((await line(env, "SIVE.ST")).text).toContain("代號：SIVE（輸入：SIVE.ST）");
@@ -312,16 +313,16 @@ describe("V11 W5 name lookup through the real LINE entry", () => {
     const { env } = await sealed();
     const ticker = await line(env, "股票 Sivers");
     expect(ticker.text).not.toContain("Sivers Semiconductors");
-    expect(ticker.text).toContain("IDENTIFIER_UNAVAILABLE");
+    expect(ticker.text).toContain("識別代號暫不可用");
     const suffixed = await line(env, "Sivers.ST");
-    expect(suffixed.text).toContain("SOURCE_UNAVAILABLE");
+    expect(suffixed.text).toContain("資料暫不可用");
     expect(suffixed.text).not.toContain("公司名稱（原文）：Sivers");
   });
 
   it("never resolves contradictory variants of a listing found by its leading word", async () => {
     const { env } = await sealed();
     const reply = await line(env, "Conflict");
-    expect(reply.text).toContain("IDENTITY_CONFLICT");
+    expect(reply.text).toContain("身分資料存在衝突");
     expect(reply.text).toContain("NASDAQ:CNFL");
     expect(reply.text).not.toContain("已准入證券身分");
   });
@@ -333,7 +334,7 @@ describe("V11 W5 reader compatibility and fail-closed behaviour", () => {
     const reply = await line(env, "Sivers");
     expect(reply.text).toContain(SIVERS_ABSENT);
     expect(reply.text).not.toContain("SIVE（");
-    expect((await line(env, "Micron")).text).toContain("IDENTIFIER_UNAVAILABLE");
+    expect((await line(env, "Micron")).text).toContain("識別代號暫不可用");
     expect((await line(env, "Sivers Semiconductors")).text).toContain("個股快查 · SIVE");  // exact normalized name, today's path
     expect((await line(env, "SIVE")).text).toContain("個股快查 · SIVE");
     expect((await line(env, "台積電")).text).toContain("個股快查 · 2330");
@@ -384,13 +385,13 @@ describe("V11 W5 reader compatibility and fail-closed behaviour", () => {
     // MU is readable (shard M, which today's symbol channel also reads) but the Tokyo listing's shard is not: no list of one.
     const unreadable = await sealed({ dropBlobOf: `v213:identity:v2:sym:${identitySymbolBucket("6159")}` });
     const micron = await line(unreadable.env, "Micron");
-    expect(micron.text).toContain("IDENTIFIER_UNAVAILABLE");
+    expect(micron.text).toContain("識別代號暫不可用");
     expect(micron.text).not.toContain("MU (NASDAQ");
     expect(micron.text).not.toContain("個股快查 · MU");
     // When the shard of the typed text itself is unreadable, today's symbol channel already refuses the whole catalog.
     const noM = await sealed({ dropBlobOf: `v213:identity:v2:sym:${identitySymbolBucket("MU")}` });
     const refused = await line(noM.env, "Micron");
-    expect(refused.text).toContain("IDENTITY_CATALOG_UNAVAILABLE");
+    expect(refused.text).toContain("身分資料目錄暫不可用");
     expect(refused.text).not.toContain("MICRON MACHINERY");
   });
 
@@ -514,9 +515,9 @@ describe("V11 W5 genuine Python builder output through the Worker", () => {
     expect(await reply("London")).toContain("個股快查 · LON");
     expect(await reply("Paris Orbit")).not.toContain("名稱比對");  // the exact name stays on today's path
     const conflict = await reply("Acme");
-    expect(conflict).toContain("IDENTITY_CONFLICT");  // the two retained variants of ACME are never resolved
-    expect(await reply("Orbit")).toContain("IDENTIFIER_UNAVAILABLE");  // only the FIRST word is indexed, never the middle of a name
-    expect(await reply("ACME")).toContain("IDENTITY_CONFLICT");  // today's symbol path is unchanged
+    expect(conflict).toContain("身分資料存在衝突");  // the two retained variants of ACME are never resolved
+    expect(await reply("Orbit")).toContain("識別代號暫不可用");  // only the FIRST word is indexed, never the middle of a name
+    expect(await reply("ACME")).toContain("身分資料存在衝突");  // today's symbol path is unchanged
   });
 
   it("answers through the real LINE entry", async () => {

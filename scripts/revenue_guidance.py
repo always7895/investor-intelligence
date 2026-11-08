@@ -302,7 +302,7 @@ def receipt_has_unsafe_document_id(receipt: Any) -> bool:
         return True
     return any(not isinstance(d, Mapping) or raw_unsafe_document_id(d.get("id")) for d in later)
 # The official IR channel kinds (scripts/issuer_ir_feeds.py); the registry's release_channels.ir binds one.
-IR_CHANNEL_KINDS = ("Q4_PRESS_RELEASES", "RSS", "NEWSROOM_HTML")
+IR_CHANNEL_KINDS = ("Q4_PRESS_RELEASES", "RSS", "NEWSROOM_HTML", "TSMC_NEWS_HTML")
 
 
 def recompute_receipt_status(

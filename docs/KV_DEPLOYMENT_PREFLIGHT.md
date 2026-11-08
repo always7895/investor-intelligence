@@ -1,5 +1,9 @@
 # KV deployment preflight
 
+<!-- DOCS-R1 scope -->
+> **Scope:** Technical reference; verify executable behavior against code and current source-bound evidence. Current acceptance and unresolved issues: [STATUS](../state/STATUS.md). The document itself does not authorize Production changes.
+<!-- /DOCS-R1 scope -->
+
 No deployment is performed during development. Before a future release can create or bind Cloudflare KV namespaces, six real IDs must be supplied outside Git and validated:
 
 ```text
@@ -29,6 +33,24 @@ A release must fail when:
 - conversation memory is enabled before Phase 8 deletion/race acceptance.
 
 The public snapshot must be rebuilt into a fresh `PUBLIC_CACHE`. No data is copied from a legacy combined namespace. `TENANT_PRIVATE_CACHE` and `EPHEMERAL_SECURITY_CACHE` begin empty.
+
+## Namespace roles and isolation
+
+The Worker uses three independent namespaces:
+
+- `PUBLIC_CACHE`: public reports, scores, source views, option snapshots, versioned manifests and `snapshot:current`.
+- `TENANT_PRIVATE_CACHE`: encrypted, opt-in conversation memory and encrypted long-job results only.
+- `EPHEMERAL_SECURITY_CACHE`: hashed webhook-deduplication claims and pseudonymous rate-limit counters only.
+
+Non-negotiable boundaries:
+
+- Public data never stores `tenant:*`, tenant identifiers, raw LINE identifiers, messages or account data; private data never stores public snapshots or shared rankings.
+- Ephemeral security state stores no message text, answer text or raw external identifier.
+- A tenant's HMAC-derived identifier is confined to `TENANT_PRIVATE_CACHE` and `EPHEMERAL_SECURITY_CACHE`; it never enters public data.
+- The legacy `CACHE` binding is forbidden; generic private-JSON storage APIs are absent.
+- Conversation memory is off by default for the first external-user release.
+- The public publisher receives no private or ephemeral credentials. Public lookups never read tenant-private data; model context never reads option chains or another tenant's data, and may read only the current tenant's explicitly available encrypted conversation memory.
+- Owner holdings, watchlists, account/broker data and local reports never enter any of the three namespaces.
 
 ## Pre-KV replay gate and the revenue-guidance machine binding
 

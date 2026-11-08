@@ -3,9 +3,8 @@
 // processAuthorizedLineEvent on a sealed MemoryKv snapshot. The sealed options object is a slice of what the real Python producer and sealer emit
 // (cloud/test/fixtures/v11-options-carry.json, byte-pinned by tests/test_v11_options_carry_forward.py).
 //
-// The catalog is the REPOSITORY catalog with the test copy of the pinned operator-accepted entry applied through vi.doMock (the Worker imports the
-// catalog JSON at build time), so these rows prove the target state without depending on the repository catalog edit; the parity row compares
-// the copy with config/public-options-provider-candidates.json when the entry is there. Synthetic LINE credentials; every other network call throws.
+// The historical catalog predates V30 and keeps these October clocks meaningful. A separate parity row compares the pinned Yahoo entry
+// with the current repository catalog. Synthetic LINE credentials; every other network call throws.
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -16,6 +15,7 @@ import { SNAPSHOT_SEAL_KEY } from "../src/v213/snapshot-seal";
 
 const CATALOG_MODULE = "../../config/public-options-provider-candidates.json";
 const repository = JSON.parse(readFileSync(resolve(__dirname, CATALOG_MODULE), "utf-8")) as Doc;
+const historical = JSON.parse(readFileSync(resolve(__dirname, "fixtures/options-provider-catalog-pre-v30.json"), "utf-8")) as Doc;
 const fixture = JSON.parse(readFileSync(resolve(__dirname, "fixtures/v11-options-carry.json"), "utf-8")) as Doc;
 type Doc = Record<string, any>;
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
@@ -32,12 +32,13 @@ const YAHOO_ENTRY: Doc = {
   admitted_scopes: [SCOPE, { ...SCOPE, quote_basis: "previous_session_last" }], operator_decision: DECISION,
 };
 
-/** The repository catalog with the test copy of the Yahoo entry (replacing a repository one) and the matching root selection. */
+/** The historical catalog with the test copy of the Yahoo entry and the matching root selection. */
 function catalogWith(mutate?: (yahoo: Doc, doc: Doc) => void, withYahoo = true): Doc {
-  const doc = clone(repository);
+  const doc = clone(historical); // These 2026-10-13 cases precede the 2026-11-02 review.
   // V13: the Nasdaq Nordic entry (decided 2026-10-17) lies after this file's 2026-10-13 clocks, where it would make the whole catalog unusable;
-  // its own rows live in v13-nordic-options-operator-accepted.test.ts. Dropping it here keeps these rows proving the Yahoo behaviour alone.
-  doc.providers = doc.providers.filter((item: Doc) => item.id !== YAHOO_ID && item.id !== "nasdaq_nordic_option_chain");
+  // its own rows live in v13-nordic-options-operator-accepted.test.ts. V19: the Nasdaq US entry (decided 2026-10-19) is dropped the same way
+  // (its rows live in v19-nasdaq-us-options-operator-accepted.test.ts). Dropping them here keeps these rows proving the Yahoo behaviour alone.
+  doc.providers = doc.providers.filter((item: Doc) => item.id !== YAHOO_ID && item.id !== "nasdaq_nordic_option_chain" && item.id !== "nasdaq_public_option_chain");
   const yahoo = clone(YAHOO_ENTRY);
   if (withYahoo) doc.providers.push(yahoo);
   doc.production_quote_provider_selected = withYahoo;
@@ -194,8 +195,8 @@ describe("W1 admission: the pinned operator decision, through the catalog", () =
   });
 
   it("any other provider claiming the operator status invalidates the catalog, whatever it copies", async () => {
-    const others = repository.providers.filter((item: Doc) => item.id !== YAHOO_ID && item.id !== "nasdaq_nordic_option_chain").map((item: Doc) => item.id as string);
-    expect(others.length).toBeGreaterThanOrEqual(12);
+    const others = historical.providers.filter((item: Doc) => item.id !== YAHOO_ID && item.id !== "nasdaq_nordic_option_chain" && item.id !== "nasdaq_public_option_chain").map((item: Doc) => item.id as string);
+    expect(others.length).toBeGreaterThanOrEqual(11);
     for (const id of others) {
       const doc = catalogWith((_yahoo, root) => {
         const forged = root.providers.find((item: Doc) => item.id === id)!;
@@ -302,6 +303,7 @@ describe("W1 + W2 through the real LINE entry", () => {
         expect(reply).toContain("115.00");
         expect(reply).toContain("Yahoo Finance 期權鏈（非官方，延遲）");
         expect(reply).toContain(w.covered.OPERATOR_ACCEPTED_NOTICE_ZH);
+        expect(reply).toContain("價差25%內取中間價，較寬時取Bid＋四分之一價差");
         expect(reply).not.toContain("前一交易時段最後報價");
         expect(reply).not.toContain("OPTION_RIGHTS_NOT_ADMITTED");
       }
@@ -314,14 +316,15 @@ describe("W1 + W2 through the real LINE entry", () => {
         const reply = await lineReply(w, env, command, OFF_NOW);
         expect(reply, command).toContain(LABEL);
         expect(reply).toContain("115.00");                        // the capture's own strike and quotes, not recomputed
-        expect(reply).toContain("2026-10-13T15:00:00Z");           // the capture instant is shown, never relabelled as fresh
+        expect(reply).toContain("10-13 23:00（台北）");           // the capture instant is shown, never relabelled as fresh
         expect(reply).toContain("Yahoo Finance 期權鏈（非官方，延遲）");
         expect(reply).toContain(w.covered.OPERATOR_ACCEPTED_NOTICE_ZH);
         expect(reply).not.toContain(UNVERIFIED);
       }
       // GOOD0 is a healthy live chain without a suggestion: the honest producer reason, not a carried quote
       const good = await lineReply(w, env, "GOOD0 每週期權", OFF_NOW);
-      expect(good).toContain("沒有年化權利金達 6%");
+      expect(good).toContain("沒有 Delta 不超過 0.20 且有雙邊報價的履約價");
+      expect(good).not.toContain("年化權利金");
       expect(good).not.toContain("前一交易時段最後報價");
     });
   }
@@ -341,7 +344,7 @@ describe("W1 + W2 through the real LINE entry", () => {
     const env = await sealedEnv(IN_DOC, fixture.in_session.generated_at, IN_NOW);
     vi.setSystemTime(IN_NOW);
     const denied = await lineReply(without, env, "T00 每週期權", IN_NOW);
-    expect(denied).toContain("OPTION_RIGHTS_NOT_ADMITTED");
+    expect(denied).toContain("期權資料未通過公開驗收");
     expect(denied).not.toContain("115.00");
     expect(denied).not.toContain(without.covered.OPERATOR_ACCEPTED_NOTICE_ZH);
     // a cycle that claims no identity (an older producer, the Nasdaq fallback) is denied even under the full catalog
@@ -349,7 +352,7 @@ describe("W1 + W2 through the real LINE entry", () => {
     const w = await world(catalogWith());
     const bareEnv = await sealedEnv({ T00: { weekly: bare } }, fixture.in_session.generated_at, IN_NOW);
     const bareReply = await lineReply(w, bareEnv, "T00 每週期權", IN_NOW);
-    expect(bareReply).toContain("OPTION_RIGHTS_NOT_ADMITTED");
+    expect(bareReply).toContain("期權資料未通過公開驗收");
     expect(bareReply).not.toContain("115.00");
   });
 
@@ -373,7 +376,7 @@ describe("W1 + W2 through the real LINE entry", () => {
     // The catalog stops admitting the carried basis (its scope removed): rights denial, no quote.
     const delayedOnly = await world(catalogWith(yahoo => { yahoo.admitted_scopes.pop(); }));
     const reply = await lineReply(delayedOnly, await sealedEnv(OFF_DOC, fixture.off_session.generated_at, OFF_NOW), "T00 每週期權", OFF_NOW);
-    expect(reply).toContain("OPTION_RIGHTS_NOT_ADMITTED");
+    expect(reply).toContain("期權資料未通過公開驗收");
     expect(reply).not.toContain("115.00");
     // The renderer re-checks admission independently (no loader in front of it).
     const { covered, admission } = delayedOnly;

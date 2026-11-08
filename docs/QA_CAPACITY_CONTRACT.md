@@ -1,5 +1,9 @@
 # QA Capacity Contract V1 (2026-09-21; base HEAD 84133f8)
 
+<!-- DOCS-R1 scope -->
+> **Scope:** Dated reference; not current Production status, a new approval, or deployment authority. Current acceptance and unresolved issues: [STATUS](../state/STATUS.md). The document itself does not authorize Production changes.
+<!-- /DOCS-R1 scope -->
+
 ## Purpose
 
 Development-only cooperative QA capacity evidence for Windows-native observation.
@@ -124,7 +128,7 @@ No JEV runtime dependency. External judge is development-only.
 ## Evidence
 
 - Full qualification (all 14 gates exit 0): Python 1864 OK/424.858s; focused 125/6.583s; Worker 869 pass/1 skip; typecheck, security, both doc gates, workflow, compile/JSON, PS5.1/7, diff pass.
-- Receipt: `../../audit-runtime/qa-capacity-full-gates-02-84133/qualification-01/gate-receipt.json`.
+- Receipt (workspace runtime, outside this repository): `../../audit-runtime/qa-capacity-full-gates-02-84133/qualification-01/gate-receipt.json`.
 - Earlier full attempt failed only missing doc-index link; failure retained, complete suite rerun after fix. Code/test hashes unchanged after full qualification.
 - Actual read-only host observation: model+service verified, 28 unexpected compute-capable C+G observations => UNQUALIFIED.
 - 28 observations are NOT proof of 28 other models.

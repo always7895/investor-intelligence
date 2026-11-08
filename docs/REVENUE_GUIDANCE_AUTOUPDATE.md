@@ -1,5 +1,9 @@
 # Revenue guidance auto-update (ORDERS-V3-AUTOUPDATE-01)
 
+<!-- DOCS-R1 scope -->
+> **Scope:** Technical reference; verify executable behavior against code and current source-bound evidence. Current acceptance and unresolved issues: [STATUS](../state/STATUS.md). The document itself does not authorize Production changes.
+<!-- /DOCS-R1 scope -->
+
 Status: **Part A slice 1 (framework + NVDA + MU) documented as accepted in this doc (`e89936f`); receipt not located in R; unverified. B0 documented as accepted in this doc (`839f2f8`); receipt not located in R; unverified. B1 effective-input boundary: the subject line of commit `77c0552` says "B1 accepted and committed"; receipt not located in R; unverified. No same-snapshot dual-acceptance receipt is claimed for any of the three. Not deployed or installed (`state/STATUS.md`: PRODUCTION_GO=false).** Source-only F03 caller/Worker composition and F05A's inactive NBIS adapter
 are not functional acceptance or activation. Installed defaults still do not select these machine paths;
 with no auto-update state root (the unchanged production case) every default build is byte-identical
@@ -188,7 +192,7 @@ the in-memory `auto_update` evidence (B3 defines its sealed schema). Automatic m
   for discovery only (still `READMITTED_AUTO`, never usable before the updater re-verifies); if it no longer
   reproduces, or the issuer's history is unreadable, the structurally valid baseline record is used as a conservative
   `CURATED_RESCAN` reference. The checker therefore keeps checking waiting, blocked and suspended issuers
-  (`revenue_guidance_release_check.py --state-root`, default `data/cache/revenue_guidance_autoupdate`); the updater
+  (`revenue_guidance_release_check.py --state-root`, default runtime path `data/cache/revenue_guidance_autoupdate`); the updater
   first folds every material item listed for the entry snapshot's discovery reference into the durable detection set
   (before re-verification can switch the reference or anything is fetched).
 - **Integrity at the callers.** The checker keeps exactly the receipt history the snapshot captured: only a missing
@@ -351,6 +355,7 @@ review pending. At that snapshot tests/imports/dot-source/AST/parser/compile/gat
   finally retains unresolved graphs AFTER reporting/continuation, so an unknown task never reports completed
   maintenance or exits as settled. Disabled native command operands/legacy pair remain unchanged; compatibility
   is source intent, NOT executed F01 preservation acceptance.
+- The normal daily entry also has a default-off `-D2ForceGuidanceRankingPair` switch (D2 rebuild use): in disabled mode only, it runs the legacy `guidance_release_check` and `bottleneck_v3` steps with `--if-older-than-hours 0` (never skip) instead of `0.9` and `3`; it changes no other step and has no effect when `-GuidanceAutoUpdateEnabled` is set.
 - The parent requires PowerShell **7.4+**, freshly checks protected HKLM64 approval/installation/enrollment,
   actual runtime principal, held protected interpreter/code/import ancestry, DACLs, full inventory and exact
   bytes. It launches only the fixed protected CPython **3.12.10 x64** bootstrap with `-I -S -B host`; no
@@ -659,7 +664,7 @@ unaccounted; a required IR copy with such an id waits instead (`NETWORK_UNAVAILA
 lists no rows. The release checker writes every later-document id in this persisted form too (BATCH10C F8-N1: SEC
 accessions, wire and IR item ids alike, through `overlay.safe_document_id`) and compares the record's
 `reviewed_later_documents` in it, so a receipt written since lists no such id verbatim, neither in `receipts.json`
-nor in `data/cache/revenue_guidance_release_checks.json` nor in the curated path's `evidence.latest_release_check`.
+nor in the runtime file `data/cache/revenue_guidance_release_checks.json` nor in the curated path's `evidence.latest_release_check`.
 The persisted form never bars (BATCH10C F8-AMEND1): it is a safe id for `receipt_admission`, the updater's guard,
 `recompute_receipt_status` and the checker's own status alike, so such a receipt states the status a clean id would
 give it (its recompute agrees); the Worker's receipt recompute applies the same rule (a non-string id, or one with

@@ -1,0 +1,230 @@
+[
+  {
+    "name": "sive-nearest-monthly",
+    "as_of": "2026-11-03",
+    "expiries": [
+      "2026-11-20",
+      "2026-12-18"
+    ],
+    "expected": "2026-11-20",
+    "rule": "THIRD_FRIDAY"
+  },
+  {
+    "name": "sive-nearest-monthly-nov-2",
+    "as_of": "2026-11-02",
+    "expiries": [
+      "2026-11-20",
+      "2026-12-18"
+    ],
+    "expected": "2026-11-20",
+    "rule": "THIRD_FRIDAY"
+  },
+  {
+    "name": "one-day-before",
+    "as_of": "2026-11-19",
+    "expiries": [
+      "2026-11-20",
+      "2026-12-18"
+    ],
+    "expected": "2026-11-20",
+    "rule": "THIRD_FRIDAY"
+  },
+  {
+    "name": "expiry-day-before-close",
+    "as_of": "2026-11-20",
+    "expiries": [
+      "2026-11-20",
+      "2026-12-18"
+    ],
+    "expected": "2026-11-20",
+    "rule": "THIRD_FRIDAY"
+  },
+  {
+    "name": "expiry-day-after-close",
+    "as_of": "2026-11-20",
+    "expiries": [
+      "2026-11-20",
+      "2026-12-18"
+    ],
+    "expected": "2026-12-18",
+    "rule": "THIRD_FRIDAY",
+    "expiry_day_open": false
+  },
+  {
+    "name": "day-after-expiry",
+    "as_of": "2026-11-21",
+    "expiries": [
+      "2026-11-20",
+      "2026-12-18"
+    ],
+    "expected": "2026-12-18",
+    "rule": "THIRD_FRIDAY"
+  },
+  {
+    "name": "expiry-day-after-close-next-missing",
+    "as_of": "2026-11-20",
+    "expiries": [
+      "2026-11-20"
+    ],
+    "expected": null,
+    "rule": null,
+    "expiry_day_open": false
+  },
+  {
+    "name": "holiday-shift-latest-of-week",
+    "as_of": "2026-06-01",
+    "expiries": [
+      "2026-06-16",
+      "2026-06-18",
+      "2026-07-17"
+    ],
+    "expected": "2026-06-18",
+    "rule": "HOLIDAY_SHIFT"
+  },
+  {
+    "name": "holiday-shift-only-earlier-day",
+    "as_of": "2026-11-03",
+    "expiries": [
+      "2026-11-17",
+      "2026-12-18"
+    ],
+    "expected": "2026-11-17",
+    "rule": "HOLIDAY_SHIFT"
+  },
+  {
+    "name": "holiday-shift-day-before-close",
+    "as_of": "2026-06-18",
+    "expiries": [
+      "2026-06-18",
+      "2026-07-17"
+    ],
+    "expected": "2026-06-18",
+    "rule": "HOLIDAY_SHIFT"
+  },
+  {
+    "name": "holiday-shift-day-after-close",
+    "as_of": "2026-06-18",
+    "expiries": [
+      "2026-06-18",
+      "2026-07-17"
+    ],
+    "expected": "2026-07-17",
+    "rule": "LATER_LISTED",
+    "expiry_day_open": false
+  },
+  {
+    "name": "holiday-friday-itself-is-past",
+    "as_of": "2026-06-19",
+    "expiries": [
+      "2026-06-18",
+      "2026-07-17"
+    ],
+    "expected": "2026-07-17",
+    "rule": "LATER_LISTED"
+  },
+  {
+    "name": "friday-wins-over-thursday",
+    "as_of": "2026-11-03",
+    "expiries": [
+      "2026-11-19",
+      "2026-11-20"
+    ],
+    "expected": "2026-11-20",
+    "rule": "THIRD_FRIDAY"
+  },
+  {
+    "name": "current-month-not-listed",
+    "as_of": "2026-11-03",
+    "expiries": [
+      "2026-12-18"
+    ],
+    "expected": "2026-12-18",
+    "rule": "LATER_LISTED"
+  },
+  {
+    "name": "weeklies-are-not-monthlies",
+    "as_of": "2026-11-03",
+    "expiries": [
+      "2026-11-06",
+      "2026-11-13",
+      "2026-11-27",
+      "2026-12-18"
+    ],
+    "expected": "2026-12-18",
+    "rule": "LATER_LISTED"
+  },
+  {
+    "name": "previous-week-is-not-the-shift-window",
+    "as_of": "2026-11-03",
+    "expiries": [
+      "2026-11-12"
+    ],
+    "expected": null,
+    "rule": null
+  },
+  {
+    "name": "year-boundary",
+    "as_of": "2026-12-21",
+    "expiries": [
+      "2027-01-15",
+      "2027-02-19"
+    ],
+    "expected": "2027-01-15",
+    "rule": "THIRD_FRIDAY"
+  },
+  {
+    "name": "sixty-days-inclusive",
+    "as_of": "2026-10-19",
+    "expiries": [
+      "2026-12-18"
+    ],
+    "expected": "2026-12-18",
+    "rule": "LATER_LISTED"
+  },
+  {
+    "name": "sixty-one-days-refused",
+    "as_of": "2026-10-18",
+    "expiries": [
+      "2026-12-18"
+    ],
+    "expected": null,
+    "rule": null
+  },
+  {
+    "name": "beyond-sixty-days",
+    "as_of": "2026-11-03",
+    "expiries": [
+      "2027-01-15"
+    ],
+    "expected": null,
+    "rule": null
+  },
+  {
+    "name": "expired",
+    "as_of": "2026-11-21",
+    "expiries": [
+      "2026-11-20"
+    ],
+    "expected": null,
+    "rule": null
+  },
+  {
+    "name": "empty",
+    "as_of": "2026-11-02",
+    "expiries": [],
+    "expected": null,
+    "rule": null
+  },
+  {
+    "name": "malformed-dates-ignored",
+    "as_of": "2026-11-03",
+    "expiries": [
+      "2026-11-31",
+      "2026-13-01",
+      "not-a-date",
+      "2026-12-18"
+    ],
+    "expected": "2026-12-18",
+    "rule": "LATER_LISTED"
+  }
+]

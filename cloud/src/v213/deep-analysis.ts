@@ -1,11 +1,13 @@
 import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
+import { formatVisibleMoment } from "./line-formatters";
+import { humanizeStatusText } from "./status-labels";
 import { requirePublicCitation as safeCitation } from "./public-citation";
 import { sourceZh } from "./source-labels";
 import { parseV213Top20Report, type V213Top20Report } from "./top20-report";
 import { parseV213BottleneckReport, type V213BottleneckReport } from "./bottleneck-report";
 import { validateTwoYearReturnEvidence } from "./top20-return-evidence";
 import {
-  LINE_THEME as T, chip, divider, footerStyle, footnote, headerStyle, labelValue, menuAction, panel, phaseLadder, railTitle,
+  LINE_THEME as T, chip, disclosureLine, divider, footerStyle, footnote, headerStyle, labelValue, menuAction, panel, phaseLadder, railTitle,
   packCarousels, rankBadge, richText, statTile, uiBox, uiText,
 } from "./line-theme";
 
@@ -81,7 +83,7 @@ export function validateCompanyDataReport(raw: any, ticker: string): CompanyData
 function dataReportBlocks(report: { generated_at: string }, data: CompanyDataReport): string[] {
   const numerals = ["一", "二", "三", "四", "五", "六", "七", "八", "九", "十", "十一", "十二"];
   return [
-    `【${data.ticker}｜公司深度報告 · 官方資料計算】\n原文公司名稱：${data.name}\n當輪快照產生：${report.generated_at}\n` +
+    `【${data.ticker}｜公司深度報告 · 官方資料計算】\n原文公司名稱：${data.name}\n當輪快照產生：${formatVisibleMoment(report.generated_at)}\n` +
       `資料計算日：${data.as_of}｜舊版准入狀態：${legacyGateLabel(data.phase)}｜下次檢查：${data.next_review_at ?? "下一份財報"}\n研究邊界：${data.boundary}`,
     ...data.sections.map((section, index) => `${numerals[index]}、${section.title}\n${section.text}`),
     `資料來源 / Sources\n` + data.source_references.map(ref => `• ${sourceZh(ref.source)}${ref.period ? `（${ref.period}）` : ""}：${ref.url}`).join("\n"),
@@ -119,8 +121,8 @@ export function buildTop20DeepAnalysisMessages(
     `【${row.ticker}｜深度化分析 · 供應鏈瓶頸與價值鏈研究】\n` +
     `原文公司名稱：${row.name}\n` +
     `中文名稱：未完成來源核對（不按股票代號猜譯）\n` +
-    `當輪快照產生：${report.generated_at}\n` +
-    `資料取得時間：${row.retrieved_at}\n` +
+    `當輪快照產生：${formatVisibleMoment(report.generated_at)}\n` +
+    `資料取得時間：${formatVisibleMoment(row.retrieved_at)}\n` +
     `研究邊界：公開研究，非投資建議；歷史報酬非預測。`,
 
     // Section 1: 供應鏈瓶頸定位與價值鏈角色
@@ -166,7 +168,7 @@ export function buildTop20DeepAnalysisMessages(
     `五、合約、訂單、資本支出、產能與客戶證據 / Contracts, Orders, CapEx, Capacity & Customer Evidence\n` +
     `• 快照記載現有訂單：${row.current_orders}\n` +
     `• 快照記載未來展望：${row.future_orders_estimate}\n` +
-    `• 訂單基準日期：${row.orders_as_of || "未揭露"}｜來源信心：${row.orders_confidence ?? "未標註（候選快照口徑）"}\n` +
+    `• 訂單基準日期：${row.orders_as_of ? formatVisibleMoment(row.orders_as_of) : "未揭露"}｜來源信心：${row.orders_confidence ?? "未標註（候選快照口徑）"}\n` +
     `• 主張核對（Claim Audit）：\n` +
     `  - 客戶名單不等於稀缺性（Customers aren't scarcity）。供貨予特定客戶僅代表已獲供應商代碼，不代表供貨份額具排他性。\n` +
     `  - 合約約束力缺口：缺少逐筆訂單條款、取消與退單條件、交付驗收期程及違約罰則；剩餘履約義務（RPO）不等於未來必然落袋利潤，亦不得與已認列營收重複相加。\n` +
@@ -269,24 +271,30 @@ function kpiRows(kpis: readonly CompanyKpi[]) {
 /** Data report as a Flex carousel: overview (phase ladder, KPI tiles), numbered sections, sources. */
 export function buildCompanyDataReportFlex(data: CompanyDataReport, generatedAt: string,
   back: readonly [string, string] = ["回功能選單", "選單"]): LineOutboundMessage[] {
-  const perBubble = 4;
+  const perBubble = 3;
   const sectionPages = Math.ceil(data.sections.length / perBubble);
   const total = sectionPages + 2;
+  const kpiRowsForOverview = kpiRows(data.kpis);
   const overview = {
     type: "bubble", size: "mega",
     header: uiBox([
       uiBox([chip("公司深度報告"), uiText("官方資料計算", "xxs", T.headerMuted, { weight: "bold", gravity: "center", flex: 1 })],
         { layout: "horizontal", spacing: "md" }),
-      uiText(data.ticker, "3xl", T.headerText, { weight: "bold" }),
-      uiText(data.name, "md", T.headerText, { weight: "bold" }),
-      uiText(`資料計算日 ${data.as_of}｜快照 ${generatedAt}`, "xxs", T.headerSubtle),
+      uiText(data.ticker, "lg", T.headerText, { weight: "bold" }),
+      uiText(data.name, "xs", T.headerMuted),
+      uiText(`資料計算日 ${data.as_of}｜快照 ${formatVisibleMoment(generatedAt)}`, "xxs", T.headerSubtle),
     ], { ...headerStyle, spacing: "sm" }),
     body: uiBox([
       uiBox([railTitle("舊版准入狀態", legacyGateLabel(data.phase)), phaseLadder(data.phase),
         labelValue("下次檢查", data.next_review_at ?? "下一份財報", { weight: "bold" })], { spacing: "md" }),
-      ...(data.kpis.length > 0 ? [uiBox([railTitle("關鍵數據", "SEC XBRL 同季年比較"), ...kpiRows(data.kpis)], { spacing: "sm" })] : []),
-      panel([footnote(`研究邊界：${data.boundary}`), footnote(`左滑看詳細報告 2–${total}/${total}`)], "soft"),
+      ...(kpiRowsForOverview.length > 0 ? [uiBox([
+        railTitle("關鍵數據", "SEC XBRL 同季年比較"),
+        uiBox(kpiRowsForOverview.slice(0, 2), { spacing: "sm" }),
+        ...(kpiRowsForOverview.length > 2 ? [uiBox(kpiRowsForOverview.slice(2), { spacing: "sm" })] : []),
+      ], { spacing: "sm" })] : []),
+      panel([footnote(`左滑看詳細報告 2–${total}/${total}`)], "soft"),
     ], { paddingAll: "lg", spacing: "lg", backgroundColor: T.paper }),
+    footer: uiBox([disclosureLine([`研究邊界：${data.boundary}`])], { ...footerStyle }),
   };
   const sectionBubbles = Array.from({ length: sectionPages }, (_, page) => {
     const chunk = data.sections.slice(page * perBubble, page * perBubble + perBubble);
@@ -309,6 +317,7 @@ export function buildCompanyDataReportFlex(data: CompanyDataReport, generatedAt:
         ], { spacing: "sm" });
         return offset > 0 ? [divider(), block] : [block];
       }), { paddingAll: "lg", spacing: "md", backgroundColor: T.paper }),
+      footer: uiBox([disclosureLine([`研究邊界：${data.boundary}`])], { ...footerStyle }),
     };
   });
   const sources = {
@@ -317,18 +326,18 @@ export function buildCompanyDataReportFlex(data: CompanyDataReport, generatedAt:
       uiText(`${data.ticker} · 詳細報告 ${total}/${total}`, "xxs", T.headerMuted, { weight: "bold" }),
       uiText("資料來源 / Sources", "md", T.headerText, { weight: "bold" }),
     ], { ...headerStyle, spacing: "sm" }),
-    body: uiBox(data.source_references.slice(0, 10).flatMap((ref, index) => {
-      const block = uiBox([
-        uiText(sourceZh(ref.source), "xs", T.ink, { weight: "bold" }),
-        ...(ref.period ? [uiText(`期間 ${ref.period}`, "xxs", T.muted)] : []),
-        uiText(ref.url, "xxs", T.subtle),
-      ], { spacing: "xs" });
-      return index > 0 ? [divider(), block] : [block];
-    }), { paddingAll: "lg", spacing: "md", backgroundColor: T.paper }),
-    footer: uiBox([menuAction(back[0], back[1]), ...(back[1] === "選單" ? [] : [menuAction("回功能選單", "選單")])], { ...footerStyle }),
+    body: uiBox([uiText("來源名稱、期間與網址見頁尾", "xs", T.ink)], { paddingAll: "lg", spacing: "md", backgroundColor: T.paper }),
+    footer: uiBox([
+      disclosureLine([
+        ...data.source_references.map(ref => `${sourceZh(ref.source)}${ref.period ? `（${ref.period}）` : ""}：${ref.url}`),
+        `研究邊界：${data.boundary}`,
+      ]),
+      menuAction(back[0], back[1]),
+      ...(back[1] === "選單" ? [] : [menuAction("回功能選單", "選單")]),
+    ], { ...footerStyle }),
   };
   const alt = `${data.ticker}｜公司深度報告 · 官方資料計算`;
-  return packCarousels([overview, ...sectionBubbles, sources], (index, total) => total > 1 ? `${alt}（${index + 1}/${total}）` : alt);
+  return packCarousels([overview, ...sectionBubbles, sources], (index, total) => total > 1 ? `${alt}（${index + 1}/${total}）` : alt, generatedAt);
 }
 
 /** Data report as LINE text messages (text presentation of the data-driven potential ranking). */
@@ -374,7 +383,7 @@ function chunkBlocks(blocks: string[]): LineOutboundMessage[] {
     throw new Error(`DEEP_ANALYSIS_MESSAGE_COUNT_EXCEEDED: count=${chunks.length}`);
   }
 
-  const messages: LineOutboundMessage[] = chunks.map(t => ({ type: "text", text: t }));
+  const messages: LineOutboundMessage[] = chunks.map(t => ({ type: "text", text: humanizeStatusText(t) }));
   assertLineMessages(messages);
   return messages;
 }

@@ -2083,7 +2083,7 @@ class HostAcquisitionTests(FakeLeaseCase):
             self.lease._network_work = {"requests": 112, "bytes": 0, "last": None, "issuers": {}}
             with self.assertRaises(host._AcquisitionDeferred):
                 capture.collect(outputs)
-            self.assertEqual(outputs.progress(plan_id("base"), 336), 0)
+            self.assertEqual(outputs.progress(plan_id("base"), 345), 0)
         # The paused cursor 0 is persisted, not merely the default of an absent plan.
         self.assertEqual(self.space.json(("outputs", "capture-index.json"))["progress"], {plan_id("base"): 0})
         config = json.loads(layers)["layers"]
@@ -2092,7 +2092,7 @@ class HostAcquisitionTests(FakeLeaseCase):
         self.assertEqual([name for name, _ in seen], ["base"])
         plan = seen[0][1]
         self.assertEqual(len(plan), 3 * len(members) + 2 * sum("." not in symbol for symbol in members) + 2 + 2 * len(terms))
-        self.assertEqual(len(plan), 336)  # the documented universe: 60 members / 40 US, 37 filing terms
+        self.assertEqual(len(plan), 345)  # rank-7 adds one Japan member (61) and three filing terms (40)
         slots = [slot for slot, _, _, _ in plan]
         self.assertEqual(len(set(slots)), len(plan))
         expected = set()
@@ -2104,7 +2104,7 @@ class HostAcquisitionTests(FakeLeaseCase):
         expected.update(sha(f"taiwan/{suffix}".encode()) for suffix in ("TW", "TWO"))
         self.assertEqual(set(slots), expected)
         self.assertEqual((net.lookups, net.connections), ([], []))
-        self.assertEqual(capture.progress_state, {"Stage": "base", "Cursor": 0, "Slots": 336})
+        self.assertEqual(capture.progress_state, {"Stage": "base", "Cursor": 0, "Slots": 345})
 
     def test_a_pause_at_112_shared_requests_persists_the_cursor_and_resumes_fairly(self):
         plan = plan_rows("AAA", "BBB", "CCC")
@@ -2406,7 +2406,7 @@ def routed_network(route, address=PUBLIC_ADDRESS):
 
 
 class CompletePlanTests(FakeLeaseCase):
-    """The real _Capture.collect over the repository's 60-member universe, finished across invocations: every
+    """The real _Capture.collect over the repository's 61-member universe, finished across invocations: every
     invocation is a new lease (a fresh 112-request shared budget) over the same persisted capture index."""
     INSTANT = datetime(2026, 10, 10, 12, 0, 0, tzinfo=timezone.utc)
 
@@ -2463,40 +2463,39 @@ class CompletePlanTests(FakeLeaseCase):
         space, records = self.finish(feed_text)
         self.assertEqual([record.paused for record in records], [True, True, True, False])
         base = records[0].plans[0][1]
-        self.assertEqual(len(base), 336)
+        self.assertEqual(len(base), 345)
         layers = json.loads((ROOT / "config" / "bottleneck-layers-v3.json").read_text(encoding="utf-8"))["layers"]
         members = sorted({row["symbol"] for layer in layers for row in layer["capturers"]})
-        self.assertEqual(len(members), 60)
+        self.assertEqual(len(members), 61)  # +1 6268.T from dated issuer robotics source
         # Fair slices of the same base plan: 112 requests, then the persisted cursor resumes, then wraps over held slots.
         urls = [url for _, url, _, _ in base]
         self.assertEqual([record.served for record in records[:3]], [urls[0:112], urls[112:224], urls[224:336]])
-        self.assertEqual([record.requests for record in records], [112, 112, 112, 4])
-        self.assertEqual([record.progress[plan_id("base")] for record in records], [112, 224, 224, 224])
+        self.assertEqual([record.requests for record in records], [112, 112, 112, 13])
+        self.assertEqual([record.progress[plan_id("base")] for record in records], [112, 224, 336, 336])
         self.assertEqual([record.state for record in records[:3]], [
-            {"Stage": "base", "Cursor": 112, "Slots": 336}, {"Stage": "base", "Cursor": 224, "Slots": 336},
-            {"Stage": "auxiliary", "Cursor": 0, "Slots": 3}])
+            {"Stage": "base", "Cursor": 112, "Slots": 345}, {"Stage": "base", "Cursor": 224, "Slots": 345},
+            {"Stage": "base", "Cursor": 336, "Slots": 345}])
         for record in records[:3]:
             self.assertEqual(record.capture.batch, [])
             self.assertFalse(record.capture.network_allowed)
-        # Third invocation: the base plan finishes from held slots and the auxiliary stage pauses before its first request.
-        self.assertEqual([name for name, _ in records[2].plans], ["base", "auxiliary"])
+        # Expanded rank-7 plan has 9 base slots remaining after invocation three; auxiliary runs only on four.
+        self.assertEqual([name for name, _ in records[2].plans], ["base"])
         self.assertEqual([name for name, _ in records[3].plans], ["base", "auxiliary", "cision-pages"])
         fx = [(sha(f"fx/{currency}".encode()),
                f"https://query1.finance.yahoo.com/v8/finance/chart/{currency}USD%3DX?range=5d&interval=1d",
                f"fx/{currency}", 8 * MiB) for currency in ("JPY", "SEK")]
         feed = ranking.CISION_RSS.format(slug=CISION_SLUG)
         rss_row = (sha(b"cision/rss/SIVE.ST"), feed, "SIVE.ST", 8 * MiB)
-        self.assertEqual(records[2].plans[1][1], fx + [rss_row])
         self.assertEqual(records[3].plans[1][1], fx + [rss_row])
         # The pages slot comes from the held feed through the real predicates: not the invitation, not the news item.
         page_row = (sha(b"cision/report/SIVE.ST"), CISION_REPORT_Q2, "SIVE.ST", 8 * MiB)
         self.assertEqual(records[3].plans[2][1], [page_row])
-        self.assertEqual(records[3].served, [fx[0][1], fx[1][1], feed, CISION_REPORT_Q2])
+        self.assertEqual(records[3].served, urls[336:] + [fx[0][1], fx[1][1], feed, CISION_REPORT_Q2])
         self.assertEqual(self.real_pages(feed_text), [CISION_REPORT_Q2])
         # Every slot was served by the network exactly once overall, and every member kept its three Yahoo channels.
         served = [url for record in records for url in record.served]
-        self.assertEqual(len(served), 340)
-        self.assertEqual(len(set(served)), 340)
+        self.assertEqual(len(served), 349)
+        self.assertEqual(len(set(served)), 349)
         self.assertEqual(set(served), set(urls) | {row[1] for row in fx} | {feed, CISION_REPORT_Q2})
         for symbol in members:
             for prefix in ("https://query1.finance.yahoo.com/v8/finance/chart/",
@@ -2508,7 +2507,7 @@ class CompletePlanTests(FakeLeaseCase):
         self.assertEqual(set(index["entries"]), slots)
         self.assertEqual({row["status"] for row in index["entries"].values()}, {"CAPTURED"})
         self.assertEqual(index["entries"][page_row[0]]["url"], CISION_REPORT_Q2)
-        self.assertEqual(index["progress"], {plan_id("base"): 224, plan_id("auxiliary"): 0, plan_id("cision-pages"): 0})
+        self.assertEqual(index["progress"], {plan_id("base"): 336, plan_id("auxiliary"): 0, plan_id("cision-pages"): 0})
         final = records[3].capture
         self.assertEqual(final.entries["http/" + CISION_REPORT_Q2], CISION_PAGE_Q2.encode())
         self.assertEqual({key for key in final.entries if key.startswith("fx/")}, {"fx/JPY", "fx/SEK"})
@@ -2535,7 +2534,11 @@ class CompletePlanTests(FakeLeaseCase):
                 space, records = self.finish(feed_text)
                 self.assertEqual([record.paused for record in records], [True, True, True, False])
                 self.assertEqual([name for name, _ in records[3].plans], ["base", "auxiliary"])
-                self.assertEqual(len(records[3].served), 3)  # two FX charts and the feed, no page
+                # Nine added rank-7 base slots finish before the unchanged two FX and one RSS channels.
+                base_tail = [url for _, url, _, _ in records[3].plans[0][1]][336:]
+                self.assertEqual(len(base_tail), 9)
+                self.assertEqual(records[3].served[:9], base_tail)
+                self.assertEqual(len(records[3].served), 12)  # 9 base + FX x2 + RSS; NO page
                 index = space.json(("outputs", "capture-index.json"))
                 self.assertNotIn(plan_id("cision-pages"), index["progress"])
                 self.assertNotIn(sha(b"cision/report/SIVE.ST"), index["entries"])

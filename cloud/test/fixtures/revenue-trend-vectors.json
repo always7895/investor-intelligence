@@ -1,0 +1,376 @@
+{
+ "report_day": "2026-11-03",
+ "cases": {
+  "growth": {
+   "fund": {
+    "source": "Yahoo Finance quarterly income statement (unofficial)",
+    "source_url": "https://finance.yahoo.com/quote/POET/financials",
+    "quarter_end": "2026-06-30",
+    "revenue_unit": "USD",
+    "revenue_yoy": 0.5,
+    "revenue_yoy_prev": 0.3
+   },
+   "trend": {
+    "schema": "revenue-trend-v1",
+    "method": "TREND_YOY_V1",
+    "currency": "USD",
+    "anchor": "2026-06-30",
+    "tier": "A",
+    "quarters": [
+     {
+      "end": "2025-09-30",
+      "revenue": 100000000.0
+     },
+     {
+      "end": "2025-12-31",
+      "revenue": 110000000.0
+     },
+     {
+      "end": "2026-03-31",
+      "revenue": 120000000.0
+     },
+     {
+      "end": "2026-06-30",
+      "revenue": 150000000.0
+     }
+    ],
+    "rates": [
+     {
+      "label": "latest",
+      "value": 0.5
+     },
+     {
+      "label": "previous",
+      "value": 0.3
+     }
+    ],
+    "growth_raw": 0.4,
+    "growth": 0.4,
+    "capped": null,
+    "tier_b_reason": null,
+    "baseline": 480000000.0,
+    "m6": {
+     "start": "2026-07-01",
+     "end": "2026-12-31",
+     "amount": 294000000.0,
+     "change": 0.17500000000000004
+    },
+    "m12": {
+     "start": "2026-07-01",
+     "end": "2027-06-30",
+     "amount": 672000000.0,
+     "change": 0.3999999999999999
+    },
+    "source": "Yahoo Finance quarterly income statement (unofficial)",
+    "source_url": "https://finance.yahoo.com/quote/POET/financials"
+   }
+  },
+  "upper_clamp": {
+   "fund": {
+    "source": "Yahoo Finance quarterly income statement (unofficial)",
+    "source_url": "https://finance.yahoo.com/quote/POET/financials",
+    "quarter_end": "2026-06-30",
+    "revenue_unit": "USD",
+    "revenue_yoy": 2.0,
+    "revenue_yoy_prev": 1.5
+   },
+   "trend": {
+    "schema": "revenue-trend-v1",
+    "method": "TREND_YOY_V1",
+    "currency": "USD",
+    "anchor": "2026-06-30",
+    "tier": "A",
+    "quarters": [
+     {
+      "end": "2025-09-30",
+      "revenue": 100000000.0
+     },
+     {
+      "end": "2025-12-31",
+      "revenue": 110000000.0
+     },
+     {
+      "end": "2026-03-31",
+      "revenue": 120000000.0
+     },
+     {
+      "end": "2026-06-30",
+      "revenue": 150000000.0
+     }
+    ],
+    "rates": [
+     {
+      "label": "latest",
+      "value": 2.0
+     },
+     {
+      "label": "previous",
+      "value": 1.5
+     }
+    ],
+    "growth_raw": 1.75,
+    "growth": 1.0,
+    "capped": "UPPER",
+    "tier_b_reason": null,
+    "baseline": 480000000.0,
+    "m6": {
+     "start": "2026-07-01",
+     "end": "2026-12-31",
+     "amount": 420000000.0,
+     "change": 0.4375
+    },
+    "m12": {
+     "start": "2026-07-01",
+     "end": "2027-06-30",
+     "amount": 960000000.0,
+     "change": 1.0
+    },
+    "source": "Yahoo Finance quarterly income statement (unofficial)",
+    "source_url": "https://finance.yahoo.com/quote/POET/financials"
+   }
+  },
+  "lower_clamp": {
+   "fund": {
+    "source": "Yahoo Finance quarterly income statement (unofficial)",
+    "source_url": "https://finance.yahoo.com/quote/POET/financials",
+    "quarter_end": "2026-06-30",
+    "revenue_unit": "USD",
+    "revenue_yoy": -0.8,
+    "revenue_yoy_prev": -0.7
+   },
+   "trend": {
+    "schema": "revenue-trend-v1",
+    "method": "TREND_YOY_V1",
+    "currency": "USD",
+    "anchor": "2026-06-30",
+    "tier": "A",
+    "quarters": [
+     {
+      "end": "2025-09-30",
+      "revenue": 100000000.0
+     },
+     {
+      "end": "2025-12-31",
+      "revenue": 110000000.0
+     },
+     {
+      "end": "2026-03-31",
+      "revenue": 120000000.0
+     },
+     {
+      "end": "2026-06-30",
+      "revenue": 150000000.0
+     }
+    ],
+    "rates": [
+     {
+      "label": "latest",
+      "value": -0.8
+     },
+     {
+      "label": "previous",
+      "value": -0.7
+     }
+    ],
+    "growth_raw": -0.75,
+    "growth": -0.5,
+    "capped": "LOWER",
+    "tier_b_reason": null,
+    "baseline": 480000000.0,
+    "m6": {
+     "start": "2026-07-01",
+     "end": "2026-12-31",
+     "amount": 105000000.0,
+     "change": -0.21875
+    },
+    "m12": {
+     "start": "2026-07-01",
+     "end": "2027-06-30",
+     "amount": 240000000.0,
+     "change": -0.5
+    },
+    "source": "Yahoo Finance quarterly income statement (unofficial)",
+    "source_url": "https://finance.yahoo.com/quote/POET/financials"
+   }
+  },
+  "flat_out_of_range": {
+   "fund": {
+    "source": "Yahoo Finance quarterly income statement (unofficial)",
+    "source_url": "https://finance.yahoo.com/quote/POET/financials",
+    "quarter_end": "2026-06-30",
+    "revenue_unit": "USD",
+    "revenue_yoy": 5.0,
+    "revenue_yoy_prev": 4.0
+   },
+   "trend": {
+    "schema": "revenue-trend-v1",
+    "method": "TREND_YOY_V1",
+    "currency": "USD",
+    "anchor": "2026-06-30",
+    "tier": "B",
+    "quarters": [
+     {
+      "end": "2025-09-30",
+      "revenue": 100000000.0
+     },
+     {
+      "end": "2025-12-31",
+      "revenue": 110000000.0
+     },
+     {
+      "end": "2026-03-31",
+      "revenue": 120000000.0
+     },
+     {
+      "end": "2026-06-30",
+      "revenue": 150000000.0
+     }
+    ],
+    "rates": [
+     {
+      "label": "latest",
+      "value": 5.0
+     },
+     {
+      "label": "previous",
+      "value": 4.0
+     }
+    ],
+    "growth_raw": 4.5,
+    "growth": null,
+    "capped": null,
+    "tier_b_reason": "YOY_OUT_OF_RANGE",
+    "baseline": 480000000.0,
+    "m6": {
+     "start": "2026-07-01",
+     "end": "2026-12-31",
+     "amount": 300000000.0,
+     "change": 0.1875
+    },
+    "m12": {
+     "start": "2026-07-01",
+     "end": "2027-06-30",
+     "amount": 600000000.0,
+     "change": 0.25
+    },
+    "source": "Yahoo Finance quarterly income statement (unofficial)",
+    "source_url": "https://finance.yahoo.com/quote/POET/financials"
+   }
+  },
+  "flat_no_rate": {
+   "fund": {
+    "source": "Yahoo Finance quarterly income statement (unofficial)",
+    "source_url": "https://finance.yahoo.com/quote/POET/financials",
+    "quarter_end": "2026-06-30",
+    "revenue_unit": "USD",
+    "revenue_yoy": null,
+    "revenue_yoy_prev": null
+   },
+   "trend": {
+    "schema": "revenue-trend-v1",
+    "method": "TREND_YOY_V1",
+    "currency": "USD",
+    "anchor": "2026-06-30",
+    "tier": "B",
+    "quarters": [
+     {
+      "end": "2025-09-30",
+      "revenue": 100000000.0
+     },
+     {
+      "end": "2025-12-31",
+      "revenue": 110000000.0
+     },
+     {
+      "end": "2026-03-31",
+      "revenue": 120000000.0
+     },
+     {
+      "end": "2026-06-30",
+      "revenue": 150000000.0
+     }
+    ],
+    "rates": [],
+    "growth_raw": null,
+    "growth": null,
+    "capped": null,
+    "tier_b_reason": "NO_ALIGNED_YOY",
+    "baseline": 480000000.0,
+    "m6": {
+     "start": "2026-07-01",
+     "end": "2026-12-31",
+     "amount": 300000000.0,
+     "change": 0.1875
+    },
+    "m12": {
+     "start": "2026-07-01",
+     "end": "2027-06-30",
+     "amount": 600000000.0,
+     "change": 0.25
+    },
+    "source": "Yahoo Finance quarterly income statement (unofficial)",
+    "source_url": "https://finance.yahoo.com/quote/POET/financials"
+   }
+  },
+  "latest_rate_only": {
+   "fund": {
+    "source": "Yahoo Finance quarterly income statement (unofficial)",
+    "source_url": "https://finance.yahoo.com/quote/POET/financials",
+    "quarter_end": "2026-06-30",
+    "revenue_unit": "USD",
+    "revenue_yoy": 0.5,
+    "revenue_yoy_prev": null
+   },
+   "trend": {
+    "schema": "revenue-trend-v1",
+    "method": "TREND_YOY_V1",
+    "currency": "USD",
+    "anchor": "2026-06-30",
+    "tier": "A",
+    "quarters": [
+     {
+      "end": "2025-09-30",
+      "revenue": 100000000.0
+     },
+     {
+      "end": "2025-12-31",
+      "revenue": 110000000.0
+     },
+     {
+      "end": "2026-03-31",
+      "revenue": 120000000.0
+     },
+     {
+      "end": "2026-06-30",
+      "revenue": 150000000.0
+     }
+    ],
+    "rates": [
+     {
+      "label": "latest",
+      "value": 0.5
+     }
+    ],
+    "growth_raw": 0.5,
+    "growth": 0.5,
+    "capped": null,
+    "tier_b_reason": null,
+    "baseline": 480000000.0,
+    "m6": {
+     "start": "2026-07-01",
+     "end": "2026-12-31",
+     "amount": 315000000.0,
+     "change": 0.21875
+    },
+    "m12": {
+     "start": "2026-07-01",
+     "end": "2027-06-30",
+     "amount": 720000000.0,
+     "change": 0.5
+    },
+    "source": "Yahoo Finance quarterly income statement (unofficial)",
+    "source_url": "https://finance.yahoo.com/quote/POET/financials"
+   }
+  }
+ }
+}

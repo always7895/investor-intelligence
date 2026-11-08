@@ -33,7 +33,7 @@ const deep = (id: string) => ({
 async function sealedEnv() {
   const ids = ["alpha", "beta", "gamma", "delta", "epsilon"];
   const overview = { schema_version: 1, title: "TOP5產業總覽", generated_at: STAMP, horizon: "12-36M", qualified_count: 5,
-    shortfall: 0, status: "ADMITTED_TOP5", industries: ids.map((id, i) => card(id, i + 1)),
+    shortfall: 0, status: "ADMITTED_TOP5", industries: ids.map((id, i) => card(id, i + 1)), data_basis: { as_of: "2026-09-25" },
     deep_analyses: Object.fromEntries(ids.map(id => [id, deep(id)])) };
   const bodies: [string, string][] = SNAPSHOT_OBJECT_KEYS.map(key => [key, JSON.stringify({ synthetic_fixture: true, key })]);
   bodies.find(([key]) => key === "last_successful_pipeline_timestamp")![1] = STAMP;
@@ -78,5 +78,5 @@ it("renders the industry card embedded in the sealed overview", async () => {
 
 it("an industry outside the sealed overview stays unavailable", async () => {
   const body = JSON.stringify(await v213PublicLineAnswer(await sealedEnv(), parseQuery("宏觀產業 深度化分析 omega")));
-  expect(body).toContain("MACRO_DEEP_UNAVAILABLE");
+  expect(body).toContain("產業深度分析暫不可用");
 });

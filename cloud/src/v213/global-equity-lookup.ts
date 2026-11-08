@@ -1,6 +1,8 @@
 import { adrRoute, marketHasOptions } from "./option-routes";
 import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
-import { LINE_THEME as T, menuAction, menuBox, menuText, headerStyle } from "./line-theme";
+import { LINE_THEME as T, bulletRow, disclosureLine, menuAction, menuBox, menuText, headerStyle, heroStat, noticeBanner, shortAltText } from "./line-theme";
+import { humanizeStatusText } from "./status-labels";
+import { formatCurrency, formatPercent, formatVisibleMoment } from "./line-formatters";
 import { pinPublicSnapshot, type PublicSnapshotView } from "./public-snapshot";
 import type { V213Top20Env } from "./top20-report";
 import type { ParsedQuery } from "../core";
@@ -404,8 +406,8 @@ export function buildGlobalEquityLookupMessages(
       statusTitle = secFallback ? "備援身分（SEC 快取） · 延遲報價" : "已准入證券身分 · 延遲報價";
       const check = result.crossCheck;
       const cross = check ? `；交叉比對：${sourceZh(check.source)} ${check.price}${check.diffPct === null ? "（幣別或單位不同，不比較）"
-        : `（差 ${check.diffPct >= 0 ? "+" : ""}${(check.diffPct * 100).toFixed(2)}%，${check.asOf}；觀察時間不同時有差異屬正常${Math.abs(check.diffPct) > 0.05 ? "；差異超過 5%，請以交易所價格為準並留意資料時間" : ""}）`}` : "";
-      statusSub = `價格 ${result.price} ${identity.currency}${change}${result.priceSource ? `，來源 ${result.priceSource}` : ""}，觀察時間 ${result.asOf ?? "未揭露"}${cross}；延遲公開報價，非即時可成交價。`;
+        : `（差 ${check.diffPct >= 0 ? "+" : ""}${(check.diffPct * 100).toFixed(2)}%，${formatVisibleMoment(check.asOf)}；觀察時間不同時有差異屬正常${Math.abs(check.diffPct) > 0.05 ? "；差異超過 5%，請以交易所價格為準並留意資料時間" : ""}）`}` : "";
+      statusSub = `價格 ${result.price} ${identity.currency}${change}${result.priceSource ? `，來源 ${result.priceSource}` : ""}，觀察時間 ${result.asOf ? formatVisibleMoment(result.asOf) : "未揭露"}${cross}；延遲公開報價，非即時可成交價。`;
     } else if (resolution.status === "RESOLVED") {
       statusTitle = secFallback ? "備援身分（SEC 快取） · 報價未開放" : "已准入證券身分 · 報價未開放";
       statusSub = secFallback ? SEC_FALLBACK_UNAVAILABLE_SUB
@@ -430,6 +432,8 @@ export function buildGlobalEquityLookupMessages(
   if (result.leadingTokenMatch && resolution?.status === "RESOLVED") statusSub = `${statusSub}\n${LEADING_TOKEN_UNIQUE_NOTE}`;
   else if (result.leadingTokenMatch && resolution?.status === "NEEDS_MARKET_SELECTION") statusSub = `${statusSub}\n${LEADING_TOKEN_MANY_NOTE}`;
 
+  // Display-only localization after the complete resolver decision; wire resolution is unchanged.
+  statusSub = humanizeStatusText(statusSub);
   const nameZh = (result.nameUnverified || !identity.canonicalNameZh)
     ? (result.admittedInSealedSnapshot && !identity.isAmbiguous
       ? (secFallback ? SEC_FALLBACK_NAME_ZH : "無公認中文名（交易所、公司官方與中文維基百科皆無，不自行翻譯）")
@@ -515,29 +519,29 @@ export function buildGlobalEquityLookupMessages(
       menuText(`${secFallback ? "市場（SEC 標示）" : "市場"}：${identity.exchange}`, "xs", T.headerMuted),
     ], { ...headerStyle }),
     body: menuBox([
+      ...(quoteStatus === "AVAILABLE" && typeof result.price === "number"
+        ? [heroStat("最近報價", formatCurrency(result.price, identity.currency),
+          typeof result.changePct === "number" ? formatPercent(result.changePct, true) : "漲跌未揭露")]
+        : [heroStat("最近報價", "未取得")]),
+      noticeBanner(resolution?.status === "UNAVAILABLE" ? "negative" : "info", statusTitle, statusSub),
+      ...(secFallback ? [menuText(SEC_FALLBACK_NOTICE, "xs", T.ink)] : []),
       menuBox([
-        { ...menuText(statusTitle, "sm", T.ink), weight: "bold" },
-        menuText(statusSub, "xs", T.muted),
-        ...(secFallback ? [menuText(SEC_FALLBACK_NOTICE, "xs", T.ink)] : []),
-      ], { backgroundColor: T.soft, paddingAll: "md", cornerRadius: "md", spacing: "xs" }),
-      menuBox([
-        menuText(`標的：${identity.canonicalSymbol}`, "sm", T.ink),
-        menuText(`原文名稱：${nameEn}`, "xs", T.ink),
-        menuText(`中文名稱：${nameZh}`, "xs", T.muted),
-        menuText(`計價幣別：${identity.currency}`, "xs", T.muted),
+        bulletRow(`標的：${identity.canonicalSymbol}`, { size: "sm", weight: "bold" }),
+        bulletRow(`原文名稱：${nameEn}`),
+        bulletRow(`中文名稱：${nameZh}`, { color: T.muted }),
+        bulletRow(`計價幣別：${identity.currency}`, { color: T.muted }),
         ...(shownCandidates ? [menuText(["候選市場：", ...visibleLines, ...omissionNote, candidateNote].join("\n"), "xs", T.muted)] : []),
       ], { spacing: "xs", paddingAll: "sm" }),
     ], { paddingAll: "lg", spacing: "md", backgroundColor: T.paper }),
     footer: menuBox([
-      menuText(`來源：${sourceZh(result.source)}`, "xxs", T.muted),
-      menuText(disclaimerShown, "xxs", T.muted),
+      disclosureLine([`來源：${sourceZh(result.source)}`, disclaimerShown]),
       ...footerActions,
     ], { backgroundColor: T.paper, paddingAll: "md", spacing: "xs" }),
   };
 
   const flexMsg: LineOutboundMessage = {
     type: "flex",
-    altText: `${headerTitle}｜${statusTitle}`,
+    altText: shortAltText(`${headerTitle}｜${statusTitle}`, result.asOf ?? undefined),
     contents: {
       type: "carousel",
       contents: [bubble],

@@ -6,7 +6,7 @@
  */
 
 import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
-import { LINE_THEME as T, menuAction, menuBox, menuText, headerStyle } from "./line-theme";
+import { LINE_THEME as T, altSummary, detailsButton, disclosureGroups, menuAction, menuBox, menuText, headerStyle, uiBox } from "./line-theme";
 import type { OptionEducationalStrategyCard } from "./market-product-schema";
 
 export const EDUCATIONAL_DISCLAIMER = "教學範例，非推薦" as const;
@@ -156,11 +156,44 @@ export const EDUCATIONAL_STRATEGIES: readonly OptionEducationalStrategyCard[] = 
   },
 ]);
 
-function cardToBubble(card: OptionEducationalStrategyCard) {
-  const mpText = card.payoff_reference.max_profit_amount === "UNBOUNDED"
-    ? "UNBOUNDED（理論無限）"
-    : `$${card.payoff_reference.max_profit_amount.toFixed(2)}`;
 
+function wrapFlexRow(text: string, max = 40): string {
+  const lines: string[] = [];
+  let line = "";
+  for (const part of text.split(/(?<=\s)|(?<=[｜，；。+])/u).filter(Boolean)) {
+    if (Array.from(line + part).length <= max) { line += part; continue; }
+    if (line) lines.push(line.trimEnd());
+    line = part.trimStart();
+    while (Array.from(line).length > max) {
+      const points = Array.from(line);
+      lines.push(points.slice(0, max).join(""));
+      line = points.slice(max).join("");
+    }
+  }
+  if (line) lines.push(line.trimEnd());
+  return lines.join("\n");
+}
+
+function riskDisclosure(card: OptionEducationalStrategyCard): string {
+  switch (card.strategy_id) {
+    case "covered_call": return "手續費、規費與滑價未計；美式買權可提前指派並可能涉稅；上檔封頂、權利金緩衝有限，仍承受正股下行。";
+    case "cash_secured_put": return "未計利息機會成本、手續費與稅；到期實值賣權由OCC自動指派接股；全額現金鎖定，接股後可能跌至$0。";
+    case "bull_call_spread": return "兩腿計手續費與滑價；短腿$110 Call可提前指派；到期介於履約價有 Pin Risk、交割不對稱及 Wash Sale／保證金風險。";
+    case "protective_put": return "未計手續費；未行使則權利金全損；行使按$95售股；長期滾動耗損，持續保費可令淨資產減少。";
+  }
+}
+
+function cardToBubble(card: OptionEducationalStrategyCard) {
+  const net = card.payoff_reference.net_credit_debit;
+  const profit = card.payoff_reference.max_profit_amount === "UNBOUNDED"
+    ? "UNBOUNDED（理論無限）" : `$${card.payoff_reference.max_profit_amount.toFixed(2)}/口`;
+  const architecture = `${card.strikes}${card.strategy_id === "bull_call_spread" ? "；每口100股" : ""}`;
+  const status = `${card.status}（模擬基準日：${card.simulated_as_of}）；合成教學假設；非報價、非投資建議、不下單`;
+  const contract = card.strategy_id === "covered_call" ? "持有100股擔保；每口對應100股；費用與稅務細節見文字版"
+    : card.strategy_id === "cash_secured_put" ? `${card.assumptions.collateral}；每口${card.payoff_reference.contract_multiplier}股；機會成本見文字版`
+      : card.strategy_id === "bull_call_spread" ? "兩腿各1口、同月不同履約價；乘數100股；淨權利金為最大虧損"
+        : "持有100股並買進1口Put；支付保費；未行使則權利金全損";
+  const risk = riskDisclosure(card);
   return {
     type: "bubble",
     size: "mega",
@@ -169,42 +202,22 @@ function cardToBubble(card: OptionEducationalStrategyCard) {
       { ...menuText(card.strategy_name, "md", T.headerText), weight: "bold" },
       menuText(`模擬標的：${card.illustrative_ticker}｜${card.expiry_dte}`, "xs", T.headerMuted),
     ], { ...headerStyle }),
-    body: menuBox([
-      menuBox([
-        menuText("標的與履約設定", "xs", T.muted),
-        { ...menuText(card.strikes, "sm", T.ink), weight: "bold" },
-        { ...menuText(`收支：${card.debit_credit}`, "xs", T.ink), weight: "bold" },
-      ], { backgroundColor: T.soft, paddingAll: "sm", cornerRadius: "sm" }),
-      menuBox([
-        menuText(`損益平衡：${card.breakeven}`, "xs", T.ink),
-        menuText(`最大利潤：${card.maxprofit}（算術參考：${mpText}）`, "xs", T.ink),
-        menuText(`最大損失：${card.maxloss}（算術參考：$${card.payoff_reference.max_loss_amount.toFixed(2)}）`, "xs", T.negative),
-      ], { spacing: "xs" }),
-      { type: "separator", color: T.border },
-      menuBox([
-        menuText("履約與指派風險", "xs", T.muted),
-        menuText(card.assignment_exercise_risk, "xs", T.ink),
-      ], { spacing: "xs" }),
-      menuBox([
-        menuText("適用情境", "xs", T.muted),
-        menuText(card.appropriate_scenarios, "xs", T.ink),
-        menuText("不適用情境", "xs", T.muted),
-        menuText(card.inappropriate_scenarios, "xs", T.ink),
-      ], { spacing: "xs" }),
-      menuBox([
-        menuText("關鍵假設與警語", "xs", T.muted),
-        menuText(`• 單位：${card.assumptions.quantity_multiplier}`, "xxs", T.muted),
-        menuText(`• 擔保：${card.assumptions.collateral}`, "xxs", T.muted),
-        menuText(`• 摩擦：${card.assumptions.specific_caveats}`, "xxs", T.muted),
-      ], { backgroundColor: T.soft, paddingAll: "sm", cornerRadius: "sm", borderColor: T.frame, borderWidth: "light" }),
-    ], { paddingAll: "lg", spacing: "md", backgroundColor: T.paper }),
-    footer: menuBox([
-      menuText(`狀態：${card.status}（模擬基準日：${card.simulated_as_of}）`, "xxs", T.muted),
-      menuText("本內容僅為選擇權結構教學，絕非投資建議、即時行情或委託下單指示。", "xxs", T.muted),
+    body: uiBox([
+      uiBox([
+        menuText(wrapFlexRow(architecture), "xs", T.ink),
+        menuText(wrapFlexRow(`淨${net >= 0 ? "收" : "付"} $${Math.abs(net).toFixed(2)}/口｜損平 $${card.payoff_reference.breakeven_price.toFixed(2)}/股`), "xs", T.ink),
+        menuText(wrapFlexRow(`獲利 ${profit}｜最大損失 $${card.payoff_reference.max_loss_amount.toFixed(2)}/口`), "xs", T.ink),
+      ], { spacing: "sm" }),
+    ], { paddingAll: "lg", spacing: "sm", backgroundColor: T.paper }),
+    footer: uiBox([
+      ...disclosureGroups([
+        { label: "狀態", text: status },
+        { label: "合約", text: contract },
+        { label: "風險", text: risk },
+      ]),
+      detailsButton("查看適用情境與假設", `期權教學 ${card.strategy_id} 文字`),
       menuAction("範例：NVDA 每月期權", "NVDA 每月期權"),
-      menuAction("期權試算說明", "期權試算說明"),
-      menuAction("回功能選單", "選單"),
-    ], { paddingAll: "md", backgroundColor: T.soft }),
+    ], { paddingAll: "md", spacing: "sm", backgroundColor: T.soft }),
   };
 }
 
@@ -221,7 +234,8 @@ export function buildEducationalStrategyFlex(
   // LINE Flex carousel allows at most 5 bubbles in assertLineMessages
   const messages: LineOutboundMessage[] = [{
     type: "flex",
-    altText: `期權策略教學範例（共${cards.length}種）｜${EDUCATIONAL_DISCLAIMER}`,
+    altText: altSummary({ topic: cards.length === 1 ? `${cards[0]!.strategy_name.split("（")[0]} 期權策略教學` : `期權策略教學範例（共${cards.length}種）`,
+      status: EDUCATIONAL_DISCLAIMER, next: "點選查看適用情境與假設" }),
     contents: {
       type: "carousel",
       contents: bubbles,

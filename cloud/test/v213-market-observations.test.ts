@@ -119,7 +119,7 @@ async function sealedEnv(options: {
 describe("sealed market observations", () => {
   it("TESTFIX1 rights NONE: denies the sealed observation route without opt-in", async () => {
     const body = JSON.stringify(await v213PublicLineAnswer(await sealedEnv() as never, parseQuery("SIVE 每月期權")));
-    expect(body).toContain("OPTION_RIGHTS_NOT_ADMITTED");
+    expect(body).toContain("期權資料未通過公開驗收");
     expect(body).not.toContain("62.00 SEK");
   });
 
@@ -205,7 +205,8 @@ describe("sealed market observations", () => {
     expect(monthly[0]!.text).toContain("建議賣出限價 0.23 SEK");
     expect(monthly[0]!.text).toContain("每口權利金 225.00 SEK");
     expect(monthly[0]!.text).toContain("Nasdaq Nordic");
-    expect(monthly[0]!.text).toContain(fixedStamp);
+    expect(monthly[0]!.text).toContain("09-28 14:30（台北）");
+    expect(monthly[0]!.text).not.toContain(fixedStamp);
     expect(monthly[0]!.text).toContain("https://api.nasdaq.com/api/nordic/instruments/TX2540138/option-chain");
     expect(monthly[0]!.text).not.toContain("UNAVAILABLE");
   });
@@ -230,7 +231,7 @@ describe("sealed market observations", () => {
     vi.setSystemTime(FIXED_NOW + 1000);
 
     const past6hAnswer = JSON.stringify(await v213PublicLineAnswer(env as never, parseQuery("SIVE 每月期權")));
-    expect(past6hAnswer).toContain("OPTION_DATA_UNAVAILABLE");
+    expect(past6hAnswer).toContain("期權報價不可用");
     expect(past6hAnswer).not.toContain("62.00 SEK");
 
     const past6hHelper = await loadOptionObservation(view, "SIVE", "monthly", FIXED_NOW + 1000);
@@ -244,7 +245,7 @@ describe("sealed market observations", () => {
 
     // Real option route returns unavailability
     const optionAns = JSON.stringify(await v213PublicLineAnswer(env as never, parseQuery("SIVE 每月期權")));
-    expect(optionAns).toContain("OPTION_DATA_UNAVAILABLE");
+    expect(optionAns).toContain("期權報價不可用");
     expect(optionAns).not.toContain("62.00 SEK");
 
     // Expired loadDelayedQuote is explicitly null
@@ -304,7 +305,7 @@ describe("sealed market observations", () => {
     kv.readKeys = [];
 
     const optionAns = JSON.stringify(await v213PublicLineAnswer(env as never, parseQuery("SIVE 每月期權")));
-    expect(optionAns).toContain("OPTION_DATA_UNAVAILABLE");
+    expect(optionAns).toContain("期權報價不可用");
     expect(optionAns).not.toContain("Illicit Direct Key Fallback");
     expect(optionAns).not.toContain("99.00 SEK");
 

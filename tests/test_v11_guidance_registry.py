@@ -1,8 +1,10 @@
 """Lane V11 (revenue-guidance registry coverage of the current Top20): the registry, its reviewed profile and the release-check receipts resolve
 every Top20 issuer to its expected v3 revenue state through the real producer (release_check.receipt_for + order_forecast.build_v3).
 
-The receipts are rebuilt offline from tests/fixtures/v11-guidance-release-feeds.json (the live SEC, wire and official IR rows of 2026-10-13); the
-registry and the approval are the tracked config files, so a changed record without a matching approval fails here."""
+The V11 receipts are rebuilt offline from tests/fixtures/v11-guidance-release-feeds.json (the live SEC, wire and official IR rows of
+2026-10-13). TSM and BE's renewed Q3 reference use explicitly synthetic transport below, with reviewed filing identities and
+official reference titles/windows; none of these generated receipts represents a live check. The tracked registry and approval still
+enforce admission."""
 from __future__ import annotations
 
 import copy
@@ -25,11 +27,39 @@ from tests import v11_guidance_feeds as fx  # noqa: E402
 REGISTRY_PATH = ROOT / "config" / "revenue-guidance-v1.json"
 APPROVAL_PATH = ROOT / "config" / "revenue-guidance-approval-v1.json"
 FEEDS = fx.load()
+# TSM postdates the V11 capture. These synthetic responses exercise the real receipt builder rather than inventing a receipt/digest.
+# The 6-K identities and dates are reviewed in the tracked record; the IR cards match the TSM parser's reference/older-window fixture.
+FEEDS["issuers"]["TSM"] = {
+    "sec": {"cik": 1046179, "rows": [
+        {"form": "6-K", "filingDate": "2026-10-22", "items": "", "accessionNumber": "0001046179-26-000728", "reportDate": ""},
+        {"form": "6-K", "filingDate": "2026-10-15", "items": "", "accessionNumber": "0001046179-26-000726", "reportDate": ""},
+    ]},
+    "wire": {"symbol": "TSM", "rows": [
+        {"created": "Oct 8, 2026", "title": "TSMC September Revenue Report", "url": "/synthetic-tsm-older-coverage-row"},
+    ]},
+    "ir": {"kind": "TSMC_NEWS_HTML", "url": "https://pr.tsmc.com/english/latest-news", "rows": [
+        {"date": "2026-10-15", "title": "TSMC Reports Third Quarter EPS of NT$29.43", "id": "3346"},
+        {"date": "2026-10-08", "title": "TSMC September Revenue Report", "id": "3343"},
+    ]},
+}
+# BE's reviewed Oct 22 Q3 reference also postdates the capture. Preserve the captured older rows and supplement all three
+# synthetic channels with that reviewed event; the IR link/time are test transport, not claimed archived/live response bytes.
+BE_REFERENCE_TITLE = "Bloom Energy Reports Record Third Quarter 2026 Financial Results and Raises Full Year 2026 Guidance"
+FEEDS["issuers"]["BE"]["sec"]["rows"][:0] = [
+    {"form": "10-Q", "filingDate": "2026-10-22", "items": "", "accessionNumber": "0001628280-26-066931", "reportDate": "2026-09-30"},
+    {"form": "8-K", "filingDate": "2026-10-22", "items": "2.02,9.01", "accessionNumber": "0001628280-26-066890", "reportDate": "2026-10-22"},
+]
+FEEDS["issuers"]["BE"]["wire"]["rows"].insert(0, {
+    "created": "Oct 22, 2026", "title": BE_REFERENCE_TITLE,
+    "url": "/press-release/bloom-energy-reports-record-third-quarter-2026-financial-results-and-raises-full-year",
+})
+FEEDS["issuers"]["BE"]["ir"]["rows"].insert(0, {
+    "PressReleaseDate": "10/22/2026 16:05:00", "Headline": BE_REFERENCE_TITLE,
+    "LinkToDetailPage": "/synthetic-be-q3-guidance-reference",
+})
 CLAIMS = {"status": "EMPTY", "sha256": "0" * 64, "issuers": {}}
-GUIDANCE = ("SNDK", "NVDA", "MU", "LITE", "MRVL", "AMD", "AVGO", "MTSI", "CRDO", "AAOI", "ALAB", "BE", "NBIS", "CRWV")
+GUIDANCE = ("SNDK", "NVDA", "MU", "LITE", "MRVL", "AMD", "AVGO", "MTSI", "CRDO", "AAOI", "ALAB", "BE", "NBIS", "CRWV", "TSM")
 NOT_DISCLOSED = ("000660.KS", "005930.KS", "AXTI", "CORZ", "3006.TW", "SIVE.ST")
-# Lane V14: guidance recorded without an official IR channel (tests/test_v14_tsm_guidance.py).
-NO_IR_CHANNEL = ("TSM",)
 # f1 (the first projected quarter, whole currency units) of the issuers this lane added or renewed.
 FIRST_QUARTER = {"MU": 61.5e9, "SNDK": 10.55e9, "AVGO": 34.8e9, "MTSI": 0.42e9, "AAOI": 0.2725e9, "ALAB": 0.55e9, "LITE": 1.25e9}
 
@@ -40,6 +70,24 @@ def utc(text):
 
 def dumps(registry: dict) -> bytes:
     return (json.dumps(registry, ensure_ascii=False, indent=1) + "\n").encode("utf-8")
+
+
+def fixture_fetchers(entry: dict):
+    sec_fetch, wire_fetch, ir_fetch = fx.fetchers(entry)
+    if entry["ir"]["kind"] != "TSMC_NEWS_HTML":
+        return sec_fetch, wire_fetch, ir_fetch
+
+    def tsm_ir_fetch(url):
+        if url != entry["ir"]["url"]:
+            raise OSError("UNKNOWN_IR_URL")
+        cards = "".join(
+            f'<article class="node--type-news"><a href="/english/news/{row["id"]}">'
+            f'<time datetime="{row["date"]}T12:00:00Z">{row["date"]}</time><h2>{row["title"]}</h2></a></article>'
+            for row in entry["ir"]["rows"]
+        )
+        return cards.encode("utf-8")
+
+    return sec_fetch, wire_fetch, tsm_ir_fetch
 
 
 class Resolution:
@@ -54,7 +102,7 @@ class Resolution:
         self.issuers = {}
         for sym, rec in self.registry["issuers"].items():
             if rec.get("status") == "GUIDANCE" and sym in feeds["issuers"]:
-                receipt = checker.receipt_for(rec, now, *fx.fetchers(feeds["issuers"][sym]))
+                receipt = checker.receipt_for(rec, now, *fixture_fetchers(feeds["issuers"][sym]))
                 self.issuers[sym] = [receipt] if receipt else []
         self.cache = rg.parse_release_checks_cache(json.dumps({"schema": checker.SCHEMA, "generated_at": checker.stamp(now), "issuers": self.issuers}).encode("utf-8"))
 
@@ -94,9 +142,9 @@ class V11Base(unittest.TestCase):
 
 class RegistryShapeTests(V11Base):
     def test_every_top20_issuer_has_its_record_and_expected_status(self):
-        for symbol in GUIDANCE + NO_IR_CHANNEL:
+        for symbol in GUIDANCE:
             self.assertEqual(self.by_symbol[symbol]["status"], "GUIDANCE", symbol)
-        self.assertEqual(set(self.by_symbol), set(GUIDANCE + NO_IR_CHANNEL + NOT_DISCLOSED))
+        self.assertEqual(set(self.by_symbol), set(GUIDANCE + NOT_DISCLOSED))
         for symbol in NOT_DISCLOSED:
             self.assertEqual(self.by_symbol[symbol]["status"], "NOT_DISCLOSED", symbol)
             self.assertEqual(self.by_symbol[symbol]["reason"], "NO_NUMERIC_REVENUE_GUIDANCE", symbol)
@@ -148,8 +196,21 @@ class TopTwentyResolutionTests(V11Base):
         for symbol in GUIDANCE:
             receipt = self.real.receipt(symbol)
             self.assertEqual((receipt["status"], receipt["coverage"]), ("OK", "SEC_WIRE_IR"), symbol)
+            self.assertEqual(
+                [(c["status"], c["complete"], c["checked_through"]) for c in receipt["channels"]],
+                [("OK", True, self.now.date().isoformat())] * 3, symbol,
+            )
             v3 = self.real.v3(symbol)
             self.assertEqual((v3["revenue_status"], v3["revenue_basis"], v3["revenue_reason"]), ("AVAILABLE", "COMPANY_GUIDANCE", None), symbol)
+
+    def test_tsm_receipt_preserves_both_reviewed_sec_filings(self):
+        receipt = self.real.receipt("TSM")
+        self.assertEqual((receipt["guidance_document_id"], receipt["guidance_published_date"]), ("TSM-3Q26-ER", "2026-10-15"))
+        self.assertEqual(
+            [(d["channel"], d["id"], d["disposition"]) for d in receipt["later_documents"]],
+            [("SEC_SUBMISSIONS", "0001046179-26-000726", "REVIEWED_IRRELEVANT"),
+             ("SEC_SUBMISSIONS", "0001046179-26-000728", "REVIEWED_IRRELEVANT")],
+        )
 
     def test_first_quarter_amounts_of_the_renewed_issuers(self):
         for symbol, amount in FIRST_QUARTER.items():

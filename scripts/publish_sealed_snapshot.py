@@ -31,7 +31,7 @@ import math
 import os
 import re
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -43,9 +43,11 @@ import build_v213_macro_industry_research as macro_builder  # noqa: E402
 import build_zh_names  # noqa: E402
 import company_deep_report  # noqa: E402
 import listing_lineage  # noqa: E402
+import corporate_actions  # noqa: E402
 import order_forecast  # noqa: E402
 import order_claims  # noqa: E402
 import revenue_guidance  # noqa: E402
+import revenue_trend  # noqa: E402
 import revenue_guidance_overlay  # noqa: E402
 import revenue_guidance_wire  # noqa: E402
 import revenue_consensus_quarterly  # noqa: E402
@@ -550,21 +552,30 @@ def _sealed_revenue_check(raw: "object") -> "dict | None":
             "cumulative_yoy": cumulative, "currency": currency}
 
 
-def _sealed_outlook(raw: "object") -> "dict | None":
+def _sealed_outlook(raw: "object", cutoff: "datetime | None" = None) -> "dict | None":
     """Orders, consensus and scenario figures from the v3 builder, reduced to known keys with finite numbers and https
     sources; anything malformed is dropped rather than sealed."""
     if not isinstance(raw, dict):
         return None
 
     def number(value: object) -> "float | None":
-        return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value) else None
+        try:
+            return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value) else None
+        except OverflowError:
+            return None
+
 
     def text(value: object, limit: int) -> "str | None":
         return value[:limit] if isinstance(value, str) and value else None
 
     orders = raw.get("orders") if isinstance(raw.get("orders"), dict) else None
+    order_clock = orders.get("as_of") if orders else None
+    try:
+        order_clock_ok = isinstance(order_clock, str) and date.fromisoformat(order_clock).isoformat() == order_clock and order_clock <= (cutoff or datetime.now(timezone.utc)).date().isoformat()
+    except ValueError:
+        order_clock_ok = False
     sealed_orders = None
-    if orders and orders.get("kind") in ("RPO", "BACKLOG") and number(orders.get("amount")) and \
+    if orders and order_clock_ok and orders.get("kind") in ("RPO", "BACKLOG") and number(orders.get("amount")) and \
             str(orders.get("source_url", "")).startswith("https://"):
         sealed_orders = {"kind": orders["kind"], "amount": number(orders["amount"]), "currency": text(orders.get("currency"), 8),
                          "as_of": text(orders.get("as_of"), 12), "yoy": number(orders.get("yoy")), "scope": text(orders.get("scope"), 40),
@@ -578,15 +589,38 @@ def _sealed_outlook(raw: "object") -> "dict | None":
         sealed_orders = {"kind": "NOT_DISCLOSED", "reason": text(orders.get("reason"), 200)}
     consensus = raw.get("consensus") if isinstance(raw.get("consensus"), dict) else None
     sealed_consensus = None
-    if consensus and number(consensus.get("revenue_growth")) is not None and str(consensus.get("source_url", "")).startswith("https://"):
-        sealed_consensus = {key: number(consensus.get(key)) for key in ("revenue_fy0", "revenue_fy1", "revenue_growth", "revenue_analysts",
-                                                                     "eps_fy0", "eps_fy1", "eps_growth", "eps_analysts",
-                                                                     "target_mean", "target_analysts", "price", "target_upside")}
-        sealed_consensus.update(source=text(consensus.get("source"), 80), source_url=consensus["source_url"][:400],
-                                asof=text(consensus.get("asof"), 12))
+    if consensus and str(consensus.get("source_url", "")).startswith("https://"):
+        candidate = {key: number(consensus.get(key)) for key in ("revenue_fy0", "revenue_fy1", "revenue_growth", "revenue_analysts",
+                        "eps_fy0", "eps_fy1", "eps_growth", "eps_analysts", "target_mean", "target_analysts", "price", "target_upside")}
+        def count(n):
+            return n is not None and n > 0 and n.is_integer()
+        clock = consensus.get("asof")
+        try:
+            clock_ok = isinstance(clock, str) and date.fromisoformat(clock).isoformat() == clock and clock <= (cutoff or datetime.now(timezone.utc)).date().isoformat()
+        except ValueError:
+            clock_ok = False
+        if candidate["revenue_growth"] is None:
+            clock_ok = clock_ok and clock == (cutoff or datetime.now(timezone.utc)).date().isoformat() and bool(re.fullmatch(r"https://finance\.yahoo\.com/quote/[A-Za-z0-9.\-]+/analysis", consensus["source_url"]))
+        target_ok = clock_ok and candidate["target_mean"] is not None and candidate["target_mean"] > 0 and count(candidate["target_analysts"])
+        eps_ok = clock_ok and candidate["eps_fy1"] is not None and count(candidate["eps_analysts"])
+        if not target_ok:
+            candidate.update(target_mean=None, target_analysts=None, target_upside=None)
+        else:
+            price = candidate["price"]
+            candidate["target_upside"] = number(candidate["target_mean"] / price - 1) if price is not None and price > 0 else None
+        if not eps_ok:
+            candidate.update(eps_fy0=None, eps_fy1=None, eps_growth=None, eps_analysts=None)
+        else:
+            e0, e1 = candidate["eps_fy0"], candidate["eps_fy1"]
+            candidate["eps_growth"] = number(e1 / e0 - 1) if e0 is not None and e0 > 0 and e1 > 0 else None
+        if candidate["revenue_growth"] is not None or target_ok or eps_ok:
+            sealed_consensus = candidate
+            sealed_consensus.update(source=text(consensus.get("source"), 80), source_url=consensus["source_url"][:400], asof=text(clock, 12))
+    scenario_field = {"REVENUE_CONSTANT_PS": "revenue_growth", "EPS_CONSTANT_PE": "eps_growth", "ANALYST_TARGET": "target_upside"}
     scenarios = [{"kind": row["kind"], "change": number(row.get("change"))} for row in raw.get("scenarios") or []
-                 if isinstance(row, dict) and row.get("kind") in ("REVENUE_CONSTANT_PS", "EPS_CONSTANT_PE", "ANALYST_TARGET")
-                 and number(row.get("change")) is not None][:3]
+                 if isinstance(row, dict) and row.get("kind") in scenario_field and sealed_consensus
+                 and number(row.get("change")) is not None
+                 and number(row.get("change")) == sealed_consensus.get(scenario_field[row["kind"]])][:3]
     second = raw.get("consensus_second") if isinstance(raw.get("consensus_second"), dict) else None
     sealed_second = None
     if second and str(second.get("source_url", "")).startswith("https://") and \
@@ -642,6 +676,63 @@ def _with_order_forecast(issuer: str, outlook: "dict | None", stock_orders: "obj
     return {**sealed, "order_forecast": v2, "order_forecast_v3": v3}
 
 
+def _sealed_sec_lineage(fund: dict, generated: datetime) -> dict:
+    """Closed, bounded financial operands; a malformed claimed lineage refuses publication."""
+    def day(value):
+        if not isinstance(value, str) or date.fromisoformat(value).isoformat() != value:
+            raise ValueError("SEC_LINEAGE_DATE_INVALID")
+        return date.fromisoformat(value)
+
+    def finite(value):
+        try:
+            return not isinstance(value, bool) and isinstance(value, (int, float)) and math.isfinite(value)
+        except OverflowError:
+            return False
+
+    result = {}
+    for key in ("rpo_filed", "rpo_prior_filed"):
+        if key in fund:
+            value = fund[key]
+            if value is not None and day(value) > generated.date():
+                raise ValueError("SEC_LINEAGE_FUTURE_FILED")
+            result[key] = value
+    if "revenue_operands" not in fund:
+        return result
+    raw = fund["revenue_operands"]
+    if not isinstance(raw, list) or not 1 <= len(raw) <= 2:
+        raise ValueError("SEC_LINEAGE_OPERANDS_INVALID")
+    operands = []
+    for row in raw:
+        if not isinstance(row, dict):
+            raise ValueError("SEC_LINEAGE_OPERAND_INVALID")
+        start, end, filed = day(row.get("start")), day(row.get("end")), day(row.get("filed"))
+        value, unit = row.get("val"), row.get("unit")
+        if (start > end or filed < end or filed > generated.date() or not finite(value)
+                or not isinstance(unit, str) or len(unit) != 3 or not unit.isascii() or not unit.isupper() or not unit.isalpha()):
+            raise ValueError("SEC_LINEAGE_OPERAND_INVALID")
+        operands.append({"start": row["start"], "end": row["end"], "filed": row["filed"], "val": value, "unit": unit})
+    annual = operands[0]
+    if len(operands) == 2:
+        ytd = operands[1]
+        if (annual["start"] != ytd["start"] or annual["unit"] != ytd["unit"]
+                or not 350 <= (day(annual["end"]) - day(annual["start"])).days <= 380
+                or not 260 <= (day(ytd["end"]) - day(ytd["start"])).days <= 285
+                or not 80 <= (day(annual["end"]) - day(ytd["end"])).days <= 100):
+            raise ValueError("SEC_LINEAGE_Q4_INVALID")
+        computed = annual["val"] - ytd["val"]
+    else:
+        if not 80 <= (day(annual["end"]) - day(annual["start"])).days <= 100:
+            raise ValueError("SEC_LINEAGE_QUARTER_INVALID")
+        computed = annual["val"]
+    if (annual["end"] != fund.get("quarter_end") or not finite(computed)
+            or ("revenue" in fund and fund["revenue"] != computed)
+            or ("revenue_unit" in fund and fund["revenue_unit"] != annual["unit"])
+            or ("filed" in fund and fund["filed"] != max(row["filed"] for row in operands))):
+        raise ValueError("SEC_LINEAGE_FUNDAMENTALS_CONFLICT")
+    result["revenue_operands"] = operands
+    return result
+
+
 def lazy_bottleneck_v3_body(path: Path, now: datetime, effective_inputs: "object | None" = None,
                             state_root: "Path | None" = None,
                             *, guidance_wire_enabled: bool = False,
@@ -666,6 +757,43 @@ def lazy_bottleneck_v3_body(path: Path, now: datetime, effective_inputs: "object
     return captured_bottleneck_v3_body(raw, now, effective_inputs, state_root,
                                       guidance_wire_enabled=guidance_wire_enabled,
                                       guidance_machine_enabled=guidance_machine_enabled, machine_inputs=machine_inputs)
+
+
+def _public_industry_rows(rows, constraints_zh):
+    """The exact publisher projection handed to the Worker validIndustry reader."""
+    keys = ("rank", "id", "name_zh", "chain", "leopold_constraint",
+            "explosiveness", "median_revenue_yoy", "median_acceleration",
+            "median_return_6m", "fund_13f_weight", "serenity_heat")
+    news_keys = ("source", "source_url", "recent_30d", "prior_60d", "ratio")
+    pick = lambda row, wanted: {key: row.get(key) for key in wanted}  # noqa: E731
+    return [{**pick(row, keys),
+             "leopold_constraint_zh": constraints_zh.get(row["id"]) or row.get("leopold_constraint_zh") or None,
+             "news": None if not row.get("news") else pick(row["news"], news_keys)}
+            for row in rows]
+
+
+def _public_market_window(raw):
+    """Display-only projection. Invalid/absent extras must never gate Top20."""
+    keys = ("positive_share", "median_ret_6m", "count_used", "unknown_count", "scored_universe_count")
+    if type(raw) is not dict or set(raw) != set(keys):
+        return None
+    if any(type(raw[k]) is not int or raw[k] < 0 for k in keys[2:]):
+        return None
+    if raw["count_used"] + raw["unknown_count"] != raw["scored_universe_count"]:
+        return None
+    if (raw["positive_share"] is not None and
+        (type(raw["positive_share"]) not in (int, float) or
+         not 0 <= raw["positive_share"] <= 1)):
+        return None
+    if (raw["median_ret_6m"] is not None and
+        (type(raw["median_ret_6m"]) not in (int, float) or
+         not math.isfinite(raw["median_ret_6m"]))):
+        return None
+    if raw["count_used"] == 0 and (raw["positive_share"] is not None or raw["median_ret_6m"] is not None):
+        return None
+    if raw["count_used"] > 0 and (raw["positive_share"] is None or raw["median_ret_6m"] is None):
+        return None
+    return {key: raw[key] for key in keys}
 
 
 def captured_bottleneck_v3_body(raw: bytes, now: datetime, effective_inputs=None, state_root=None,
@@ -696,6 +824,37 @@ def captured_bottleneck_v3_body(raw: bytes, now: datetime, effective_inputs=None
             if guidance_machine_enabled:
                 raise machine.MachinePublicationBlocked()
             return {}
+        # Apply corporate-action state at the ranking's evidence cutoff, never before its announcement.
+        actions = (corporate_actions.load_actions_bytes(operand("corporate_actions").read_bytes(), today=generated.date())
+                   if operand else corporate_actions.load_actions(today=generated.date()))
+        active = [entry for entry in actions["entries"] if entry["status"] == "PENDING"
+                  and entry["announced_on"] <= generated.date().isoformat()]
+        pending_targets = {entry["target_symbol"] for entry in active}
+        distributions = corporate_actions.completed_distributions(actions, asof=generated.date())
+        # Do not seal a cached, pre-distribution ranking with misleading positive historical returns.
+        # No Yahoo adjustment proof for the MOD/THRM RMT is available; reject instead of rescoring
+        # an already selected Top20 behind the ranking gate.
+        if distributions:
+            from bottleneck_top20_v3 import suppress_unproven_distribution_returns
+            for ranked in doc["top"]:
+                events = distributions.get(ranked["symbol"], [])
+                if not events:
+                    continue
+                market = ranked.get("market")
+                if not isinstance(market, dict):
+                    if guidance_machine_enabled:
+                        raise machine.MachinePublicationBlocked("DISTRIBUTION_MARKET")
+                    return {}
+                guarded = suppress_unproven_distribution_returns(market, events)
+                if guarded != market:
+                    if guidance_machine_enabled:
+                        raise machine.MachinePublicationBlocked("DISTRIBUTION_IN_WINDOW")
+                    return {}
+        if any(entry["symbol"] in pending_targets for entry in doc["top"]):
+            if guidance_machine_enabled:
+                raise machine.MachinePublicationBlocked("DEAL_PENDING_TARGET")
+            return {}  # do not seal an obsolete pre-deal target ranking into a newer report
+        acquirer_actions = {entry["acquirer_symbol"]: entry for entry in active}
         pick = lambda row, keys: {key: row.get(key) for key in keys}  # noqa: E731
         top = []
         zh = build_zh_names.names_for([entry["symbol"] for entry in doc["top"]],
@@ -762,6 +921,7 @@ def captured_bottleneck_v3_body(raw: bytes, now: datetime, effective_inputs=None
                 sealed_fund = {
                     **pick(fund, ("source", "source_url", "quarter_end", "revenue_yoy", "revenue_yoy_prev", "gross_margin",
                                   "gross_margin_change", "rpo_yoy", "shares_yoy")),
+                    **_sealed_sec_lineage(fund, generated),
                     # What the share-count change measures; a figure without a known basis is not sealed.
                     "shares_basis": fund.get("shares_basis") if fund.get("shares_basis") in SHARES_BASES else None,
                     **({"shares_yoy": None} if fund.get("shares_basis") not in SHARES_BASES and "shares_basis" in fund else {}),
@@ -775,27 +935,34 @@ def captured_bottleneck_v3_body(raw: bytes, now: datetime, effective_inputs=None
                 "name_zh_source": zh[entry["symbol"]][1] if entry["symbol"] in zh else None,
                 "layer": entry["layer"], "archetype": entry["archetype"], "score": entry["score"],
                 "role": entry["role"][:200], "role_zh": str(role_zh)[:200] if role_zh else None,
+                **({"corporate_action": corporate_actions.distribution_note(distributions[entry["symbol"]][-1])}
+                   if entry["symbol"] in distributions else
+                   {"corporate_action": corporate_actions.acquirer_note(acquirer_actions[entry["symbol"]])}
+                   if entry["symbol"] in acquirer_actions else {}),
                 "role_source": entry["role_source"], "outlook": _with_order_forecast(
-                    entry["symbol"], _sealed_outlook(entry.get("outlook")), (entry.get("outlook") or {}).get("orders"),
+                    entry["symbol"], _sealed_outlook(entry.get("outlook"), generated), (entry.get("outlook") or {}).get("orders"),
                     order_scenarios.get(entry["symbol"]), generated, order_claim_registry,
                     consensus_cache=consensus_cache, effective_inputs=effective_inputs,
                     guidance_wire_enabled=guidance_wire_enabled, guidance_machine_enabled=guidance_machine_enabled,
                     machine_inputs=machine_inputs, consumption=consumption),
                 "parts": {key: round(float(parts[key]), 2) for key in ("layer_heat", "capture", "lead", "confirmation", "size", "penalty")},
                 "fundamentals": sealed_fund,
+                # V33b: the optional TREND_YOY_V1 estimate (scripts/revenue_trend.py), only when the collector kept four
+                # contiguous quarters beside the sealed fundamentals; the Worker re-validates it and applies it only where
+                # no revenue basis exists. Absent otherwise, so older inputs seal byte-identically.
+                **({"revenue_trend": trend} if sealed_fund and (trend := revenue_trend.build(fund, generated.date())) else {}),
                 # The long-term fields travel validated and consistent (scripts/listing_lineage.py); malformed ones fail closed.
                 "market": {**pick(entry["market"], ("source", "source_url", "asof", "ret_6m", "ret_1y", "history_start", "currency")),
                            **listing_lineage.clean_market_lineage(entry["market"], generated.date()),
+                           **({"return_reasons": dict(entry["market"]["return_reasons"])}
+                              if isinstance(entry["market"].get("return_reasons"), dict) and entry["market"]["return_reasons"] else {}),
                            **({"cross_check": checks[entry["symbol"]]} if entry["symbol"] in checks else {})},
                 "market_cap_usd": entry.get("market_cap_usd"),
                 "serenity": None if not sig else pick(sig, ("mentions", "bullish", "bearish", "stance", "latest_at", "latest_url")),
                 "leopold": None if not pos else {"long_weight": pos["long_weight"], "status": pos["status"]},
             })
-        industries = [{**pick(row, ("rank", "id", "name_zh", "chain", "leopold_constraint", "explosiveness", "median_revenue_yoy",
-                                    "median_acceleration", "median_return_6m", "fund_13f_weight", "serenity_heat")),
-                       "leopold_constraint_zh": constraints_zh.get(row["id"]) or row.get("leopold_constraint_zh") or None,
-                       "news": None if not row.get("news") else pick(row["news"], ("source", "source_url", "recent_30d", "prior_60d", "ratio"))}
-                      for row in doc["industries"]]
+        industries = _public_industry_rows(doc["industries"], constraints_zh)
+        market_window = _public_market_window(doc.get("market_window"))
         serenity = (doc.get("leads") or {}).get("serenity") or {}
         filing = ((doc.get("leads") or {}).get("leopold") or {}).get("filing") or {}
         deep = company_deep_report.load_reports(
@@ -805,7 +972,8 @@ def captured_bottleneck_v3_body(raw: bytes, now: datetime, effective_inputs=None
         sealed = {"schema": "v213-bottleneck-top20-v3-sealed", "generated_at": doc["generated_at"], "deep_reports": deep,
                   "serenity_source": {"url": serenity.get("url"), "latest_post_at": serenity.get("latest_post_at")} if serenity.get("url") else None,
                   "leopold_filing": pick(filing, ("period", "filed", "url")) if filing.get("url") else None,
-                  "top": top, "industries": industries}
+                  "top": top, "industries": industries,
+                  **({"market_window": market_window} if market_window is not None else {})}
         body = (machine.compact(sealed, machine.REPORT_BYTES).decode("utf-8") if guidance_machine_enabled else
                 json.dumps(sealed, ensure_ascii=False, separators=(",", ":"), allow_nan=False))
     except machine.MachinePublicationBlocked:
@@ -844,10 +1012,13 @@ def lazy_price_bodies(path: Path, now: datetime) -> "dict[str, str]":
     return bodies
 
 
+LAZY_BODY_MAX_BYTES = 1_900_000  # per lazy market body (quotes, options)
+
+
 def lazy_market_bodies(path: Path, now: datetime) -> "dict[str, str]":
     """Delayed quotes and covered-call suggestions (scripts/build_market_quotes_options.py) as two lazy bodies; each cycle
     must pass the shared validator or is replaced by an explicit unavailability reason."""
-    from validate_v213_market_products import MarketProductValidationError, validate_covered_call_cycle
+    from validate_v213_market_products import MarketProductValidationError, degrade_bad_strategy_blocks, validate_covered_call_cycle
     import public_options_provider_gate as option_rights
     # Public RIGHTS admission (distinct from the shared FORMAT validator and from the honest local-candidate labels): the audited
     # canonical catalog is loaded ONCE; a cycle reaches v213:options:v2 only when its claimed identity matches an admitted scope of a
@@ -875,6 +1046,9 @@ def lazy_market_bodies(path: Path, now: datetime) -> "dict[str, str]":
                     # AttributeError that escapes to the whole-document catch and discards healthy cycles.
                     # The sealer is the one caller that also accepts the previous-session carry-forward basis (its own age, session and
                     # expiry rules live in the validator; the claimed basis must be an admitted scope of the catalog above).
+                    # V21: a csp or collar block that fails its checks becomes {unavailable} on its own; the covered call and the other block
+                    # survive. Only a cycle-level failure (or no real strategy left on a cycle without a covered call) drops the cycle.
+                    value = degrade_bad_strategy_blocks(value)
                     validate_covered_call_cycle(value, evaluated_at=now, document_at=doc["generated_at"], period=cycle,
                                                 allow_previous_session=True)
                     options[ticker][cycle] = value
@@ -884,9 +1058,18 @@ def lazy_market_bodies(path: Path, now: datetime) -> "dict[str, str]":
         option_doc = {"schema": "v213-options-v2", "generated_at": doc["generated_at"], "options": options}
         bodies = {"v213:quotes:v1": json.dumps(quotes, ensure_ascii=False, separators=(",", ":"), allow_nan=False),
                   "v213:options:v2": json.dumps(option_doc, ensure_ascii=False, separators=(",", ":"), allow_nan=False)}
+        if len(bodies["v213:options:v2"].encode("utf-8")) > LAZY_BODY_MAX_BYTES:
+            # V21: the strategies are additive. Over the size cap they are dropped first (a cycle that has only strategies becomes
+            # unavailable), so the covered calls still publish instead of the whole options object being withheld.
+            for per_ticker in options.values():
+                for cycle, value in list(per_ticker.items()):
+                    if isinstance(value, dict) and "strategies" in value:
+                        per_ticker[cycle] = ({k: v for k, v in value.items() if k != "strategies"} if value.get("suggestions")
+                                             else {"unavailable": "報價資料量超過上限，策略暫不提供"})
+            bodies["v213:options:v2"] = json.dumps(option_doc, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
     except (OSError, ValueError, KeyError, TypeError, AttributeError):
         return {}
-    return bodies if all(len(body.encode("utf-8")) <= 1_900_000 for body in bodies.values()) else {}
+    return bodies if all(len(body.encode("utf-8")) <= LAZY_BODY_MAX_BYTES for body in bodies.values()) else {}
 
 
 COVERAGE_KEY = "v213:options-coverage:v1"

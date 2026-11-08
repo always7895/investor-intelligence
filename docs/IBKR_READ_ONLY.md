@@ -1,5 +1,9 @@
 # IBKR Read-Only Local Analysis Integration
 
+<!-- DOCS-R1 scope -->
+> **Scope:** Contractual safety/evidence boundary; retain exact normative markers and validate against runtime configuration. Current acceptance and unresolved issues: [STATUS](../state/STATUS.md). The document itself does not authorize Production changes.
+<!-- /DOCS-R1 scope -->
+
 _Last reconciled: 2026-08-25 Asia/Taipei_
 
 This integration is an optional local research capability in a separate trust domain. It is not a data source, tool or fallback for the shared LINE bot.
@@ -33,7 +37,7 @@ The following edges do not exist:
 local IBKR -X-> Cloudflare Worker
 local IBKR -X-> LINE webhook/reply
 local IBKR -X-> PUBLIC_CACHE
-local IBKR -X-> shared local-Qwen context
+local IBKR -X-> shared local-model context
 local IBKR -X-> another tenant
 ```
 

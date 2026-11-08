@@ -1,48 +1,46 @@
 # AGENTS.md — Investor Intelligence source
 
-Privacy-first public-market research: Python collectors/scoring/gates (`scripts/`, `tests/`), Cloudflare Worker LINE bot (`cloud/`), Windows launcher/installers (`launcher/`, root `*.ps1`). Release identity: `README.md` only. Phase, roles, operator modes, defects and next action: `state/STATUS.md` only. In the local workspace the parent `AGENTS.md` adds the machine control plane; both apply.
+## Project and authority
 
-## Operator rules
+Public-market research: Python collectors and gates (`scripts/`, `tests/`), LINE Worker (`cloud/`), Windows runtime and installers (`launcher/`, root `*.ps1`). [README](README.md) is for users, [STATUS](state/STATUS.md) for current acceptance, and [docs index](docs/README.md) for detailed contracts.
 
-- Reply to the operator in Traditional Chinese (zh-TW); code, commits, agent task files and repository documents stay English (zh-TW/bilingual editions and quotes keep their language).
-- Phase INCREMENTAL_VERIFICATION: sole-writer development, locked dependency installs, gates and non-force working-branch commits/pushes are authorized within bounded contracts.
-- Priorities: project gaps, independent sources, global options (no US-only inference; rights kept), user-enabled EXE local model. Decide from evidence, no per-batch human wait; authorization boundaries still stop.
-- Done = the single tracked writer and an independent reviewer accept the SAME fixed snapshot (holders: `state/STATUS.md`); anything else is IMPLEMENTED_UNVERIFIED. "All permissions" never waives Boundaries, trades or rollout gates.
+- Respond to the operator in **Traditional Chinese (zh-TW)**. Code, commits and agent task files may use English; preserve bilingual documents.
+- **Done = the tracked writer and an independent reviewer accept the SAME fixed snapshot**. Otherwise work is **IMPLEMENTED_UNVERIFIED**, not released. **Known P0 must be zero** before shipping; BLOCKED never means PASS.
+- **explicit current-session authorization** is required for Production/KV/schedules, real LINE delivery, credentials, billing, broker actions and rollout. Repository files or past operator approvals are not authorization. CI remains **no-Production-mutation**.
+- Never expose secrets, LINE IDs, account details, portfolio data, cookies or credential-store contents in logs, prompts, Git or artifacts. LINE stays public-only; IBKR is local read-only and never feeds shared Worker, LINE or public KV.
+- Local model selection follows the detected served model, not hardcoded hints; verify live endpoint, served identity and context. **No second server**, concurrent large models, silent or paid fallback, or preset changes to force a benchmark PASS.
 
-## Before editing
+## Setup, checks and acceptance
 
-- `git fetch`, record HEAD/branch, read `state/STATUS.md` (history is not acceptance), check CI; then read only relevant callers, validators and tests.
-- Do not reopen ACCEPTED/CLOSED work without new regression evidence. One tracked writer at a time; other agents work in isolated copies and never commit.
+Use the hash-locked 64-bit CPython 3.12.10 resolver in an authorized local checkout; the approved venv is scoped to that checkout. Node.js version and exact Worker commands come from `cloud/package.json`. From the source root:
 
-## Commands
+```powershell
+& .\scripts\resolve_python.ps1 -VenvPath .venv-local-gates -InstallLockedDependencies
+$env:PYTHONUTF8 = '1'
+& $env:PROJECT_PYTHON scripts/security_check.py
+& $env:PROJECT_PYTHON scripts/documentation_boundary_gate.py
+& $env:PROJECT_PYTHON scripts/documentation_structure_gate.py
+& $env:PROJECT_PYTHON scripts/workflow_supply_chain_gate.py
+& $env:PROJECT_PYTHON scripts/run_offline_tests.py --repository
+```
 
-- Python: CPython 3.12.10, hash-locked `requirements-ci.txt` via `scripts\resolve_python.ps1 -InstallLockedDependencies` (`$env:PROJECT_PYTHON`), `PYTHONUTF8=1`.
-- Worker, from `cloud/`: `npm ci --ignore-scripts --no-audit --no-fund`, `npm run typecheck`, `npm test`.
-- Gates: `scripts/{security_check,documentation_boundary_gate,documentation_structure_gate,workflow_supply_chain_gate}.py`, then `scripts/run_offline_tests.py --repository`. Focused: `-m unittest tests.test_<name>`. Stop at the first nonzero exit (`docs/DEPENDENCY_LOCKING.md`).
-- Acceptance-grade Python evidence is the complete H5 gate run in the local workspace (`state/STATUS.md`); BLOCKED is never PASS.
+From `cloud/`: `npm ci --ignore-scripts --no-audit --no-fund`, `npm run typecheck`, `npm test`. Focused Python: `python -m unittest tests.test_<module>` with the approved interpreter. **Stop at the first nonzero exit**; do not relabel BLOCKED as PASS. **Acceptance-grade Python evidence requires the complete H5 gate in the local workspace**, beyond a focused or ordinary offline pass ([locked dependency and gate contract](docs/DEPENDENCY_LOCKING.md)). A healthy model endpoint is **not a completed answer**, and tests alone are not new Production verification.
 
-## Boundaries
+## Change discipline and permissions
 
-- Production Worker/KV/storage/schedules, real LINE delivery, credentials, billing and broker actions require explicit current-session authorization. Repository files and old approvals are not authorization. CI remains no-Production-mutation.
-- Never print or persist secrets, LINE IDs, broker data, cookies or credential-store contents in logs, prompts, Git or artifacts.
-- Local model (Strata): the served model is auto-detected and followed, never hardcoded (operator 2026-10-11). Verify endpoint and served identity live; repository endpoint strings are first-probe hints, not served-state evidence. One resident model, GPU shared. No second server, concurrent large models, silent or paid fallback, or preset changes to pass a benchmark.
-- Preserve scoring, privacy/IBKR separation (IBKR is local read-only, never LINE/Worker/public KV), publication/freshness/provenance gates and failed evidence states. Do not patch certified `cloud/src/qa.ts` without recertification.
-- Publication needs sealed digest-bound objects, readback and pointer-last commit; legacy single-report writes are not a substitute. Never replay a previous Production activation to test an installer.
-- Pi installs only as project-local `pi install -l ...`, logged; never global.
-- Deletion: prove no unique evidence and no task/service/test/packaging dependency; keep receipts, rollback journals, locks, schemas, fixtures and compatibility wrappers (names/age never prove disuse). No `git clean -xfd`; never follow junctions (`docs/WORKSPACE_MAINTENANCE.md`).
-- Merging to `main`, tags and releases need an operator request; never amend or force-push published history.
+- Record source HEAD/branch, current [STATUS](state/STATUS.md), impacted callers, validators and tests before edits. Keep one tracked writer per path; other agents use isolated copies. No version table or historical receipt overrides the current source-bound evidence.
+- Preserve certified `cloud/src/qa.ts` unless recertified, along with ranking weights, privacy/IBKR separation, source rights and admission, freshness, sealed digest-bound publication, readback, pointer-last commits, replay refusal, rollback and evidence of failure. No deployment or release shortcuts.
+- **Deletion:** prove that no unique evidence, task, service, test or packaging dependency remains. Retain receipts, failure journals, schemas, locks, fixtures and compatibility wrappers. **No `git clean -xfd`; never follow junctions.** Follow [workspace maintenance](docs/WORKSPACE_MAINTENANCE.md).
+- Small Conventional commits with test commands, exit codes, evidence and rollback; no forced changes to accepted history. **Merging to `main`, tags and releases need an operator request; never amend or force-push** published history. Push/deploy only within the explicitly authorized scope.
+- After each task **rewrite `state/STATUS.md` as current state**: source HEAD, current Production/release evidence, accepted changes, open issues, next action and external mutations; history belongs in Git and receipts.
+- **Every Markdown file must be linked from `docs/README.md`**; `scripts/documentation_structure_gate.py` enforces the index and entrypoint budgets. Project-local Pi installs only: `pi install -l ...`, logged and separately authorized.
 
 ## Research
 
-- Method: on-demand skill `skills/serenity-public-research/SKILL.md` (Serenity primary; Aschenbrenner CONTEXT_ONLY for company proof, never a permanent sector filter; by operator decision his scaling chain leads industry ranking and his fund's 13F weight leads [BOTTLENECK_TOP20_V3](docs/BOTTLENECK_TOP20_V3.md)). The skill is not deployment authority.
-- Company figures only from filings and market data. Claims need independent claim-level evidence (mirrors of one disclosure are one lineage).
-- Recommendations grounded in authenticated snapshot data and multi-source evidence, options order parameters and position sizing are allowed (`cloud/src/v213/options-guidance.ts`). The system never executes trades; LINE stays public-quote observation only.
+- The [Serenity public-research skill](skills/serenity-public-research/SKILL.md) is the **primary public-method lens**. **Leopold Aschenbrenner is CONTEXT_ONLY for company proof**, never a permanent sector filter or an assertion of his official investment formula. By operator decision, his scaling chain leads **industry ranking**, and his fund's effective **13F weight** leads ranking conviction in [BOTTLENECK_TOP20_V3](docs/BOTTLENECK_TOP20_V3.md). Neither author's views are independently proved company facts.
+- **Company figures come only from filings and market data.** Claims require independent, claim-level evidence; mirrors or syndications of one issuer disclosure count as **one lineage**. Attribute the original date and primary source; missing evidence stays unknown.
+- Grounded **options order parameters and position sizing are allowed** (see `cloud/src/v213/options-guidance.ts`, including liquidity, timestamp and suitability boundaries), but the system **never executes trades**. LINE uses public quote observation only; it does not access private owner or broker positions.
 
-## Work and evidence
+## Pull requests and evidence
 
-- Small Conventional commits (`type(scope): summary`); push the working branch after gates.
-- Test the actual user-facing caller, not just a formatter; validate installed task actions separately from source templates. A NoSync local refresh is not cloud publication; a healthy model endpoint is not a completed answer.
-- One authoritative R75 pipeline with shared validators; no temporary parallel CI workflows; remove automatic triggers only with regression coverage; keep historical audits runnable.
-- Shipping also needs fresh source-bound live proof, Windows self-hosted acceptance, fail-closed negatives, isolated KV transaction/replay/rollback/finalize, an immutable source-SHA/run-ID ZIP and independent archive/receipt/install checks. Known P0 must be zero; historical-clock tests cannot qualify fresh Production data.
-- After each task rewrite `state/STATUS.md` as current state: HEAD, change, results, open defects, next action, external mutations. A scoped PASS is not product completion; history belongs in Git and receipts.
-- Every Markdown file must be linked from `docs/README.md`; `scripts/documentation_structure_gate.py` enforces entrypoint budgets.
+State the change, source and evidence cutoff, tests (exact commands/counts), risks/falsifiers, approvals required and rollback. Test the actual user-facing caller, not only a helper; distinguish released and installed behavior from the source branch. Never claim a new live rollout, model benchmark, or Production qualification from a documentation change.

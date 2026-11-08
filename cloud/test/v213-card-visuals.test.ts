@@ -92,9 +92,28 @@ describe("card body visuals", () => {
     const overviewTexts = nodes(bubbles[0], "text").map(t => t.text);
     expect(overviewTexts).toEqual(expect.arrayContaining(["SYN", "+25.0%", "61.5%", "未申報", "商業驗證（公司開始獲利）"]));
     expect(nodes(bubbles[0], "text").find(t => t.text === "商業")?.weight).toBe("bold");
-    expect(nodes(bubbles[1], "text").map(t => t.text)).toEqual(expect.arrayContaining(["一", "公司業務", "四", "產能與資本支出"]));
+    // V25: three report sections per bubble; the fourth section starts the next page.
+    expect(nodes(bubbles[1], "text").map(t => t.text)).toEqual(expect.arrayContaining(["一", "公司業務", "三", "訂單能見度"]));
+    expect(nodes(bubbles[2], "text").map(t => t.text)).toEqual(expect.arrayContaining(["四", "產能與資本支出"]));
     expect(JSON.stringify(bubbles[2])).toContain("#FEF3F2"); // falsifiers sit on the pale warning panel
     expect(JSON.stringify(bubbles[3])).toContain("https://data.sec.gov/api/xbrl/companyfacts/CIK0000000001.json");
     expect(JSON.stringify(bubbles[3].footer)).toContain("潛力榜");
+  });
+  it("keeps validated source references beyond the first ten on the source page", () => {
+    const raw = {
+      ticker: "SYN", name: "Synthetic Devices Inc.", as_of: "2026-09-25", boundary: "官方資料計算；非投資建議",
+      phase: { phase: "COMMERCIAL_VALIDATION", next_review_at: "2026-11-12" },
+      sections: ["公司業務", "營運動能", "訂單能見度"].map(title => ({ title, text: `${title} 合成內容` })),
+      source_references: [],
+    };
+    const manySources = validateCompanyDataReport({
+      ...raw,
+      source_references: Array.from({ length: 11 }, (_, index) => ({
+        source: `SEC XBRL ${index}`, url: `https://data.sec.gov/${index}`, period: "CY2026Q2",
+      })),
+    }, "SYN")!;
+    const messages = buildCompanyDataReportFlex(manySources, "2026-09-25T12:00:00Z", ["回潛力榜", "潛力榜"]);
+    assertLineMessages(messages);
+    expect(JSON.stringify(messages)).toContain("https://data.sec.gov/10");
   });
 });

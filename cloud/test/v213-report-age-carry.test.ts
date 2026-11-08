@@ -59,12 +59,12 @@ describe("report age is separate from seal liveness", () => {
     expect(messages).toHaveLength(4);
     for (const bubble of messages.flatMap(m => m.contents.contents)) {
       const footer = JSON.stringify(bubble.footer);
-      expect(footer).toContain("LIMITED_RESEARCH_CANDIDATE");
+      expect(footer).toContain("研究候選（未完成獨立核實）");
       expect(footer).toContain("資料擷取");
       expect(footer).not.toContain("TEST-ONLY");
     }
     const text = await v213Top20LineAnswer(env as never, parseQuery("Top20 文字"));
-    expect((text as any[])[0].text).toContain("研究候選 LIMITED_RESEARCH_CANDIDATE");
+    expect((text as any[])[0].text).toContain("研究候選（未完成獨立核實）");
   });
 
   it("refuses a report past the report bound, and any report under a stale seal", async () => {

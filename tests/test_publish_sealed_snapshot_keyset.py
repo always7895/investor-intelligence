@@ -10,6 +10,7 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import json
+import os
 import socket
 import sys
 import tempfile
@@ -74,6 +75,8 @@ class Recorder:
 class KeysetCase(unittest.TestCase):
     def setUp(self):
         self.saved = {name: getattr(publisher, name) for name in CLOCK_NAMES}
+        for name, value in self.saved.items():
+            self.addCleanup(setattr, publisher, name, value)
 
         def refuse_network(*args, **kwargs):
             raise AssertionError("guard: network must never be used")
@@ -82,17 +85,12 @@ class KeysetCase(unittest.TestCase):
                          mock.patch.object(socket, "getaddrinfo", side_effect=refuse_network)]
         for patcher in self.patchers:
             patcher.start()
+            self.addCleanup(patcher.stop)
         self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
         self.base = Path(self.tmp.name).resolve()
         self.snapshots = self.base / "snapshots"
         self.assertEqual(self.snapshots.is_relative_to(ROOT.resolve()), False)
-
-    def tearDown(self):
-        for patcher in reversed(self.patchers):
-            patcher.stop()
-        for name, value in self.saved.items():
-            setattr(publisher, name, value)
-        self.tmp.cleanup()
 
     def run_pb(self, argv, returns=None):
         """One publisher.main(argv) with the five lazy providers faked; never raises, never asserts."""
@@ -157,6 +155,45 @@ class KeysetCase(unittest.TestCase):
         self.assertEqual((pointer["run_id"], pointer["seal_sha256"]),
                          (run_dir.name, sha(objects[prefix + "v213:snapshot-seal:v1"])))
         return seal
+
+
+class SetupCleanupTests(unittest.TestCase):
+    def test_inside_root_setup_failure_restores_network_and_temp_ownership(self):
+        ran = []
+
+        class InsideRootCase(KeysetCase):
+            def runTest(self):
+                ran.append(True)
+
+        original_tempdir = tempfile.TemporaryDirectory
+        original_socket = socket.create_connection, socket.getaddrinfo
+        original_modules = {name: sys.modules[name] for name in ("socket", "tempfile", publisher.__name__)}
+        original_environment = dict(os.environ)
+        clocks = {name: getattr(publisher, name) for name in CLOCK_NAMES}
+        owned = []
+        with original_tempdir() as directory:
+            root = Path(directory).resolve()
+
+            def temporary_directory():
+                temp = original_tempdir(dir=root)
+                owned.append(temp)
+                return temp
+
+            case = InsideRootCase()
+            result = unittest.TestResult()
+            with mock.patch(__name__ + ".ROOT", root), \
+                    mock.patch.object(tempfile, "TemporaryDirectory", temporary_directory):
+                case.run(result)
+            self.assertEqual((result.testsRun, len(result.failures), result.errors), (1, 1, []))
+            self.assertEqual(ran, [])
+            self.assertIs(socket.create_connection, original_socket[0])
+            self.assertIs(socket.getaddrinfo, original_socket[1])
+            self.assertEqual(len(owned), 1)
+            self.assertFalse(Path(owned[0].name).exists())
+        for name, module in original_modules.items():
+            self.assertIs(sys.modules[name], module)
+        self.assertEqual(dict(os.environ), original_environment)
+        self.assertEqual({name: getattr(publisher, name) for name in CLOCK_NAMES}, clocks)
 
 
 class KeysetRows(KeysetCase):

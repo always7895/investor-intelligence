@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "events": [
+    {
+      "id": "SALP-2026-07-30-BOOK-SALE",
+      "kind": "FULL_BOOK_SALE",
+      "date": "2026-07-30",
+      "factor": 0.25,
+      "factor_basis": "judgment node, Xor 2026-10-18, no unit",
+      "lineage": "PRESS_ONE_LINEAGE",
+      "originators": [
+        "CNBC",
+        "WSJ",
+        "FT"
+      ],
+      "re_reports": [
+        "https://thenextweb.com/news/situational-awareness-aschenbrenner-citadel-ai-losses",
+        "https://spotgamma.com/situational-awareness-unwind-margin-call-ai/"
+      ],
+      "originator_urls_not_read": [
+        "https://www.cnbc.com/2026/07/30/leopold-aschenbrenners-hedge-fund-is-facing-steep-ai-losses.html"
+      ],
+      "originator_urls_not_read_reason": "HTTP 403 to an unauthenticated fetch; the claim rests on the re-reports and the 13D/A filings, not on this URL",
+      "primary_confirmation": null,
+      "consistent_primary": [
+        {
+          "form": "SCHEDULE 13D/A",
+          "accession": "0000919574-26-004796",
+          "subject": "Core Scientific",
+          "filed": "2026-08-04",
+          "event_date": "2026-07-15",
+          "shares": 14089395,
+          "percent_of_class": 4.4
+        }
+      ],
+      "conflicting_primary": [
+        {
+          "form": "SCHEDULE 13D/A",
+          "accession": "0000935836-26-000500",
+          "subject": "SharonAI Holdings",
+          "filed": "2026-09-17",
+          "event_date": "2026-09-15",
+          "shares": 8070950,
+          "percent_of_class": 21.1
+        }
+      ],
+      "superseded_by_13f_period_on_or_after": "2026-07-30",
+      "review_by": "2026-11-20"
+    }
+  ]
+}

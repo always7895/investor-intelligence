@@ -50,8 +50,8 @@
         "monthly": {
           "ticker": "SIVE.ST",
           "strategy": "COVERED_CALL",
-          "expiry": "2026-11-16",
-          "dte": 28,
+          "expiry": "2026-11-20",
+          "dte": 32,
           "spot": 13.7,
           "currency": "SEK",
           "multiplier": 100,
@@ -64,20 +64,20 @@
             {
               "role": "HIGH_STRIKE",
               "strike": 17.0,
-              "bid": 0.11,
-              "ask": 0.13,
-              "mid": 0.12,
-              "limit_price": 0.12,
-              "premium_per_contract": 12.0,
-              "period_yield": 0.008759,
-              "annualized_yield": 0.114181,
+              "bid": 0.14,
+              "ask": 0.16,
+              "mid": 0.15,
+              "limit_price": 0.15,
+              "premium_per_contract": 15.0,
+              "period_yield": 0.010949,
+              "annualized_yield": 0.124886,
               "upside_to_strike": 0.240876,
-              "delta": 0.116,
+              "delta": 0.133,
               "delta_basis": "QUOTE_IMPLIED",
-              "iv": 0.6001,
+              "iv": 0.5966,
               "oi": null,
               "volume": null,
-              "spread_pct": 0.1667
+              "spread_pct": 0.1333
             }
           ],
           "provider_id": "nasdaq_nordic_option_chain",
@@ -85,7 +85,8 @@
           "venue": "NASDAQ_STOCKHOLM_OPTIONS",
           "instrument_kind": "equity_option",
           "publication_scope": "public_line_quote",
-          "asof_date": "2026-10-19"
+          "asof_date": "2026-10-19",
+          "monthly_rule": "THIRD_FRIDAY"
         }
       },
       "SYNTHUS00": {
@@ -133,34 +134,34 @@
         "monthly": {
           "ticker": "SYNTHUS00",
           "strategy": "COVERED_CALL",
-          "expiry": "2026-11-16",
-          "dte": 28,
+          "expiry": "2026-11-20",
+          "dte": 32,
           "spot": 100.0,
           "currency": "USD",
           "multiplier": 100,
           "quote_basis": "delayed",
           "timestamp": "2026-10-19T08:00:00Z",
           "source": "Yahoo Finance option chain (unofficial, delayed)",
-          "provenance": "https://finance.yahoo.com/quote/SYNTHUS00/options?date=2026-11-16; delta=Black-Scholes(quoted IV)",
+          "provenance": "https://finance.yahoo.com/quote/SYNTHUS00/options?date=2026-11-20; delta=Black-Scholes(quoted IV)",
           "rights_status": "operator_accepted_unlicensed",
           "suggestions": [
             {
               "role": "HIGH_STRIKE",
-              "strike": 119.0,
-              "bid": 1.38,
-              "ask": 1.47,
-              "mid": 1.425,
-              "limit_price": 1.42,
-              "premium_per_contract": 142.0,
-              "period_yield": 0.0142,
-              "annualized_yield": 0.185107,
-              "upside_to_strike": 0.19,
-              "delta": 0.172,
+              "strike": 120.0,
+              "bid": 1.54,
+              "ask": 1.65,
+              "mid": 1.595,
+              "limit_price": 1.59,
+              "premium_per_contract": 159.0,
+              "period_yield": 0.0159,
+              "annualized_yield": 0.181359,
+              "upside_to_strike": 0.2,
+              "delta": 0.179,
               "delta_basis": "QUOTED_IV",
               "iv": 0.6,
               "oi": 10,
               "volume": 5,
-              "spread_pct": 0.0632
+              "spread_pct": 0.069
             }
           ],
           "provider_id": "yahoo_finance_option_chain",
@@ -168,7 +169,8 @@
           "venue": "US_LISTED_OPTIONS",
           "instrument_kind": "equity_option",
           "publication_scope": "public_line_quote",
-          "asof_date": "2026-10-19"
+          "asof_date": "2026-10-19",
+          "monthly_rule": "THIRD_FRIDAY"
         }
       }
     }

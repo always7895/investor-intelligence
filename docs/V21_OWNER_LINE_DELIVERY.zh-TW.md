@@ -1,5 +1,9 @@
 # Investor Intelligence v2.1.0：私人擁有者 LINE Top 20
 
+<!-- DOCS-R1 scope -->
+> **Scope:** Dated reference; not current Production status, a new approval, or deployment authority. Current acceptance and unresolved issues: [STATUS](../state/STATUS.md). The document itself does not authorize Production changes.
+<!-- /DOCS-R1 scope -->
+
 ## 功能範圍
 
 v2.1.0 以 **Serenity-first** 七因子框架產生公開研究 Top 20，依序以 Serenity 分數、資料品質與股票代號排序。Aschenbrenner A/B/C 只作獨立基礎設施 overlay，不加入 Serenity 主分數。
@@ -16,7 +20,7 @@ v2.1.0 以 **Serenity-first** 七因子框架產生公開研究 Top 20，依序�
 - 使用既有公開報告、公開期權觀察與一般問答；
 - 輸入 `通知狀態`、`取消配對` 或 `刪除我的資料` 控制私人配對與租戶資料。
 
-開放模式（預設關閉）：Production 範本預設 `V213_LINE_ACCESS_MODE = "owner_only"`，上述功能只給配對的擁有者，其他好友不會收到回覆。只有另經授權的上線作業把該值設為 `all_friends` 後，所有直接聊天的 LINE 好友才能使用公開功能（Top 20、瓶頸榜、期權觀察、個股查詢）與本機模型 Q&A，並受每人限速與有限排隊約束；持倉、IBKR、每日推播、通知設定、配對與管理路由仍只限擁有者。規則、限額與回復方式見 [LINE_ALL_FRIENDS_ACCESS](LINE_ALL_FRIENDS_ACCESS.md)。
+開放模式（原始碼範本已開啟，正式部署仍須另行核准）：Production 原始碼範本預設 `V213_LINE_ACCESS_MODE = "all_friends"`，不代表目前線上 Worker 已採用此設定。若正式環境仍為 `owner_only`（或設定缺漏、無效），公開功能仍只提供配對擁有者，其他好友不會收到回覆。只有完成遷移與額度檢查、並經當次授權部署 `all_friends` 後，所有直接聊天的 LINE 好友才能使用公開功能（Top 20、瓶頸榜、期權觀察、個股查詢）與本機模型 Q&A，並受每人限速與有限排隊約束；持倉、IBKR、每日推播、通知設定、配對與管理路由仍只限擁有者。規則、限額與回復方式見 [LINE_ALL_FRIENDS_ACCESS](LINE_ALL_FRIENDS_ACCESS.md)。
 
 資料過期、Top 20 結構不完整、LINE push 失敗或免費額度不足時，系統會 fail closed，不會改用付費服務，也不會傳送舊資料冒充最新資料。
 

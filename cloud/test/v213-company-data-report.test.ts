@@ -47,7 +47,7 @@ describe("company data report", () => {
   it("renders the Flex report on the Top20 detail path when Flex presentation is used", () => {
     const flex = buildTop20DeepAnalysisMessages(REPORT, "SYN", companyDataReportFromSealed(sealed(DATA), "SYN"), "flex");
     expect(flex.every(m => m.type === "flex")).toBe(true);
-    expect(JSON.stringify(flex)).toContain("回 Top20");
+    expect(JSON.stringify(flex)).toContain("回TOP20");
     expect(JSON.stringify(flex)).not.toContain("WITHHELD");
   });
 
@@ -64,6 +64,6 @@ describe("company data report", () => {
     expect(companyDataReportFromSealed("{", "SYN")).toBeNull();
     expect(companyDataReportFromSealed(null, "SYN")).toBeNull();
     const text = buildTop20DeepAnalysisMessages(REPORT, "SYN", null).map(m => (m as any).text).join("\n");
-    expect(text).toContain("WITHHELD");
+    expect(text).toContain("資料暫不提供");
   });
 });

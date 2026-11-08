@@ -46,7 +46,8 @@ DEFAULT_POLICY: dict[str, Any] = {
         # config/options-policy.json that still says minimum 3 is overridden by this default key). DTE 0 is the expiry day
         # (annualized over one day, max(DTE, 1)).
         "weekly": {"selection": "calendar_week", "target_dte": 7, "minimum_dte": 0, "maximum_dte": 14},
-        "monthly": {"target_dte": 30, "minimum_dte": 21, "maximum_dte": 45},
+        "monthly": {"selection": "monthly", "target_dte": rules.MONTHLY_TARGET_DTE,
+                    "minimum_dte": rules.MONTHLY_DTE_BUCKET[0], "maximum_dte": rules.MONTHLY_DTE_BUCKET[1]},
     },
     "covered_call": {
         "enabled": True,
@@ -232,6 +233,15 @@ def select_expiration(
         if choice is None:
             return None, None, "NO_EXPIRATION_IN_WINDOW"
         return listed[choice.expiry], (choice.expiry - current).days, "OK"
+    if period.get("selection") == "monthly" or period.get("target_dte") == rules.MONTHLY_TARGET_DTE:
+        listed = {}
+        for value in expirations:
+            try:
+                listed.setdefault(parse_expiration(value), value)
+            except (TypeError, ValueError):
+                continue
+        expiry = rules.select_monthly_expiry(listed, current, expiry_day_open_now=day_open)
+        return (listed[expiry], (expiry - current).days, "OK") if expiry else (None, None, "NO_EXPIRATION_IN_WINDOW")
     target = int(period.get("target_dte", 7))
     minimum = int(period.get("minimum_dte", 1))
     maximum = int(period.get("maximum_dte", 60))

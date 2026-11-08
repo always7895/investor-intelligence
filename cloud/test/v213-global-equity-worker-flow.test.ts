@@ -110,7 +110,7 @@ describe("Global Equity Worker Flow", () => {
 
       // Must be a dedicated stock card
       expect(json).toContain("個股快查 · SIVE");
-      expect(json).toContain("QUOTE_UNAVAILABLE");
+      expect(json).toContain("報價暫不可用");
       // Must NOT contain issue ID or local model waiting
       expect(json).not.toContain("問題已收到");
       expect(json).not.toContain("查看結果");

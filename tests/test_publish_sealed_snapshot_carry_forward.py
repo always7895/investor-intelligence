@@ -22,6 +22,8 @@ import top20_carry_forward as carry  # noqa: E402
 import v213_evidence_policy as policy  # noqa: E402
 
 TICKERS = [f"T{index:02d}" for index in range(20)]
+# The wall-clock globals PB rewrites under --live-clock; every caller restores them for the tests that follow.
+LIVE_CLOCK_NAMES = ("LIVE_NOW", "LIVE_STAMP", "EVALUATED_AT", "GENERATED_AT", "CLAIMED_AT", "PROMOTED_AT", "PUBLISHED_DATA_AS_OF")
 
 
 def iso(moment: datetime) -> str:
@@ -87,8 +89,7 @@ class PublisherCarryForwardTests(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.dir = Path(self.tmp.name)
         self.snapshots = self.dir / "snapshots"
-        self.saved = {key: getattr(publisher, key) for key in
-                      ("LIVE_NOW", "LIVE_STAMP", "EVALUATED_AT", "GENERATED_AT", "CLAIMED_AT", "PROMOTED_AT", "PUBLISHED_DATA_AS_OF")}
+        self.saved = {key: getattr(publisher, key) for key in LIVE_CLOCK_NAMES}
 
     def tearDown(self):
         for key, value in self.saved.items():
@@ -246,6 +247,10 @@ class LkgHelperTests(unittest.TestCase):
 class StagedReplayTests(unittest.TestCase):
     """stage_sealed_replay: state-aware expectations and (when Node is installed) the real Worker readers over a
     synthetic carried run and an INSUFFICIENT run (the exact staged bytes: tests/test_stage_sealed_replay.py)."""
+
+    def setUp(self):
+        for key in LIVE_CLOCK_NAMES:
+            self.addCleanup(setattr, publisher, key, getattr(publisher, key))
 
     def test_expectations_are_state_aware(self):
         import stage_sealed_replay as replay

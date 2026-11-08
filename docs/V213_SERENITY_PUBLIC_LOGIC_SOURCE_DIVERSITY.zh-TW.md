@@ -1,5 +1,9 @@
 # v2.1.3 Serenity 公開邏輯高保真重建與多來源標準
 
+<!-- DOCS-R1 scope -->
+> **Scope:** Dated reference; not current Production status, a new approval, or deployment authority. Current acceptance and unresolved issues: [STATUS](../state/STATUS.md). The document itself does not authorize Production changes.
+<!-- /DOCS-R1 scope -->
+
 ## 定位與非主張
 
 Investor Intelligence 不宣稱取得或重製 Serenity 的私人方法、私人流程、官方公式或官方分數。系統的 `serenity_score` 等歷史 machine key 只為相容性保留，顯示與推論時一律稱為「系統量化／System operationalization」。
@@ -77,7 +81,7 @@ Stooq／Nasdaq 暫時故障時，可使用不超過 72 小時的本機公開資�
 
 - 標準：`config/v213-serenity-public-logic-policy.json`
 - 執行 gate：`scripts/v213_source_independence_gate.py`
-- 最新 sidecar：`data/cache/v213_source_independence_latest.json`
+- 最新 sidecar（執行期路徑）：`data/cache/v213_source_independence_latest.json`
 - 公開 observation cache：`data/cache/v213_source_observation_cache.json`
 - 本地模型 gateway：`scripts/v213_local_llm_gateway.py`
 

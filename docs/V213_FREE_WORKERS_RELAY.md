@@ -1,10 +1,14 @@
 # R75 FREE_RELAY — current operations
 
+<!-- DOCS-R1 scope -->
+> **Scope:** Technical reference; verify executable behavior against code and current source-bound evidence. Current acceptance and unresolved issues: [STATUS](../state/STATUS.md). The document itself does not authorize Production changes.
+<!-- /DOCS-R1 scope -->
+
 [Current release identity and evidence](../README.md) · [繁體中文](../README.zh-TW.md)
 
 ```text
 workers.dev -> authenticated route lease -> ephemeral TryCloudflare
-            -> Gateway -> existing llama.cpp -> exact qwen38-q6
+            -> Gateway -> local model server (detected model)
 ```
 
 No custom domain or paid fallback. Only workers.dev is stable. The Router remains models-max1; only authenticated compact Q&A/smoke requests use the authorized request-level non-thinking mode. The user's preset is not edited.

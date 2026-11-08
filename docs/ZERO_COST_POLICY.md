@@ -1,5 +1,9 @@
 # Zero-Cost and No-Billing Policy
 
+<!-- DOCS-R1 scope -->
+> **Scope:** Contractual safety/evidence boundary; retain exact normative markers and validate against runtime configuration. Current acceptance and unresolved issues: [STATUS](../state/STATUS.md). The document itself does not authorize Production changes.
+<!-- /DOCS-R1 scope -->
+
 _Last reconciled: 2026-08-25 Asia/Taipei_
 
 ## Normative boundary
@@ -35,7 +39,7 @@ The runtime policy authority is `cost.mode=free_only_fail_closed`.
 
 ## Local inference only
 
-General generative Q&A uses the operator's private local Qwen/llama.cpp service through an authenticated, exact-host-allowlisted HTTPS route.
+General generative Q&A uses the operator's private local model service through an authenticated, exact-host-allowlisted HTTPS route.
 
 - Per-request software fee is zero.
 - No public model endpoint is permitted.

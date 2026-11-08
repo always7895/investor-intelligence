@@ -1,0 +1,13 @@
+{
+  "source_url": "https://www.taifex.com.tw/enl/eng2/stockLists",
+  "effective_date": "2026-11-02",
+  "single_stock_options": {
+    "1303": "CAO", "2002": "CBO", "2303": "CCO", "2330": "CDO",
+    "2881": "CEO", "1301": "CFO", "2324": "CGO", "2409": "CHO",
+    "2882": "CKO", "2887": "CMO", "2891": "CNO", "1605": "CSO",
+    "2603": "CZO", "1101": "DFO", "1326": "DGO", "2317": "DHO",
+    "2357": "DJO", "2382": "DKO", "3481": "DQO", "2353": "DSO",
+    "2454": "DVO", "3231": "DXO", "2618": "HSO", "3008": "IJO",
+    "3037": "IRO", "3711": "OZO"
+  }
+}

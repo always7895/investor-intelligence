@@ -146,6 +146,8 @@ def _period_months(period: dict[str, Any], today: date) -> list[str]:
     # The calendar-week weekly can expire today (DTE 0): never start the month list after today (config minimum_dte is ignored for it).
     minimum = 0 if period.get("selection") == "calendar_week" else max(0, int(period.get("minimum_dte", 0)))
     maximum = max(minimum, int(period.get("maximum_dte", 60)))
+    if period.get("selection") == "monthly" or period.get("target_dte") == rules.MONTHLY_TARGET_DTE:
+        minimum, maximum = rules.MONTHLY_DTE_BUCKET
     start = today + timedelta(days=minimum)
     end = today + timedelta(days=maximum)
     cursor = date(start.year, start.month, 1)
@@ -175,6 +177,15 @@ def _strict_expiration(
         if choice is None:
             return None, None, "NO_EXPIRATION_IN_WINDOW"
         return listed[choice.expiry], (choice.expiry - today).days, "OK"
+    if period.get("selection") == "monthly" or period.get("target_dte") == rules.MONTHLY_TARGET_DTE:
+        listed = {}
+        for expiration in expirations:
+            try:
+                listed.setdefault(datetime.fromisoformat(expiration[:10]).date(), expiration)
+            except (TypeError, ValueError):
+                continue
+        expiry = rules.select_monthly_expiry(listed, today, expiry_day_open_now=expiry_day_open_now)
+        return (listed[expiry], (expiry - today).days, "OK") if expiry else (None, None, "NO_EXPIRATION_IN_WINDOW")
     minimum = int(period.get("minimum_dte", 1))
     maximum = int(period.get("maximum_dte", 60))
     target = int(period.get("target_dte", 7))

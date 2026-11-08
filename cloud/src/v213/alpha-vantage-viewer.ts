@@ -15,6 +15,7 @@
  * producer's family names. A row with other or unknown provenance stays as today. An options key is Alpha Vantage derived when the
  * quote row of the same key is. */
 import type { PublicSnapshotView } from "./public-snapshot";
+import { parseObjectMember, sealedHeader } from "./sealed-slice";
 
 export const ALPHA_VANTAGE_HOST = "www.alphavantage.co";
 /** The exact label scripts/build_market_quotes_options.py writes on the fallback quote row. */
@@ -63,15 +64,18 @@ function redactQuotes(document: Record<string, unknown>): Record<string, unknown
   return { ...document, quotes: Object.fromEntries(kept) };
 }
 
+/** The cycles of ONE Alpha Vantage derived underlying replaced by the reader's existing producer-declared `unavailable` state (same period keys). */
+export function withheldOptionCycles(cycles: unknown): unknown {
+  return isRecord(cycles) ? Object.fromEntries(Object.keys(cycles).map(period => [period, { unavailable: OPTIONS_SPOT_UNAVAILABLE_ZH }])) : cycles;
+}
+
 /** The parsed options object with every cycle of an Alpha Vantage derived underlying replaced by the reader's existing
  * producer-declared `unavailable` state (same period keys as the original entry). */
 function redactOptions(document: Record<string, unknown>, restricted: ReadonlySet<string>): Record<string, unknown> {
   if (restricted.size === 0 || !isRecord(document.options)) return document;
   const options: Record<string, unknown> = {};
   for (const [key, cycles] of Object.entries(document.options)) {
-    options[key] = restricted.has(key) && isRecord(cycles)
-      ? Object.fromEntries(Object.keys(cycles).map(period => [period, { unavailable: OPTIONS_SPOT_UNAVAILABLE_ZH }]))
-      : cycles;
+    options[key] = restricted.has(key) ? withheldOptionCycles(cycles) : cycles;
   }
   return { ...document, options };
 }
@@ -84,7 +88,19 @@ export function withAlphaVantageOwnerOnly(inner: PublicSnapshotView): PublicSnap
     kind: inner.kind,
     integrity: inner.integrity,
     ...(typeof inner.hasSealedObject === "function" ? { hasSealedObject: (key: string) => inner.hasSealedObject!(key) } : {}),
+    ...(typeof inner.sealedDigest === "function" ? { sealedDigest: (key: string) => inner.sealedDigest!(key) } : {}),
     text: logicalKeys => inner.text(logicalKeys),
+    /** Same decision as alphaVantageKeys(quotes).has(key), read from the one quote row of `key` (no parse of the other rows). */
+    async withheldOptionKey(key: string): Promise<boolean> {
+      const quotesText = await inner.text([QUOTES_KEY]);
+      if (quotesText === null) return false;
+      const header = sealedHeader(quotesText, QUOTES_SCHEMA, "quotes");
+      if (header !== undefined) {
+        const row = parseObjectMember(quotesText, header, key, typeof inner.sealedDigest === "function" ? inner.sealedDigest(QUOTES_KEY)?.sha256 : undefined);
+        if (row !== undefined) return row !== null && isAlphaVantageProvenance(row);
+      }
+      return alphaVantageKeys(await inner.json<unknown>([QUOTES_KEY])).has(key);
+    },
     async json<T>(logicalKeys: string[]): Promise<T | null> {
       const document = await inner.json<unknown>(logicalKeys);
       if (!isRecord(document)) return document as T | null;

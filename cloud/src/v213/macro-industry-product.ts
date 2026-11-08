@@ -10,9 +10,11 @@
  */
 
 import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
+import { statusLabelZh, humanizeStatusText } from "./status-labels";
 import { sourceZh } from "./source-labels";
+import { formatVisibleMoment } from "./line-formatters";
 import {
-  LINE_THEME as T, chip, divider, footerStyle, footnote, headerStyle, menuAction, menuBox, menuText, meter, panel,
+  LINE_THEME as T, altSummary, chip, detailsButton, divider, footerStyle, footnote, headerStyle, menuAction, menuBox, menuText, meter, panel,
   packCarousels, railTitle, rankBadge, richText, stackedBar, statTile, timelineStep, uiBox, uiText,
 } from "./line-theme";
 import type {
@@ -86,7 +88,7 @@ export function buildMacroOverviewBubble(overview: MacroTop5Overview) {
   const isShortfall = overview.status === "SHORTFALL_NOT_QUALIFIED" || overview.qualified_count < 5;
   const statusBadge = isShortfall
     ? `【未達准入門檻 · 短缺通報】合格產業僅 ${overview.qualified_count}/5`
-    : `【正式准入 TOP5】基準日：${overview.generated_at}`;
+    : `【正式准入 TOP5】基準日：${formatVisibleMoment(overview.generated_at)}`;
 
   const rows = overview.industries.map(ind => {
     const [zh, en] = splitName(ind.industry_name);
@@ -102,7 +104,7 @@ export function buildMacroOverviewBubble(overview: MacroTop5Overview) {
   });
 
   const actionButtons = overview.industries.slice(0, 3).map(ind =>
-    menuAction(`第${ind.rank !== null ? ind.rank : "1"}名卡片`, `宏觀產業 卡片 ${ind.industry_id}`),
+    detailsButton(`第${ind.rank !== null ? ind.rank : "1"}名產業卡片`, `宏觀產業 卡片 ${ind.industry_id}`),
   );
 
   return {
@@ -120,10 +122,10 @@ export function buildMacroOverviewBubble(overview: MacroTop5Overview) {
         uiText(
           isShortfall
             ? `短缺通報：符合高標準市場成長率、瓶頸與價值鏈證據之合格產業候選僅 ${overview.qualified_count} 個（未達 5 個門檻）。系統拒絕假裝湊滿 5 個或捏造虛假排名。`
-            : "本總覽由候選產業池依量化機會準則動態評選產生，非固定前五大產業清單，絕不以候選公司家數占比冒充市場成長率。",
-          "xxs", isShortfall ? T.negative : T.muted,
+            : "依量化機會準則動態評選，非固定前五大清單；不以候選公司家數占比冒充市場成長率。",
+          "xs", isShortfall ? T.negative : T.muted,
         ),
-        ...(knowledgeNotice ? [uiText(knowledgeNotice, "xxs", T.muted)] : []),
+        ...(knowledgeNotice ? [uiText(knowledgeNotice, "xs", T.muted)] : []),
       ], { backgroundColor: isShortfall ? T.paleNegative : T.soft, paddingAll: "md", cornerRadius: "md", spacing: "sm" }),
       railTitle("評選名單", "條長＝機會分數（0–100）"),
       ...(rows.length > 0 ? rows : [uiText("（當前無合格准入產業）", "xs", T.muted)]),
@@ -146,7 +148,7 @@ export function buildMacroIndustryCardBubble(card: MacroIndustryCard) {
 
 function industryCardBubble(card: MacroIndustryCard, rt: Rich) {
   const growthText = formatGrowthRate(card.growth);
-  const confidenceBadge = `資料完整度 ${card.confidence.data_completeness}%｜來源獨立性 ${card.confidence.source_independence}%｜核驗：${card.confidence.verification_status}`;
+  const confidenceBadge = `資料完整度 ${card.confidence.data_completeness}%｜來源獨立性 ${card.confidence.source_independence}%｜核驗：${statusLabelZh(card.confidence.verification_status)}`;
   const rankLabel = card.rank !== null ? `第 ${card.rank} 名` : "未排定（未准入）";
   const [zh, en] = splitName(card.industry_name);
   const growthValue = card.growth
@@ -178,9 +180,9 @@ function industryCardBubble(card: MacroIndustryCard, rt: Rich) {
         tagged("受益", card.beneficiaries_key_suppliers.join("、"), rt)]),
       uiBox([railTitle("催化劑時程（6M / 1Y / 2Y）"),
         uiBox([
-          timelineStep("6M", [rt(card.catalysts.m6, "xxs")], false, true),
-          timelineStep("1Y", [rt(card.catalysts.y1, "xxs")]),
-          timelineStep("2Y", [rt(card.catalysts.y2, "xxs")], true),
+          timelineStep("6M", [rt(card.catalysts.m6, "xs")], false, true),
+          timelineStep("1Y", [rt(card.catalysts.y1, "xs")]),
+          timelineStep("2Y", [rt(card.catalysts.y2, "xs")], true),
         ], { spacing: "none", paddingTop: "sm" })]),
       panel([uiText("生命週期與風險", "xxs", T.caution, { weight: "bold" }), rt(card.risks_lifecycle, "xs", T.muted)], "caution"),
     ], { paddingAll: "lg", spacing: "lg", backgroundColor: T.paper }),
@@ -264,7 +266,7 @@ export function buildMacroTop5OverviewText(overview: MacroTop5Overview): LineOut
   const knowledgeNotice = phaseKnowledgeWithheldNotice(validated);
   const lines = [
     `【${validated.title}】`,
-    `報告產生時間：${validated.generated_at}｜觀察週期：${validated.horizon}`,
+    `報告產生時間：${formatVisibleMoment(validated.generated_at)}｜觀察週期：${validated.horizon}`,
     `准入狀態：${validated.status === "ADMITTED_TOP5" ? "合格准入 TOP5" : "未達准入門檻（短缺通報）"}`,
     `合格候選數：${validated.qualified_count}/5（短缺：${validated.shortfall}）`,
     "",
@@ -328,7 +330,7 @@ export function buildMacroIndustryCardFlex(card: MacroIndustryCard): LineOutboun
   const rankLabel = validated.rank !== null ? `第${validated.rank}名` : "未定排名";
   const messages: LineOutboundMessage[] = [{
     type: "flex",
-    altText: `宏觀產業卡片 · ${rankLabel}：${validated.industry_name}`,
+    altText: altSummary({ topic: `宏觀產業卡片：${validated.industry_name}`, status: `${rankLabel}，機會分數 ${validated.opportunity_score}/100`, next: "點選查看 10 維深度化分析" }),
     contents: {
       type: "carousel",
       contents: [bubble],
@@ -345,11 +347,11 @@ export function buildMacroIndustryCardText(card: MacroIndustryCard): LineOutboun
   const text = [
     `【宏觀產業卡片 · ${rankLabel}】${validated.industry_name}`,
     `機會分數：${validated.opportunity_score}/100（System Operationalization 量化評分，非機率）`,
-    `核驗狀態：${validated.confidence.verification_status}（完整度 ${validated.confidence.data_completeness}%，獨立性 ${validated.confidence.source_independence}%）`,
+    `核驗狀態：${statusLabelZh(validated.confidence.verification_status)}（完整度 ${validated.confidence.data_completeness}%，獨立性 ${validated.confidence.source_independence}%）`,
     "",
     `當前現況：${validated.current_state}`,
     `12–36M 展望：${validated.outlook_12_36m}`,
-    `市場成長率：${growth}`,
+    `市場成長率：${humanizeStatusText(growth)}`,
     `需求驅動：${validated.demand_drivers.join("；")}`,
     `供給瓶頸：${validated.supply_constraint_chokepoint}`,
     `定價能力：${validated.pricing}`,
@@ -364,7 +366,7 @@ export function buildMacroIndustryCardText(card: MacroIndustryCard): LineOutboun
     "• 回功能選單：選單",
   ].join("\n");
 
-  const messages: LineOutboundMessage[] = [{ type: "text", text }];
+  const messages: LineOutboundMessage[] = [{ type: "text", text: humanizeStatusText(text) }];
   assertLineMessages(messages);
   return messages;
 }
@@ -374,7 +376,7 @@ export function buildMacroDeepAnalysisFlex(analysis: MacroDeepAnalysis): LineOut
   const bubble = buildMacroDeepAnalysisBubble(validated);
   const messages: LineOutboundMessage[] = [{
     type: "flex",
-    altText: `宏觀產業深度化分析 · ${validated.industry_name}`,
+    altText: altSummary({ topic: `宏觀產業深度化分析：${validated.industry_name}`, status: "10 維因果鏈與來源憑證", next: "點選回產業卡片" }),
     contents: {
       type: "carousel",
       contents: [bubble],
@@ -451,11 +453,11 @@ export function macroOverviewState(raw: unknown): MacroOverviewState {
 /** Macro-home status line: the validated count N (never a fixed 5/5) or an UNKNOWN count, without raw payload or error text. */
 export function macroHomeShortfallLine(state: MacroOverviewState): string {
   if (state.kind === "VALID") {
-    return `MACRO_TOP5_SHORTFALL：本輪已封存並通過驗證之 TOP5 宏觀產業總覽僅 ${state.overview.qualified_count} 個合格產業（短缺 ${state.overview.shortfall}/5；未達准入門檻，不排名發布）。`;
+    return `【注意】TOP5合格產業不足：本輪已封存並通過驗證之 TOP5 宏觀產業總覽僅 ${state.overview.qualified_count} 個合格產業（短缺 ${state.overview.shortfall}/5；未達准入門檻，不排名發布）。`;
   }
   return state.kind === "INVALID"
-    ? "MACRO_TOP5_SHORTFALL：本輪已封存之 TOP5 宏觀產業總覽未通過驗證，已拒絕使用；合格產業數未知（不假設為 0）。"
-    : "MACRO_TOP5_SHORTFALL：目前沒有已封存之 TOP5 宏觀產業總覽；合格產業數未知（不假設為 0）。";
+    ? "【注意】TOP5合格產業不足：本輪已封存之 TOP5 宏觀產業總覽未通過驗證，已拒絕使用；合格產業數未知（不假設為 0）。"
+    : "【注意】TOP5合格產業不足：目前沒有已封存之 TOP5 宏觀產業總覽；合格產業數未知（不假設為 0）。";
 }
 
 /** admittedCount null means UNKNOWN (absent or invalid root); a known validated integer keeps the legacy text. */
@@ -486,14 +488,14 @@ export function macroShortfallReport(
       "• 宏觀數據要求：宏觀資料說明",
       "• 回功能選單：選單",
     ].join("\n");
-    const messages: LineOutboundMessage[] = [{ type: "text", text }];
+    const messages: LineOutboundMessage[] = [{ type: "text", text: humanizeStatusText(text) }];
     assertLineMessages(messages);
     return messages;
   }
 
   const messages: LineOutboundMessage[] = [{
     type: "flex",
-    altText: title,
+    altText: altSummary({ topic: title, status: "資料不足", next: "查看資料缺口" }),
     contents: {
       type: "carousel",
       contents: [{

@@ -11,10 +11,15 @@
 - Japan and Korea (no free official bulk price file): Yahoo Finance daily closes for the common stocks in the identity
   shards, batched, at most once per --yahoo-every-hours (default 20); labelled unofficial, with each row's own date.
 
-Output data/cache/price_shards_latest.json: {"schema": "v213-price-shard-v1", "generated_at", "shards": {MARKET: {"schema",
-"market", "generated_at", "sources": [{id, url, retrieved_at, sha256, rows}], "rows": {KEY: [price, change_pct|null,
-asof, currency, source_index]}}}}; KEY is the identity symbol (EUROPE: "VENUE|SYMBOL"). A feed that fails leaves its
-market out (the previous file keeps serving until the whole build succeeds); nothing is estimated.
+Output data/cache/price_shards_latest.json: {"schema": "v213-price-shard-v1", "generated_at", "failed",
+"skipped_optional_feeds", "shards": {MARKET: {"schema", "market", "generated_at", "sources": [{id, url, retrieved_at,
+sha256, rows}], "rows": {KEY: [price, change_pct|null, asof, currency, source_index]}}}}; KEY is the identity symbol
+(EUROPE: "VENUE|SYMBOL"). A feed that fails leaves its market out (the previous file keeps serving until the whole
+build succeeds); nothing is estimated. The two London feeds (the exchange's unofficial web-application API) are
+OPTIONAL_FEEDS, as in build_identity_shards.py: their failure is listed in "skipped_optional_feeds", not "failed", and
+the run still exits 0.
+Exit status: 0 OK or skipped fresh (optional London feeds may be skipped); 1 failed (no feed worked, or a shard is too
+large); 2 written, but a required feed failed.
 """
 from __future__ import annotations
 
@@ -53,6 +58,9 @@ FEEDS = {
 }
 # The download omits its price date; the one-row table call states it ("Last price as of Sep 24, 2026").
 US_ASOF_URL = "https://api.nasdaq.com/api/screener/stocks?tableonly=true&limit=1"
+# Same optional London feeds as build_identity_shards.OPTIONAL_FEEDS: an outage of the unofficial LSE web API is skipped and
+# recorded, never an exit-2 run. The market-drop and previous-shard carry-forward rules apply to them exactly as to any feed.
+OPTIONAL_FEEDS = {"lse-main-market", "lse-aim"}
 MINIMUM_ROWS = {"nasdaq-us-screener": 3000, "twse-day-all": 800, "tpex-daily-close": 600, "nasdaq-stockholm-main": 250,
                 "nasdaq-stockholm-first-north": 150, "euronext-equities": 800, "lse-main-market": 800, "lse-aim": 400}
 EURONEXT_VENUES = {"Euronext Paris": "EURONEXT PARIS", "Euronext Growth Paris": "EURONEXT PARIS", "Euronext Amsterdam": "EURONEXT AMSTERDAM",
@@ -183,6 +191,7 @@ def build(fetch: Fetch = http_get, now: datetime | None = None) -> dict[str, Any
     stamp = now.strftime("%Y-%m-%dT%H:%M:%SZ")
     shards: dict[str, dict[str, Any]] = {}
     failed: list[str] = []
+    skipped: list[str] = []  # OPTIONAL_FEEDS failures, same entry format as "failed"
     for feed, (market, url) in FEEDS.items():
         try:
             raw = fetch(url)
@@ -194,23 +203,24 @@ def build(fetch: Fetch = http_get, now: datetime | None = None) -> dict[str, Any
                     hint = None
             parsed = parse_feed(feed, raw, stamp, hint)
         except Exception as error:  # noqa: BLE001 - one market failing must not remove the others
-            failed.append(f"{feed}:{type(error).__name__}")
+            (skipped if feed in OPTIONAL_FEEDS else failed).append(f"{feed}:{type(error).__name__}")
             continue
         if len(parsed) < MINIMUM_ROWS[feed]:
-            failed.append(f"{feed}:TOO_SMALL:{len(parsed)}")
+            (skipped if feed in OPTIONAL_FEEDS else failed).append(f"{feed}:TOO_SMALL:{len(parsed)}")
             continue
         shard = shards.setdefault(market, {"schema": SCHEMA, "market": market, "generated_at": stamp, "sources": [], "rows": {}})
         index = len(shard["sources"])
         shard["sources"].append({"id": feed, "url": url, "retrieved_at": stamp, "sha256": hashlib.sha256(raw).hexdigest(), "rows": len(parsed)})
         for key, row in parsed.items():
             shard["rows"].setdefault(key, [*row, index])
-    # A market with one of two feeds missing (Taiwan, Sweden) is dropped rather than published half empty.
-    for feed in failed:
+    # A market with one of two feeds missing (Taiwan, Sweden, UK) is dropped rather than published half empty, whether the
+    # missing feed is required or optional.
+    for feed in [*failed, *skipped]:
         market = FEEDS[feed.split(":", 1)[0]][0]
         shards.pop(market, None)
     if not shards:
-        raise PriceShardError("PRICE_FEEDS_ALL_FAILED " + ",".join(failed))
-    return {"schema": SCHEMA, "generated_at": stamp, "failed": failed, "shards": shards}
+        raise PriceShardError("PRICE_FEEDS_ALL_FAILED " + ",".join([*failed, *skipped]))
+    return {"schema": SCHEMA, "generated_at": stamp, "failed": failed, "skipped_optional_feeds": skipped, "shards": shards}
 
 
 def yahoo_symbols(identity: Path = IDENTITY) -> dict[str, dict[str, str]]:
@@ -316,7 +326,8 @@ def main(argv: list[str] | None = None) -> int:
     temp.write_bytes(json.dumps(document, ensure_ascii=False, separators=(",", ":"), allow_nan=False).encode("utf-8"))
     temp.replace(args.output)
     print(json.dumps({"status": "OK", "markets": {m: len(s["rows"]) for m, s in document["shards"].items()},
-                      "failed": document["failed"], "largest_shard_bytes": largest}))
+                      "failed": document["failed"], "skipped_optional_feeds": document["skipped_optional_feeds"],
+                      "largest_shard_bytes": largest}))
     return 0 if not document["failed"] else 2
 
 

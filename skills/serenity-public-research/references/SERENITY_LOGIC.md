@@ -1,5 +1,9 @@
 # Serenity reasoning model — deep reconstruction
 
+<!-- DOCS-R1 scope -->
+> **Scope:** Methodology reference, not either author's private or official investment method; no authority to trade or deploy. Current acceptance and unresolved issues: [STATUS](../../../state/STATUS.md). The document itself does not authorize Production changes.
+<!-- /DOCS-R1 scope -->
+
 Public-logic reconstruction of how Serenity (@aleabitoreddit) reasons, built from attributable public posts and clearly labelled third-party analyses. It is not Serenity's official framework, private process, portfolio or advice. A Serenity post is a source view, never company evidence. Dated examples below are leads with their verification status; they are not current recommendations.
 
 ## Contents
@@ -14,6 +18,7 @@ Public-logic reconstruction of how Serenity (@aleabitoreddit) reasons, built fro
 - 7. Risk, reflexivity and survivorship
 - 8. Falsifier checklist per candidate
 - 9. Verification status and sources
+- 10. Verified items (2026-10-18) and the signal-reading rules
 
 ## 1. The unit of analysis: a constraint in time
 
@@ -94,6 +99,8 @@ Aggregate knowledge-gap carrier (additive). `industry_rotation.py` emits `phase_
 
 A correct constraint thesis can still fail shareholders. A Singularity Research Fund profile (2026-04-01, secondary; quote verified in that report) relays the rule behind a long-to-bearish reversal on an AI-hosting company: "If the marketcap is $11 Billion and they're selling up to $6,000,000,000 worth of new shares against you in the open market — I would not go long until the ATM is finished", with executive stock compensation flagged as a further dilution channel. Operational rule (project-authored): record remaining ATM or shelf capacity as a share of market capitalization (`ATM_CAPACITY`); about half of market cap blocks a long entry until the program completes (a later reading of zero lifts it), and ≥5% is an overhang. Apply RESEARCH_METHOD step 6: grade financing as `NONE`, `MATERIAL_OVERHANG`, `STRUCTURAL_DISQUALIFIER` or `DESTROYED`, and record the operating thesis and equity capture separately. These grades are a manual research taxonomy, not the machine observation states of section 4a: they are never inferred from missing fields, `UNKNOWN`, `null` or `false`, and no machine state maps to `NONE` or `DESTROYED`.
 
+**Pending corporate actions (equity capture).** A disclosed all-stock merger can redirect the target shareholder's upside to a fixed exchange ratio times the acquiring company's share price. Separate this conversion mechanics from the target's operating thesis: while the deal remains `PENDING`, withhold the target from Top20 rankings and public option candidates (`DEAL_PENDING_TARGET`), leave the acquirer's independent score unchanged, and visibly disclose the ratio and anticipated, *not guaranteed*, completion window on the acquirer. Re-review the official filing by `review_by`; `CLOSED` and `TERMINATED` are not silently treated as still pending. Example only: [LITE/MRVL SEC announcement dated 2026-11-02](https://www.sec.gov/Archives/edgar/data/0001633978/000119312526442758/d163169dex991.htm) states a fixed 4.500 MRVL shares per LITE share and an anticipated first-half 2028 close. A pending deal is not a price guarantee or permission to trade.
+
 ## 6. Macro overlays are separate from bottleneck theses
 
 Reported energy positions framed as geopolitical hedges (LNG export, an integrated oil major; UNVERIFIED) show that portfolio overlays and bottleneck theses coexist. Keep macro overlays out of company scoring and never let macro data satisfy company-order evidence.
@@ -106,6 +113,8 @@ Returns are self-reported and unaudited: the tracker lists +3,612% year-to-date 
 - A large following moves prices after posts (reflexivity). Posting dates are not entry prices.
 - Losing and stopped ideas are less visible (survivorship). Retain failed and revised cases.
 - Never copy sizing or leverage.
+
+**Call calibration (G3, research only).** `scripts/serenity_calibration.py` consumes the schema-3 Serenity post chronology and, with a supplied adjusted-close price reader or the repository's existing offline captured Yahoo chart reader, produces per-symbol NEW_THESIS dates, +5/+20/+60 *trading-session* returns, hit shares, medians and explicitly counted unknown observations. See the optional `gap-b/CALIBRATION.json` research artifact (when generated); it is not a LINE payload. A separate dated, issuer/evidence-family HTTPS record can establish a descriptive validation-event lag; absent independently verified evidence, the lag is null. Never infer validation or a thesis phase from a price move. Public-post self-selection, missing failed ideas (survivorship), post-induced reflexivity, unverifiable execution price and non-independent adjusted-price methodology are explicit limitations; unknown returns never become misses or hits.
 
 ## 8. Falsifier checklist per candidate
 
@@ -120,7 +129,7 @@ Returns are self-reported and unaudited: the tracker lists +3,612% year-to-date 
 
 ## 9. Verification status and sources
 
-As of 2026-09-25 no Serenity original in this file was re-verified (quotes above are verified only inside the named secondary reports): direct x.com retrieval returns HTTP403 and X's official oEmbed endpoint (publish.x.com) returns HTTP 402 Payment Required. No paid access or bypass is used. Every dated Serenity item here stays UNVERIFIED until the original passage is retrieved through a permitted channel; the current stance on any ticker is unknown.
+On 2026-09-25 no Serenity original in this file could be re-verified (quotes above are verified only inside the named secondary reports): direct x.com retrieval returned HTTP403 and publish.x.com oEmbed HTTP 402. Section 10 records the 2026-10-18 checks through the public oEmbed redirect. No paid access or bypass is used. Every other dated Serenity item here stays UNVERIFIED until its original passage is retrieved through a permitted channel; the current stance on any ticker is unknown.
 
 Tracker snapshot (retrieved 2026-09-25, single lineage, UNVERIFIED leads, not a watchlist): latest logged call 2026-09-17 (Intel CEO memory-pricing commentary); active groups photonics (AXTI, SIVE), memory (EWY), neocloud (NBIS), robotics (CCXI, 688017), macro/energy (NEXT, AIRO), AI demand (RPI). Run each through sections 1–5 and the phase engine; a listed ticker is not a candidate until its own evidence qualifies.
 
@@ -132,3 +141,28 @@ Sources (secondary unless noted, retrieved 2026-09-25):
 - Reconstruction: https://johnsonlee.io/en/2026/06/06/serenity-methodology-cannot-be-skill/ (interpretation)
 - Profiles: https://www.kucoin.com/blog/Who-Is-Serenity_ ; https://www.odaily.news/en/post/5210924 (promotional context only)
 - Primary channel attempted: https://publish.x.com/oembed (HTTP 402)
+
+## 10. Verified items (2026-10-18) and the signal-reading rules
+
+Channel: X's public oEmbed (publish.twitter.com 301-redirects to publish.x.com; no login, no cookies; HTTP 200 means the post exists, 404 means it is gone). It confirms existence and the quoted passage only, never a current stance. Re-checked 2026-10-18 for the first item below (HTTP 200); the 2026-07-17 item keeps its 2026-10-18 research check.
+
+| Date | Item | Verification class |
+| --- | --- | --- |
+| 2026-09-05 | "The memory bottleneck hasn't changed" (also CW lasers, substrates) after the MU/SNDK recovery | oEmbed OK, original, status 2096149203278037407 |
+| 2026-07-17 | Drawdown of about 49 percent in the month; portfolio in AI chokepoints on margin; leverage reduced | oEmbed OK, original, status 2078150537074373117 |
+| 2026-08 | Rotation "bottleneck to bottleneck" (AXTI to LITE, photonics); memory "done", optics "now", SiPh/CPO "emerging" | search snippet and tracker wording only, not retrieved |
+| undated | IREN flipped from long to bearish after a $6B ATM | tracker only; the 120-day archive window (to 2026-10-17) holds no IREN exit post but "1 single share", "made amends" and "a much more favorable view after they finish their $6B ATM" (2026-09-24), so IREN reads MENTIONED |
+
+These do not change any figure. Portfolio-state posts (drawdown, leverage) are context, not signals; they carry no ticker stance.
+
+Reading rules in `scripts/serenity_signals.py` (schema 3, additive to schema 2):
+
+**G2 per-post display-only classes (one class per counted original post × symbol).** Only after the existing exclusion/stance pass (retweets, removed oEmbed IDs, window, relay, satire, negation and third-party headers) do we classify chronological posts by (UTC date, post id, symbol). A post naming three or more recognized listings with no first-person stance is `WATCHLIST_MAP` unless it is a third-party header block; these are not the author's investments. The *first* personally bullish post of that symbol in the 120-day archive window is `NEW_THESIS` and records `first_thesis_at`; any later bullish post is `REAFFIRMATION`. After a previously observed bullish thesis, a first-person gain or clear retrospective "told you"/"called it"/up-percentage boast on that symbol without a bearish/trim stance is `VICTORY_LAP` (counted in `victory_laps_60d` only during its most recent 60 days). All remaining mentions, including satire, third-party trades, negated buys, relays and price action without a previously declared position are `OTHER` (relay-only posts are not counted and yield no event). `latest_post_type` is the chronologically most recent classification, independently of legacy latest stance. Every class is research source-view metadata only: no company facts, score, phase, constraint family, automatic ticker admissions, rankings or production LINE changes.
+
+Original schema-2 interpretation, unmodified in schema 3:
+
+- Relay: a clause naming a fund or its filing (Situational Awareness, Leopold, Aschenbrenner, 13F) with a reporting word (holdings, bought, sold, stake, filed ...) and no first-person word reports someone else's book. A post whose relay clauses exist and which has no first-person clause is a relay post; none of its tickers count (relay_mentions only). Otherwise only tickers that appear solely in relay clauses are relay. His own "my top holdings" is not relay. A symbol with relay mentions only gets no row. Replies keep full weight and are also counted in reply_mentions.
+- Clauses: split on newline, ";", "!", "?", ". " before an uppercase letter, and at a comma when both sides hold a stance phrase. Matching order per clause: exit (bearish, weight 1), trim (bearish, weight 0.5), topic words (thesis_mentions, no stance), bullish (weight 1). A negation within three words cancels a bullish phrase; "holding" with a third-person subject is not first person; "long-term" is not "long"; "sold out of $X" is an exit but "sold out of capacity" and "sold out through 2027" are topics; "everything except X" does not apply to X; a phrase framed as a case ("a guide on how to do DD when shorting $X", "if you're long $X") states no stance, and a post he marks as satire or a joke ("this is satire", "don't take this seriously", "/s") gives no stance to any ticker it names (its mentions still count; live 2026-08-08, the NBIS "short" was a satire of another investor's trade). A phrase attaches to the nearest following ticker (and a plain list continuing it), else the nearest preceding one; a first-person trim or exit of "those positions" or "them" with no ticker in its clause applies to the previous clause's tickers, minus the excepted ones and names joined to them by "/" (live 2026-08-27: MU, SNDK, SIMO trimmed, Samsung and SK Hynix kept). A third-party header ("People on my X feed:", "Tech people in real life:") and the list under it give no stance (live 2026-09-13: the "Long $PLTR short $LULU" line lists other people's trades). First-person verbs (I or we within two tokens before the verb) add exits ("I sold", "dumped", "closed my", "scaled out of", "I'm out of"), trims ("scaled back", "took some off") and buys ("doubled down on", "loaded up on", "increased my position", "opened a position"); "should/could/would have", "shoulda", "wish I" and "if only I" before a phrase (about four words, not across a comma or "so"/"but") state no stance; selling puts, calls or options ("sold $X calls") is not an exit (live 2025-09-22: TSM calls closed for profit).
+- Recency: bullish_decayed and bearish_decayed carry the 30-day decay. stance is BEARISH when the newest stance phrase is an exit and bearish_decayed >= 0.5 x bullish_decayed (an IREN-like flip, old bullish posts and recent exits); a lone recent trim after many bullish posts stays BULLISH. Otherwise BULLISH when bullish_decayed > 0, else MENTIONED.
+- Mirror: source.mirror_lag_hours and mirror_status (FRESH up to 72 h, STALE up to 14 days, DEAD beyond) say how stale the public mirror is; the ranking recomputes it.
+- oEmbed: under --refresh the strongest 25 symbols' latest and top posts are checked within 120 s (10 s per request); a post answering 404 is dropped for every ticker it names and the signals are rebuilt (two passes at most). Results are cached in data/cache/serenity_oembed_cache.json (OK 30 days, NOT_FOUND permanent, UNAVAILABLE retried).

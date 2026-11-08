@@ -137,7 +137,7 @@ describe("Macro Industry Product presentation and schemas", () => {
 
     const standaloneShortfall = macroShortfallReport(2);
     assertLineMessages(standaloneShortfall);
-    expect(JSON.stringify(standaloneShortfall)).toContain("MACRO_TOP5_SHORTFALL");
+    expect(JSON.stringify(standaloneShortfall)).toContain("TOP5合格產業不足");
   });
 
   it("renders independent industry card in Flex and text with missing growth handling", () => {
@@ -150,11 +150,11 @@ describe("Macro Industry Product presentation and schemas", () => {
     const cardNoGrowth = mockCard(2, "robotics", false);
     const flex2 = buildMacroIndustryCardFlex(cardNoGrowth);
     assertLineMessages(flex2);
-    expect(JSON.stringify(flex2)).toContain("UNAVAILABLE（無已驗收來源之獨立市場成長率）");
+    expect(JSON.stringify(flex2)).toContain("資料暫不可用（無已驗收來源之獨立市場成長率）");
 
     const text2 = buildMacroIndustryCardText(cardNoGrowth);
     assertLineMessages(text2);
-    expect(JSON.stringify(text2)).toContain("UNAVAILABLE（無已驗收來源之獨立市場成長率）");
+    expect(JSON.stringify(text2)).toContain("資料暫不可用（無已驗收來源之獨立市場成長率）");
     expect(JSON.stringify(text2)).toContain("System Operationalization 量化評分，非機率");
   });
 

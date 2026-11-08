@@ -172,7 +172,7 @@ class TaifexOptionsEodTests(unittest.TestCase):
         self.assertEqual(findings, [])
         # V11: only the pinned operator-accepted Yahoo provider may be enabled; the TAIFEX candidate never is.
         eligible = summary['fully_eligible_provider_ids']
-        self.assertTrue(set(eligible) <= {'yahoo_finance_option_chain', 'nasdaq_nordic_option_chain'}, eligible)
+        self.assertTrue(set(eligible) <= {'yahoo_finance_option_chain', 'nasdaq_nordic_option_chain', 'nasdaq_public_option_chain'}, eligible)
         self.assertEqual(summary['fully_eligible_count'], len(eligible))
         self.assertEqual(summary['runtime_enabled_count'], len(eligible))
         self.assertEqual(summary['line_quote_eligible_count'], len(eligible))

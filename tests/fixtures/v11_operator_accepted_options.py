@@ -82,6 +82,53 @@ NORDIC_ENTRY: dict[str, Any] = {
     "operator_decision": {"decision_id": NORDIC_DECISION_ID, "decided_at": "2026-10-17", "record": "docs/PUBLIC_OPTIONS_PROVIDER_RIGHTS_REVIEW.md"},
 }
 
+# V19 (operator 2026-10-19, R/OPERATOR-DECISION-V18-BOUNDARY-ITEMS-A1-A4-C1-C3-20261019.txt): the third pinned provider, the Nasdaq US
+# option chain (the Yahoo fallback). NASDAQ_UNADMITTED_ENTRY is the row as it stood before the decision: the base catalog of the V11 and V13
+# tests keeps it so they still prove their own provider on its own.
+NASDAQ_ID = "nasdaq_public_option_chain"
+NASDAQ_DECISION_ID = "OPERATOR-DECISION-V18-BOUNDARY-ITEMS-A1-A4-C1-C3-20261019"
+NASDAQ_TODAY = date(2026, 10, 19)
+NASDAQ_IDENTITY = {"provider_id": NASDAQ_ID, "jurisdiction": "US", "venue": "US_LISTED_OPTIONS", "instrument_kind": "equity_option",
+                   "publication_scope": "public_line_quote"}
+NASDAQ_ENTRY: dict[str, Any] = {
+    "id": NASDAQ_ID,
+    "name": "Nasdaq public option-chain pages",
+    "authority": "Nasdaq",
+    "jurisdictions": ["US"],
+    "data_roles": ["delayed_quotes_candidate", "contract_reference", "delayed_option_quotes"],
+    "official_url": "https://www.nasdaq.com/market-activity/stocks",
+    "rights_evidence_url": "https://www.nasdaq.com/market-activity/quotes/option-chain",
+    "rights_status": "operator_accepted_unlicensed",
+    "automated_access_allowed": None,
+    "rights_reviewed_at": "2026-10-19",
+    "review_notes": "TEST COPY: not a rights review and not a licence; the operator decision of 2026-10-19 accepts the exposure.",
+    "adapter_status": "candidate_implemented",
+    "runtime_enabled": True,
+    "line_quote_eligible": True,
+    "review_valid_through": "2027-10-19",
+    "admitted_scopes": [
+        {"jurisdiction": "US", "venue": "US_LISTED_OPTIONS", "instrument_kind": "equity_option", "quote_basis": "delayed",
+         "publication_scope": "public_line_quote"},
+    ],
+    "operator_decision": {"decision_id": NASDAQ_DECISION_ID, "decided_at": "2026-10-19", "record": "docs/PUBLIC_OPTIONS_PROVIDER_RIGHTS_REVIEW.md"},
+}
+NASDAQ_UNADMITTED_ENTRY: dict[str, Any] = {
+    "id": NASDAQ_ID,
+    "name": "Nasdaq public option-chain pages",
+    "authority": "Nasdaq",
+    "jurisdictions": ["US"],
+    "data_roles": ["delayed_quotes_candidate", "contract_reference"],
+    "official_url": "https://www.nasdaq.com/market-activity/stocks",
+    "rights_evidence_url": "https://www.nasdaq.com/market-activity/quotes/option-chain",
+    "rights_status": "review_before_enable",
+    "automated_access_allowed": None,
+    "rights_reviewed_at": None,
+    "review_notes": "Automated API access, free-tier continuity and redistribution rights remain unverified; website display alone is not sufficient.",
+    "adapter_status": "not_implemented",
+    "runtime_enabled": False,
+    "line_quote_eligible": False,
+}
+
 ROOT_FILES = (
     "config/public-options-provider-candidates.json",
     "config/public-options-development-provider.json",
@@ -91,11 +138,13 @@ ROOT_FILES = (
 )
 
 
-def catalog_document(*, with_yahoo: bool = True, with_nordic: bool = False) -> dict[str, Any]:
+def catalog_document(*, with_yahoo: bool = True, with_nordic: bool = False, with_nasdaq: bool = False) -> dict[str, Any]:
     """The repository catalog with the test copies of the operator-accepted entries (replacing repository ones) and the matching root
-    selection. The Nordic entry is opt-in so the Yahoo rows keep proving the Yahoo behaviour on its own."""
+    selection. The Nordic and Nasdaq US entries are opt-in so the Yahoo rows keep proving the Yahoo behaviour on its own (without
+    the opt-in the Nasdaq US row is its unadmitted pre-decision shape)."""
     document = json.loads((ROOT / "config" / "public-options-provider-candidates.json").read_text(encoding="utf-8"))
-    document["providers"] = [item for item in document["providers"] if item["id"] not in (YAHOO_ID, NORDIC_ID)]
+    document["providers"] = [item for item in document["providers"] if item["id"] not in (YAHOO_ID, NORDIC_ID, NASDAQ_ID)]
+    document["providers"].append(copy.deepcopy(NASDAQ_ENTRY if with_nasdaq else NASDAQ_UNADMITTED_ENTRY))
     if with_yahoo:
         document["providers"].append(copy.deepcopy(YAHOO_ENTRY))
     if with_nordic:
@@ -127,6 +176,12 @@ def write_catalog(root: Path, document: dict[str, Any]) -> None:
 def both_policy(today: date = NORDIC_TODAY) -> Any:
     """The admission policy of a test catalog carrying both operator-accepted providers."""
     with catalog_root(catalog_document(with_nordic=True)) as root:
+        return gate.load_public_option_policy(root, today=today)
+
+
+def all_policy(today: date = NASDAQ_TODAY) -> Any:
+    """The admission policy of a test catalog carrying all three operator-accepted providers."""
+    with catalog_root(catalog_document(with_nordic=True, with_nasdaq=True)) as root:
         return gate.load_public_option_policy(root, today=today)
 
 

@@ -1,10 +1,10 @@
 """Lane V14 (TSM revenue-guidance registry entry): TSMC's 3Q26 earnings release and its 1Q26 and 3Q26 quarterly management
 reports (exact bytes kept in _archive/lane-v14-guidance/sources) give TSM four reported USD quarters and its 4Q26 revenue guidance.
 
-TSMC's IR and press sites answer automated requests with a bot challenge (2026-10-17), so the record names no release channel at
-all: the release check never fetches for it, the company-guidance path stays FRESHNESS_UNVERIFIED / IR_COVERAGE_MISSING (Astra W1
-ruling: no guidance projection without official IR coverage), and the sealed evidence carries what the Worker's HISTORY_YOY_V1
-estimate needs (four reviewed actuals, four forward intervals, the sealed approval, no channel fault)."""
+The record names SEC submissions, the wire and TSMC's official latest-news page (TSMC_NEWS_HTML) as release channels. Without
+successful checks the receipt stays FRESHNESS_UNVERIFIED with every channel FAILED, the company-guidance path stays
+FRESHNESS_UNVERIFIED / IR_COVERAGE_MISSING (Astra W1 ruling: no guidance projection without official IR coverage), and the sealed
+evidence carries what the Worker's HISTORY_YOY_V1 estimate needs (four reviewed actuals, four forward intervals, the sealed approval)."""
 from __future__ import annotations
 
 import json
@@ -81,9 +81,15 @@ class TsmGuidanceRecordTests(unittest.TestCase):
         self.assertIn("between US$52.3 billion and US$54.3 billion", claim["passage"])
         self.assertEqual([(i["start"], i["end"]) for i in self.record["forward_intervals"]], list(INTERVALS))
 
-    def test_no_release_channel_is_named_so_the_check_never_fetches(self):
-        self.assertEqual((self.record["status"], self.record["release_channels"]), ("GUIDANCE", {}))
-        self.assertIsNone(checker.receipt_for(self.record, self.cutoff, never, never, never))
+    def test_release_channels_are_official_and_fail_closed_without_checks(self):
+        channels = self.record["release_channels"]
+        self.assertEqual((self.record["status"], channels["sec_cik"], channels["wire_symbol"], channels["ir"]),
+                         ("GUIDANCE", 1046179, "TSM", {"kind": "TSMC_NEWS_HTML", "url": "https://pr.tsmc.com/english/latest-news"}))
+        self.assertTrue(channels["ir_guidance_release_title"])
+        receipt = checker.receipt_for(self.record, self.cutoff, never, never, never)
+        self.assertEqual((receipt["status"], receipt["coverage"]), ("FRESHNESS_UNVERIFIED", "SEC_WIRE_IR"))
+        self.assertEqual([(c["kind"], c["status"]) for c in receipt["channels"]],
+                         [("SEC_SUBMISSIONS", "FAILED"), ("WIRE_PRESS_RELEASES", "FAILED"), ("ISSUER_IR", "FAILED")])
 
     def test_guidance_stays_unavailable_and_the_history_inputs_are_sealed(self):
         cache = rg.parse_release_checks_cache(json.dumps(
