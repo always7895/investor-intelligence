@@ -567,6 +567,42 @@ def validate_covered_call_cycle(cycle: dict, evaluated_at: str | datetime | None
             raise MarketProductValidationError("MONTHLY_RULE_INCONSISTENT")
     spot = finite(cycle.get("spot"), "spot")
     annual_days = rules.effective_days(dte)  # annualized over at least one day: a DTE-0 contract never divides by zero
+    # Optional observation-only month: explicitly not a covered-call strategy, with its own
+    # strict, independently checked evidence. No missing bid/ask can become executable.
+    observed = cycle.get("quote_observation", None)
+    if observed is not None:
+        if period != "monthly" or cycle.get("suggestions") != [] or "strategies" in cycle or "middle_suggestion" in cycle:
+            raise MarketProductValidationError("MONTHLY_OBSERVATION_NOT_A_STRATEGY")
+        keys = {"kind", "strike", "bid", "ask", "last", "annualized_yield", "oi", "volume"}
+        if not isinstance(observed, dict) or set(observed) != keys or observed["kind"] not in ("TWO_SIDED", "NO_TWO_SIDED"):
+            raise MarketProductValidationError("MONTHLY_OBSERVATION_SHAPE")
+        strike = finite(observed["strike"], "observation.strike")
+        if not strike > spot > 0 or strike != round(strike, 2) or dte < 7:
+            raise MarketProductValidationError("MONTHLY_OBSERVATION_STRIKE_DTE")
+        for name in ("oi", "volume"):
+            value = observed[name]
+            if value is not None and (type(value) is not int or value < 0):
+                raise MarketProductValidationError("MONTHLY_OBSERVATION_LIQUIDITY")
+        if observed["kind"] == "TWO_SIDED":
+            bid, ask = finite(observed["bid"], "observation.bid"), finite(observed["ask"], "observation.ask")
+            if not 0 < bid <= ask or observed["last"] is not None:
+                raise MarketProductValidationError("MONTHLY_OBSERVATION_TWO_SIDED")
+            price = bid
+        else:
+            if observed["bid"] is not None or observed["ask"] is not None:
+                raise MarketProductValidationError("MONTHLY_OBSERVATION_NOT_TWO_SIDED")
+            price = None if observed["last"] is None else finite(observed["last"], "observation.last")
+            if price is not None and price <= 0:
+                raise MarketProductValidationError("MONTHLY_OBSERVATION_LAST")
+        if price is None:
+            if observed["annualized_yield"] is not None:
+                raise MarketProductValidationError("MONTHLY_OBSERVATION_ANNUALIZED")
+        else:
+            annual = finite(observed["annualized_yield"], "observation.annualized_yield")
+            expected = price/spot*365/dte
+            if abs(annual-expected) > max(1e-4,abs(expected)*1e-3):
+                raise MarketProductValidationError("MONTHLY_OBSERVATION_ANNUALIZED")
+        return
     suggestions = cycle.get("suggestions")
     # V21: no covered call (an empty list) is allowed only beside a `strategies` object that validates and holds a real csp or collar block.
     if not isinstance(suggestions, list) or not (1 <= len(suggestions) <= 2 or (not suggestions and "strategies" in cycle)):

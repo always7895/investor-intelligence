@@ -921,6 +921,12 @@ def captured_bottleneck_v3_body(raw: bytes, now: datetime, effective_inputs=None
                 sealed_fund = {
                     **pick(fund, ("source", "source_url", "quarter_end", "revenue_yoy", "revenue_yoy_prev", "gross_margin",
                                   "gross_margin_change", "rpo_yoy", "shares_yoy")),
+                    # Optional provenance-preserving numeric anchor for the independently labeled Top20 estimate.
+                    # Keep existing old sealed documents byte-compatible; never turn missing/invalid into zero.
+                    **({"revenue": fund["revenue"], "revenue_unit": fund["revenue_unit"]}
+                       if type(fund.get("revenue")) in (int, float) and math.isfinite(fund["revenue"])
+                       and fund["revenue"] > 0 and isinstance(fund.get("revenue_unit"), str)
+                       and re.fullmatch(r"[A-Z]{3}", fund["revenue_unit"]) else {}),
                     **_sealed_sec_lineage(fund, generated),
                     # What the share-count change measures; a figure without a known basis is not sealed.
                     "shares_basis": fund.get("shares_basis") if fund.get("shares_basis") in SHARES_BASES else None,

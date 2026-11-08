@@ -102,7 +102,7 @@ class MonthlyProducerTests(unittest.TestCase):
         validate_covered_call_cycle(old, STAMP, STAMP, "monthly")
 
     def test_a_far_closer_expiry_is_never_replaced_by_a_nearer_30_days(self):
-        for today, expected in ((date(2026, 11, 3), "2026-11-20"), (date(2026, 11, 18), "2026-11-20"), (date(2026, 11, 19), "2026-11-20")):
+        for today, expected in ((date(2026, 11, 3), "2026-11-20"), (date(2026, 11, 18), "2026-12-18"), (date(2026, 11, 19), "2026-12-18")):
             with self.subTest(today=today):
                 cycle = produce((date(2026, 11, 20), date(2026, 12, 18)), today=today, stamp=stamp_of(today))["monthly"]
                 self.assertEqual(cycle["expiry"], expected)
@@ -112,7 +112,8 @@ class MonthlyProducerTests(unittest.TestCase):
         today = date(2026, 11, 20)
         listed = (date(2026, 11, 20), date(2026, 12, 18))
         before = produce(listed, today=today, stamp=stamp_of(today, 16, 29))["monthly"]  # 17:29 CET: open
-        self.assertEqual((before["expiry"], before["dte"]), ("2026-11-20", 0))
+        # >=7-day monthly screening now prioritizes the next regular monthly over expiry-day.
+        self.assertEqual((before["expiry"], before["dte"]), ("2026-12-18", 28))
         validate_covered_call_cycle(before, stamp_of(today, 16, 29), stamp_of(today, 16, 29), "monthly")
         after = produce(listed, today=today, stamp=stamp_of(today, 16, 31))["monthly"]  # 17:31 CET: closed
         self.assertEqual((after["expiry"], after["dte"], after["monthly_rule"]), ("2026-12-18", 28, "THIRD_FRIDAY"))
@@ -136,8 +137,12 @@ class MonthlyProducerTests(unittest.TestCase):
         self.assertIn("標準月選", produce((date(2026, 11, 6),))["monthly"]["unavailable"])
         self.assertNotIn("0-60", produce(())["monthly"]["unavailable"])
 
-    def test_empty_unquoted_and_wrong_terms_stay_unavailable(self):
-        for changes in ({"bid": "", "ask": ""}, {"currency": "USD"}, {"contractSize": "10"}):
+    def test_empty_unquoted_is_observation_only_wrong_terms_stay_unavailable(self):
+        empty = produce((18,46), bid="",ask="")["monthly"]
+        self.assertEqual(empty["suggestions"], [])
+        self.assertEqual(empty["quote_observation"]["kind"],"NO_TWO_SIDED")
+        self.assertIsNone(empty["quote_observation"]["annualized_yield"])
+        for changes in ({"currency": "USD"}, {"contractSize": "10"}):
             with self.subTest(changes=changes):
                 self.assertIn("unavailable", produce((18, 46), **changes)["monthly"])
 
@@ -145,16 +150,20 @@ class MonthlyProducerTests(unittest.TestCase):
         rows = [nordic_row(date(2026, 11, 20), bid="", ask=""), nordic_row(date(2026, 12, 18))]
         with patch.object(builder, "http_json", return_value={"data": {"instrumentListing": {"rows": rows}}}):
             result = builder.nordic_options("SIVE.ST", "SIVE", 100.0, TODAY, STAMP, "synthetic", spot_currency="SEK")
-        self.assertIn("unavailable", result["monthly"])
-        self.assertEqual(next(item for item in result.health if item["cycle"] == "monthly")["expiry"], "2026-11-20")
+        # Next standard monthly is explicitly inspected instead of withholding the whole line.
+        self.assertEqual(result["monthly"]["expiry"], "2026-12-18")
+        self.assertEqual(result["monthly"]["quote_observation"]["kind"], "TWO_SIDED")
+        self.assertEqual(result["monthly"]["suggestions"], [])
+        self.assertEqual(next(item for item in result.health if item["cycle"] == "monthly")["expiry"], "2026-12-18")
 
     def test_no_annualized_yield_floor(self):
-        # 0.05 / 100 * 365 / 18 = 1.01% a year: the former 2% floor made this strike (and the whole cycle) unavailable
+        # A real low premium remains visible as an observation, never as a 6%-qualified sell tier.
         cycle = produce((18,), bid="0.05", ask="0.06")["monthly"]
         self.assertNotIn("unavailable", cycle)
-        item = cycle["suggestions"][0]
-        self.assertEqual(item["role"], "HIGH_STRIKE")
-        self.assertLess(item["annualized_yield"], 0.02)
+        self.assertEqual(cycle["suggestions"], [])
+        item = cycle["quote_observation"]
+        self.assertEqual(item["kind"], "TWO_SIDED")
+        self.assertLess(item["annualized_yield"], 0.06)
         validate_covered_call_cycle(cycle, STAMP, STAMP, "monthly")
 
     def test_weekly_rule_is_unchanged(self):

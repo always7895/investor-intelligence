@@ -48,6 +48,15 @@ export type CspBlock = ({ suggestions: CspItem[] } & StrategyLabel) | StrategyUn
 export type CollarBlock = ({ put: StrategyLeg; items: CollarItem[] } & StrategyLabel) | StrategyUnavailable;
 export interface CycleStrategies { cc?: StrategyUnavailable; csp?: CspBlock; collar?: CollarBlock }
 
+export interface MonthlyQuoteObservation {
+  /** Informational observation, never an admitted covered-call sell tier or an order instruction. */
+  kind: "TWO_SIDED" | "NO_TWO_SIDED";
+  strike: number; bid: number | null; ask: number | null; last: number | null;
+  /** Bid/spot annualized, or a clearly indicative last/spot figure. Null when no source price exists. */
+  annualized_yield: number | null;
+  oi: number | null; volume: number | null;
+}
+
 export interface CoveredCallCycle {
   ticker: string; strategy: "COVERED_CALL"; expiry: string; dte: number; spot: number; currency: "USD" | "SEK";
   multiplier: 100; quote_basis: "delayed" | typeof PREVIOUS_SESSION_BASIS; timestamp: string; source: string; provenance: string; rights_status: string;
@@ -58,6 +67,8 @@ export interface CoveredCallCycle {
   /** V21 additive; absent on older sealed rows (the card then shows the cash-secured put and the collar as no data). A block that failed
    * validation has already been replaced by {unavailable} by validateCoveredCallCycle. */
   strategies?: CycleStrategies;
+  /** Observation-only monthly row after strategy screening; preserves expiry and rights checks. */
+  quote_observation?: MonthlyQuoteObservation;
   /** Optional additive middle tier (role MIDDLE, strike strictly between the two suggestions); absent in older sealed rows. */
   middle_suggestion?: CoveredCallSuggestion;
   /** Exchange-local date (YYYY-MM-DD) the expiry rule was applied on, and for weekly cycles whether the expiry is in the
@@ -95,6 +106,31 @@ function parseCalendarDateUtcMidnight(raw: string): number | null {
   const ms = Date.parse(`${raw}T00:00:00Z`);
   if (!Number.isFinite(ms)) return null;
   return new Date(ms).toISOString().slice(0, 10) === raw ? ms : null;
+}
+
+/** Recompute the observation arithmetic, never trust producer-supplied percentages alone. */
+function validMonthlyQuoteObservation(raw: unknown, cycle: Record<string, any>): raw is MonthlyQuoteObservation {
+  if (!raw || typeof raw!=="object" || Array.isArray(raw)) return false;
+  const obs=raw as Record<string,unknown>;
+  const exact=["kind","strike","bid","ask","last","annualized_yield","oi","volume"];
+  if (Object.keys(obs).length!==exact.length || !exact.every(key=>Object.hasOwn(obs,key))) return false;
+  if (!["TWO_SIDED","NO_TWO_SIDED"].includes(String(obs.kind)) ||
+    !finite(obs.strike) || obs.strike<=cycle.spot || Math.round(obs.strike*100)/100!==obs.strike ||
+    !Number.isInteger(cycle.dte) || cycle.dte<7 || cycle.dte>60) return false;
+  for(const key of ["oi","volume"]){
+    const x=obs[key];
+    if(x!==null && !(finite(x) && x>=0 && Number.isInteger(x))) return false;
+  }
+  let quote:number|null=null;
+  if(obs.kind==="TWO_SIDED") {
+    if(!finite(obs.bid) || !finite(obs.ask) || !(obs.bid>0 && obs.ask>=obs.bid) || obs.last!==null) return false;
+    quote=obs.bid;
+  } else {
+    if(obs.bid!==null || obs.ask!==null || (obs.last!==null && !(finite(obs.last) && obs.last>0))) return false;
+    quote=obs.last as number|null;
+  }
+  if(quote===null) return obs.annualized_yield===null;
+  return finite(obs.annualized_yield) && close(obs.annualized_yield,quote/cycle.spot*365/cycle.dte);
 }
 
 /** A strictly validated cycle, or null (the caller then shows the option as unavailable). The previous-session carry-forward basis is
@@ -205,6 +241,12 @@ export function validateCoveredCallCycle(raw: unknown, now?: number, documentGen
     const middle = cycle.middle_suggestion;
     if (cycle.suggestions.length !== 2 || middle.role !== "MIDDLE" || !itemValid(middle)
       || !(cycle.suggestions[0].strike > middle.strike && middle.strike > cycle.suggestions[1].strike)) return null;
+  }
+  if(cycle.quote_observation!==undefined){
+    // The general reader may not claim an observation to be a qualified weekly sell strategy.
+    if(period!=="monthly" || cycle.suggestions.length!==0 || cycle.strategies!==undefined ||
+      cycle.middle_suggestion!==undefined || !validMonthlyQuoteObservation(cycle.quote_observation,cycle)) return null;
+    return cycle as CoveredCallCycle;
   }
   const strategies = sanitizeStrategies(cycle);
   if (strategies === null) return null;
@@ -674,6 +716,48 @@ function textStrategyLines(cycle: CoveredCallCycle): string[] {
   return lines;
 }
 
+function monthlyObservationMessages(cycle:CoveredCallCycle,style:"flex"|"text",operatorAccepted:boolean):LineOutboundMessage[] {
+  const o=cycle.quote_observation!;
+  const hasBid=o.kind==="TWO_SIDED";
+  const rate=o.annualized_yield===null?"無可用權利金價，年化不計":pct(o.annualized_yield);
+  const hurdle=o.annualized_yield===null?"無雙邊報價，非策略":
+    o.annualized_yield<0.06?"低於6%門檻，非策略":"未符合保守策略篩選，非策略";
+  const band=hasBid ? "Bid "+money(o.bid!,cycle.currency)+"／Ask "+money(o.ask!,cycle.currency)
+    : "無雙邊報價；Last "+(o.last!==null?money(o.last,cycle.currency):"來源未提供");
+  const premium=hasBid?"以Bid估算、非保證":"由Last推算、無雙邊報價、不可執行";
+  const txt=[
+    "【每月期權｜上市買權報價觀察（非交易建議）】"+cycle.ticker,
+    "到期 "+cycle.expiry+"（DTE "+cycle.dte+"）｜履約價 "+money(o.strike,cycle.currency),
+    band+"｜參考年化 "+rate+"（"+premium+"；"+hurdle+"）",
+    "OI "+countZh(o.oi)+"｜成交量 "+countZh(o.volume),
+    "來源 "+sourceZh(cycle.source)+"｜擷取 "+formatVisibleMoment(cycle.timestamp),
+    "延遲來源觀察，非可執行報價；不自動下單。"
+  ].concat(operatorAccepted?[OPERATOR_ACCEPTED_NOTICE_ZH]:[]);
+  if(style==="text"){
+    const messages:LineOutboundMessage[]=[{type:"text",text:txt.join("\n")}];
+    assertLineMessages(messages);
+    return messages;
+  }
+  const bubble={type:"bubble",size:"mega",
+    header:productHeader("每月期權・報價觀察","到期 "+cycle.expiry,[
+      uiText(cycle.ticker+"｜DTE "+cycle.dte+"｜"+cycle.currency,"xxs",T.headerMuted)]),
+    body:uiBox([
+      uiText("履約價 "+money(o.strike,cycle.currency),"lg",T.ink,{weight:"bold"}),
+      uiText(band,"sm",T.ink),uiText("參考年化 "+rate,"sm",T.ink,{weight:"bold"}),
+      chip(hurdle,T.soft,T.subtle),
+      uiText("期限 "+cycle.expiry+"｜"+premium,"xs",T.muted),
+      uiText("OI "+countZh(o.oi)+"｜成交量 "+countZh(o.volume),"xs",T.subtle),
+      uiText("擷取 "+formatVisibleMoment(cycle.timestamp)+"｜"+sourceZh(cycle.source),"xxs",T.subtle),
+      ...(operatorAccepted?[uiText(OPERATOR_ACCEPTED_NOTICE_ZH,"xxs",T.subtle)]:[])
+    ],{paddingAll:"lg",spacing:"sm"}),
+    footer:footerBox("報價非可執行，流動性與指派風險；非投資建議、不下單")};
+  const messages:LineOutboundMessage[]=[{type:"flex",
+    altText:altSummary({topic:cycle.ticker+" 月期權報價觀察",status:hurdle,next:"查看文字來源"}),
+    contents:{type:"carousel",contents:[bubble]}}];
+  assertLineMessages(messages);
+  return messages;
+}
+
 export function buildCoveredCallMessages(cycle: CoveredCallCycle, periodLabel: string, style: "flex" | "text"): LineOutboundMessage[] {
   // Independent public-rights guard (validateCoveredCallCycle stays format-only for local data): the trusted catalog decides, never
   // rights_status, source text or a caller flag, so a new caller cannot bypass the loader's enforcement.
@@ -681,6 +765,7 @@ export function buildCoveredCallMessages(cycle: CoveredCallCycle, periodLabel: s
   // (the only one a public caller converts to an unavailable report) denies instead of rendering.
   const admission = admitPublicOption(cycle);
   if (!admission.ok) throw new OptionRightsNotAdmittedError();
+  if(cycle.quote_observation) return monthlyObservationMessages(cycle,style,admission.operator_accepted===true);
   const ctx = cardContext(cycle, periodLabel);
   ctx.operatorNotice = admission.operator_accepted === true ? OPERATOR_ACCEPTED_NOTICE_ZH : null;
   const { carried, carriedLabel, operatorNotice, dteZh, spotLabel } = ctx;

@@ -119,6 +119,9 @@ MIN_COMPLETED_SHARE = 0.5
 CYCLES = {"weekly": rules.WEEKLY_DTE_BUCKET, "monthly": rules.MONTHLY_DTE_BUCKET}
 RISK_FREE = 0.04
 MAX_HIGH_STRIKE_DELTA = 0.20  # the high-strike suggestion keeps the model assignment reference low
+MONTHLY_ANNUAL_HURDLE = 0.06
+MONTHLY_MIN_DTE = 7
+MONTHLY_EXPIRIES_TO_CHECK = 2
 BALANCED_DELTA = 0.30
 BALANCED_MONEYNESS = 1.05     # when a lower strike has no delta at all, about 5% out of the money
 MIDDLE_DELTA = rules.MIDDLE_DELTA          # the middle tier sits between HIGH_STRIKE (<= 0.20) and BALANCED (0.30)
@@ -699,6 +702,69 @@ def _monthly_choice(expiries: Iterable[str], today: date | None, stamp: str, ven
     return rules.select_monthly(days, today, expiry_day_open_now=rules.expiry_day_open(rules.parse_utc_instant(stamp), venue))
 
 
+def _monthly_candidates(expiries: Iterable[str], today: date | None, stamp: str, venue: str) -> list["rules.MonthlyChoice"]:
+    """Nearest standard monthly with at least seven calendar days and its successor.
+    The 60-day maximum remains the existing publisher/Worker validation boundary."""
+    if today is None:
+        return []
+    remaining = sorted(set(text for text in expiries if isinstance(text, str) and
+        len(text) == 10 and text >= (today + timedelta(days=MONTHLY_MIN_DTE)).isoformat() and
+        text <= (today + timedelta(days=rules.MONTHLY_DTE_BUCKET[1])).isoformat()))
+    selected: list["rules.MonthlyChoice"] = []
+    for _ in range(MONTHLY_EXPIRIES_TO_CHECK):
+        choice = _monthly_choice(remaining, today, stamp, venue)
+        if choice is None:
+            break
+        selected.append(choice)
+        remaining = [text for text in remaining if text > choice.expiry.isoformat()]
+    return selected
+
+
+def _monthly_quote_observation(ticker: str, spot: float, choices: list["rules.MonthlyChoice"],
+                               calls: list[dict[str, Any]], stamp: str, today: date, *,
+                               currency: str, source: str, provenance: str, rights: str,
+                               identity: dict[str, str] | None) -> dict[str, Any] | None:
+    """Observation-only quote when the 6%+ strategy cannot be shown.
+    The two-sided bid (not mid) defines annualized collectible premium; without it,
+    a LAST quote is purely indicative. Neither lane qualifies as a recommendation."""
+    if not _is_finite_positive(spot) or not choices:
+        return None
+    by_expiry = {choice.expiry.isoformat(): choice for choice in choices}
+    available = [row for row in calls if row.get("expiry") in by_expiry and row.get("size") == 100
+                 and _cent_exact(row.get("strike")) and row["strike"] > spot
+                 and isinstance(row.get("dte"), int) and MONTHLY_MIN_DTE <= row["dte"] <= 60]
+    if not available:
+        return None
+    both = [row for row in available if _is_two_sided(row.get("bid"), row.get("ask"))]
+    # The observation is *not* a tradeable tier: even a very wide spread can be shown with the explicit spread caveat.
+    # Pick largest bid/spot annualized among the two checked expiries; no delta inference or fake liquidity values.
+    best = max(both, key=lambda row: (row["bid"]/spot*365/row["dte"], -row["dte"])) if both else None
+    if best is None:
+        with_last = [row for row in available if _is_finite_positive(row.get("last"))]
+        best = max(with_last, key=lambda row: (row["last"]/spot*365/row["dte"], -row["dte"])) if with_last else min(
+            available, key=lambda row: (row["dte"], row["strike"]))
+    dte = best["dte"]
+    is_both = best in both
+    last = best.get("last") if _is_finite_positive(best.get("last")) else None
+    annual = (best["bid"] if is_both else last)
+    obs = {"kind": "TWO_SIDED" if is_both else "NO_TWO_SIDED",
+           "strike": best["strike"],
+           "bid": best["bid"] if is_both else None, "ask": best["ask"] if is_both else None,
+           "last": last if not is_both else None,
+           "annualized_yield": round(annual/spot*365/dte, 6) if annual is not None else None,
+           "oi": best.get("oi") if isinstance(best.get("oi"), int) and best["oi"] >= 0 else None,
+           "volume": best.get("volume") if isinstance(best.get("volume"), int) and best["volume"] >= 0 else None}
+    choice = by_expiry[best["expiry"]]
+    result = {"ticker": ticker, "strategy": "COVERED_CALL", "expiry": best["expiry"], "dte": dte,
+              "spot": spot, "currency": currency, "multiplier": 100, "quote_basis": "delayed",
+              "timestamp": stamp, "source": source, "provenance": provenance, "rights_status": rights,
+              "suggestions": [], "quote_observation": obs, "asof_date": today.isoformat(),
+              "monthly_rule": choice.rule}
+    if identity is not None:
+        result.update(identity)
+    return result
+
+
 def _any_put_two_sided(puts: list[dict[str, Any]] | None) -> bool:
     return bool(puts) and any(_is_two_sided(row.get("bid"), row.get("ask")) for row in puts)
 
@@ -729,9 +795,44 @@ def _cycles_from_calls(calls: list[dict[str, Any]], ticker: str, spot: float, st
             week = choice.week if choice else None
             window = [row for row in calls if choice and row["expiry"] == choice.expiry.isoformat() and row["strike"] and row["size"] == 100]
         else:
-            monthly = _monthly_choice(week_expiries if week_expiries is not None else [row["expiry"] for row in calls], today, stamp, venue)
+            monthly_choices = _monthly_candidates(
+                week_expiries if week_expiries is not None else [row["expiry"] for row in calls], today, stamp, venue)
+            # Prefer >=7-day standard maturities, but preserve an existing
+            # validated short-dated series when the chain has no such expiry.
+            if not monthly_choices:
+                legacy = _monthly_choice(week_expiries if week_expiries is not None else
+                                         [row["expiry"] for row in calls], today, stamp, venue)
+                if legacy is not None:
+                    monthly_choices = [legacy]
+            monthly = monthly_choices[0] if monthly_choices else None
             monthly_rule = monthly.rule if monthly else None
-            window = [row for row in calls if monthly and row["expiry"] == monthly.expiry.isoformat() and row["strike"] and row["size"] == 100]
+            window = [row for row in calls if monthly and row["expiry"] == monthly.expiry.isoformat()
+                      and row["strike"] and row["size"] == 100]
+            # Keep the existing 6%+ two-sided strategy lane if any of the nearest two monthly expiries qualifies.
+            admitted = None
+            for choice in monthly_choices:
+                candidate = [row for row in calls if row["expiry"] == choice.expiry.isoformat()
+                             and row["size"] == 100 and row.get("strike")]
+                if not candidate:
+                    continue
+                candidate_dte = candidate[0]["dte"]
+                tiers, _middle = covered_call_tiers(candidate, spot, candidate_dte)
+                if tiers and any(tier["annualized_yield"] >= MONTHLY_ANNUAL_HURDLE for tier in tiers):
+                    admitted = (candidate, choice)
+                    break
+            if admitted is not None:
+                window, monthly = admitted
+                monthly_rule = monthly.rule
+            elif monthly_choices:
+                observation = _monthly_quote_observation(
+                    ticker, spot, monthly_choices, calls, stamp, today, currency=currency, source=source,
+                    provenance=provenance, rights=rights, identity=identity)
+                if observation is not None:
+                    health_records.append({"venue": venue, "underlying": und,
+                       "expiry": observation["expiry"], "cycle": "monthly", "status": "READ",
+                       "read": True, "two_sided": observation["quote_observation"]["kind"] == "TWO_SIDED"})
+                    out["monthly"] = observation
+                    continue
         if not window:
             message, status = no_window(cycle, low, high) if no_window else (_missing_text(missing, cycle, low, high), "NO_EXPIRY")
             health_records.append({"venue": venue, "underlying": und, "expiry": None, "cycle": cycle,
@@ -1171,6 +1272,7 @@ def _nordic_row_evidence(row: Any, root: str, today: date) -> tuple[str, dict[st
     return "CALL", {"expiry": expiry_text, "dte": (expiry - today).days, "strike": strike,
                     "ccy": _nordic_contract_currency(row.get("currency", _ABSENT)), "size": _typed_size(row.get("contractSize")),
                     "bid": _float(row.get("bidPrice")), "ask": _float(row.get("askPrice")),
+                    "last": _float(row.get("lastPrice") or row.get("lastSalePrice")),
                     "oi": _int(row.get("openInterest")), "volume": _int(row.get("volume"))}
 
 
@@ -1302,7 +1404,7 @@ def nordic_options(symbol: str, base: str, spot: float, today: date, stamp: str,
         return f"本次回應有上市買權；{head}" + (f"（最近到期 {context}）" if context else ""), "NO_EXPIRY"
 
     usable = [{"expiry": call["expiry"], "dte": call["dte"], "strike": call["strike"], "bid": call["bid"], "ask": call["ask"],
-               "oi": call["oi"], "volume": call["volume"], "size": 100}
+               "oi": call["oi"], "volume": call["volume"], "size": 100, "last": call.get("last")}
               for call in listed if call["ccy"] in ("OK", NORDIC_BLANK_CURRENCY) and call["size"] == "OK"]  # underlying SEK confirmed above
     usable_puts = [{"expiry": put["expiry"], "dte": put["dte"], "strike": put["strike"], "bid": put["bid"], "ask": put["ask"],
                     "oi": put["oi"], "volume": put["volume"], "size": 100}

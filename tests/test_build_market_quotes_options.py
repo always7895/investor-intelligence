@@ -1329,13 +1329,18 @@ class OptionPresessionAcceptanceTests(unittest.TestCase):
         builder.http_json = lambda url: {"data": {"instrumentListing": {"rows": rows}}}
         cycles = builder.nordic_options("SEL.ST", "SEL", 100.0, self.TODAY, self.STAMP, "TX_SEL", spot_currency="SEK")
         selected = {h["cycle"]: (h["expiry"], h["read"], h["two_sided"]) for h in cycles.health}
-        self.assertEqual(selected, {"weekly": ("2026-10-02", True, True), "monthly": ("2026-10-16", True, False)})
+        # The second listed standard monthly is screened when the nearest lacks a two-sided quote.
+        self.assertEqual(selected, {"weekly": ("2026-10-02", True, True), "monthly": ("2026-11-20", True, True)})
+        # The second expiry's verified two-sided quote clears the 6% hurdle,
+        # so the existing strategy path is retained, not converted into an observation.
+        self.assertTrue(cycles["monthly"]["suggestions"])
+        self.assertGreaterEqual(cycles["monthly"]["suggestions"][0]["annualized_yield"], .06)
 
         sys.modules["yfinance"] = FakeYFinanceModule({"SEL.ST": FakeTicker("SEL.ST", price=100.0, currency="SEK")})
         builder.broad_universe = lambda now: {"us": [], "sweden": {"SEL.ST": "TX_SEL"}}
         doc = builder.build(self.NOW)
         self.assertEqual(doc["collection"]["chain_health"]["STOCKHOLM"]["read"], 2)     # all groups would give 5
-        self.assertEqual(doc["collection"]["chain_health"]["STOCKHOLM"]["healthy"], 1)  # all groups would give 3
+        self.assertEqual(doc["collection"]["chain_health"]["STOCKHOLM"]["healthy"], 2)  # only selected weekly+monthly, not all groups
 
     def test_05f_partial_yahoo_fallback_counts_only_the_retry_cycle(self):
         """Matrix Item 5 (Astra r2 fix 1): Yahoo reads the weekly chain with zero quotes and fails the monthly chain;
@@ -1793,7 +1798,9 @@ class NonUsTypedEvidenceTests(unittest.TestCase):
         self.assertEqual(builder._nordic_contract_currency(""), builder.NORDIC_BLANK_CURRENCY)
         self.assertEqual(builder._typed_currency(""), "UNKNOWN", "the generic SEK typing is unchanged")
         one_sided = self.nordic([self.call(16, currency="", bid="", ask="1.13")])
-        self.assertIn("unavailable", one_sided["monthly"], "quotes stay real two-sided bid/ask")
+        self.assertEqual(one_sided["monthly"]["suggestions"], [], "no fake tradable tier")
+        self.assertEqual(one_sided["monthly"]["quote_observation"]["kind"], "NO_TWO_SIDED")
+        self.assertIsNone(one_sided["monthly"]["quote_observation"]["bid"])
 
     def test_the_retained_live_source_form_is_a_sek_100_contract(self):
         row = {**self.call(16), "currency": "", "openInterest": "", "volume": ""}
@@ -1841,16 +1848,18 @@ class NonUsTypedEvidenceTests(unittest.TestCase):
         self.assertNotIn("unavailable", mixed["monthly"], "a valid chain survives malformed siblings")
 
     def test_each_cycle_distinguishes_out_of_policy_from_unusable_in_window_terms(self):
-        # as of Wed 2026-09-30 the standard monthlies are 2026-10-16 (16 DTE) and 2026-11-20 (51 DTE); the nearest one decides, never the next
+        # The next standard monthly now supplies an observation when the nearer one is term-invalid.
         nonstandard_nearest = self.nordic([self.call(16, contractSize="50"), self.call(51)])
-        self.assertIn("合約單位非標準100股", nonstandard_nearest["monthly"]["unavailable"])
-        self.assertIn("2026-10-16（16天）標準月選", nonstandard_nearest["monthly"]["unavailable"])
-        self.assertNotIn("所列到期無標準月選", nonstandard_nearest["monthly"]["unavailable"])
+        self.assertNotIn("unavailable", nonstandard_nearest["monthly"])
+        self.assertEqual(nonstandard_nearest["monthly"]["expiry"], "2026-11-20")
+        self.assertTrue(nonstandard_nearest["monthly"]["suggestions"])
+        self.assertGreaterEqual(nonstandard_nearest["monthly"]["suggestions"][0]["annualized_yield"], .06)
         self.assertIn("所列到期不在本週或下週策略範圍", nonstandard_nearest["weekly"]["unavailable"])
         self.assertIn("2026-10-16（16天）", nonstandard_nearest["weekly"]["unavailable"])
         unknown = self.nordic([self.call(16, contractSize=None), self.call(51)])
-        self.assertIn("合約單位或幣別來源未確認", unknown["monthly"]["unavailable"])
-        self.assertNotIn("合約單位非標準", unknown["monthly"]["unavailable"])
+        self.assertEqual(unknown["monthly"]["expiry"], "2026-11-20")
+        self.assertTrue(unknown["monthly"]["suggestions"])
+        self.assertGreaterEqual(unknown["monthly"]["suggestions"][0]["annualized_yield"], .06)
         mixed_terms = self.nordic([self.call(16, contractSize="50", orderbookId="OBa"), self.call(16, 126.0, currency="USD", orderbookId="OBb"),
                                    self.call(16, 127.0, currency=None, orderbookId="OBc")])
         for part in ("合約單位非標準100股", "合約幣別與 SEK 不符", "合約單位或幣別來源未確認"):
@@ -1877,14 +1886,17 @@ class NonUsTypedEvidenceTests(unittest.TestCase):
                   "last sale only": dict(bid="", ask="", lastSalePrice="0.55", settlementPrice="0.55", openInterest="900", volume="80")}
         for label, kw in states.items():
             out = self.nordic([self.call(16, **kw)])
-            self.assertIn("所選到期無有效雙邊報價", out["monthly"]["unavailable"], label)
-            self.assertNotIn("年化權利金", out["monthly"]["unavailable"], label)
+            # A listed OTM call survives as an informational row, but cannot become a sell tier.
+            self.assertEqual(out["monthly"]["suggestions"], [], label)
+            self.assertEqual(out["monthly"]["quote_observation"]["kind"], "NO_TWO_SIDED", label)
+            self.assertIsNone(out["monthly"]["quote_observation"]["bid"], label)
             monthly = [h for h in out.health if h["cycle"] == "monthly"][0]
             self.assertEqual((monthly["read"], monthly["two_sided"]), (True, False), label)
         # no yield floor: a strike paying 0.01 is listed; a call with no out-of-the-money strike keeps the delta-cap reason
         cheap = self.nordic([self.call(16, bid="0.01", ask="0.02")])
         self.assertNotIn("unavailable", cheap["monthly"])
-        self.assertLess(cheap["monthly"]["suggestions"][0]["annualized_yield"], 0.02)
+        self.assertEqual(cheap["monthly"]["suggestions"], [])
+        self.assertLess(cheap["monthly"]["quote_observation"]["annualized_yield"], 0.06)
         miss = self.nordic([self.call(16, 90.0, bid="11.00", ask="11.20")])  # in the money: no out-of-the-money strike
         self.assertIn("沒有 Delta 不超過 0.20 且有雙邊報價的履約價", miss["monthly"]["unavailable"])
         self.assertNotIn("年化權利金", miss["monthly"]["unavailable"])
@@ -1907,6 +1919,10 @@ class NonUsTypedEvidenceTests(unittest.TestCase):
     def test_diagnostics_are_bounded_fixed_label_text(self):
         for out in (self.nordic([self.call(16, bid="", ask=""), self.call(51, bid="", ask="")]), self.nordic([None]), self.nordic([])):
             for cycle in ("weekly", "monthly"):
+                if "unavailable" not in out[cycle]:
+                    self.assertEqual(out[cycle]["suggestions"], [])
+                    self.assertEqual(out[cycle]["quote_observation"]["kind"], "NO_TWO_SIDED")
+                    continue
                 text = out[cycle]["unavailable"]
                 self.assertLessEqual(len(text), 180)
                 self.assertFalse(any(ord(ch) < 32 for ch in text))

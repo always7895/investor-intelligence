@@ -1449,13 +1449,18 @@ class OfficialPreviousQuarterTests(unittest.TestCase):
         sealed = self._seal(noisy)
         self.assertEqual(sealed["revenue_yoy_prev_source"], fund["revenue_yoy_prev_source"])   # extras stripped
         self.assertEqual((sealed["revenue_yoy_prev_basis"], sealed["revenue_yoy_prev"]), ("OFFICIAL_CURATED", 2735412 / 627130 - 1))
-        for key in ("revenue", "revenue_unit", "revenue_yoy_prev_reason"):
-            self.assertNotIn(key, sealed)
+        # The new additive estimate anchor retains only a positive quarterly number and its currency;
+        # the old reviewed evidence stays unchanged and unknown extras remain stripped.
+        self.assertEqual(sealed["revenue"], fund["revenue"])
+        self.assertEqual(sealed["revenue_unit"], fund["revenue_unit"])
+        self.assertNotIn("revenue_yoy_prev_reason", sealed)
         self.assertEqual(self._seal(sealed), sealed)   # resealing is idempotent
         if os.environ.get("II_WRITE_OFFICIAL_REVENUE_FIXTURE") == "1":
             self.FIXTURE.write_text(json.dumps({"generated_at": "2026-09-27T12:00:00Z", "symbol": "5351.TWO", "fundamentals": sealed},
                                                ensure_ascii=False, indent=1) + "\n", encoding="utf-8", newline="\n")
-        self.assertEqual(json.loads(self.FIXTURE.read_text(encoding="utf-8"))["fundamentals"], sealed)
+        recorded = json.loads(self.FIXTURE.read_text(encoding="utf-8"))["fundamentals"]
+        self.assertEqual({key: value for key, value in sealed.items()
+                          if key not in ("revenue", "revenue_unit")}, recorded)  # historic fixture remains stable
 
     def test_the_sealer_refuses_the_object_on_any_contradiction(self):
         fund = self._fund()
