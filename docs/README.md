@@ -1,12 +1,19 @@
 # 文件索引 / Documentation index
 
-Current acceptance register: [STATUS](../state/STATUS.md). Release identity: [README](../README.md) and each archive's own immutable refs/receipts. Historical dates, counts, model choices and approvals are not current authority.
+Current source, last recorded deployment observation and open work: [STATUS](../state/STATUS.md). Human overview: [README](../README.md). This index routes normative contracts, dated research and compatible historical paths; a Markdown link is not a live-validation receipt.
 
 本索引涵蓋所有Git可見Markdown（含新文件），由離線structure gate檢查；連結通過不代表事實或外部來源已重驗。檔案不為分類而搬移。
 
 ## Start here / 入口
 
 - [README](../README.md)
+- [Official guides and application](OFFICIAL_GUIDES.md)
+- [CONTRIBUTING](../CONTRIBUTING.md)
+- [SECURITY policy](../SECURITY.md)
+- [SUPPORT](../SUPPORT.md)
+- [CODE_OF_CONDUCT](../CODE_OF_CONDUCT.md)
+- [Issue template](../.github/ISSUE_TEMPLATE/bug_report.md)
+- [PR template](../.github/PULL_REQUEST_TEMPLATE.md)
 - [README.zh-TW](../README.zh-TW.md)
 - [AGENTS](../AGENTS.md)
 - [CLAUDE](../CLAUDE.md) — Claude Code entrypoint importing AGENTS.md
@@ -16,7 +23,7 @@ Current acceptance register: [STATUS](../state/STATUS.md). Release identity: [RE
 - [RESEARCH_EXECUTION_AUDIT](RESEARCH_EXECUTION_AUDIT.md)
 - [PERSONA_LOGIC_FULL](PERSONA_LOGIC_FULL.md)
 - [BOTTLENECK_CASE_STUDY_HITACHI_ENERGY_V1](BOTTLENECK_CASE_STUDY_HITACHI_ENERGY_V1.md)
-- [COMPANY_EVIDENCE_CANDIDATES_INVENTORY_V1](COMPANY_EVIDENCE_CANDIDATES_INVENTORY_V1.md) - admission candidates (GEV, Hitachi 6501, Meiden 6508, Siemens Energy ENR): distance to typed admission, blockers; runtime admitted 0
+- [COMPANY_EVIDENCE_CANDIDATES_INVENTORY_V1](COMPANY_EVIDENCE_CANDIDATES_INVENTORY_V1.md) — dated candidate evidence; check actual admission in source and STATUS
 
 ## How-to and maintenance / 操作與維護
 
@@ -58,7 +65,7 @@ Current acceptance register: [STATUS](../state/STATUS.md). Release identity: [RE
 - [SOURCE_ACTIVATION_PLAN_V1](SOURCE_ACTIVATION_PLAN_V1.md) — source activation wave plan
 - [INDUSTRY_ROTATION_V1](INDUSTRY_ROTATION_V1.md) — macro industry rotation from BLS PPI and SEC XBRL
 - [BOTTLENECK_TOP20_V3](BOTTLENECK_TOP20_V3.md) — bottleneck Top20 and the Leopold-led industry ranking
-- [REVENUE_GUIDANCE_AUTOUPDATE](REVENUE_GUIDANCE_AUTOUPDATE.md) — revenue guidance renewal from official filings (shadow only)
+- [REVENUE_GUIDANCE_AUTOUPDATE](REVENUE_GUIDANCE_AUTOUPDATE.md) — evidence-gated revenue guidance renewal; verify its present runtime mode
 - [TOP20_CARRY_FORWARD_V1](TOP20_CARRY_FORWARD_V1.md) — hourly seal of the validated LKG Top20, report-age contract, rollback
 - [SOURCE_DIVERSITY_AUDIT](SOURCE_DIVERSITY_AUDIT.md) — product-by-source matrix, rejected sources, remediation order
 - [GLOBAL_SOURCE_FEDERATION](GLOBAL_SOURCE_FEDERATION.md)

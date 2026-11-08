@@ -107,3 +107,10 @@ Tests verify maximum schema-length inputs, exact stock/field/value completeness,
 
 Deployment and whole-project acceptance remain separate; see [current status](CURRENT_STATUS_BILINGUAL.md).
 部署及全專案驗收另行判定，請見[目前狀態](CURRENT_STATUS_BILINGUAL.md)。
+
+
+## LINE platform limits vs this repository (officially documented)
+
+Official [Flex Messaging API](https://developers.line.biz/en/reference/messaging-api/) requires `altText` (up to 1500 characters); `cloud/src/line-messages.ts` deliberately imposes its own stricter `altText` length `<=400`, a maximum of five bubbles per carousel and a 28,000-byte bubble ceiling. `cloud/src/v213/line-theme.ts` packs within a 46,000-byte carousel budget. Never label local safety margins as LINE's platform maximum.
+
+LINE's [quick replies](https://developers.line.biz/en/docs/messaging-api/using-quick-reply/) can include up to 13 buttons, while [rich menus](https://developers.line.biz/en/docs/messaging-api/rich-menus-overview/) do not display on LINE for PC. These are platform capabilities, not a claim that the current installed account has a particular rich menu, quick reply, or new deployment. Device/OS differences can affect rendering. See [official-guide index](OFFICIAL_GUIDES.md).
