@@ -1,6 +1,6 @@
 # Current state / 目前狀態
 
-**As of 2026-11-08 (Asia/Taipei).** The integrated development source is `feat/v33-options-trend`, **HEAD `947b24a970d4914cace1a83d4c58959de5c77fc2`** (the source baseline at this review). The branch contains reviewed integration work, but its HEAD is **not** the installed Worker version. Recheck `git rev-parse HEAD` after subsequent integrations; this page records the project, not a task log.
+**As of 2026-11-08 (Asia/Taipei).** Release **`v3.3.0`** is the dual-accepted source snapshot **`8ff4b0722f71f983716b2accc1fadeb301e848e4`** (`feat/v33-options-trend`), merged to `main`. The commit that adds this page is documentation-only on top of that snapshot. The release is a source release; it is **not** the installed Worker version. This page records the project, not a task log.
 
 ## Production and rollout
 
@@ -13,14 +13,17 @@
 - **UI-R3:** reviewed LINE display design pass, with Chinese human-facing labels and raw-code safeguards; no claim that every source renderer is live in the installed Worker.
 - **GAP-C:** completed MOD → THRM distribution on 2026-10-01 (0.44619 THRM shares per MOD share). Because adjusted entitlement prices are not independently proven, historical returns crossing the distribution are withheld as **unknown, not zero**, and the positive long-term history gate excludes MOD from V3 Top20 until qualified.
 - **MIN-1:** documented minimization of obsolete paths, preserving required tests, install/release boundaries and source evidence.
-- **Official-guides documentation:** README, AGENTS/CLAUDE, GitHub community files, SKILL and topic documents were rewritten and checked on an isolated documentation branch; the master must integrate that patch into the final source head before release qualification.
-- The public-data/IBKR separation, paid-fallback refusal, rights/admission gates, sealed-object digest, snapshot freshness and rollback requirements remain mandatory. **`publication_eligible=false` until the final integrated HEAD satisfies its release evidence.** Source completion alone is not Production acceptance.
+- **Official-guides documentation:** README, AGENTS/CLAUDE, GitHub community files, SKILL and topic documents follow the official guides; every Markdown file is linked from `docs/README.md`.
+- The public-data/IBKR separation, paid-fallback refusal, rights/admission gates, sealed-object digest, snapshot freshness and rollback requirements remain mandatory. Source acceptance is not Production acceptance: `publication_eligible` stays false until a new rollout produces its own live evidence.
 
-## Next release actions
+## Release acceptance (v3.3.0)
 
-1. **Complete the full H5 gate on the final integrated HEAD**, including the relevant Windows/live, fail-closed and source-bound acceptance evidence. Treat missing, blocked or stale evidence as not qualified.
-2. After acceptance, **merge to `main`, create the requested tag and GitHub release** (operator requested); preserve immutable build/source identities and independent archive checks. This item is a release plan, not authorization for this documentation editor to perform the GitHub operations.
-3. Propose a **new rollout plan** for the combined product. Do not activate any deployment, schedule or `all_friends` access without the **master's GO and the operator's current-session approval**.
+- **Writer:** complete H5 gate `rel1-g2` on `8ff4b07`: 346 modules, 326 PASS, 20 BLOCKED as ruled before launch (host-bound modules), 0 FAIL; verdict PASS_AS_RULED.
+- **Independent reviewer:** separate ChatGPT review in its own clone: four gates, `cloud` typecheck and 2204 Vitest tests, release-scope Python modules all exit 0; no P0/P1. Receipts are kept in the local audit archive.
+
+## Next actions
+
+1. Propose a **new rollout plan** for the combined product. Do not activate any deployment, schedule or `all_friends` access without the **master's GO and the operator's current-session approval**.
 
 ## Open follow-ups
 
