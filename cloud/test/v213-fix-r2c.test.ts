@@ -78,11 +78,11 @@ describe("FIX-R2C display-only contract", () => {
     expect(humanizeStatusText("SYNTHETIC_EDUCATIONAL｜HISTORY_YOY_V1｜SEC_8K_EXHIBIT｜CURRENT_DATA_STALE")).not.toMatch(/_[A-Z0-9]+/);
     const data = "期權教學 SYNTHETIC_EDUCATIONAL";
     const raw = [{ type:"flex", altText:"SYNTHETIC_EDUCATIONAL", contents:{ type:"carousel", contents:[
-      { type:"bubble", body:{ type:"box", contents:[{ type:"text", text:"OFFICIAL_FISCAL_CALENDAR" }] },
+      { type:"bubble", body:{ type:"box", contents:[{ type:"text", text:"OFFICIAL_FISCAL_CALENDAR｜INSUFFICIENT_EVIDENCE" }] },
         footer:{ type:"box", contents:[{type:"button",action:{type:"postback",label:"SEC_8K_EXHIBIT",data}}]} }
     ]} }];
     const rendered = localizeLineMessages(raw);
-    expect(JSON.stringify(rendered)).not.toContain("OFFICIAL_FISCAL_CALENDAR");
+    expect(JSON.stringify(rendered[0]?.contents.contents[0]?.body)).not.toMatch(/\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+\b/);
     expect(rendered[0]?.contents.contents[0]?.footer.contents[0]?.action.data).toBe(data);
     expect(raw[0]?.altText).toBe("SYNTHETIC_EDUCATIONAL");
   });
