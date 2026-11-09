@@ -484,7 +484,7 @@ try {
             }
         }
     } catch {
-        if ($GuidanceMachinePublicationEnabled -and $_.Exception.Message -cin @('MACHINE_INPUTS_UNAVAILABLE','MACHINE_EVIDENCE_LIMIT','MACHINE_EXPORT_UNAVAILABLE','GUIDANCE_MACHINE_PROVIDER_UNAVAILABLE','BOOTSTRAP_REQUIRED')) {
+        if ($GuidanceMachinePublicationEnabled -and $_.Exception.Message -cin @('MACHINE_INPUTS_UNAVAILABLE','MACHINE_EVIDENCE_LIMIT','MACHINE_EXPORT_UNAVAILABLE','GUIDANCE_MACHINE_PROVIDER_UNAVAILABLE','BOOTSTRAP_REQUIRED','CONFIRMED_HEARTBEAT_UNAVAILABLE')) {
             $primaryCode=2; $primaryCategory=$_.Exception.Message
         } elseif ($primaryCode -eq 0) { $primaryCode=1; if ($primaryCategory -eq 'NONE') { $primaryCategory='PRIMARY_EXCEPTION' } }
     }

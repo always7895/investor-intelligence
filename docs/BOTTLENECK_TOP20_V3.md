@@ -426,6 +426,8 @@ Source implementation only: **IMPLEMENTED_UNVERIFIED**, not deployed or independ
   normal replay/sync performs all-object readback and pointer-last. An ambiguous pointer attempt invalidates local
   suppression proof until `sync.reconcile_confirmed_snapshot` verifies the actual remote pointer and every object.
   Transactions crossing UTC midnight reserve their full remaining bounded plan again before the next day's PUT.
+  A missing confirmed heartbeat fails closed with runner exit 2 and bounded
+  `CONFIRMED_HEARTBEAT_UNAVAILABLE`; it cannot become retained success or a new publication/ACK.
 - Serenity schema 4 distinguishes original/reply/quote/repost, deduplicates source identity/content across scoring and
   chronology, and records source/retrieval age and mirror status. An archive or oEmbed lookup does not authenticate
   an author's claim or create an independent source. Current source fingerprints exclude clock-derived decay; older
