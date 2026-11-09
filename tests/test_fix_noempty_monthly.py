@@ -67,7 +67,7 @@ def test_weekly_does_not_fill_missing_standard_monthly():
 
 @pytest.mark.parametrize("dte", range(7))
 @pytest.mark.parametrize("bid,ask,last", [(None,None,.09), (None,None,None), (.01,.04,None)])
-def test_short_standard_monthly_keeps_observation_and_finite_annualization(dte,bid,ask,last):
+def test_short_standard_monthly_keeps_source_evidence_and_finite_annualization(dte,bid,ask,last):
     today=date.fromisoformat(FIRST)-timedelta(days=dte)
     stamp=today.isoformat()+"T12:00:00Z"
     cycle=product._cycles_from_calls(
@@ -77,9 +77,15 @@ def test_short_standard_monthly_keeps_observation_and_finite_annualization(dte,b
         missing="no listed monthly",today=today,venue="STOCKHOLM",
         identity=product.NORDIC_OPTION_IDENTITY)["monthly"]
     assert cycle["expiry"]==FIRST
-    observation=cycle["quote_observation"]
-    price=bid if bid is not None else last
-    assert observation["annualized_yield"] == (None if price is None else round(price/SPOT*365/max(dte,1),6))
+    if bid is not None:
+        assert "quote_observation" not in cycle
+        assert cycle["suggestions"][0]["strike"] == 17.0
+        assert cycle["suggestions"][0]["limit_price"] == .02
+        assert cycle["suggestions"][0]["premium_per_contract"] == 2.0
+        assert cycle["suggestions"][0]["annualized_yield"] == pytest.approx(.02/SPOT*365/max(dte,1),abs=.000005)
+    else:
+        observation=cycle["quote_observation"]
+        assert observation["annualized_yield"] == (None if last is None else round(last/SPOT*365/max(dte,1),6))
     validate_covered_call_cycle(cycle,evaluated_at=stamp,document_at=stamp,period="monthly")
 
 

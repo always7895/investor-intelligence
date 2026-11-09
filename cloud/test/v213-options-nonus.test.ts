@@ -233,15 +233,15 @@ describe("OPTIONS-NONUS-02 bridge: exact Python-emitted bodies through the Worke
     expect(weekly).toContain("2026-10-02（2天）");
     expect(weekly).not.toContain("合約單位或幣別來源未確認");
     expect(weekly).not.toContain("無法解析");
-    const us = await sealedEnv("dte_us_matrix");
     admitSyntheticTickers("UYZERO", "UYONESIDED");
     for (const presentation of [false, true]) {
-      const observed = textOf(await reply(us, "UYZERO 每月期權", presentation));
+      const us = await sealedEnv("dte_us_matrix", { flex: presentation });
+      const observed = textOf(await reply(us, "UYZERO 每月期權"));
       expect(observed).toContain("2026-10-16");
       expect(observed).toContain("無雙邊報價");
       expect(observed).not.toContain("建議賣出限價");
       for (const period of ["每週期權", "每月期權"]) {
-        const recommended = textOf(await reply(us, `UYONESIDED ${period}`, presentation));
+        const recommended = textOf(await reply(us, `UYONESIDED ${period}`));
         expect(recommended).toContain("建議賣出限價 $0.50");
         expect(recommended).toContain("Bid $0.50");
         expect(recommended).toContain("中價 未提供");
