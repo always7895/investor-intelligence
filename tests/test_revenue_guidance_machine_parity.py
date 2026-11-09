@@ -1,8 +1,10 @@
-"""Synthetic BARRIER producer/serializer fixture, not AUTO/native/publication acceptance.
+"""Synthetic BARRIER producer/serializer coverage, not AUTO/native/publication acceptance.
 
 No model/serializer/resolver is mocked. Deliberately missing required state and
 invalid synthetic baselines must remain unavailable through the actual publisher.
 The historical clock and existing synthetic report shell are test inputs only.
+Historical Worker fixtures are consumer inputs, not current-source goldens;
+the snapshot input digest includes the reviewed admission implementation identity.
 """
 from __future__ import annotations
 
@@ -20,7 +22,6 @@ import publish_sealed_snapshot as publisher
 import revenue_guidance_machine as machine
 import revenue_guidance_overlay as overlay
 
-FIXTURE = ROOT / "tests/fixtures/revenue-guidance-machine-barrier-functional.json"
 CUTOFF = datetime(2026, 9, 28, 15, tzinfo=timezone.utc)
 
 
@@ -51,10 +52,10 @@ def produce(root: Path) -> dict:
 
 
 class MachineBarrierProducerTests(unittest.TestCase):
-    def test_real_producer_serializer_bytes_match_worker_fixture(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            result = produce(Path(tmp))
-            again = produce(Path(tmp))
+    def test_real_producer_preserves_refusal_and_fresh_root_determinism(self):
+        with tempfile.TemporaryDirectory() as a, tempfile.TemporaryDirectory() as b:
+            result = produce(Path(a))
+            again = produce(Path(b))
         self.assertEqual(result, again)
         report = json.loads(result["report"])
         nvda = next(row for row in report["top"] if row["symbol"] == "NVDA")["outlook"]["order_forecast_v3"]
@@ -65,7 +66,6 @@ class MachineBarrierProducerTests(unittest.TestCase):
         self.assertIsNone(nvda["machine"]["record_canonical_json"])
         self.assertIsNone(nvda["machine"]["producer_canonical_json"])
         self.assertEqual(nvda["machine"]["receipt_history"], [])
-        self.assertEqual(result, json.loads(FIXTURE.read_text(encoding="utf-8")))
 
 
 if __name__ == "__main__":

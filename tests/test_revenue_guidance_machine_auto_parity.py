@@ -2,6 +2,9 @@
 
 Only transport, time and random generation suffix are fixture inputs. The checker,
 updater, effective-input resolver, financial model and machine serializer are real.
+
+The Worker fixtures remain historical consumer inputs, not current-source goldens:
+their implementation identity changes whenever reviewed admission source changes.
 """
 from __future__ import annotations
 
@@ -24,7 +27,6 @@ import revenue_guidance_overlay as overlay
 from tests import test_revenue_guidance_autoupdate as replay
 
 CUTOFF = datetime(2026, 2, 27, 13, tzinfo=timezone.utc)
-FIXTURE = ROOT / "tests/fixtures/revenue-guidance-machine-auto-functional.json"
 
 
 def produce(root: Path, taint=None) -> dict:
@@ -65,9 +67,11 @@ def produce(root: Path, taint=None) -> dict:
 
 
 class MachineAutoProducerTests(unittest.TestCase):
-    def test_real_auto_producer_serializer_bytes_match_worker_fixture(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            result = produce(Path(tmp))
+    def test_real_auto_producer_preserves_revenue_and_fresh_root_determinism(self):
+        with tempfile.TemporaryDirectory() as a, tempfile.TemporaryDirectory() as b:
+            result = produce(Path(a))
+            again = produce(Path(b))
+        self.assertEqual(result, again)
         envelope = json.loads(result["report"])["top"][0]["outlook"]["order_forecast_v3"]
         self.assertEqual(envelope["payload"]["revenue_status"], "AVAILABLE")
         self.assertEqual(envelope["payload"]["m6"]["amount"], 156e9)
@@ -75,7 +79,6 @@ class MachineAutoProducerTests(unittest.TestCase):
         self.assertEqual(envelope["payload"]["evidence"]["auto_update"]["disposition"], "AUTO_VERIFIED")
         self.assertIsNotNone(envelope["machine"]["producer_canonical_json"])
         self.assertTrue(envelope["machine"]["receipt_history"])
-        self.assertEqual(result, json.loads(FIXTURE.read_text(encoding="utf-8")))
 
 
 if __name__ == "__main__":

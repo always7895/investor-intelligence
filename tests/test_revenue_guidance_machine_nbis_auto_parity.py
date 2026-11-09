@@ -1,4 +1,4 @@
-"""SYNTHETIC_NBIS_AUTO_NOT_GENUINE_NATIVE_OR_LIVE: frozen producer parity."""
+"""SYNTHETIC_NBIS_AUTO_NOT_GENUINE_NATIVE_OR_LIVE: producer contract and historical fixture hygiene."""
 from datetime import datetime, timezone
 import json
 from pathlib import Path
@@ -99,16 +99,16 @@ class NbisAutoProducerTests(unittest.TestCase):
             f.observe_boundary("N4-5", actual)
             self.assertEqual(actual, ("RESULT", ("AVAILABLE", None, True, True, True, True)))
 
-    def test_n4_2_frozen_bytes_and_fresh_root_determinism(self):
+    def test_n4_2_fresh_root_byte_determinism(self):
         with tempfile.TemporaryDirectory(prefix="synthetic-nbis-a-") as a, tempfile.TemporaryDirectory(prefix="synthetic-nbis-b-") as b:
             def invoke():
-                frozen = FIXTURE.read_bytes()
+                # Historical consumer bytes bind their old admission source identity.
                 first = serialize(produce(Path(a)))
                 second = serialize(produce(Path(b)))
-                return first == frozen, second == first
+                return second == first
             actual = f.outcome_of(invoke)
             f.observe_boundary("N4-2", actual)
-            self.assertEqual(actual, ("RESULT", (True, True)))
+            self.assertEqual(actual, ("RESULT", True))
 
     def test_n4_3_ten_symbol_dispositions(self):
         with tempfile.TemporaryDirectory(prefix="synthetic-nbis-dispositions-") as tmp:

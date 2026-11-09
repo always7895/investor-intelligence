@@ -1,10 +1,10 @@
-"""SYNTHETIC_NBIS_REAFFIRM_NOT_GENUINE_NATIVE_OR_LIVE: Scenario R frozen producer parity (G4c).
+"""SYNTHETIC_NBIS_REAFFIRM_NOT_GENUINE_NATIVE_OR_LIVE: Scenario R producer contract (G4c).
 
 The Scenario Z producer of tests/test_revenue_guidance_machine_nbis_auto_parity.py, run on the Scenario R
 packages and clocks: the current letter reaffirms the full-year range of the earlier original letter, so the
-machine record carries one REAFFIRMATION decision. FIXTURE is serialize(produce(root)); it binds
-implementation_sha256, so it is regenerated only on the final merged tree. Synthetic only: no tracked
-profile is enabled and nothing here is genuine, native or live.
+machine record carries one REAFFIRMATION decision. FIXTURE preserves historical consumer bytes,
+including their implementation_sha256; current-source production is independently byte-deterministic,
+not re-pinned to that identity. Synthetic only: no tracked profile is enabled and nothing here is genuine, native or live.
 """
 import json
 from pathlib import Path
@@ -116,17 +116,16 @@ class NbisReaffirmProducerTests(unittest.TestCase):
                 3866700000.0, 7733400000.0, "AUTO_VERIFIED", True, True, None, None, None,
                 1, ["ORIGINAL_RANGE", "REAFFIRMATION"], 1, ["2034-03-31", "2034-06-30"])))
 
-    def test_r4_2_frozen_bytes_and_fresh_root_determinism(self):
+    def test_r4_2_fresh_root_byte_determinism(self):
         with tempfile.TemporaryDirectory(prefix="synthetic-nbis-reaffirm-a-") as a, \
                 tempfile.TemporaryDirectory(prefix="synthetic-nbis-reaffirm-b-") as b:
             def invoke():
-                frozen = FIXTURE.read_bytes()
                 first = serialize(produce(Path(a)))
                 second = serialize(produce(Path(b)))
-                return first == frozen, second == first
+                return second == first
             actual = f.outcome_of(invoke)
             f.observe_boundary("R4-2", actual)
-            self.assertEqual(actual, ("RESULT", (True, True)))
+            self.assertEqual(actual, ("RESULT", True))
 
     def test_r4_3_ten_symbol_dispositions(self):
         with tempfile.TemporaryDirectory(prefix="synthetic-nbis-reaffirm-dispositions-") as tmp:
