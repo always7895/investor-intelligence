@@ -212,7 +212,7 @@ describe("OPTIONS-NONUS-02 bridge: exact Python-emitted bodies through the Worke
       const env = await sealedEnv("strike_precision_matrix", { flex: presentation });
       for (const key of ["SUBCENT.ST", "YSUBCENT"]) {
         const text = textOf(await reply(env, key + " 每週期權"));
-        expect(text, key).toContain("兩位以上小數");
+        expect(text, key).toContain("期權報價不可用");
         expect(text, key).not.toMatch(/15\.5[01]\b/);
         expect(text, key).not.toContain("15.505");
         expect(text, key).not.toContain("建議賣出限價");

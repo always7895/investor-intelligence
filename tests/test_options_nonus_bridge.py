@@ -179,7 +179,10 @@ class BridgeFixtureTests(unittest.TestCase):
             self.assertIn("2026-10-16", terms[key]["monthly"]["unavailable"], key)
         for key in ("QNOQUOTE.ST", "QONESIDED.ST", "QZERO.ST", "QCROSSED.ST", "QLASTSALE.ST", "QMISS.ST"):
             self.assertEqual(terms[key]["monthly"]["suggestions"], [], key)
-            self.assertFalse(terms[key]["monthly"].get("strategies"), key)
+            strategies = terms[key]["monthly"]["strategies"]
+            self.assertEqual(set(strategies), {"cc", "csp", "collar"}, key)
+            for block in strategies.values():
+                self.assertEqual(set(block), {"unavailable"}, key)  # Diagnostics never become executable legs.
         last_sale = terms["QLASTSALE.ST"]["monthly"]["quote_observation"]
         self.assertEqual((last_sale["kind"], last_sale["bid"], last_sale["ask"], last_sale["last"]),
                          ("NO_TWO_SIDED", None, None, 0.55))

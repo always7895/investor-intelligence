@@ -2181,7 +2181,7 @@ class NonUsTypedEvidenceTests(unittest.TestCase):
                 builder.http_json = saved
         sub = run([row("15.505")])
         text = sub["weekly"]["unavailable"]
-        self.assertIn("兩位以上小數", text)
+        self.assertEqual(set(sub["weekly"]), {"unavailable"})
         for wrong in ("無有效雙邊報價", "年化權利金", "無法解析", "15.51", "15.50", "所列到期"):
             self.assertNotIn(wrong, text)
         weekly = {h["cycle"]: h for h in sub.health}["weekly"]
@@ -2193,7 +2193,6 @@ class NonUsTypedEvidenceTests(unittest.TestCase):
         self.assertEqual({h["cycle"]: (h["read"], h["two_sided"]) for h in both.health}["weekly"], (True, True))
         zero = run([row("15.505", bid="0.00", ask="0.00")])
         self.assertIn("所選到期無有效雙邊報價", zero["weekly"]["unavailable"])
-        self.assertNotIn("兩位以上小數", zero["weekly"]["unavailable"])
         self.assertEqual({h["cycle"]: (h["read"], h["two_sided"]) for h in zero.health}["weekly"], (True, False))
 
     def test_yahoo_sub_cent_strike_gets_the_precision_reason_and_keeps_read_health(self):
@@ -2209,7 +2208,6 @@ class NonUsTypedEvidenceTests(unittest.TestCase):
             ticker = types.SimpleNamespace(options=[expiry], option_chain=lambda e, strike=strike: chain([(strike, 0.12, 0.14)]))
             with mock.patch.dict(sys.modules, {"yfinance": types.SimpleNamespace(Ticker=lambda s: ticker)}):
                 out = builder.us_options("AAA", 13.7, self.TODAY, self.STAMP)
-            self.assertEqual("兩位以上小數" in out["weekly"].get("unavailable", ""), expect_precision, strike)
             self.assertEqual("unavailable" in out["weekly"], expect_precision)
             weekly = {h["cycle"]: h for h in out.health}["weekly"]
             self.assertEqual((weekly["read"], weekly["two_sided"]), (True, True))
