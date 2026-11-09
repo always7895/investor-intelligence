@@ -118,7 +118,6 @@ MIN_COMPLETED_SHARE = 0.5
 CYCLES = {"weekly": rules.WEEKLY_DTE_BUCKET, "monthly": rules.MONTHLY_DTE_BUCKET}
 RISK_FREE = 0.04
 MAX_HIGH_STRIKE_DELTA = 0.20  # the high-strike suggestion keeps the model assignment reference low
-MONTHLY_ANNUAL_HURDLE = 0.06
 BALANCED_DELTA = 0.30
 BALANCED_MONEYNESS = 1.05     # when a lower strike has no delta at all, about 5% out of the money
 MIDDLE_DELTA = rules.MIDDLE_DELTA          # the middle tier sits between HIGH_STRIKE (<= 0.20) and BALANCED (0.30)
@@ -738,7 +737,7 @@ def _monthly_quote_observation(ticker: str, spot: float, choices: list["rules.Mo
                                currency: str, source: str, provenance: str, rights: str,
                                identity: dict[str, str] | None, cc_reason: str,
                                puts: list[dict[str, Any]] | None = None) -> dict[str, Any] | None:
-    """Observation-only quote when the 6%+ strategy cannot be shown.
+    """Observation-only quote when the call fails strike, delta or quote eligibility.
     The two-sided bid (not mid) defines annualized collectible premium; without it,
     a LAST quote is purely indicative. Neither lane qualifies as a recommendation."""
     if not _is_finite_positive(spot) or not choices:
@@ -777,7 +776,7 @@ def _monthly_quote_observation(ticker: str, spot: float, choices: list["rules.Mo
     if identity is not None:
         result.update(identity)
     # A call observation is not an eligible sell tier: preserve whether the cause
-    # was missing quotes, strike eligibility, or low premium. Independently valid
+    # was missing quotes or strike/delta eligibility. Independently valid
     # put strategies from the same expiry retain their own source-backed evidence.
     same_calls = [r for r in calls if r.get("expiry") == best["expiry"]]
     same_puts = [r for r in (puts or []) if r.get("expiry") == best["expiry"] and r.get("size") == 100]
@@ -833,9 +832,8 @@ def _cycles_from_calls(calls: list[dict[str, Any]], ticker: str, spot: float, st
             # The nearest standard expiry is binding even when quotes or deltas are unusable.
             if monthly is not None:
                 tiers, _ = covered_call_tiers(window, spot, window[0]["dte"]) if window else ([],None)
-                if not tiers or not any(tier["annualized_yield"] >= MONTHLY_ANNUAL_HURDLE for tier in tiers):
-                    cc_reason = ("低於6%門檻，買權僅作報價觀察；不構成備兌買權建議" if tiers else
-                                 _covered_call_unavailable(window, spot, (monthly.expiry - today).days, monthly.expiry.isoformat()))
+                if not tiers:
+                    cc_reason = _covered_call_unavailable(window, spot, (monthly.expiry - today).days, monthly.expiry.isoformat())
                     observation = _monthly_quote_observation(
                         ticker, spot, [monthly], calls, stamp, today, currency=currency, source=source,
                         provenance=provenance, rights=rights, identity=identity, cc_reason=cc_reason, puts=puts)

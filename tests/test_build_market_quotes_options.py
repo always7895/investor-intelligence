@@ -49,7 +49,7 @@ class SuggestionTests(unittest.TestCase):
         rows = [row(95, 7, 7.2, 0.7), row(105, 2.0, 2.1, 0.33), row(110, 1.0, 1.05, 0.2), row(115, 0.6, 0.65, 0.15),
                 row(125, 0.3, 0.35, 0.08), row(140, 0.05, 0.1, 0.02), row(150, 0.4, 5.0, 0.01)]
         suggestions = builder.covered_call_suggestions(rows, spot, dte)
-        # No annualized-yield floor (removed 2026-11-03; it was 6%, then 2%): 140 pays only 0.05 on the bid = 0.61% annualized, which the old floors refused,
+        # No annualized-yield floor: 140 pays only 0.05 on the bid = 0.61% annualized,
         # but it is the highest out-of-the-money strike with a two-sided quote and delta 0.02, so it is the high strike. 150 stays out (spread over the mid).
         self.assertEqual([s["role"] for s in suggestions], ["HIGH_STRIKE", "BALANCED"])
         self.assertEqual(suggestions[0]["strike"], 140)
@@ -950,9 +950,9 @@ class OptionPresessionAcceptanceTests(unittest.TestCase):
             self.assertEqual(d_few["error"], "TOO_FEW_QUOTES")
 
     def test_04_strategy_independent_health(self):
-        """Matrix Item 4: two-sided chains whose strikes are all ITM, yield too little, lack an
-        acceptable delta or exceed strategy spread limits remain healthy for detection even with zero
-        suggestions; normal unavailability is written. Do not replace strategy rules with this health rule."""
+        """Matrix Item 4: two-sided ITM, delta-ineligible or wide-spread chains stay healthy
+        even with no strategy. Low yield alone remains eligible.
+        Do not replace strategy rules with this health rule."""
         spot = 100.0
         # 1. All ITM (strike 80 < spot 100)
         row_itm = CallRow(strike=80.0, bid=21.0, ask=21.5, impliedVolatility=0.3, volume=10, openInterest=5)
@@ -968,8 +968,9 @@ class OptionPresessionAcceptanceTests(unittest.TestCase):
         sys.modules["yfinance"] = FakeYFinanceModule({"TEST_SYM": no_floor})
         listed = builder.us_options("TEST_SYM", spot, self.TODAY, self.STAMP)["monthly"]
         self.assertNotIn("unavailable", listed)
-        self.assertLess(listed["quote_observation"]["annualized_yield"], 0.02)
-        self.assertEqual(listed["suggestions"], [])  # the low bid is an observation, not a sell recommendation
+        self.assertNotIn("quote_observation", listed)
+        self.assertTrue(listed["suggestions"])
+        self.assertLess(listed["suggestions"][0]["annualized_yield"], 0.02)
         for test_row in [row_itm, row_high_delta, row_wide_spread]:
             ticker = FakeTicker("TEST_SYM", price=spot, options=[expiry_date], chains={expiry_date: [test_row]})
             sys.modules["yfinance"] = FakeYFinanceModule({"TEST_SYM": ticker})
@@ -1904,8 +1905,9 @@ class NonUsTypedEvidenceTests(unittest.TestCase):
         # no yield floor: a strike paying 0.01 is listed; a call with no out-of-the-money strike keeps the delta-cap reason
         cheap = self.nordic([self.call(16, bid="0.01", ask="0.02")])
         self.assertNotIn("unavailable", cheap["monthly"])
-        self.assertEqual(cheap["monthly"]["suggestions"], [])
-        self.assertLess(cheap["monthly"]["quote_observation"]["annualized_yield"], 0.06)
+        self.assertNotIn("quote_observation", cheap["monthly"])
+        self.assertTrue(cheap["monthly"]["suggestions"])
+        self.assertAlmostEqual(cheap["monthly"]["suggestions"][0]["annualized_yield"], .01 / 100 * 365 / 16, places=6)
         miss = self.nordic([self.call(16, 90.0, bid="11.00", ask="11.20")])  # in the money: no out-of-the-money strike
         self.assertIn("沒有 Delta 不超過 0.20 且有雙邊報價的履約價", miss["monthly"]["unavailable"])
         self.assertNotIn("年化權利金", miss["monthly"]["unavailable"])
@@ -2064,7 +2066,9 @@ class NonUsTypedEvidenceTests(unittest.TestCase):
         with mock.patch.dict(sys.modules, {"yfinance": types.SimpleNamespace(Ticker=lambda s: ticker)}):
             miss = builder.us_options("AAA", 100.0, self.TODAY, self.STAMP)
         self.assertNotIn("unavailable", miss["monthly"])
-        self.assertEqual(miss["monthly"]["quote_observation"]["kind"], "TWO_SIDED")  # positive bid, but below strategy hurdle
+        self.assertNotIn("quote_observation", miss["monthly"])
+        self.assertTrue(miss["monthly"]["suggestions"])
+        self.assertLess(miss["monthly"]["suggestions"][0]["annualized_yield"], 0.02)
         self.assertEqual([(h["read"], h["two_sided"]) for h in miss.health if h["cycle"] == "monthly"], [(True, True)])
 
     def test_only_strikes_the_two_decimal_display_represents_exactly_are_recommended(self):

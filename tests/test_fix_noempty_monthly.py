@@ -26,13 +26,13 @@ def run_monthly(rows):
 def check(cycle):
     validate_covered_call_cycle(cycle,evaluated_at=STAMP,document_at=STAMP,period="monthly")
 
-def test_nearest_standard_monthly_below_hurdle_is_visible_not_unavailable():
+def test_nearest_standard_monthly_low_yield_is_still_a_strategy():
     got=run_monthly([row(FIRST,12,17.0,.01,.02),row(SECOND,40,18.0,2.0,2.1)])
     assert "unavailable" not in got
-    assert got["quote_observation"]["kind"]=="TWO_SIDED"
+    assert "quote_observation" not in got
     assert got["expiry"]==FIRST
-    assert got["suggestions"]==[]
-    assert 0<got["quote_observation"]["annualized_yield"]<.06
+    assert got["suggestions"]
+    assert 0<got["suggestions"][0]["annualized_yield"]<.02
     check(got)
 
 def test_no_two_sided_but_last_trade_keeps_observation_and_does_not_claim_bid():
@@ -51,11 +51,11 @@ def test_missing_quote_values_never_fabricate_premium_or_yield():
     check(got)
 
 def test_observation_rejects_changed_annual_or_weekly_label():
-    cycle=run_monthly([row(FIRST,12,17.0,.01,.02)])
+    cycle=run_monthly([row(FIRST,12,17.0,None,None,.01)])
     cycle["quote_observation"]["annualized_yield"]=.99
     with pytest.raises(MarketProductValidationError):
         check(cycle)
-    cycle=run_monthly([row(FIRST,12,17.0,.01,.02)])
+    cycle=run_monthly([row(FIRST,12,17.0,None,None,.01)])
     with pytest.raises(MarketProductValidationError):
         validate_covered_call_cycle(cycle,evaluated_at=STAMP,document_at=STAMP,period="weekly")
 
@@ -66,7 +66,7 @@ def test_weekly_does_not_fill_missing_standard_monthly():
 
 
 @pytest.mark.parametrize("dte", range(7))
-@pytest.mark.parametrize("bid,ask,last", [(None,None,.09), (None,None,None), (.001,.002,None)])
+@pytest.mark.parametrize("bid,ask,last", [(None,None,.09), (None,None,None), (.01,.04,None)])
 def test_short_standard_monthly_keeps_observation_and_finite_annualization(dte,bid,ask,last):
     today=date.fromisoformat(FIRST)-timedelta(days=dte)
     stamp=today.isoformat()+"T12:00:00Z"

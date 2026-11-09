@@ -45,26 +45,31 @@ describe("G01 nearest standard monthly with no minimum DTE",()=>{
  });
 });
 describe("G02 covered call, CSP and protective collar require independently validated real legs",()=>{
- it("shows all three verified strategies on a source-backed monthly chain (text + Flex)",()=>{
+ it("shows low-yield eligible CC beside CSP and collar without a premium hurdle (text + Flex)",()=>{
    const cycle=validateCoveredCallCycle(qualified,now,stamp,"monthly");
    expect(cycle).not.toBeNull();
    expect(cycle?.suggestions.length).toBeGreaterThan(0);
+   expect(cycle?.quote_observation).toBeUndefined();
+   expect(cycle!.suggestions.every(item=>item.annualized_yield>0 && item.annualized_yield<.02)).toBe(true);
    const text=msgText(buildCoveredCallMessages(cycle!,"每月期權","text"));
    for(const label of ["備兌買權","現金擔保賣權","領口策略","保護賣權","限價","年化","非個人化投資建議"])
       expect(text).toContain(label);
+   expect(text).not.toMatch(/6[%％].{0,4}門檻/);
    expect(text).not.toContain("舊版資料");
    const flex=buildCoveredCallMessages(cycle!,"每月期權","flex");
    expect(flex[0]?.type).toBe("flex");
    expect(JSON.stringify(flex)).toContain("領口策略");
+   expect(JSON.stringify(flex)).not.toMatch(/6[%％].{0,4}門檻/);
  });
- it("low-premium CC remains observation only while genuine CSP/collar stay independently visible",()=>{
+ it("delta-ineligible CC stays an observation while genuine CSP/collar remain visible",()=>{
    const cycle=validateCoveredCallCycle(observed,now,stamp,"monthly");
    expect(cycle).not.toBeNull();
    expect(cycle?.suggestions).toHaveLength(0);
    expect(cycle?.quote_observation?.kind).toBe("TWO_SIDED");
    const text=msgText(buildCoveredCallMessages(cycle!,"每月期權","text"));
-   for(const label of ["低於6%門檻","現金擔保賣權","領口策略","保護賣權","無雙邊報價","延遲來源觀察"])
-     if(label!=="無雙邊報價")expect(text).toContain(label);
+   for(const label of ["未符合保守策略篩選","現金擔保賣權","領口策略","保護賣權","延遲來源觀察"])
+     expect(text).toContain(label);
+   expect(text).not.toMatch(/6[%％].{0,4}門檻/);
    const flex=buildCoveredCallMessages(cycle!,"每月期權","flex");
    expect(flex).toHaveLength(1);
    expect(JSON.stringify(flex)).toContain("現金擔保賣權");

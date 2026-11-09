@@ -23,16 +23,20 @@ const sample=()=>({
    annualized_yield:Math.round((.02/15.5*365/12)*1e6)/1e6,oi:100,volume:5}
 });
 describe("observation-only monthly call is not a recommendation",()=>{
- test("SIVE-shaped two-sided low yield is valid and the LINE line shows strike, expiry, quote, yield and basis",()=>{
+ test("sealed observation remains non-executable without inventing a yield threshold",()=>{
   const c=validateCoveredCallCycle(sample(),Date.parse(stamp),stamp,"monthly");
   expect(c).not.toBeNull();
   const t=buildCoveredCallMessages(c!,"每月期權","text");
   expect(t).toHaveLength(1);
-  const line=(t[0] as any).text as string;
-  for(const phrase of ["SIVE.ST","2026-11-20","17.00","Bid","Ask","參考年化","低於6%門檻","報價觀察","非交易建議"])
+  const message=t[0];
+  if(message?.type!=="text")throw new Error("Expected text observation");
+  const line=message.text;
+  for(const phrase of ["SIVE.ST","2026-11-20","17.00","Bid","Ask","參考年化","未符合保守策略篩選","報價觀察","非交易建議"])
     expect(line).toContain(phrase);
+  expect(line).not.toMatch(/6[%％].{0,4}門檻/);
   const flex=buildCoveredCallMessages(c!,"每月期權","flex");
   expect(flex).toHaveLength(1);
+  expect(JSON.stringify(flex)).not.toMatch(/6[%％].{0,4}門檻/);
  });
  test("no two sided uses last only, never invents bid/ask",()=>{
   const c=sample();

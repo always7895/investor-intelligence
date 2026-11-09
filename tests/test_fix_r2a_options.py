@@ -13,10 +13,14 @@ EX="2026-11-20"
 def row(strike,bid,ask,iv,*,put=False):
     return {"expiry":EX,"dte":12,"strike":strike,"bid":bid,"ask":ask,"iv":iv,
             "size":100,"oi":200,"volume":10}
-def candidate(two_sided=True):
+def candidate(two_sided=True, *, only_delta_ineligible=False, low_put_premium=False):
     calls=[row(107.5,0.01,0.02,0.50),row(110,0.01,0.02,0.50),
            row(120,0.01,0.02,0.5)]
     puts=[row(90,0.25,0.30,0.7,put=True),row(95,0.55,0.65,0.50,put=True)]
+    if only_delta_ineligible:
+        calls=calls[:1]  # source IV gives delta 0.23: fails CC cap, still within collar band
+    if low_put_premium:
+        for p in puts:p["bid"]=.01;p["ask"]=.02
     if not two_sided:
         for c in calls:c["bid"]=None;c["ask"]=None
     return builder._cycles_from_calls(calls,"UNIT",100,STAMP,currency="USD",
@@ -27,9 +31,10 @@ def candidate(two_sided=True):
 def test_monthly_three_strategies_are_independent_from_low_premium_quote():
     cycle=candidate()
     assert "unavailable" not in cycle
-    assert cycle["quote_observation"]["kind"]=="TWO_SIDED"
-    assert cycle["suggestions"]==[]
-    assert cycle["strategies"]["cc"]["unavailable"]
+    assert "quote_observation" not in cycle
+    assert cycle["suggestions"]
+    assert all(0 < row["annualized_yield"] < .02 for row in cycle["suggestions"])
+    assert "cc" not in cycle["strategies"]
     assert ("unavailable" not in cycle["strategies"]["csp"] or
             "unavailable" not in cycle["strategies"]["collar"])
     validate_covered_call_cycle(cycle,STAMP,STAMP,"monthly")
@@ -40,6 +45,25 @@ def test_monthly_no_two_sided_call_keeps_safe_put_strategy_only():
     assert cycle["quote_observation"]["annualized_yield"] is None
     if "strategies" in cycle:
         assert cycle["strategies"]["cc"]["unavailable"]
+    validate_covered_call_cycle(cycle,STAMP,STAMP,"monthly")
+
+
+def test_low_yield_csp_and_cc_survive_the_real_monthly_producer():
+    cycle=candidate(low_put_premium=True)
+    assert cycle["suggestions"] and "quote_observation" not in cycle
+    csp=cycle["strategies"]["csp"]["suggestions"]
+    assert csp and all(0 < item["annualized_yield"] < .02 for item in csp)
+    assert all(.20 <= item["delta"] <= .30 and item["strike"] < cycle["spot"] for item in csp)
+    validate_covered_call_cycle(cycle,STAMP,STAMP,"monthly")
+
+
+def test_delta_ineligible_low_quote_remains_observation_with_independent_put_legs():
+    cycle=candidate(only_delta_ineligible=True)
+    assert cycle["suggestions"]==[]
+    assert cycle["quote_observation"]["strike"]==107.5
+    assert "Delta" in cycle["strategies"]["cc"]["unavailable"]
+    assert "unavailable" not in cycle["strategies"]["csp"]
+    assert "unavailable" not in cycle["strategies"]["collar"]
     validate_covered_call_cycle(cycle,STAMP,STAMP,"monthly")
 
 def test_monthly_weekly_expiry_cannot_pass_python_format_validator():
@@ -171,3 +195,16 @@ def test_nordic_rechecks_nearest_standard_then_refuses_if_not_listed():
         else:
             assert set(cycle)=={"unavailable"}
             assert "2026-11-20" in cycle["unavailable"]
+
+
+if __name__ == "__main__":
+    import argparse
+    parser=argparse.ArgumentParser(description="Generate explicitly synthetic renderer cases through the real monthly producer.")
+    parser.add_argument("--write-render-fixtures",action="store_true",required=True)
+    parser.parse_args()
+    cases={"fix-r2a-qualified.json":candidate(),
+           "fix-r2a-observation.json":candidate(only_delta_ineligible=True)}
+    for filename,cycle in cases.items():
+        validate_covered_call_cycle(cycle,STAMP,STAMP,"monthly")
+        (ROOT/"cloud"/"test"/"fixtures"/filename).write_text(
+            json.dumps(cycle,ensure_ascii=False,indent=2)+"\n",encoding="utf-8",newline="\n")

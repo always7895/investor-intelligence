@@ -559,7 +559,7 @@ def case_terms_and_quote_states() -> tuple[str, str, list[dict[str, Any]], Any]:
         chain("QCROSSED", nordic_row("QCROSSED", 16, k16, bid="0.60", ask="0.50")),
         chain("QLASTSALE", nordic_row("QLASTSALE", 16, k16, lastSalePrice="0.55", settlementPrice="0.55", openInterest="500", volume="40")),
         chain("QMISS", nordic_row("QMISS", 16, 101.0, bid="4.00", ask="4.20")),  # an out-of-the-money strike whose quote implies a delta over the 0.20 cap
-        chain("QCHEAP", nordic_row("QCHEAP", 16, k16, bid="0.01", ask="0.02")),  # listed but below the monthly recommendation hurdle
+        chain("QCHEAP", nordic_row("QCHEAP", 16, k16, bid="0.01", ask="0.02")),  # low premium is not a selection hurdle
         chain("QGOOD", nordic_row("QGOOD", 16, k16, bid=b16, ask=a16)),
         chain("TSZEXACT", nordic_row("TSZEXACT", 16, k16, bid=b16, ask=a16, size="100.00")),
         chain("TSZLEADING", nordic_row("TSZLEADING", 16, k16, bid=b16, ask=a16, size="0100")),
@@ -581,7 +581,10 @@ def case_terms_and_quote_states() -> tuple[str, str, list[dict[str, Any]], Any]:
             expect_observation(case, bodies, f"{root}.ST", currency="SEK", dte=16, strike=k16)
         expect_observation(case, bodies, "QLASTSALE.ST", currency="SEK", dte=16, strike=k16, last=0.55)
         expect_observation(case, bodies, "QMISS.ST", currency="SEK", dte=16, strike=101.0, bid=4.0, ask=4.2)
-        expect_observation(case, bodies, "QCHEAP.ST", currency="SEK", dte=16, strike=k16, bid=0.01, ask=0.02)
+        expect_available(case, bodies, "QCHEAP.ST", "monthly", currency="SEK")
+        cheap = cycle_of(bodies, "QCHEAP.ST", "monthly")
+        assert "quote_observation" not in cheap and cheap["suggestions"]
+        assert cheap["suggestions"][0]["limit_price"] == 0.01
         expect_available(case, bodies, "QGOOD.ST", "monthly", currency="SEK")
         expect_available(case, bodies, "TSZEXACT.ST", "monthly", currency="SEK")  # a validated exact-100 numeric representation
         for root in ("TSZLEADING", "TSZEXP"):  # an unsupported encoding is unconfirmed, never a proven non-100 share count

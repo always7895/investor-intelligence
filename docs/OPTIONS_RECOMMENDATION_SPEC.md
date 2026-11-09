@@ -4,7 +4,7 @@
 > **Scope:** Contractual safety/evidence boundary; retain exact normative markers and validate against runtime configuration. Current acceptance and unresolved issues: [STATUS](../state/STATUS.md). The document itself does not authorize Production changes.
 <!-- /DOCS-R1 scope -->
 
-_Last reconciled: 2026-11-02_
+_Yield policy reconciled: 2026-11-09_
 
 ## Normative boundary
 
@@ -166,7 +166,7 @@ Local owner mode may label coverage only from authenticated local whole-share da
 
 Per underlying and cycle the sealed `v213:options:v2` row carries up to three strike tiers (operator 2026-09-26 and 2026-10-11):
 
-- `HIGH_STRIKE` (title "建議一：高履約價（不易被賣掉）"): the highest out-of-the-money strike with a valid two-sided quote and model Delta at most 0.20; there is no annualized-yield floor (it was 6%, then 2% from operator 2026-10-19, removed by operator 2026-11-03), so a strike paying little is still listed with its annualized yield shown;
+- `HIGH_STRIKE` (title "建議一：高履約價（不易被賣掉）"): the highest out-of-the-money strike with a valid two-sided quote and model Delta at most 0.20; there is no annualized-yield floor, so a strike paying little is still listed with its annualized yield shown. The monthly cycle applies the same rule: low yield alone never changes an eligible strike into an observation or advances the expiry.
 - `MIDDLE` (optional, "中間型（權利金與被指派機率居中）"): a strike strictly between the two others, the one whose Delta is nearest 0.25 (the strike nearest 2.5% out of the money when a Delta is missing); absent when no listed strike lies between, never padded or duplicated;
 - `BALANCED` ("平衡型（收較多權利金）"): the lower strike whose Delta is nearest 0.30.
 

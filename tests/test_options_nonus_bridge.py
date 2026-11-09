@@ -177,17 +177,21 @@ class BridgeFixtureTests(unittest.TestCase):
         for key in ("TSIZE50.ST", "TSIZENONE.ST", "TCCYNONE.ST"):
             self.assertEqual(set(terms[key]["monthly"]), {"unavailable"}, key)
             self.assertIn("2026-10-16", terms[key]["monthly"]["unavailable"], key)
-        for key in ("QNOQUOTE.ST", "QONESIDED.ST", "QZERO.ST", "QCROSSED.ST", "QLASTSALE.ST", "QMISS.ST", "QCHEAP.ST"):
+        for key in ("QNOQUOTE.ST", "QONESIDED.ST", "QZERO.ST", "QCROSSED.ST", "QLASTSALE.ST", "QMISS.ST"):
             self.assertEqual(terms[key]["monthly"]["suggestions"], [], key)
             self.assertFalse(terms[key]["monthly"].get("strategies"), key)
         last_sale = terms["QLASTSALE.ST"]["monthly"]["quote_observation"]
         self.assertEqual((last_sale["kind"], last_sale["bid"], last_sale["ask"], last_sale["last"]),
                          ("NO_TWO_SIDED", None, None, 0.55))
-        for key, bid, ask in (("QMISS.ST", 4.0, 4.2), ("QCHEAP.ST", 0.01, 0.02)):
+        for key, bid, ask in (("QMISS.ST", 4.0, 4.2),):
             observation = terms[key]["monthly"]["quote_observation"]
             self.assertEqual((observation["kind"], observation["bid"], observation["ask"], observation["last"]),
                              ("TWO_SIDED", bid, ask, None), key)
             self.assertEqual(observation["annualized_yield"], round(bid / 100 * 365 / 16, 6), key)
+        cheap=terms["QCHEAP.ST"]["monthly"]
+        self.assertNotIn("quote_observation", cheap)
+        self.assertTrue(cheap["suggestions"])
+        self.assertEqual(cheap["suggestions"][0]["limit_price"], .01)
 
     def test_dte_matrices_follow_the_policy_windows_for_every_selector(self):
         for case, keys in (("dte_nordic_matrix", [f"ND{d}.ST" for d in generator.NORDIC_DTES]),

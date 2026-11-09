@@ -1,4 +1,4 @@
-"""V21: covered call + cash-secured put + collar, independently validated; monthly low-premium or incomplete calls remain non-executable observations.
+"""V21: covered call + cash-secured put + collar, independently validated; no annualized-yield floor; ineligible calls remain non-executable observations.
 
 PRODUCER half: put parsing for the three providers (Yahoo option_chain().puts, Nasdaq US p_* fields, Nasdaq Nordic put rows), the
 strategy selection and arithmetic, fail-closed negatives, the Python validators, carry-forward, block-level degradation in the sealer and the
@@ -56,6 +56,7 @@ def nordic_cycle(rows, spot: float = SPOT):
 class FloorTests(unittest.TestCase):
     def test_there_is_no_annualized_yield_floor_any_more(self) -> None:
         self.assertFalse(hasattr(builder, "MIN_ANNUALIZED_YIELD"))
+        self.assertFalse(hasattr(builder, "MONTHLY_ANNUAL_HURDLE"))
         # spot 100, 30 DTE: bids of 0.01 / 0.16 / 0.17 pay 0.12% / 1.947% / 2.068% annualized; every one is now listed (the 2% floor refused the first two)
         for bid, ask in ((0.01, 0.02), (0.16, 0.17), (0.17, 0.18)):
             row = {"strike": 110.0, "bid": bid, "ask": ask, "delta": 0.10, "iv": None, "oi": 1, "volume": 1}
@@ -327,16 +328,17 @@ class FailClosedTests(unittest.TestCase):
         self.assertEqual(cycle["strategies"]["csp"], yahoo_cycle()["strategies"]["csp"])
         self.assertTrue(cycle["strategies"]["collar"]["unavailable"])
 
-    def test_low_premium_monthly_call_observation_preserves_csp_and_collar(self) -> None:
-        # The 110 call qualifies by delta but not monthly premium; the 107 call
-        # has the genuine two-sided quote and delta needed by the collar.
+    def test_low_premium_monthly_call_remains_a_strategy_beside_csp_and_collar(self) -> None:
+        # The 110 call passes the delta cap; the 107 call independently supports the collar.
         cycle = yahoo_cycle(chains.yahoo_chain(calls=[(107.0, 0.01, 0.02), (110.0, 0.01, 0.02)]))
-        observed = self.assert_call_observation(cycle, "TWO_SIDED")
-        self.assertIn(observed["strike"], (107.0, 110.0))
-        self.assertEqual((observed["bid"], observed["ask"]), (0.01, 0.02))
-        self.assertIsNone(observed["last"])
-        self.assertAlmostEqual(observed["annualized_yield"], 0.01 / SPOT * 365 / chains.DTE, places=6)
-        self.assertLess(observed["annualized_yield"], 0.02)
+        validate(cycle)
+        self.assertNotIn("quote_observation", cycle)
+        self.assertNotIn("cc", cycle["strategies"])
+        self.assertEqual(len(cycle["suggestions"]), 1)
+        suggested = cycle["suggestions"][0]
+        self.assertEqual((suggested["strike"], suggested["bid"], suggested["ask"]), (110.0, 0.01, 0.02))
+        self.assertAlmostEqual(suggested["annualized_yield"], suggested["limit_price"] / SPOT * 365 / chains.DTE, places=6)
+        self.assertLess(suggested["annualized_yield"], 0.02)
         healthy = yahoo_cycle()
         self.assertEqual(cycle["strategies"]["csp"], healthy["strategies"]["csp"])
         collar = cycle["strategies"]["collar"]

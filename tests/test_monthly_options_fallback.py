@@ -163,13 +163,13 @@ class MonthlyProducerTests(unittest.TestCase):
         self.assertEqual(next(item for item in result.health if item["cycle"] == "monthly")["expiry"], "2026-11-20")
 
     def test_no_annualized_yield_floor(self):
-        # A real low premium remains visible as an observation, never as a 6%-qualified sell tier.
+        # Low premium does not remove a source-backed strike that passes the delta cap.
         cycle = produce((18,), bid="0.05", ask="0.06")["monthly"]
         self.assertNotIn("unavailable", cycle)
-        self.assertEqual(cycle["suggestions"], [])
-        item = cycle["quote_observation"]
-        self.assertEqual(item["kind"], "TWO_SIDED")
-        self.assertLess(item["annualized_yield"], 0.06)
+        self.assertNotIn("quote_observation", cycle)
+        item = cycle["suggestions"][0]
+        self.assertGreater(item["annualized_yield"], 0)
+        self.assertAlmostEqual(item["annualized_yield"], item["limit_price"] / cycle["spot"] * 365 / 18, places=6)
         validate_covered_call_cycle(cycle, STAMP, STAMP, "monthly")
 
     def test_weekly_rule_is_unchanged(self):

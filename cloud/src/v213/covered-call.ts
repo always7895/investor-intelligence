@@ -734,15 +734,14 @@ function monthlyObservationMessages(cycle:CoveredCallCycle,style:"flex"|"text",o
   const hasBid=o.kind==="TWO_SIDED";
   const shortNotice=shortDteNoticeZh(cycle.dte);
   const rate=o.annualized_yield===null?"無可用權利金價，年化不計":pct(o.annualized_yield);
-  const hurdle=o.annualized_yield===null?"無雙邊報價，非策略":
-    o.annualized_yield<0.06?"低於6%門檻，非策略":"未符合保守策略篩選，非策略";
+  const eligibility=hasBid ? "未符合保守策略篩選，非策略" : "無雙邊報價，非策略";
   const band=hasBid ? "Bid "+money(o.bid!,cycle.currency)+"／Ask "+money(o.ask!,cycle.currency)
     : "無雙邊報價；Last "+(o.last!==null?money(o.last,cycle.currency):"來源未提供");
   const premium=hasBid?"以Bid估算、非保證":"由Last推算、無雙邊報價、不可執行";
   const txt=[
     "【每月期權｜上市買權報價觀察（非交易建議）】"+cycle.ticker,
     "到期 "+cycle.expiry+"（DTE "+cycle.dte+"）｜履約價 "+money(o.strike,cycle.currency),
-    band+"｜參考年化 "+rate+"（"+premium+"；"+hurdle+"）",
+    band+"｜參考年化 "+rate+"（"+premium+"；"+eligibility+"）",
     "OI "+countZh(o.oi)+"｜成交量 "+countZh(o.volume),
     ...(shortNotice ? [shortNotice] : []),
     "來源 "+sourceZh(cycle.source)+"｜擷取 "+formatVisibleMoment(cycle.timestamp),
@@ -759,7 +758,7 @@ function monthlyObservationMessages(cycle:CoveredCallCycle,style:"flex"|"text",o
     body:uiBox([
       uiText("履約價 "+money(o.strike,cycle.currency),"lg",T.ink,{weight:"bold"}),
       uiText(band,"sm",T.ink),uiText("參考年化 "+rate,"sm",T.ink,{weight:"bold"}),
-      chip(hurdle,T.soft,T.subtle),
+      chip(eligibility,T.soft,T.subtle),
       uiText("期限 "+cycle.expiry+"｜"+premium,"xs",T.muted),
       ...(shortNotice ? [uiText(shortNotice,"xs",T.muted)] : []),
       uiText("OI "+countZh(o.oi)+"｜成交量 "+countZh(o.volume),"xs",T.subtle),
@@ -770,7 +769,7 @@ function monthlyObservationMessages(cycle:CoveredCallCycle,style:"flex"|"text",o
     ],{paddingAll:"lg",spacing:"sm"}),
     footer:footerBox("報價非可執行，流動性與指派風險；非投資建議、不下單")};
   const messages:LineOutboundMessage[]=[{type:"flex",
-    altText:altSummary({topic:cycle.ticker+" 月期權報價觀察",status:hurdle,next:"查看文字來源"}),
+    altText:altSummary({topic:cycle.ticker+" 月期權報價觀察",status:eligibility,next:"查看文字來源"}),
     contents:{type:"carousel",contents:[
       bubble,
       ...("block" in csp ? [cspDetailBubble(cardContext(cycle,"每月期權"), csp.block)] : []),
