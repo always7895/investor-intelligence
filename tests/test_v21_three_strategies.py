@@ -122,6 +122,78 @@ class PutParsingTests(unittest.TestCase):
         self.assertEqual(cycle["strategies"]["collar"]["items"][0]["call"]["strike"], 107.0)
         self.assertEqual([h["status"] for h in out.health], ["NO_EXPIRY", "READ"])  # health stays call-based and unchanged by puts
 
+    def test_nordic_exchange_roots_preserve_calls_csp_and_collar(self) -> None:
+        for base, root in (("TELIA", "TLSN"), ("BOL", "BOLI"), ("KINV-B", "KINB")):
+            with self.subTest(base=base):
+                rows = [chains.nordic_row(kind, k, b, a, root=root)
+                        for kind, quotes in (("C", chains.CALLS), ("P", chains.PUTS)) for k, b, a in quotes]
+                with mock.patch.object(builder, "http_json", return_value={"data": {"instrumentListing": {"rows": rows}}}):
+                    out = builder.nordic_options(f"{base}.ST", base, SPOT, TODAY, STAMP, "TX_VERIFIED", spot_currency="SEK")
+                cycle = out["monthly"]
+                validate(cycle)
+                self.assertEqual(builder._nordic_chain_root(rows), root)
+                self.assertEqual((cycle["ticker"], cycle["currency"], cycle["multiplier"]), (f"{base}.ST", "SEK", 100))
+                self.assertEqual(len(cycle["suggestions"]), 2)
+                self.assertEqual([item["strike"] for item in cycle["strategies"]["csp"]["suggestions"]], [94.0, 96.0])
+                self.assertEqual(cycle["strategies"]["collar"]["put"]["strike"], 92.0)
+                self.assertEqual(cycle["strategies"]["collar"]["items"][0]["call"]["strike"], 107.0)
+
+    def test_grouped_nordic_call_and_put_strikes_preserve_all_strategy_selection(self) -> None:
+        for base, root, scale in (("AZN", "AZN", 15), ("SAAB-B", "SAAB", 12)):
+            with self.subTest(base=base):
+                # Scale a deterministic chain with known deltas; grouping never touches quote-price parsing.
+                rows = [chains.nordic_row(kind, k * scale, b * scale, a * scale, root=root,
+                                          strikePrice=f"{k * scale:,.2f}")
+                        for kind, quotes in (("C", chains.CALLS), ("P", chains.PUTS)) for k, b, a in quotes]
+                self.assertTrue(all("," in row["strikePrice"] for row in rows))
+                self.assertEqual(builder._nordic_chain_root(rows), root)
+                with mock.patch.object(builder, "http_json", return_value={"data": {"instrumentListing": {"rows": rows}}}):
+                    out = builder.nordic_options(f"{base}.ST", base, SPOT * scale, TODAY, STAMP,
+                                                "TX_VERIFIED", spot_currency="SEK")
+                cycle = out["monthly"]
+                validate(cycle)
+                self.assertEqual(cycle["expiry"], EXPIRY)
+                self.assertEqual(len(cycle["suggestions"]), 2)
+                self.assertEqual([item["strike"] for item in cycle["strategies"]["csp"]["suggestions"]], [94 * scale, 96 * scale])
+                self.assertEqual(cycle["strategies"]["collar"]["put"]["strike"], 92 * scale)
+                self.assertEqual(cycle["strategies"]["collar"]["items"][0]["call"]["strike"], 107 * scale)
+                self.assertEqual([h["status"] for h in out.health], ["NO_EXPIRY", "READ"])
+
+    def test_nordic_mixed_call_and_put_roots_refuse_both_cycles(self) -> None:
+        calls = [chains.nordic_row("C", k, b, a, root="TLSN") for k, b, a in chains.CALLS]
+        puts = [chains.nordic_row("P", k, b, a, root="BOLI") for k, b, a in chains.PUTS]
+        for rows in (calls + puts, puts + calls):
+            self.assertEqual(builder._nordic_chain_root(puts), "BOLI", "puts alone can prove a root")
+            self.assertIsNone(builder._nordic_chain_root(rows))
+            with mock.patch.object(builder, "http_json", return_value={"data": {"instrumentListing": {"rows": rows}}}):
+                out = builder.nordic_options("TELIA.ST", "TELIA", SPOT, TODAY, STAMP, "TX_VERIFIED", spot_currency="SEK")
+            self.assertTrue(all("unavailable" in cycle for cycle in out.values()))
+            self.assertFalse(any(h["read"] or h["two_sided"] for h in out.health))
+
+    def test_grouped_nordic_put_identity_refuses_adjusted_and_disagreeing_contracts(self) -> None:
+        good = chains.nordic_row("P", 1460, 1.0, 1.1, root="AZN", strikePrice="1,460.00")
+        put = builder._nordic_put_evidence(good, "AZN", TODAY)
+        self.assertIsInstance(put, dict)
+        self.assertEqual((put["strike"], put["expiry"]), (1460.0, EXPIRY))
+        self.assertEqual(builder._nordic_chain_root([good]), "AZN")
+        bad = [
+            {"fullName": "SAAB 20NOV26 1460P"}, {"symbol": "SAAB6W1460"},
+            {"fullName": "AZN 20NOV26 1461P"}, {"symbol": "AZN6W1461"},
+            {"expirationDate": "2026-11-27"}, {"symbol": "AZN6V1460"}, {"symbol": "AZN6K1460"},
+            {"symbol": "AZN7W1460"}, {"symbol": "AZN6W27Y1460"},
+            {"fullName": "AZN 31NOV26 1460P", "expirationDate": "2026-11-31"},
+            {"strikePrice": "14,60.00"}, {"strikePrice": "1.460,00"}, {"strikePrice": "1,460"},
+            {"strikePrice": "1,460.00000"}, {"strikePrice": "1,460.0001"}, {"strikePrice": 1460.0},
+            {"fullName": "AZN-X101 20NOV26 1460P", "symbol": "AZN6W1460-X101", "contractSize": "101"},
+            {"fullName": "AZN 20NOV26 1460P-X101", "symbol": "AZN6W1460-X101", "contractSize": "101"},
+            {"symbol": "AZN6W1460X", "contractSize": "100"},
+        ]
+        for override in bad:
+            with self.subTest(override=override):
+                row = {**good, **override}
+                self.assertNotIsInstance(builder._nordic_put_evidence(row, "AZN", TODAY), dict)
+                self.assertIsNone(builder._nordic_chain_root([row]))
+
     def test_malformed_nordic_put_rows_are_dropped_without_touching_the_call_path(self) -> None:
         calls = [chains.nordic_row("C", k, b, a) for k, b, a in chains.CALLS]
         bad = {

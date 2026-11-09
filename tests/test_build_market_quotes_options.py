@@ -1844,6 +1844,144 @@ class NonUsTypedEvidenceTests(unittest.TestCase):
         finally:
             builder.http_json = saved
 
+    def test_exchange_root_comes_from_verified_orderbook_not_equity_ticker(self):
+        # Source-shaped exchange identities, synthetic quotes; no per-equity alias map.
+        for base, root in (("TELIA", "TLSN"), ("BOL", "BOLI"), ("KINV-B", "KINB"), ("UNMAPPED", "NATIVE")):
+            with self.subTest(base=base):
+                rows = [self.call(16, root=root)]
+                payload = {"data": {"instrumentListing": {"rows": rows}}}
+                def source(url):
+                    if url != builder.NORDIC_CHAIN.format(orderbook="TX_VERIFIED"):
+                        raise OSError("UNVERIFIED_UNDERLYING")
+                    return payload
+                with patch.object(builder, "http_json", side_effect=source):
+                    out = builder.nordic_options(f"{base}.ST", base, 100.0, self.TODAY, self.STAMP,
+                                                "TX_VERIFIED", spot_currency="SEK")
+                self.assertEqual(builder._nordic_chain_root(rows), root)
+                self.assertEqual(out["monthly"]["suggestions"][0]["strike"], 125.0)
+                self.assertEqual((out["monthly"]["ticker"], out["monthly"]["currency"], out["monthly"]["multiplier"]),
+                                 (f"{base}.ST", "SEK", 100))
+                share = {"orderbookId": "TX_VERIFIED", "symbol": base.replace("-", " "),
+                         "assetClass": "SHARES", "currency": "SEK"}
+                searched = self.nordic(rows, base=base, orderbook=None, search=share)
+                self.assertEqual(searched["monthly"]["suggestions"], out["monthly"]["suggestions"])
+
+    def test_chain_root_requires_complete_identity_and_does_not_filter_contract_terms(self):
+        good = self.call(16, root="TLSN")
+        malformed = {**good, "symbol": "OTHER6J125"}
+        futures = {**good, "assetClass": "FUTURES_FORWARDS"}
+        for rows in ([], [None, "bad", {}], [malformed], [futures]):
+            self.assertIsNone(builder._nordic_chain_root(rows))
+        self.assertEqual(builder._nordic_chain_root(iter([None, malformed, futures, good])), "TLSN")
+        for override in ({"currency": "EUR"}, {"contractSize": "101"}, {"bidPrice": "", "askPrice": ""}):
+            other = self.call(51, root="BOLI", **override)
+            self.assertEqual(builder._nordic_chain_root([other]), "BOLI")
+            self.assertIsNone(builder._nordic_chain_root([good, other]), override)
+        self.assertEqual(builder._nordic_row_evidence(good, None, self.TODAY), ("MALFORMED", None))
+
+    def test_mixed_exchange_roots_refuse_every_cycle_without_a_ticker_fallback(self):
+        for other in (self.call(16, root="BOLI"), self.call(16, root="TELIA"),
+                      self.call(51, root="BOLI", currency="EUR", contractSize="101")):
+            rows = [self.call(16, root="TLSN"), other]
+            for ordered in (rows, list(reversed(rows))):
+                out = self.nordic(ordered, base="TELIA")
+                self.assertIsNone(builder._nordic_chain_root(ordered))
+                self.assertTrue(all("unavailable" in cycle for cycle in out.values()))
+                self.assertEqual({h["status"] for h in out.health}, {"MALFORMED_ROWS"})
+                self.assertFalse(any(h["read"] or h["two_sided"] for h in out.health))
+
+    def test_bounded_monthly_refetch_requires_one_root_across_both_responses(self):
+        initial = [self.call(2, root="TLSN")]
+        monthly = self.call(16, root="TLSN")
+        cases = [
+            ("same root", initial, [monthly], True),
+            ("empty initial", [], [monthly], True),
+            ("changed root", initial, [self.call(16, root="BOLI")], False),
+            ("mixed refresh", initial, [monthly, self.call(51, root="BOLI")], False),
+            ("foreign terms cannot hide another root", initial,
+             [monthly, self.call(51, root="BOLI", currency="EUR", contractSize="101")], False),
+        ]
+        for label, first, second, available in cases:
+            with self.subTest(label=label):
+                responses = [{"data": {"instrumentListing": {"rows": rows}}} for rows in (first, second)]
+                with patch.object(builder, "http_json", side_effect=responses) as request:
+                    out = builder.nordic_options("TELIA.ST", "TELIA", 100.0, self.TODAY, self.STAMP,
+                                                "TX_VERIFIED", spot_currency="SEK")
+                self.assertEqual(request.call_count, 2)
+                if available:
+                    self.assertEqual(out["monthly"]["suggestions"][0]["strike"], 125.0)
+                    self.assertEqual(out["monthly"]["expiry"], "2026-10-16")
+                else:
+                    self.assertTrue(all("unavailable" in cycle for cycle in out.values()))
+                    self.assertEqual({h["status"] for h in out.health}, {"MALFORMED_ROWS"})
+                    self.assertFalse(any(h["read"] or h["two_sided"] for h in out.health))
+
+    def test_grouped_strikes_are_exact_and_separate_from_quote_price_locale(self):
+        for base, root, strike in (("AZN", "AZN", 1460), ("SAAB-B", "SAAB", 1020)):
+            with self.subTest(base=base):
+                row = self.call(16, strike, root=root, strikePrice=f"{strike:,.2f}", bid="1,06", ask="1,13")
+                kind, evidence = builder._nordic_row_evidence(row, root, self.TODAY)
+                self.assertEqual((kind, evidence["strike"], evidence["bid"], evidence["ask"]), ("CALL", strike, 1.06, 1.13))
+                self.assertEqual(builder._nordic_strike(row["strikePrice"]), Decimal(str(strike)))
+                self.assertEqual(builder._nordic_chain_root([row]), root)
+                self.assertIsNone(builder._nordic_price(row["strikePrice"]), "grouping is not quote-price syntax")
+                payload = {"data": {"instrumentListing": {"rows": [row]}}}
+                with patch.object(builder, "http_json", return_value=payload):
+                    out = builder.nordic_options(f"{base}.ST", base, strike / 1.25, self.TODAY, self.STAMP,
+                                                "TX_VERIFIED", spot_currency="SEK")
+                self.assertEqual(out["monthly"]["suggestions"][0]["strike"], strike)
+                self.assertEqual(out["monthly"]["suggestions"][0]["bid"], 1.06)
+        self.assertEqual(builder._nordic_price("1,460"), 1.46)
+        self.assertIsNone(builder._nordic_strike("1,460"), "a decimal-comma strike has no guessed grouping fallback")
+
+    def test_grouped_strikes_reject_bad_grouping_precision_and_rounded_substitutions(self):
+        good = self.call(16, 1460, root="AZN", strikePrice="1,460.00")
+        for text in ("1,460.0", "1,460.000", "1,460.0000"):
+            self.assertEqual(builder._nordic_row_evidence({**good, "strikePrice": text}, "AZN", self.TODAY)[0], "CALL", text)
+        bad = ("1,460", "14,60.00", "1,46.00", "1,,460.00", "01,460.00", "0,146.00", "1.460,00", "1460,00",
+               "1 460.00", "1\u00a0460.00", "+1,460.00", " 1,460.00", "1,460.00 ", "1,460.00000", "1460.00000",
+               "1,460.0001", "1,460.01", "1,459.9999", "1,000,000.00", "1.46e3", True, 1460.0)
+        for text in bad:
+            with self.subTest(strike=text):
+                row = {**good, "strikePrice": text}
+                self.assertEqual(builder._nordic_row_evidence(row, "AZN", self.TODAY)[0], "MALFORMED")
+                self.assertIsNone(builder._nordic_chain_root([row]))
+        for override in ({"fullName": "AZN 16OCT26 1460.01C"}, {"symbol": "AZN6J1460.01"},
+                         {"fullName": "SAAB 16OCT26 1460C"}, {"symbol": "SAAB6J1460"},
+                         {"expirationDate": "2026-10-23"}, {"symbol": "AZN6K1460"}, {"symbol": "AZN6V1460"}):
+            row = {**good, **override}
+            self.assertEqual(builder._nordic_row_evidence(row, "AZN", self.TODAY)[0], "MALFORMED", override)
+            self.assertIsNone(builder._nordic_chain_root([row]), override)
+
+    def test_grouped_subcent_contract_is_not_substituted_with_a_rounded_strike(self):
+        row = self.call(16, 1460, root="AZN", strikePrice="1,460.005",
+                        fullName="AZN 16OCT26 1460.005C", symbol="AZN6J1460.005")
+        self.assertEqual(builder._nordic_row_evidence(row, "AZN", self.TODAY)[1]["strike"], 1460.005)
+        payload = {"data": {"instrumentListing": {"rows": [row]}}}
+        with patch.object(builder, "http_json", return_value=payload):
+            out = builder.nordic_options("AZN.ST", "AZN", 1200.0, self.TODAY, self.STAMP, "TX_VERIFIED", spot_currency="SEK")
+        self.assertIn("unavailable", out["monthly"])
+        self.assertFalse(out["monthly"].get("suggestions"))
+        monthly = next(h for h in out.health if h["cycle"] == "monthly")
+        self.assertEqual((monthly["read"], monthly["two_sided"]), (True, True))
+
+    def test_adjusted_x_series_never_establish_or_inherit_a_standard_root(self):
+        standard = self.call(16, 125, root="SAAB")
+        base = self.call(16, 130, root="SAAB")
+        adjusted = [
+            {**base, "fullName": "SAAB-X101 16OCT26 130C", "symbol": "SAAB6J130-X101", "contractSize": "101"},
+            {**base, "fullName": "SAAB 16OCT26 130C-X101", "symbol": "SAAB6J130-X101", "contractSize": "101"},
+            {**base, "fullName": "SAAB 16OCT26 130XC", "symbol": "SAAB6J130X"},
+            {**base, "symbol": "SAAB6J130X", "contractSize": "100"},
+        ]
+        for row in adjusted:
+            self.assertIsNone(builder._nordic_chain_root([row]), row)
+            self.assertNotEqual(builder._nordic_row_evidence(row, "SAAB", self.TODAY)[0], "CALL", row)
+            self.assertTrue(all("unavailable" in cycle for cycle in self.nordic([row], base="SAAB-B").values()))
+            self.assertEqual(builder._nordic_chain_root([standard, row]), "SAAB")
+            cycle = self.nordic([standard, row], base="SAAB-B")["monthly"]
+            self.assertEqual([item["strike"] for item in cycle["suggestions"]], [125.0])
+
     def test_typed_currency_accepts_only_the_exact_canonical_sek(self):
         for value, expected in [("SEK", "OK"), ("USD", "CONFLICT"), ("EUR", "CONFLICT"), (None, "UNKNOWN"), ("", "UNKNOWN"), ("  ", "UNKNOWN"),
                                 (" SEK", "UNKNOWN"), ("sek", "UNKNOWN"), ("SEKK", "UNKNOWN"), (False, "UNKNOWN"), (True, "UNKNOWN"), (0, "UNKNOWN"),

@@ -1444,6 +1444,7 @@ _CALL_MONTH_LETTERS = "ABCDEFGHIJKL"  # the source's call series letter: January
 _PUT_MONTH_LETTERS = "MNOPQRSTUVWX"  # the put series letter: January .. December
 _SUPPORTED_WEEKLY_TAG = "Y"  # the ONLY weekly series tag the retained VOLVB receipt proves; any other tag is unproven, not a free slot
 _STRIKE_TEXT = r"(?:0|[1-9][0-9]{0,5})(?:\.[0-9]{1,4})?"  # bounded strike text shared by call names and native symbols
+_NORDIC_STRIKE_FIELD = re.compile(r"(?:" + _STRIKE_TEXT + r"|[1-9][0-9]{0,2},[0-9]{3}\.[0-9]{1,4})")
 _NATIVE_SYMBOL_SUFFIX = re.compile(r"([0-9])([A-L])(?:([0-9]{2})" + _SUPPORTED_WEEKLY_TAG + r")?(" + _STRIKE_TEXT + r")")
 
 
@@ -1480,10 +1481,67 @@ def _nordic_price(value: Any) -> float | None:
     return _float(value)
 
 
-def _nordic_row_evidence(row: Any, root: str, today: date) -> tuple[str, dict[str, Any] | None]:
-    """('IGNORE'|'MALFORMED'|'CALL', call). A call is proven only by assetClass OPTIONS and a call name whose underlying
-    root, date and strike agree with the row's own expiry and strike fields and with the requested underlying; a trailing
-    'C' alone (FUTC, futures, combinations, a missing or unknown class) proves nothing."""
+def _nordic_strike(value: Any) -> Decimal | None:
+    """Exact bounded strike identity, NOT quote-price locale parsing. A grouped strike needs a dot decimal mark:
+    1,460.00 is unambiguous; 1,460 alone could be a decimal comma and is refused. No float, rounding or excess precision."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return Decimal(value) if 0 < value < 1_000_000 else None
+    if not isinstance(value, str) or len(value) > 12 or not _NORDIC_STRIKE_FIELD.fullmatch(value):
+        return None
+    strike = Decimal(value.replace(",", ""))
+    return strike if strike > 0 else None
+
+
+def _nordic_contract_identity(row: Any, *, put: bool = False) -> tuple[str, date, Decimal] | None:
+    """Prove the row's own root/type/date/exact strike without inferring any root from the equity ticker."""
+    if not isinstance(row, dict) or not isinstance(row.get("assetClass"), str) or row["assetClass"].strip().upper() != "OPTIONS":
+        return None
+    name = row.get("fullName")
+    if not isinstance(name, str) or len(name) > 120:
+        return None
+    match = (_NORDIC_PUT_NAME if put else _NORDIC_CALL_NAME).fullmatch(name)
+    if not match or match.group(3) not in _MONTH_NUMBER:
+        return None
+    strike = _nordic_strike(row.get("strikePrice"))
+    if strike is None or strike != Decimal(match.group(5)):
+        return None
+    expiry_text = row.get("expirationDate")
+    if not isinstance(expiry_text, str) or len(expiry_text) != 10:
+        return None
+    try:
+        name_date = date(2000 + int(match.group(4)), _MONTH_NUMBER[match.group(3)], int(match.group(2)))
+        expiry = date.fromisoformat(expiry_text)
+    except ValueError:
+        return None
+    native_symbol = row.get("symbol")
+    root = match.group(1)
+    if expiry != name_date or not isinstance(native_symbol, str) or not _native_symbol_matches(native_symbol, root, expiry, strike, put=put):
+        return None
+    return root, expiry, strike
+
+
+def _nordic_chain_root(rows: Iterable[Any]) -> str | None:
+    """Return the sole root proven by complete call/put identities, or None for no proof or conflicting roots.
+    Rows must come from the verified underlying orderbook; this helper does not establish that external binding.
+    Non-options and malformed/unsupported identities (including adjusted -X series) cannot establish a root.
+    Currency, size, quotes and expiry windows do not hide an otherwise proven conflicting root; their gates run later.
+    Pass all rows from bounded responses together when checking a re-fetch. Never substitute an equity-ticker root."""
+    root = None
+    for row in rows:
+        identity = _nordic_contract_identity(row) or _nordic_contract_identity(row, put=True)
+        if identity is None:
+            continue
+        if root is not None and root != identity[0]:
+            return None
+        root = identity[0]
+    return root
+
+
+def _nordic_row_evidence(row: Any, root: str | None, today: date) -> tuple[str, dict[str, Any] | None]:
+    """('IGNORE'|'MALFORMED'|'CALL', call). Full name, native symbol, date and strike must prove a call of the chain's
+    verified root. None refuses every identity; a trailing 'C' alone (FUTC, futures or combinations) proves nothing."""
     if not isinstance(row, dict):
         return "MALFORMED", None
     if not isinstance(row.get("assetClass"),str) or row["assetClass"].strip().upper() != "OPTIONS":
@@ -1494,38 +1552,20 @@ def _nordic_row_evidence(row: Any, root: str, today: date) -> tuple[str, dict[st
     name = raw_name
     if not name.endswith("C") or name.endswith("FUTC"):
         return "IGNORE", None
-    match = _NORDIC_CALL_NAME.match(name)
-    if not match or match.group(1) != root or match.group(3) not in _MONTH_NUMBER:
+    identity = _nordic_contract_identity(row)
+    if identity is None or identity[0] != root:
         return "MALFORMED", None
-    raw_strike = row.get("strikePrice")  # exact decimal text (bounded) or an int; a float has already lost the source's digits
-    if isinstance(raw_strike, bool) or not (isinstance(raw_strike, int) or (isinstance(raw_strike, str) and len(raw_strike) <= 16
-                                                                          and _CANONICAL_DECIMAL.fullmatch(raw_strike))):
-        return "MALFORMED", None
-    try:
-        name_date = date(2000 + int(match.group(4)), _MONTH_NUMBER[match.group(3)], int(match.group(2)))
-        expiry_text = row.get("expirationDate")
-        if not isinstance(expiry_text, str) or len(expiry_text) != 10:
-            return "MALFORMED", None
-        expiry = date.fromisoformat(expiry_text)
-    except ValueError:
-        return "MALFORMED", None
-    strike_exact = Decimal(raw_strike)
-    if expiry != name_date or strike_exact <= 0 or strike_exact != Decimal(match.group(5)):
-        return "MALFORMED", None
-    native_symbol = row.get("symbol")
-    if not isinstance(native_symbol, str) or not _native_symbol_matches(native_symbol, root, expiry, strike_exact):
-        return "MALFORMED", None  # full name, native contract, strike and expiry must still prove SAME identity
-    strike = float(strike_exact)
-    return "CALL", {"expiry": expiry_text, "dte": (expiry - today).days, "strike": strike,
+    _, expiry, strike_exact = identity
+    return "CALL", {"expiry": row["expirationDate"], "dte": (expiry - today).days, "strike": float(strike_exact),
                     "ccy": _nordic_contract_currency(row.get("currency", _ABSENT)), "size": _typed_size(row.get("contractSize")),
                     "bid": _quote_value(row.get("bidPrice"), _nordic_price), "ask": _quote_value(row.get("askPrice"), _nordic_price),
                     "last": _nordic_price(row.get("lastPrice") or row.get("lastSalePrice")),
                     "oi": _int(row.get("openInterest")), "volume": _int(row.get("volume"))}
 
 
-def _nordic_put_evidence(row: Any, root: str, today: date) -> str | dict[str, Any]:
-    """V21: 'NONE' (not a put row at all), 'MALFORMED' (a put-shaped row whose name, date, strike or native symbol disagree; dropped, it
-    never touches the call path) or the put dict. The same proof as a call, with the put name suffix P and the put series letters M..X."""
+def _nordic_put_evidence(row: Any, root: str | None, today: date) -> str | dict[str, Any]:
+    """V21: 'NONE' (not a put row), 'MALFORMED' (unproven identity or chain root), or the put dict.
+    The same proof as a call, with the put name suffix P and the put series letters M..X."""
     if not isinstance(row, dict) or not isinstance(row.get("assetClass"),str) or row["assetClass"].strip().upper() != "OPTIONS":
         return "NONE"
     raw_name = row.get("fullName")
@@ -1534,28 +1574,11 @@ def _nordic_put_evidence(row: Any, root: str, today: date) -> str | dict[str, An
     name = raw_name
     if not name.endswith("P") or name.endswith("FUTP"):
         return "NONE"
-    match = _NORDIC_PUT_NAME.match(name)
-    if not match or match.group(1) != root or match.group(3) not in _MONTH_NUMBER:
+    identity = _nordic_contract_identity(row, put=True)
+    if identity is None or identity[0] != root:
         return "MALFORMED"
-    raw_strike = row.get("strikePrice")
-    if isinstance(raw_strike, bool) or not (isinstance(raw_strike, int) or (isinstance(raw_strike, str) and len(raw_strike) <= 16
-                                                                          and _CANONICAL_DECIMAL.fullmatch(raw_strike))):
-        return "MALFORMED"
-    try:
-        name_date = date(2000 + int(match.group(4)), _MONTH_NUMBER[match.group(3)], int(match.group(2)))
-        expiry_text = row.get("expirationDate")
-        if not isinstance(expiry_text, str) or len(expiry_text) != 10:
-            return "MALFORMED"
-        expiry = date.fromisoformat(expiry_text)
-    except ValueError:
-        return "MALFORMED"
-    strike_exact = Decimal(raw_strike)
-    if expiry != name_date or strike_exact <= 0 or strike_exact != Decimal(match.group(5)):
-        return "MALFORMED"
-    native_symbol = row.get("symbol")
-    if not isinstance(native_symbol, str) or not _native_symbol_matches(native_symbol, root, expiry, strike_exact, put=True):
-        return "MALFORMED"
-    return {"expiry": expiry_text, "dte": (expiry - today).days, "strike": float(strike_exact),
+    _, expiry, strike_exact = identity
+    return {"expiry": row["expirationDate"], "dte": (expiry - today).days, "strike": float(strike_exact),
             "ccy": _nordic_contract_currency(row.get("currency", _ABSENT)), "size": _typed_size(row.get("contractSize")),
             "bid": _quote_value(row.get("bidPrice"), _nordic_price), "ask": _quote_value(row.get("askPrice"), _nordic_price),
             "oi": _int(row.get("openInterest")), "volume": _int(row.get("volume"))}
@@ -1582,7 +1605,6 @@ def nordic_options(symbol: str, base: str, spot: float, today: date, stamp: str,
     canonical SEK / 100 before a strategy is offered; an unknown or conflicting term is a source-scoped unavailable reason,
     never a SEK recommendation that merely ends in .ST."""
     native = base.replace("-", " ")  # VOLV-B is listed as "VOLV B"
-    root = re.sub(r"[^A-Z0-9]", "", base.upper())
     share_currency: Any = _NO_SEARCH
     try:
         if not orderbook:
@@ -1622,6 +1644,7 @@ def nordic_options(symbol: str, base: str, spot: float, today: date, stamp: str,
             result = _nordic_unavailable(symbol, "EMPTY_RESPONSE", "本次來源回應無可用之買權紀錄；是否上市未確認")
             result["monthly"]["unavailable"] = _diag(f"{_missing_monthly_date(today, stamp, 'STOCKHOLM')}；{result['monthly']['unavailable']}")
             return result
+    root = _nordic_chain_root(rows)
     listed: list[dict[str, Any]] = []
     listed_puts: list[dict[str, Any]] = []
     saw_put_side = False
@@ -1650,6 +1673,9 @@ def nordic_options(symbol: str, base: str, spot: float, today: date, stamp: str,
         try:
             refreshed = http_json(NORDIC_CHAIN.format(orderbook=orderbook))["data"]["instrumentListing"]["rows"]
             if isinstance(refreshed,list):
+                if _nordic_chain_root(row for batch in (rows, refreshed) for row in batch) != root:
+                    return _nordic_unavailable(symbol, "MALFORMED_ROWS",
+                        "Nasdaq Nordic 有互相衝突之合約根代號；同一標的訂單簿的跨次鏈回應未能同時核驗")
                 used_calls={(x["expiry"],x["strike"]) for x in listed}
                 used_puts={(x["expiry"],x["strike"]) for x in listed_puts}
                 for source_row in refreshed:
