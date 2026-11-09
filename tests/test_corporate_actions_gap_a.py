@@ -154,6 +154,36 @@ class CorporateActionLoaderTests(unittest.TestCase):
         self.assertEqual(set(m.public_notes(loaded, asof=date(2026, 11, 7))), {"TEST", "OTHER"})
         self.assertEqual(m.pending_targets(loaded)["TEST"]["status"], "PENDING")
 
+    def test_public_notes_fail_closed_for_overlapping_active_actions_in_either_order(self):
+        import corporate_actions as m
+        from tests.test_corporate_distributions_gap_c import distribution
+        first = {**seed()["entries"][0], "target_symbol": "TEST", "acquirer_symbol": "OTHER"}
+        dist = {**distribution(), "target_symbol": "TEST", "related_symbol": "CHILD"}
+        conflicts = (
+            [first, {**first, "target_symbol": "SECOND"}],
+            [first, {**first, "target_symbol": "OTHER", "acquirer_symbol": "THIRD"}],
+            [first, dist],
+            [dist, {**dist, "distribution_date": "2026-09-01", "source_date": "2026-09-01"}],
+        )
+        for entries in conflicts:
+            for ordered in (entries, list(reversed(entries))):
+                with self.subTest(kinds=[entry["kind"] for entry in ordered]):
+                    doc = m.load_actions_bytes(json.dumps({"schema_version": 1, "entries": ordered}).encode(),
+                                               today=date(2026, 11, 8))
+                    with self.assertRaisesRegex(ValueError, "^CORPORATE_ACTION_NOTE_CONFLICT$"):
+                        m.public_notes(doc, asof=date(2026, 11, 8))
+
+    def test_future_merger_does_not_conflict_with_a_distribution_at_an_earlier_cutoff(self):
+        import corporate_actions as m
+        from tests.test_corporate_distributions_gap_c import distribution
+        entries = [{**seed()["entries"][0], "target_symbol": "TEST", "acquirer_symbol": "OTHER"},
+                   {**distribution(), "target_symbol": "TEST", "related_symbol": "CHILD"}]
+        doc = m.load_actions_bytes(json.dumps({"schema_version": 1, "entries": entries}).encode(),
+                                   today=date(2026, 11, 8))
+        notes = m.public_notes(doc, asof=date(2026, 11, 1))
+        self.assertEqual(set(notes), {"TEST", "CHILD"})
+        self.assertEqual(notes["TEST"]["kind"], "DISTRIBUTION")
+
     def test_top20_excludes_target_and_keeps_acquirer_score_with_note(self):
         import bottleneck_top20_v3 as engine
         # Exercise the real build scorer and exclusion list with its market/fundamental shapes.

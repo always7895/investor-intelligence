@@ -200,21 +200,23 @@ def pending_targets(doc: dict[str, Any]) -> dict[str, dict[str, Any]]:
 
 
 def public_notes(doc: dict[str, Any], *, asof: date) -> dict[str, dict[str, Any]]:
-    """Display both parties without granting admission or transferring shareholder entitlements."""
+    """Display both parties; conflicting single-slot terms fail closed rather than overwrite."""
     notes: dict[str, dict[str, Any]] = {}
     for entry in doc["entries"]:
         if entry["status"] == "PENDING" and _day(entry["announced_on"]) <= asof:
             note = {key: entry[key] for key in ("target_symbol", "acquirer_symbol", "kind", "status",
                     "exchange_ratio", "cash_per_share", "currency", "expected_close", "source_url")}
-            notes[entry["target_symbol"]] = notes[entry["acquirer_symbol"]] = note
+            for symbol in (entry["target_symbol"], entry["acquirer_symbol"]):
+                if symbol in notes and notes[symbol] != note:
+                    raise ValueError("CORPORATE_ACTION_NOTE_CONFLICT")
+                notes[symbol] = note
     for entries in completed_distributions(doc, asof=asof).values():
         for entry in entries:
             note = distribution_note(entry)
             for symbol in (entry["target_symbol"], entry["related_symbol"]):
-                previous = notes.get(symbol)
-                if (previous is None or previous["kind"] != "DISTRIBUTION"
-                        or previous["distribution_date"] <= entry["distribution_date"]):
-                    notes[symbol] = note
+                if symbol in notes and notes[symbol] != note:
+                    raise ValueError("CORPORATE_ACTION_NOTE_CONFLICT")
+                notes[symbol] = note
     return notes
 
 
