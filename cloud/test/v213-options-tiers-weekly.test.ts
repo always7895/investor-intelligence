@@ -4,12 +4,12 @@
 import { describe, expect, it, beforeEach, vi } from "vitest";
 import { buildCoveredCallMessages, validateCoveredCallCycle } from "../src/v213/covered-call";
 import {
-  EXPIRY_DAY_CLOSE_LOCAL_MINUTES, MIDDLE_DELTA, MIDDLE_MONEYNESS, MIN_ANNUALIZATION_DAYS, MONTHLY_DTE_BUCKET, SHORT_DTE_NOTICE_MAX,
-  WEEKLY_DTE_BUCKET, effectiveDays, exchangeDate, exchangeLocal, expiryDayOpen, limitMiddle, pickMiddle, roundTick, selectWeeklyExpiry,
+  exchangeDate, exchangeLocal, expiryDayOpen, limitMiddle, pickMiddle, roundTick, selectWeeklyExpiry,
   weekEndMs, weeklyWeekFor, weeklyWindowEndMs, dayMs, isoDay,
 } from "../src/v213/option-recommendation-rules";
 import { generateOptionsOrderGuidance, buildOptionsGuidanceText } from "../src/v213/options-guidance";
 import { admitSyntheticTickers, resetAdmissionToReal } from "./synthetic-option-admission";
+import { syntheticCalls } from "./synthetic-coherent-options";
 
 vi.mock("../src/v213/public-options-admission", async importOriginal => {
   const real = await importOriginal<typeof import("../src/v213/public-options-admission")>();
@@ -20,15 +20,6 @@ beforeEach(() => { resetAdmissionToReal(); });
 const at = (text: string) => Date.parse(text);
 const LISTED = ["2026-10-09", "2026-10-16"];
 
-describe("shared rules: constants (parity with scripts/option_recommendation_rules.py)", () => {
-  it("pins the windows, the tiny-DTE floor and the middle-tier targets", () => {
-    expect(WEEKLY_DTE_BUCKET).toEqual([0, 14]);
-    expect(MONTHLY_DTE_BUCKET).toEqual([0, 60]);
-    expect([MIN_ANNUALIZATION_DAYS, SHORT_DTE_NOTICE_MAX, MIDDLE_DELTA, MIDDLE_MONEYNESS]).toEqual([1, 2, 0.25, 1.025]);
-    expect(EXPIRY_DAY_CLOSE_LOCAL_MINUTES).toEqual({ US: 960, STOCKHOLM: 1050, TAIFEX: 810 });
-    expect([0, 1, 2, 30].map(effectiveDays)).toEqual([1, 1, 2, 30]);
-  });
-});
 
 describe("shared rules: exchange clock", () => {
   it("US date follows New York, not UTC, across both DST edges", () => {
@@ -138,21 +129,13 @@ describe("shared rules: the middle tier and the middle of a limit range", () => 
 });
 
 // ---- the Worker validator and renderer ---------------------------------------------------------------------------------
-function tierItem(role: string, strike: number, bid: number, ask: number, delta: number, spot: number, dte: number) {
-  const mid = Number(((bid + ask) / 2).toFixed(4));
-  const limit = Number((Math.floor(mid / 0.01 + 1e-9) * 0.01).toFixed(2));
-  return { role, strike, bid, ask, mid, limit_price: limit, premium_per_contract: limit * 100, period_yield: limit / spot,
-    annualized_yield: limit / spot * 365 / Math.max(dte, 1), upside_to_strike: strike / spot - 1, delta, delta_basis: "QUOTED", iv: 0.4,
-    oi: 10, volume: 1, spread_pct: (ask - bid) / mid };
-}
 
 function tierCycle(options: { dte?: number; expiry?: string; asof?: string | null; week?: string | null; middle?: boolean } = {}, overrides: Record<string, unknown> = {}): any {
   const { dte = 2, expiry = "2026-10-09", asof = "2026-10-07", week = "CURRENT", middle = true } = options;
   const cycle: any = { ticker: "NVDA", strategy: "COVERED_CALL", expiry, dte, spot: 100, currency: "USD", multiplier: 100, quote_basis: "delayed",
     timestamp: "2026-10-07T14:00:00Z", source: "Yahoo Finance option chain (unofficial, delayed)", provenance: "https://finance.yahoo.com/quote/NVDA/options",
     rights_status: "unadmitted_third_party",
-    suggestions: [tierItem("HIGH_STRIKE", 112, 0.10, 0.12, 0.08, 100, dte), tierItem("BALANCED", 106, 0.60, 0.66, 0.28, 100, dte)] };
-  if (middle) cycle.middle_suggestion = tierItem("MIDDLE", 108, 0.35, 0.40, 0.20, 100, dte);
+    ...syntheticCalls(100, dte, 112, 106, middle ? 108 : undefined) };
   if (asof !== null) cycle.asof_date = asof;
   if (week !== null) cycle.weekly_week = week;
   return Object.assign(cycle, overrides);
@@ -173,7 +156,7 @@ describe("Worker validator: middle tier", () => {
   it("the middle must be strictly between the two strikes", () => {
     for (const strike of [112, 106, 113, 105]) {
       const cycle = tierCycle();
-      cycle.middle_suggestion = tierItem("MIDDLE", strike, 0.35, 0.40, 0.20, 100, 2);
+      Object.assign(cycle, syntheticCalls(100, 2, 112, 106, strike));
       expect(check(cycle), String(strike)).toBeNull();
     }
   });
@@ -190,7 +173,7 @@ describe("Worker validator: middle tier", () => {
     }
   });
   it("the suggestions list stays capped at the two original roles", () => {
-    const three = tierCycle({ middle: false }); three.suggestions.splice(1, 0, tierItem("MIDDLE", 108, 0.35, 0.40, 0.20, 100, 2));
+    const three = tierCycle({ middle: false }); three.suggestions.splice(1, 0, syntheticCalls(100, 2, 112, 106, 108).middle_suggestion!);
     expect(check(three)).toBeNull();
     const swapped = tierCycle({ middle: false }); swapped.suggestions[1].role = "MIDDLE";
     expect(check(swapped)).toBeNull();

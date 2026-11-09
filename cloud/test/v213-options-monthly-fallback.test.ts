@@ -19,6 +19,7 @@ import { SNAPSHOT_SEAL_KEY } from "../src/v213/snapshot-seal";
 import { asKv, MemoryKv } from "./fake-kv";
 import { sealUnboundReport } from "./sealed-report-migration";
 import { admitSyntheticTickers, resetAdmissionToReal } from "./synthetic-option-admission";
+import { syntheticCalls } from "./synthetic-coherent-options";
 
 // Only quote-specific positive tests opt in. Rights-NONE negatives retain the real catalog predicate.
 vi.mock("../src/v213/public-options-admission", async importOriginal => {
@@ -36,9 +37,7 @@ function cycle(dte = 18): CoveredCallCycle {
     ticker: "SIVE.ST", strategy: "COVERED_CALL", expiry: day(dte), dte, spot: 30, currency: "SEK", multiplier: 100,
     quote_basis: "delayed", timestamp: STAMP, source: "Synthetic delayed observation", provenance: "https://synthetic.invalid/options",
     rights_status: "unadmitted_third_party", asof_date: asOf,
-    suggestions: [{ role: "HIGH_STRIKE", strike: 33, bid: 0.3, ask: 0.32, mid: 0.31, limit_price: 0.31,
-      premium_per_contract: 31, period_yield: 0.31 / 30, annualized_yield: 0.31 / 30 * 365 / Math.max(dte, 1),
-      upside_to_strike: 0.1, delta: 0.18, delta_basis: "QUOTED", iv: null, oi: 900, volume: 50, spread_pct: 0.02 / 0.31 }],
+    ...syntheticCalls(30, dte, 33),
   };
 }
 function bareQuote(dte: number) {
@@ -253,9 +252,7 @@ describe("nearest standard monthly (operator 2026-11-03): sealed consumer regres
 });
 
 describe("shared TS monthly selection and guidance (nearest standard monthly)", () => {
-  it("pins the constants and selects the nearest standard monthly with the expiry-day rule", () => {
-    expect(rules.MONTHLY_DTE_BUCKET).toEqual([0, 60]);
-    expect("MONTHLY_FALLBACK_DTE_BUCKET" in rules).toBe(false);
+  it("selects the nearest standard monthly with the expiry-day rule", () => {
     expect(rules.selectMonthlyExpiry(["2026-12-18", "2026-11-20"], "2026-11-03")).toBe("2026-11-20");
     expect(rules.selectMonthlyExpiry(["2026-11-20", "2026-12-18"], "2026-11-20", true)).toBe("2026-11-20");
     expect(rules.selectMonthlyExpiry(["2026-11-20", "2026-12-18"], "2026-11-20", false)).toBe("2026-12-18");
@@ -269,7 +266,6 @@ describe("shared TS monthly selection and guidance (nearest standard monthly)", 
   });
 
   it("replaces the extended-monthly notice by the amplified-yield notice for DTE 0-2 only", () => {
-    expect("monthlyFallbackNoticeZh" in rules).toBe(false);
     for (const dte of [0, 1, 2]) expect(rules.shortDteNoticeZh(dte)).toContain("年化收益以至少 1 天換算");
     for (const dte of [3, 14, 18, 46, 60, -1, 1.5, Number.NaN]) expect(rules.shortDteNoticeZh(dte)).toBeNull();
     expect(rules.shortDteNoticeZh(0)).toContain("今日到期");

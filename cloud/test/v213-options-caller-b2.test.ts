@@ -19,6 +19,7 @@ import { humanizeStatusText } from "../src/v213/status-labels";
 import { sealUnboundReport } from "./sealed-report-migration";
 import { admitSyntheticTickers, resetAdmissionToReal, SYNTHETIC_PROVIDER_ID } from "./synthetic-option-admission";
 import { standardMonthlyFixture } from "./helpers/r2a-standard-monthly";
+import { syntheticCalls } from "./synthetic-coherent-options";
 
 const trace = vi.hoisted(() => ({
   logical: [] as string[][],
@@ -144,12 +145,7 @@ function cycle(ticker: string, currency = "USD", now = NOW) {
     ticker, currency, strategy: "COVERED_CALL", expiry,
     dte, spot: 300, multiplier: 100, quote_basis: "delayed", timestamp: iso(now - 30 * 60_000),
     source: "Synthetic delayed observation", provenance: "https://synthetic.invalid/options",
-    rights_status: "unadmitted_third_party", suggestions: [{
-      role: "HIGH_STRIKE", strike: 330, bid: 2, ask: 2.1, mid: 2.05, limit_price: 2.05,
-      premium_per_contract: 205, period_yield: 2.05 / 300, annualized_yield: 2.05 / 300 * 365 / Math.max(dte, 1),
-      upside_to_strike: 330 / 300 - 1, delta: 0.18, delta_basis: "QUOTED_IV", iv: 0.4,
-      oi: 900, volume: 50, spread_pct: 0.0488,
-    }],
+    rights_status: "unadmitted_third_party", ...syntheticCalls(300, dte, 330),
   };
 }
 class TracedKv extends MemoryKv {
@@ -304,7 +300,7 @@ async function answer(fixture: Fixture, command = "ACME 每月期權") {
   return JSON.stringify(result);
 }
 function noQuote(reply: string): void {
-  for (const marker of ["330.00", "$2.05", "2.05 SEK", "OI 900", "成交量 50"]) expect(reply).not.toContain(marker);
+  for (const marker of ["330.00", "建議賣出限價", "每口權利金", "OI 1200", "成交量 300"]) expect(reply).not.toContain(marker);
 }
 function positive(reply: string, currency = "USD"): void {
   expect(reply).toContain(currency === "USD" ? "$330.00" : "330.00 SEK");

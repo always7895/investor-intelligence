@@ -202,6 +202,13 @@ class ObservedRowsTests(unittest.TestCase):
             observed = build(body_of(document))["observed"]
         self.assertEqual([(row["venue"], row["cycle_count"], row["ticker_key_count"]) for row in observed], [("SYNTHVENUE", 2, 2)])
 
+    def test_a_legacy_recommendation_without_its_common_model_is_not_counted(self):
+        document = admitted_options_document()
+        document["options"]["SYNTHUS00"]["weekly"].pop("delta_model")
+        with mock.patch.object(option_rights, "load_public_option_policy", return_value=synthetic_policy()):
+            observed = build(body_of(document))["observed"]
+        self.assertEqual([(row["cycle_count"], row["ticker_key_count"]) for row in observed], [(3, 2)])
+
     def test_an_unprovable_options_body_gives_an_empty_list_and_a_null_link(self):
         stale = admitted_options_document()
         stale["generated_at"] = "2026-09-30T10:59:59Z"  # 6 h 1 s old

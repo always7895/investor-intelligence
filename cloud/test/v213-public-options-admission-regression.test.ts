@@ -11,6 +11,7 @@ import { pinPublicSnapshot } from "../src/v213/public-snapshot";
 import { SNAPSHOT_SEAL_KEY } from "../src/v213/snapshot-seal";
 import { asKv, MemoryKv } from "./fake-kv";
 import { sealUnboundReport } from "./sealed-report-migration";
+import { syntheticCalls } from "./synthetic-coherent-options";
 
 // OPTIONS_TEST_POLICY1 policy regression: the REAL canonical catalog (config/public-options-provider-candidates.json) and the
 // REAL admitPublicOption, with no mock anywhere in this file, at the actual loader, renderer and LINE direct/ADR callers.
@@ -22,17 +23,14 @@ const stamp = new Date(FIXED_NOW - 30 * 60_000).toISOString().replace(/\.\d{3}Z$
 const expiry = new Date(FIXED_NOW + 16 * 86400_000).toISOString().slice(0, 10); // third Friday 2026-10-16
 const weeklyExpiry = new Date(FIXED_NOW + 7 * 86400_000).toISOString().slice(0, 10);
 const FEEDS = [{ id: "twse-listed", url: "https://openapi.twse.com.tw/v1/opendata/t187ap03_L", retrieved_at: stamp, sha256: "c".repeat(64), rows: 1 }];
-const QUOTE_MARKERS = ["330.00", "$2.05", "OI 900", "成交量 50", "中價"];
 
 const TSM_MONTHLY = {
   ticker: "TSM", strategy: "COVERED_CALL", expiry, dte: 16, spot: 300, currency: "USD", multiplier: 100, quote_basis: "delayed",
   timestamp: stamp, source: "Yahoo Finance option chain (unofficial, delayed)", provenance: "https://finance.yahoo.com/quote/TSM/options",
-  rights_status: "unadmitted_third_party", suggestions: [{
-    role: "HIGH_STRIKE", strike: 330, bid: 2.0, ask: 2.1, mid: 2.05, limit_price: 2.05,
-    premium_per_contract: 205, period_yield: 2.05 / 300, annualized_yield: 2.05 / 300 * 365 / 16, upside_to_strike: 330 / 300 - 1,
-    delta: 0.18, delta_basis: "QUOTED_IV", iv: 0.4, oi: 900, volume: 50, spread_pct: 0.0488,
-  }],
+  rights_status: "unadmitted_third_party", ...syntheticCalls(300, 16, 330),
 };
+const tier = TSM_MONTHLY.suggestions[0]!;
+const QUOTE_MARKERS = [tier.strike.toFixed(2), `$${tier.limit_price}`, `OI ${tier.oi}`, `成交量 ${tier.volume}`, "中價"];
 
 async function sha(text: string): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
@@ -47,7 +45,7 @@ async function sealedEnv(style: "text" | "flex" = "text") {
   const shard = (bucket: string, rows: unknown[]) => ({ schema: "v213-identity-shard-v2", kind: "symbol", bucket, generated_at: stamp, feeds: FEEDS, rows });
   const nvdaMonthly = { ...structuredClone(TSM_MONTHLY), ticker: "NVDA" };
   const nvdaWeekly = { ...structuredClone(nvdaMonthly), dte: 7, expiry: weeklyExpiry };
-  nvdaWeekly.suggestions[0]!.annualized_yield = nvdaWeekly.suggestions[0]!.limit_price / nvdaWeekly.spot * 365 / 7;
+  Object.assign(nvdaWeekly, syntheticCalls(300, 7, 330));
   const lazy: Record<string, unknown> = {
     "v213:identity:v2:sym:2": shard("2", [["2330", "TWSE", "TAIWAN", "Taiwan", "Taiwan Semiconductor Manufacturing", null, "COMMON_STOCK", "TWD", 0, ["台積電", "TWSE"]]]),
     "v213:identity:v2:sym:N": shard("N", [["NVDA", "NASDAQ", "US", "United States", "NVIDIA Corp", null, "COMMON_STOCK", "USD", 0, ["輝達", "ZHWIKI"]]]),

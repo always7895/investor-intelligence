@@ -14,6 +14,7 @@ import { doc as bottleneckDoc } from "./bottleneck-v3-fixture";
 import { admitSyntheticTickers } from "./synthetic-option-admission";
 import strategyFixture from "./fixtures/v21-three-strategies.json";
 import consensusFixture from "../../tests/fixtures/v11-consensus-sealed.json";
+import { syntheticCalls } from "./synthetic-coherent-options";
 
 export interface Node {
   type?: string;
@@ -137,18 +138,10 @@ export function top20Report() {
 }
 
 export const REPORT = Date.parse("2026-09-27T01:00:00Z");
-const tierItem = (role: string, strike: number, bid: number, ask: number, delta: number, spot: number, dte: number) => {
-  const mid = Number(((bid + ask) / 2).toFixed(4));
-  const limit = Number((Math.floor(mid / 0.01 + 1e-9) * 0.01).toFixed(2));
-  return { role, strike, bid, ask, mid, limit_price: limit, premium_per_contract: limit * 100, period_yield: limit / spot,
-    annualized_yield: limit / spot * 365 / Math.max(dte, 1), upside_to_strike: strike / spot - 1, delta, delta_basis: "QUOTED", iv: 0.4,
-    oi: 1200, volume: 350, spread_pct: (ask - bid) / mid };
-};
 export const coveredCycle = () => ({ ticker: "NVDA", strategy: "COVERED_CALL", expiry: "2026-10-09", dte: 2, spot: 100, currency: "USD", multiplier: 100,
   quote_basis: "delayed", timestamp: "2026-10-07T14:00:00Z", source: "Yahoo Finance option chain (unofficial, delayed)",
   provenance: "https://finance.yahoo.com/quote/NVDA/options", rights_status: "unadmitted_third_party", asof_date: "2026-10-07", weekly_week: "CURRENT",
-  suggestions: [tierItem("HIGH_STRIKE", 112, 0.10, 0.12, 0.08, 100, 2), tierItem("BALANCED", 106, 0.60, 0.66, 0.28, 100, 2)],
-  middle_suggestion: tierItem("MIDDLE", 108, 0.35, 0.40, 0.20, 100, 2) });
+  ...syntheticCalls(100, 2, 112, 106, 108) });
 
 // The shared source page is intentionally long; budgets below apply to every primary card.
 // Separate tests validate its presence, preservation and LINE byte limit.

@@ -74,18 +74,25 @@ def window_observations(cases):
     observations = []
     for case in cases:
         day, period = case["dte"], case["period"]
-        probe = copy.deepcopy(seed)
-        probe.update(dte=day, expiry=(TODAY + timedelta(days=day)).isoformat())
-        probe.pop("monthly_rule", None)  # the seed is a monthly row: its marker describes its own expiry and never rides a weekly probe
-        probe_at = STAMP
-        if period == "monthly":  # probe a real third Friday with its own reference clock
-            asof = MONTHLY_PROBE_FRIDAY - timedelta(days=day)
-            probe_at = stamp_of(asof)
-            probe["expiry"] = MONTHLY_PROBE_FRIDAY.isoformat()
-            probe["timestamp"] = probe_at
-            probe["asof_date"] = asof.isoformat()
-        for suggestion in probe["suggestions"]:
-            suggestion["annualized_yield"] = suggestion["period_yield"] * 365 / max(day, 1)
+        # Stage 1D requires one validated cohort model for each clock. Rebuild
+        # synthetic quotes/delta through the real cycle_result for that DTE;
+        # merely changing annualized yield on an old model would forge Greeks.
+        asof = MONTHLY_PROBE_FRIDAY - timedelta(days=day) if period == "monthly" else TODAY
+        expiry = MONTHLY_PROBE_FRIDAY if period == "monthly" else TODAY + timedelta(days=day)
+        probe_at = stamp_of(asof)
+        if day < 0:
+            probe = copy.deepcopy(seed)
+            probe.update(dte=day, expiry=expiry.isoformat(), timestamp=probe_at, asof_date=asof.isoformat())
+            probe.pop("monthly_rule", None)
+        else:
+            identity_keys = ("provider_id", "jurisdiction", "venue", "instrument_kind", "publication_scope")
+            probe = builder.cycle_result(
+                "SIVE.ST", expiry.isoformat(), day, 100.0,
+                [{"strike": 120.0, "bid": 0.60, "ask": 0.62, "oi": 10, "volume": 1}],
+                currency="SEK", source=seed["source"], provenance=seed["provenance"],
+                rights=seed["rights_status"], stamp=probe_at, asof=asof.isoformat(),
+                identity={key: seed[key] for key in identity_keys},
+            )
         produced, produced_at = collected[day, period]
         available = "unavailable" not in produced
         observations.append({"producer_available": available, "validator_available": admitted(probe, period, probe_at),
@@ -213,6 +220,30 @@ class MonthlyProducerTests(unittest.TestCase):
         with patch.object(builder, "http_json", side_effect=listed_window):
             result = builder.nasdaq_us_options("TEST", 100.0, TODAY, STAMP)
         self.assertIn("2026-11-20", result["monthly"]["unavailable"])
+
+    def test_failed_targeted_refetch_reports_read_error_not_listing_absence(self):
+        weekly = date(2026, 11, 6)
+        us_rows = [{"expirygroup": "November 6, 2026"},
+                   {"strike": "120", "c_Bid": "0.60", "c_Ask": "0.62"}]
+        for venue in ("US", "STOCKHOLM"):
+            for has_weekly in (False, True):
+                for failure in (OSError("synthetic read failure"), {"data": None},
+                                {"data": {"table": {"rows": "invalid"}, "instrumentListing": {"rows": "invalid"}}}):
+                    with self.subTest(venue=venue, has_weekly=has_weekly, failure=type(failure).__name__):
+                        broad = ({"data": {"lastTrade": "LAST TRADE: $100 (AS OF NOV 2, 2026)",
+                                           "table": {"rows": us_rows if has_weekly else []}}} if venue == "US"
+                                 else {"data": {"instrumentListing": {"rows": [nordic_row(weekly)] if has_weekly else []}}})
+                        with patch.object(builder, "http_json", side_effect=[broad, failure]):
+                            result = (builder.nasdaq_us_options("SYNTH", 100.0, TODAY, STAMP) if venue == "US"
+                                      else builder.nordic_options("SIVE.ST", "SIVE", 100.0, TODAY, STAMP,
+                                                                  "synthetic", spot_currency="SEK"))
+                        self.assertIn("補查讀取失敗；是否上市未確認", result["monthly"]["unavailable"])
+                        health = {entry["cycle"]: entry for entry in result.health}
+                        self.assertEqual((health["monthly"]["status"], health["monthly"]["read"]), ("READ_ERROR", False))
+                        self.assertFalse(health["monthly"]["two_sided"])
+                        self.assertEqual(health["weekly"]["status"], "READ" if has_weekly else "EMPTY_RESPONSE")
+                        if has_weekly:
+                            self.assertEqual(result["weekly"]["expiry"], weekly.isoformat())
 
     def test_yahoo_lists_and_fetches_the_selected_monthly_only(self):
         call = SimpleNamespace(strike=120.0, bid=0.30, ask=0.32, impliedVolatility=None,

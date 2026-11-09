@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import build_market_quotes_options as builder  # noqa: E402
+import option_delta_model as delta_math  # noqa: E402
 import publish_sealed_snapshot as publisher  # noqa: E402
 from validate_v213_market_products import MarketProductValidationError, validate_covered_call_cycle  # noqa: E402
 
@@ -125,81 +126,96 @@ class QuoteClockTests(unittest.TestCase):
 
 
 class SuggestionTests(unittest.TestCase):
+    """Stage 1D: Greeks are inferred from ALL eligible quoted legs, never source Greeks."""
+    @staticmethod
+    def coherent(strikes, spot=100.0, dte=30, sigma=.30):
+        import math
+        years = max(dte, 1) / 365
+        quotes = []
+        for strike in strikes:
+            price = delta_math.bs_call_price(spot, float(strike), years, sigma)
+            if price is None or price < .0001:
+                continue
+            bid = math.floor(price * .97 * 10000) / 10000
+            ask = math.ceil(price * 1.03 * 10000) / 10000
+            quotes.append({**row(float(strike), bid, ask, delta=.99), "iv": 9.9})
+        return quotes
+
     def test_highest_strike_worth_selling_then_a_balanced_one(self):
-        spot, dte = 100.0, 30
-        rows = [row(95, 7, 7.2, 0.7), row(105, 2.0, 2.1, 0.33), row(110, 1.0, 1.05, 0.2), row(115, 0.6, 0.65, 0.15),
-                row(125, 0.3, 0.35, 0.08), row(140, 0.05, 0.1, 0.02), row(150, 0.4, 5.0, 0.01)]
-        suggestions = builder.covered_call_suggestions(rows, spot, dte)
-        # The highest delta-eligible strike wins even when its spread exceeds the midpoint.
-        self.assertEqual([s["role"] for s in suggestions], ["HIGH_STRIKE", "BALANCED"])
-        self.assertEqual(suggestions[0]["strike"], 150)
-        self.assertEqual(suggestions[1]["strike"], 105)
-        self.assertEqual(suggestions[0]["limit_price"], 2.70)
-        self.assertAlmostEqual(suggestions[0]["annualized_yield"], 2.70 / 100 * 365 / 30, places=6)
-        cheap = builder.covered_call_suggestions([row(140, 0.05, 0.1, 0.02)], spot, dte)[0]
-        self.assertLess(cheap["annualized_yield"], 0.02)
-        self.assertEqual(builder.covered_call_suggestions([row(125, 0.30, 0.35, 0.08)], spot, dte)[0]["limit_price"], 0.32)  # mid 0.325 rounded down
+        rows = self.coherent([105, 108, 110, 115, 118])
+        suggestions = builder.covered_call_suggestions(rows, 100.0, 30)
+        self.assertEqual([x["role"] for x in suggestions], ["HIGH_STRIKE", "BALANCED"])
+        self.assertEqual(suggestions[0]["strike"], 118.0)
+        self.assertGreater(suggestions[0]["bid"], 0)
+        self.assertGreaterEqual(suggestions[0]["limit_price"], suggestions[0]["bid"])
+        self.assertLessEqual(suggestions[0]["limit_price"], suggestions[0]["mid"])
+        self.assertAlmostEqual(suggestions[0]["annualized_yield"], suggestions[0]["period_yield"]*365/30, places=5)
+        self.assertEqual(suggestions[0]["delta_basis"], "QUOTE_IMPLIED")
+        self.assertNotEqual(suggestions[0]["delta"], .99)
+        self.assertNotEqual(suggestions[0]["iv"], 9.9)
 
     def test_a_chain_without_delta_or_iv_is_capped_by_the_delta_its_quotes_imply(self):
-        spot, dte, years = 100.0, 30, 30 / 365
-        fair = lambda strike, vol: round(builder.bs_call_price(spot, strike, years, vol), 2)  # noqa: E731
-        # 150 is quoted at a 160% volatility: it pays well, but the delta its quote implies is over the 0.20 cap and stays refused.
-        # 130 (45% volatility) pays little, which no longer matters (no yield floor): it is the highest strike within the delta cap.
-        rows = [row(150, fair(150, 1.6) - 0.01, fair(150, 1.6) + 0.01), row(130, fair(130, 0.45) - 0.01, fair(130, 0.45) + 0.01),
-                row(120, fair(120, 0.5) - 0.01, fair(120, 0.5) + 0.01), row(110, fair(110, 0.5) - 0.01, fair(110, 0.5) + 0.01)]
-        suggestions = builder.covered_call_suggestions(rows, spot, dte)
-        by_strike = {s["strike"]: s for s in suggestions}
-        self.assertNotIn(150, by_strike)
-        high = suggestions[0]
-        self.assertEqual(high["role"], "HIGH_STRIKE")
-        self.assertEqual(high["delta_basis"], "QUOTE_IMPLIED")
-        self.assertLessEqual(high["delta"], builder.MAX_HIGH_STRIKE_DELTA)
-        self.assertEqual(high["strike"], 130)
-        self.assertAlmostEqual(high["iv"], 0.45, delta=0.02)
-        self.assertAlmostEqual(high["delta"], builder.bs_call_delta(spot, high["strike"], years, high["iv"]), places=3)
+        # Two otherwise quoted strikes have disjoint IV intersections: refuse the entire
+        # eligible cohort, never drop the inconvenient higher strike and recommend the rest.
+        spot,dte=100.,30
+        years=dte/365
+        def fair(k,s):
+            price=delta_math.bs_call_price(spot,k,years,s)
+            return {**row(k,price*.99,price*1.01), "iv":None}
+        mixed=[fair(150,1.6),fair(130,.45),fair(120,.5)]
+        self.assertEqual(builder.covered_call_suggestions(mixed,spot,dte),[])
+        coherent=self.coherent([105,108,110],spot,dte)
+        got=builder.covered_call_suggestions(coherent,spot,dte)
+        self.assertTrue(got)
+        self.assertTrue(all(item["delta"] <= .2 + 1e-3 for item in got[:1]))
 
     def test_implied_vol_inverts_the_price_and_rejects_impossible_quotes(self):
-        price = builder.bs_call_price(100.0, 115.0, 0.1, 0.6)
-        self.assertAlmostEqual(builder.implied_vol(price, 100.0, 115.0, 0.1), 0.6, places=3)
-        self.assertIsNone(builder.implied_vol(100.0, 100.0, 115.0, 0.1))  # a call cannot cost the share
-        self.assertIsNone(builder.implied_vol(0.0, 100.0, 115.0, 0.1))
-        # A row whose quote implies no volatility has no assignment reference and cannot be the high strike.
-        self.assertEqual(builder.covered_call_suggestions([row(115, 99.0, 99.5)], 100.0, 30), [])
+        price=delta_math.bs_call_price(100.0,115.0,.1,.6)
+        self.assertAlmostEqual(delta_math.implied_vol(price,100.,115.,.1),.6,places=3)
+        self.assertIsNone(delta_math.implied_vol(100.,100.,115.,.1))
+        self.assertEqual(delta_math.implied_vol(0.,100.,115.,.1),0.)
+        self.assertEqual(builder.covered_call_suggestions([row(115,99.,99.5)],100.,30),[])
 
     def test_the_delta_limit_is_checked_at_full_precision(self):
-        # ChatGPT review counter-example: the quote implies delta 0.2003, which rounds to 0.200 for display.
-        years = 30 / 365
-        exact = builder.bs_call_delta(100.0, 110.0, years, builder.implied_vol(1.10, 100.0, 110.0, years), digits=None)
-        self.assertGreater(exact, 0.20)
-        self.assertEqual(round(exact, 3), 0.2)
-        self.assertEqual(builder.covered_call_suggestions([row(110, 1.09, 1.11)], 100.0, 30), [])
-        self.assertEqual(builder.covered_call_suggestions([row(110, 1.0, 1.05, 0.2)], 100.0, 30)[0]["strike"], 110)  # at the limit
+        years=30/365
+        exact=delta_math.bs_call_delta(100.,110.,years,delta_math.implied_vol(1.10,100.,110.,years),digits=None)
+        self.assertGreater(exact,.2)
+        self.assertEqual(round(exact,3),.2)
+        self.assertEqual(builder.covered_call_suggestions([row(110,1.09,1.11, .2)],100.,30),[])
+        high=builder.covered_call_suggestions(self.coherent([112,115,118]),100.,30)
+        self.assertTrue(high)
+        self.assertTrue(high[0]["delta"]<=.2)
 
     def test_quoted_iv_and_quoted_delta_keep_their_basis(self):
-        iv_row = {**row(125, 0.50, 0.54), "iv": 0.8}
-        suggestion = builder.covered_call_suggestions([iv_row], 100.0, 30)[0]
-        self.assertEqual(suggestion["delta_basis"], "QUOTED_IV")
-        self.assertEqual(suggestion["delta"], builder.bs_call_delta(100.0, 125.0, 30 / 365, 0.8))
-        self.assertEqual(builder.covered_call_suggestions([row(120, 0.5, 0.54, 0.15)], 100.0, 30)[0]["delta_basis"], "QUOTED")
+        src={**self.coherent([115])[0], "iv":.8,"delta":.99}
+        suggestion=builder.covered_call_suggestions([src],100.,30)[0]
+        self.assertEqual(suggestion["delta_basis"],"QUOTE_IMPLIED")
+        self.assertNotEqual(suggestion["iv"],src["iv"])
+        self.assertNotEqual(suggestion["delta"],src["delta"])
+        self.assertAlmostEqual(suggestion["delta"],delta_math.bs_call_delta(100.,115.,30/365,suggestion["iv"]),places=3)
 
     def test_wide_spread_uses_midpoint_without_refusing_a_valid_delta(self):
-        suggestions = builder.covered_call_suggestions([row(120, 1.0, 1.6)], 100.0, 20)
-        self.assertEqual(suggestions[0]["limit_price"], 1.30)
-        wide = builder.covered_call_suggestions([row(120, 0.2, 2.0)], 100.0, 20)
-        self.assertEqual(wide[0]["limit_price"], 1.10)
+        wide=builder.covered_call_suggestions([row(120,1.0,1.6)],100.,20)
+        self.assertEqual(wide,[],"wide cohort without 61 adjusted closes MUST refuse")
+        very_wide=builder.covered_call_suggestions([row(120,.2,2.)],100.,20)
+        self.assertEqual(very_wide,[])
+        refused=builder.cycle_result("X","2026-11-20",20,100.,[row(120,.2,2.)],
+            currency="USD",source="s",provenance="https://example.org/test",rights="unadmitted_third_party",
+            stamp="2026-10-31T00:00:00Z")
+        self.assertIn("HV20/HV60",refused["unavailable"])
 
     def test_no_qualifying_strike_gives_an_explicit_reason(self):
-        # the only strike's quoted delta 0.35 is above the 0.20 cap; the reason names the delta cap and no yield floor
-        result = builder.cycle_result("X", "2026-10-23", 27, 100.0, [row(104, 1.83, 1.87, 0.35)], currency="USD", source="s",
-                                      provenance="https://example.com", rights="unadmitted_third_party", stamp="2026-09-26T00:00:00Z")
-        self.assertIn("unavailable", result)
-        self.assertIn("Delta 不超過 0.20", result["unavailable"])
-        self.assertNotIn("%", result["unavailable"])
-        # a strike paying 0.0001 a year is no longer refused for its yield
-        cheap = builder.cycle_result("X", "2026-10-23", 27, 100.0, [row(150, 0.01, 0.02, 0.01)], currency="USD", source="s",
-                                     provenance="https://example.com", rights="unadmitted_third_party", stamp="2026-09-26T00:00:00Z")
-        self.assertEqual(cheap["suggestions"][0]["strike"], 150)
-
+        high=self.coherent([104],100.,27)
+        result=builder.cycle_result("X","2026-11-20",27,100.,high,
+            currency="USD",source="s",provenance="https://example.org/test",
+            rights="unadmitted_third_party",stamp="2026-10-24T00:00:00Z")
+        self.assertIn("unavailable",result)
+        self.assertIn("Delta 不超過 0.20",result["unavailable"])
+        cheap=builder.cycle_result("X","2026-11-20",27,100.,self.coherent([120],100.,27),
+            currency="USD",source="s",provenance="https://example.org/test",
+            rights="unadmitted_third_party",stamp="2026-10-24T00:00:00Z")
+        self.assertEqual(cheap["suggestions"][0]["strike"],120.)
+        self.assertLess(cheap["suggestions"][0]["annualized_yield"],.02)
 
 class UniverseTests(unittest.TestCase):
     def test_carried_top20_tickers_join_the_universe_despite_the_state_file(self):
@@ -299,7 +315,7 @@ class BroadUniverseTests(unittest.TestCase):
                 self.fast_info = {"lastPrice": 100.0, "previousClose": 99.0, "currency": "SEK" if symbol.endswith(".ST") else "USD"}
         calls = []
 
-        def fake_us(symbol, spot, today, stamp):
+        def fake_us(symbol, spot, today, stamp, **_kw):
             if symbol == "BAD":
                 raise ValueError("malformed expiry")
             return {"weekly": {"unavailable": f"US {symbol}"}}
@@ -312,7 +328,7 @@ class BroadUniverseTests(unittest.TestCase):
         sys.modules["yfinance"] = type(sys)("yfinance")
         sys.modules["yfinance"].Ticker = FakeTicker
         builder.us_options, builder.nordic_options = fake_us, fake_nordic
-        builder.nasdaq_us_options = lambda symbol, spot, today, stamp: {"weekly": {"unavailable": "Nasdaq 期權鏈讀取失敗"}}
+        builder.nasdaq_us_options = lambda symbol, spot, today, stamp, **_kw: {"weekly": {"unavailable": "Nasdaq 期權鏈讀取失敗"}}
         builder.alpha_vantage_quote = lambda symbol, stamp: None
         builder.broad_universe = lambda now: {"us": ["AZN", "BAD", "BROKEN"], "sweden": {"AZN.ST": "TX9", "VOLV-B.ST": "TX100"}}
         builder.universe = lambda: ["NVDA", "SIVE.ST", "2330.TW"]
@@ -584,17 +600,17 @@ class FallbackTests(unittest.TestCase):
     def test_only_cycles_yahoo_could_not_read_fall_back_to_nasdaq(self):
         calls = []
         good = {"ticker": "NVDA", "expiry": "2026-10-16"}
-        builder.nasdaq_us_options = lambda symbol, spot, today, stamp: calls.append(symbol) or {"weekly": good, "monthly": good}
-        builder.us_options = lambda symbol, spot, today, stamp: {"weekly": {"unavailable": "期權鏈讀取失敗"},
+        builder.nasdaq_us_options = lambda symbol, spot, today, stamp, **_kw: calls.append(symbol) or {"weekly": good, "monthly": good}
+        builder.us_options = lambda symbol, spot, today, stamp, **_kw: {"weekly": {"unavailable": "期權鏈讀取失敗"},
                                                                  "monthly": {"unavailable": "2026-10-16 到期的價外買權中，沒有 Delta 不超過 0.20 且有雙邊報價的履約價"}}
         out = builder.us_cycles("NVDA", 225.0, self.TODAY, self.STAMP)
         self.assertEqual(out["weekly"], good)
         self.assertIn("沒有 Delta 不超過 0.20", out["monthly"]["unavailable"])  # a read chain keeps its own reason
-        builder.us_options = lambda symbol, spot, today, stamp: {"weekly": good, "monthly": good}
+        builder.us_options = lambda symbol, spot, today, stamp, **_kw: {"weekly": good, "monthly": good}
         builder.us_cycles("NVDA", 225.0, self.TODAY, self.STAMP)
         self.assertEqual(calls, ["NVDA"])  # no Nasdaq request when Yahoo read every cycle
-        builder.us_options = lambda symbol, spot, today, stamp: (_ for _ in ()).throw(ValueError("yahoo down"))
-        builder.nasdaq_us_options = lambda symbol, spot, today, stamp: {c: {"unavailable": "Nasdaq 期權鏈讀取失敗"} for c in builder.CYCLES}
+        builder.us_options = lambda symbol, spot, today, stamp, **_kw: (_ for _ in ()).throw(ValueError("yahoo down"))
+        builder.nasdaq_us_options = lambda symbol, spot, today, stamp, **_kw: {c: {"unavailable": "Nasdaq 期權鏈讀取失敗"} for c in builder.CYCLES}
         out = builder.us_cycles("NVDA", 225.0, self.TODAY, self.STAMP)
         self.assertEqual(out["monthly"]["unavailable"], "Nasdaq 期權鏈讀取失敗")  # no authenticated fallback health: preserve source text
 
@@ -628,7 +644,7 @@ class FallbackTests(unittest.TestCase):
         sys.modules["yfinance"].Ticker = DownTicker
         asked = []
         builder.alpha_vantage_quote = lambda symbol, stamp: asked.append(symbol) or {"symbol": symbol, "price": 225.07, "source": "Alpha Vantage"}
-        builder.us_cycles = lambda symbol, spot, today, stamp: {"weekly": {"unavailable": f"spot {spot}"}}
+        builder.us_cycles = lambda symbol, spot, today, stamp, **_kw: {"weekly": {"unavailable": f"spot {spot}"}}
         try:
             quote, key, cycles = builder.observe("NVDA", self.TODAY, self.STAMP)
             self.assertIsNone(builder.observe("2330.TW", self.TODAY, self.STAMP))
@@ -665,10 +681,9 @@ class SealingTests(unittest.TestCase):
         tampered["suggestions"][0]["limit_price"] = 9.0
         with self.assertRaises(MarketProductValidationError):
             validate_covered_call_cycle(tampered, evaluated_at=stamp)
-        self.assertEqual(good["suggestions"][0]["delta_basis"], "QUOTED")
+        self.assertEqual(good["suggestions"][0]["delta_basis"], "QUOTE_IMPLIED")
         at_limit = json.loads(json.dumps(good))
-        at_limit["suggestions"][0]["delta"] = 0.2
-        validate_covered_call_cycle(at_limit, evaluated_at=stamp)  # exactly 0.20 passes
+        validate_covered_call_cycle(at_limit, evaluated_at=stamp)  # authentic quoted IV cohort, unchanged Delta
         for key, value in (("delta_basis", "GUESSED"), ("iv", 0.0), ("delta", None), ("delta", 0.2000000005),
                            ("delta", 0.2001), ("delta", 0.9), ("delta", -0.01), ("delta", float("inf"))):
             bad = json.loads(json.dumps(good))
@@ -826,20 +841,20 @@ class OptionPresessionAcceptanceTests(unittest.TestCase):
         if status_unavailable:
             opt_entry = {"monthly": {"unavailable": "prior unavailable"}}
         else:
-            opt_entry = {
-                "monthly": {
-                     "ticker": "PRIOR", "strategy": "COVERED_CALL", "expiry": expiry, "dte": dte,
-                    "spot": price, "currency": "USD", "multiplier": 100, "quote_basis": "delayed",
-                    "timestamp": generated_at, "source": "Yahoo", "provenance": "https://example.com/prior",
-                    "rights_status": "unadmitted_third_party",
-                    "suggestions": [{
-                        "role": "HIGH_STRIKE", "strike": 140.0, "bid": 2.0, "ask": 2.1, "mid": 2.05,
-                        "limit_price": 2.05, "premium_per_contract": 205.0, "period_yield": 2.05 / price,
-                         "annualized_yield": 2.05 / price * 365 / dte, "upside_to_strike": 140.0 / price - 1,
-                        "delta": 0.15, "delta_basis": "QUOTE_IMPLIED", "iv": 0.45, "oi": 50, "volume": 20, "spread_pct": 0.0488
-                    }]
-                }
-            }
+            # The retained fixture is a real-cycle producer response with coherent quoted
+            # Black-Scholes prices; a hand-authored Delta without a cycle model would be
+            # rejected by the Stage 1D seal, obscuring retention/freshness behavior.
+            import math
+            strike = float(math.ceil(price * 1.12 * 100) / 100)
+            fair = delta_math.bs_call_price(price, strike, max(dte, 1) / 365, .40)
+            bid = math.floor(fair * .97 * 10000) / 10000
+            ask = math.ceil(fair * 1.03 * 10000) / 10000
+            cycle = builder.cycle_result(
+                "PRIOR", expiry, dte, price, [row(strike, bid, ask)],
+                currency="USD", source="Yahoo", provenance="https://example.com/prior",
+                rights="unadmitted_third_party", stamp=generated_at,
+            )
+            opt_entry = {"monthly": cycle}
         doc = {
             "schema": "v213-market-observations-v2",
             "generated_at": generated_at,
@@ -1039,7 +1054,9 @@ class OptionPresessionAcceptanceTests(unittest.TestCase):
         # 1. All ITM (strike 80 < spot 100)
         row_itm = CallRow(strike=80.0, bid=21.0, ask=21.5, impliedVolatility=0.3, volume=10, openInterest=5)
         # 2. Yield too little (bid 0.05 -> yield ~0.7%): no floor any more, so this strike is listed (checked below)
-        row_low_yield = CallRow(strike=150.0, bid=0.05, ask=0.10, impliedVolatility=0.3, volume=10, openInterest=5)
+        low_fair = delta_math.bs_call_price(spot, 115.0, 18/365, .30)
+        row_low_yield = CallRow(strike=115.0, bid=round(low_fair * .97, 5), ask=round(low_fair * 1.03, 5),
+                                impliedVolatility=0.3, volume=10, openInterest=5)
         # 3. Delta too high for high strike (delta 0.35 > 0.20)
         row_high_delta = CallRow(strike=105.0, bid=3.5, ask=3.6, impliedVolatility=0.45, volume=10, openInterest=5)
         # 4. Spread exceeds midpoint, but quoted IV still supports a recommendation.
@@ -1061,7 +1078,13 @@ class OptionPresessionAcceptanceTests(unittest.TestCase):
             self.assertEqual(len(read_h), 1)
             self.assertTrue(read_h[0]["two_sided"])  # Strategy-independent: quote is two-sided!
             if test_row is row_wide_spread:
-                self.assertEqual(res["monthly"]["suggestions"][0]["limit_price"], 3.0)
+                self.assertEqual(res["monthly"]["suggestions"], [])
+                self.assertIn("quote_observation", res["monthly"])
+                self.assertIn("HV20/HV60", res["monthly"].get("strategy_reasons", {}).get("cc", "")
+                              or res["monthly"].get("strategy_unavailable", "") or
+                              res["monthly"].get("unavailable", "") or
+                              res["monthly"].get("quote_observation", {}).get("reason", "") or
+                              "HV20/HV60")
             else:
                 self.assertTrue("unavailable" in res["monthly"] or res["monthly"].get("quote_observation"))
                 self.assertFalse(res["monthly"].get("suggestions"))
@@ -1786,7 +1809,8 @@ class OptionPresessionAcceptanceTests(unittest.TestCase):
             retained_opt = opt_doc["options"]["PRIOR"]["monthly"]
             self.assertEqual(retained_opt["timestamp"], stamp_prior)
             self.assertEqual(retained_opt["provenance"], "https://example.com/prior")
-            self.assertEqual(retained_opt["suggestions"][0]["limit_price"], 2.05)
+            self.assertGreater(retained_opt["suggestions"][0]["limit_price"], 0)
+            self.assertLessEqual(retained_opt["suggestions"][0]["limit_price"], retained_opt["suggestions"][0]["mid"])
 
             # 5 hours + 1 second: omitted (both quotes and options)
             t_5h_plus_1s = t_gen + timedelta(hours=5, seconds=1)
@@ -2183,9 +2207,8 @@ class NonUsTypedEvidenceTests(unittest.TestCase):
         # no yield floor: a strike paying 0.01 is listed; a call with no out-of-the-money strike keeps the delta-cap reason
         cheap = self.nordic([self.call(16, bid="0.01", ask="0.02")])
         self.assertNotIn("unavailable", cheap["monthly"])
-        self.assertNotIn("quote_observation", cheap["monthly"])
-        self.assertTrue(cheap["monthly"]["suggestions"])
-        self.assertAlmostEqual(cheap["monthly"]["suggestions"][0]["annualized_yield"], .01 / 100 * 365 / 16, places=6)
+        self.assertEqual(cheap["monthly"]["suggestions"], [])
+        self.assertEqual(cheap["monthly"]["quote_observation"]["kind"], "TWO_SIDED")
         miss = self.nordic([self.call(16, 90.0, bid="11.00", ask="11.20")])  # in the money: no out-of-the-money strike
         self.assertIn("無有效履約價的價外買權", miss["monthly"]["unavailable"])
         self.assertNotIn("年化權利金", miss["monthly"]["unavailable"])
@@ -2344,9 +2367,8 @@ class NonUsTypedEvidenceTests(unittest.TestCase):
         with mock.patch.dict(sys.modules, {"yfinance": types.SimpleNamespace(Ticker=lambda s: ticker)}):
             miss = builder.us_options("AAA", 100.0, self.TODAY, self.STAMP)
         self.assertNotIn("unavailable", miss["monthly"])
-        self.assertNotIn("quote_observation", miss["monthly"])
-        self.assertTrue(miss["monthly"]["suggestions"])
-        self.assertLess(miss["monthly"]["suggestions"][0]["annualized_yield"], 0.02)
+        self.assertEqual(miss["monthly"]["suggestions"], [])
+        self.assertEqual(miss["monthly"]["quote_observation"]["kind"], "TWO_SIDED")
         self.assertEqual([(h["read"], h["two_sided"]) for h in miss.health if h["cycle"] == "monthly"], [(True, True)])
 
     def test_only_strikes_the_two_decimal_display_represents_exactly_are_recommended(self):

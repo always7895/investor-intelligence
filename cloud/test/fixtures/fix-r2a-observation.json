@@ -3,7 +3,7 @@
   "strategy": "COVERED_CALL",
   "expiry": "2026-11-20",
   "dte": 12,
-  "spot": 100,
+  "spot": 100.0,
   "currency": "USD",
   "multiplier": 100,
   "quote_basis": "delayed",
@@ -12,23 +12,12 @@
   "provenance": "https://example.org/typed-public-chain",
   "rights_status": "operator_accepted_unlicensed",
   "suggestions": [],
-  "quote_observation": {
-    "kind": "TWO_SIDED",
-    "strike": 107.5,
-    "bid": 0.01,
-    "ask": 0.02,
-    "last": null,
-    "annualized_yield": 0.003042,
-    "oi": 200,
-    "volume": 10
+  "delta_model": {
+    "basis": "QUOTE_IMPLIED",
+    "sigma": 0.29997585194392484,
+    "iv_bid": 0.2980116281753298,
+    "iv_ask": 0.3019400757125199
   },
-  "asof_date": "2026-11-08",
-  "monthly_rule": "THIRD_FRIDAY",
-  "provider_id": "yahoo_finance_option_chain",
-  "jurisdiction": "US",
-  "venue": "US_LISTED_OPTIONS",
-  "instrument_kind": "equity_option",
-  "publication_scope": "public_line_quote",
   "strategies": {
     "cc": {
       "unavailable": "2026-11-20 到期的價外買權中，沒有 Delta 不超過 0.20 的履約價"
@@ -37,17 +26,17 @@
       "suggestions": [
         {
           "role": "CONSERVATIVE",
-          "strike": 95,
-          "bid": 0.55,
-          "ask": 0.65,
-          "limit_price": 0.6,
-          "delta": 0.266,
-          "delta_basis": "QUOTED_IV",
-          "premium_per_contract": 60.0,
-          "cash_required": 9500,
-          "annualized_yield": 0.192105,
-          "breakeven": 94.4,
-          "downside_buffer": 0.05
+          "strike": 96.0,
+          "bid": 0.6491,
+          "ask": 0.6893,
+          "limit_price": 0.66,
+          "delta": 0.211,
+          "delta_basis": "QUOTE_IMPLIED",
+          "premium_per_contract": 66.0,
+          "cash_required": 9600.0,
+          "annualized_yield": 0.209115,
+          "breakeven": 95.34,
+          "downside_buffer": 0.04
         }
       ],
       "rights_status": "operator_accepted_unlicensed",
@@ -57,29 +46,29 @@
     },
     "collar": {
       "put": {
-        "strike": 90,
-        "bid": 0.25,
-        "ask": 0.3,
-        "limit_price": 0.28,
-        "delta": 0.183,
-        "delta_basis": "QUOTED_IV"
+        "strike": 94.0,
+        "bid": 0.31,
+        "ask": 0.3292,
+        "limit_price": 0.32,
+        "delta": 0.117,
+        "delta_basis": "QUOTE_IMPLIED"
       },
       "items": [
         {
           "role": "CONSERVATIVE",
           "call": {
-            "strike": 107.5,
-            "bid": 0.01,
-            "ask": 0.02,
-            "limit_price": 0.01,
-            "delta": 0.23,
-            "delta_basis": "QUOTED_IV"
+            "strike": 104.0,
+            "bid": 0.7722,
+            "ask": 0.8201,
+            "limit_price": 0.79,
+            "delta": 0.252,
+            "delta_basis": "QUOTE_IMPLIED"
           },
-          "net_premium_per_share": -0.27,
-          "max_loss_per_share": 10.27,
-          "max_gain_per_share": 7.23,
-          "break_even": 100.27,
-          "worst_case_net_per_share": -0.29
+          "net_premium_per_share": 0.47,
+          "max_loss_per_share": 5.53,
+          "max_gain_per_share": 4.47,
+          "break_even": 99.53,
+          "worst_case_net_per_share": 0.443
         }
       ],
       "rights_status": "operator_accepted_unlicensed",
@@ -87,5 +76,22 @@
       "quote_basis": "delayed",
       "timestamp": "2026-11-08T14:16:09Z"
     }
+  },
+  "provider_id": "yahoo_finance_option_chain",
+  "jurisdiction": "US",
+  "venue": "US_LISTED_OPTIONS",
+  "instrument_kind": "equity_option",
+  "publication_scope": "public_line_quote",
+  "asof_date": "2026-11-08",
+  "monthly_rule": "THIRD_FRIDAY",
+  "quote_observation": {
+    "kind": "TWO_SIDED",
+    "strike": 104.0,
+    "bid": 0.7722,
+    "ask": 0.8201,
+    "last": null,
+    "annualized_yield": 0.2348775,
+    "oi": 200,
+    "volume": 10
   }
 }

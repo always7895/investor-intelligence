@@ -225,7 +225,7 @@ describe("OPTIONS-NONUS-02 bridge: exact Python-emitted bodies through the Worke
     }
   });
 
-  it("distinguishes unpriced contracts from bid-only recommendations without inventing the missing Ask", async () => {
+  it("keeps unpriced and bid-only contracts non-executable without inventing an Ask", async () => {
     const sive = await sealedEnv("retained_sive_sept30");
     const weekly = textOf(await reply(sive, "VOLV-B.ST 每週期權"));
     // V13: the blank contract currency follows the confirmed SEK underlying; the retained row has no two-sided quote.
@@ -239,13 +239,11 @@ describe("OPTIONS-NONUS-02 bridge: exact Python-emitted bodies through the Worke
       expect(observed).toContain("無雙邊報價");
       expect(observed).not.toContain("建議賣出限價");
       for (const period of ["每週期權", "每月期權"]) {
-        const recommended = textOf(await reply(us, `UYONESIDED ${period}`));
-        expect(recommended).toContain("建議賣出限價 $0.50");
-        expect(recommended).toContain("Bid $0.50");
-        expect(recommended).toContain("中價 未提供");
-        expect(recommended).toContain("Ask 未提供");
-        expect(recommended).toContain("流動性警示：單邊報價");
-        expect(recommended).not.toContain("Ask $0.00");
+        const refused = textOf(await reply(us, `UYONESIDED ${period}`));
+        expect(refused).toContain(period === "每月期權" ? "無雙邊報價" : "期權報價不可用");
+        expect(refused).not.toContain("建議賣出限價");
+        expect(refused).not.toContain("LIMIT");
+        expect(refused).not.toContain("Ask $0.00");
       }
     }
   });

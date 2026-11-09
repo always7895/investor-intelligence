@@ -7,6 +7,7 @@ import { v213PublicLineAnswer } from "../src/v213/rich-menu";
 import { admitSyntheticTickers } from "./synthetic-option-admission";
 import { bubblesOf, type Node } from "./flex-density-fixtures";
 import fixture from "./fixtures/v21-three-strategies.json";
+import { repriceSyntheticCycle } from "./synthetic-coherent-options";
 
 vi.mock("../src/v213/public-options-admission", async original => {
   const real = await original<typeof import("../src/v213/public-options-admission")>();
@@ -30,14 +31,14 @@ function rows(node: Node): number {
 
 describe("full public strategy replies", () => {
   it.each(["monthly", "weekly"] as const)("keeps the %s overview compact and every tier's quote scenarios in the actual reply", async period => {
-    const cycle: any = structuredClone(fixture.cases.yahoo_monthly_full);
+    const cycle = validateCoveredCallCycle(structuredClone(fixture.cases.yahoo_monthly_full),
+      Date.parse(fixture.stamp) + 60_000, fixture.stamp, "monthly")!;
+    expect(cycle).not.toBeNull();
     if (period === "weekly") {
-      cycle.dte = 7;
+      repriceSyntheticCycle(cycle, 7);
       cycle.expiry = "2026-10-30";  // the fixture run date is Friday 2026-10-23: next week's Friday
       cycle.weekly_week = "NEXT";
       delete cycle.monthly_rule;    // the marker rides monthly rows only
-      for (const item of [...cycle.suggestions, cycle.middle_suggestion]) item.annualized_yield = item.period_yield * 365 / 7;
-      for (const item of cycle.strategies.csp.suggestions) item.annualized_yield = item.limit_price / item.strike * 365 / 7;
     }
     const valid = validateCoveredCallCycle(cycle, Date.parse(fixture.stamp) + 60_000, fixture.stamp, period);
     expect(valid).not.toBeNull();
@@ -55,8 +56,21 @@ describe("full public strategy replies", () => {
       expect(visible).toContain("不下單");
     }
     const full = JSON.stringify(pages);
-    for (const required of ["$94.00", "$96.00", "$9400.00", "$9600.00", "$92.00", "$107.00", "$754.00", "$746.00",
-      "Bid $0.98", "Bid $0.59", "Bid $1.05", "以備妥現金計", "LIMIT", "不高於Ask", "不低於Bid", "Call Bid－Put Ask"]) expect(full).toContain(required);
+    for (const required of ["以備妥現金計", "LIMIT", "不高於Ask", "不低於Bid", "Call Bid－Put Ask", "限價成交前不計入收益"]) expect(full).toContain(required);
+    const csp = valid!.strategies?.csp, collar = valid!.strategies?.collar;
+    if (!csp || !("suggestions" in csp) || !collar || !("items" in collar)) throw new Error("Expected all synthetic strategies to remain eligible");
+    for (const item of csp.suggestions) {
+      expect(full).toContain(`$${item.strike.toFixed(2)}`);
+      expect(full).toContain(`$${(item.strike * 100).toFixed(2)}`);
+      expect(full).toContain(`Bid $${item.bid}`);
+    }
+    expect(full).toContain(`$${collar.put.strike.toFixed(2)}`);
+    for (const item of collar.items) {
+      const net = item.call.limit_price - collar.put.limit_price;
+      expect(full).toContain(`$${item.call.strike.toFixed(2)}`);
+      expect(full).toContain(`$${((cycle.spot - collar.put.strike - net) * 100).toFixed(2)}`);
+      expect(full).toContain(`Bid $${item.call.bid}`);
+    }
     for (const page of pages.slice(1, -1)) {
       const visible = JSON.stringify(page);
       for (const required of ["LIMIT", "Bid情境", "價差占中價", "未成交"]) expect(visible).toContain(required);

@@ -385,35 +385,7 @@ class TestV213MarketProducts(unittest.TestCase):
         base_dt = datetime(2026, 9, 30, 12, 0, 0, tzinfo=timezone.utc)
         base_stamp = "2026-09-30T12:00:00Z"
         expiry_dt = base_dt + timedelta(days=21)
-        valid_cycle = {
-            "ticker": "TSM",
-            "strategy": "COVERED_CALL",
-            "expiry": expiry_dt.date().isoformat(),
-            "dte": 21,
-            "spot": 300.0,
-            "currency": "USD",
-            "multiplier": 100,
-            "quote_basis": "delayed",
-            "timestamp": "2026-09-30T11:30:00Z",
-            "source": "Yahoo Finance (unofficial, delayed)",
-            "provenance": "https://finance.yahoo.com/quote/TSM/options",
-            "rights_status": "unadmitted_third_party",
-            "suggestions": [{
-                "role": "HIGH_STRIKE",
-                "strike": 330.0,
-                "bid": 2.0,
-                "ask": 2.1,
-                "mid": 2.05,
-                "limit_price": 2.05,
-                "premium_per_contract": 205.0,
-                "period_yield": 2.05 / 300.0,
-                "annualized_yield": 2.05 / 300.0 * 365 / 21,
-                "upside_to_strike": 330.0 / 300.0 - 1,
-                "delta": 0.18,
-                "delta_basis": "QUOTED_IV",
-                "iv": 0.4,
-            }],
-        }
+        valid_cycle = self._covered_call_cycle(21, expiry_dt.date().isoformat())
         # Healthy cycle passes
         validate_covered_call_cycle(copy.deepcopy(valid_cycle), evaluated_at=base_stamp, document_at=base_stamp)
 
@@ -465,19 +437,8 @@ class TestV213MarketProducts(unittest.TestCase):
         self.assertEqual(str(ctx.exception), "EXPIRED_CONTRACT_REJECTED")
 
     def _covered_call_cycle(self, dte: int, expiry: str, timestamp: str = "2026-09-30T11:30:00Z") -> dict:
-        spot, limit = 300.0, 2.05
-        return {
-            "ticker": "TSM", "strategy": "COVERED_CALL", "expiry": expiry, "dte": dte, "spot": spot,
-            "currency": "USD", "multiplier": 100, "quote_basis": "delayed", "timestamp": timestamp,
-            "source": "Yahoo Finance (unofficial, delayed)", "provenance": "https://finance.yahoo.com/quote/TSM/options",
-            "rights_status": "unadmitted_third_party",
-            "suggestions": [{
-                "role": "HIGH_STRIKE", "strike": 330.0, "bid": 2.0, "ask": 2.1, "mid": 2.05, "limit_price": limit,
-                "premium_per_contract": limit * 100, "period_yield": limit / spot,
-                "annualized_yield": limit / spot * 365 / max(dte, 1), "upside_to_strike": 330.0 / spot - 1,
-                "delta": 0.18, "delta_basis": "QUOTED_IV", "iv": 0.4,
-            }],
-        }
+        from tests.fixtures.options_global_publisher_cases import _cycle
+        return _cycle("TSM", dte, expiry, timestamp)
 
     def test_covered_call_period_dte_bucket(self) -> None:
         """Weekly 0-14 and standard-monthly 0-60 bounds use independently valid calendars."""

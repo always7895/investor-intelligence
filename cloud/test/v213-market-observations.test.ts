@@ -12,6 +12,7 @@ import { asKv, MemoryKv } from "./fake-kv";
 import { sealUnboundReport } from "./sealed-report-migration";
 
 import { admitSyntheticTickers, resetAdmissionToReal } from "./synthetic-option-admission";
+import { syntheticCalls } from "./synthetic-coherent-options";
 
 // TESTFIX1 / OPTIONS_TEST_POLICY1: per-test sealed-ticker admission only; rights NONE remains the default.
 // Real no-mock caller coverage: v213-public-options-admission-regression.test.ts.
@@ -81,14 +82,7 @@ async function sealedEnv(options: {
       monthly: { ticker: "SIVE", strategy: "COVERED_CALL", expiry, dte, spot: 32.78, currency: "SEK", multiplier: 100,
         quote_basis: "delayed", timestamp: obsStamp, source: "Nasdaq Nordic option chain (exchange public web API, delayed)",
         provenance: "https://api.nasdaq.com/api/nordic/instruments/TX2540138/option-chain", rights_status: "candidate_local_review",
-        suggestions: [
-          { role: "HIGH_STRIKE", strike: 62, bid: 0.2, ask: 0.35, mid: 0.275, limit_price: 0.23, premium_per_contract: 23,
-            period_yield: 0.23 / 32.78, annualized_yield: 0.23 / 32.78 * 365 / Math.max(dte, 1), upside_to_strike: 62 / 32.78 - 1,
-            delta: 0.061, delta_basis: "QUOTE_IMPLIED", iv: 1.5658, oi: 12, volume: null, spread_pct: 0.5455 },
-          { role: "BALANCED", strike: 34, bid: 1.5, ask: 4.5, mid: 3, limit_price: 2.25, premium_per_contract: 225,
-            period_yield: 2.25 / 32.78, annualized_yield: 2.25 / 32.78 * 365 / Math.max(dte, 1), upside_to_strike: 34 / 32.78 - 1,
-            delta: null, iv: null, oi: 16, volume: null, spread_pct: 1 },
-        ] },
+        ...syntheticCalls(32.78, dte, 62, 34) },
     } } };
   }
   if (options.withPriceShard) {
@@ -149,8 +143,9 @@ describe("sealed market observations", () => {
     expect(monthly[0]!.text).toContain("SIVE");
     expect(monthly[0]!.text).toContain("備兌買權建議");
     expect(monthly[0]!.text).toContain("62.00 SEK");
-    expect(monthly[0]!.text).toContain("建議賣出限價 0.23 SEK");
-    expect(monthly[0]!.text).toContain("每口權利金 225.00 SEK");
+    const tiers = syntheticCalls(32.78, standardMonthlyFixture(FIXED_NOW).dte, 62, 34).suggestions;
+    expect(monthly[0]!.text).toContain(`建議賣出限價 ${tiers[0]!.limit_price}`);
+    expect(monthly[0]!.text).toContain(`每口權利金 ${tiers[1]!.premium_per_contract.toFixed(2)} SEK`);
     expect(monthly[0]!.text).toContain("Nasdaq Nordic");
     expect(monthly[0]!.text).not.toContain("UNAVAILABLE");
     const weekly = JSON.stringify(await v213PublicLineAnswer(env as never, parseQuery("SIVE 每週期權")));
@@ -176,7 +171,7 @@ describe("sealed market observations", () => {
       expect(JSON.stringify(await v213PublicLineAnswer(env as never, parseQuery(text)))).toContain(reason);
     }
     // An explicit Stockholm suffix never falls back to another key (here only the older unsuffixed SIVE exists).
-    expect(JSON.stringify(await v213PublicLineAnswer(env as never, parseQuery("SIVE.ST 每月期權")))).not.toContain("0.23 SEK");
+    expect(JSON.stringify(await v213PublicLineAnswer(env as never, parseQuery("SIVE.ST 每月期權")))).not.toContain("62.00 SEK");
     const weekly = JSON.stringify(await v213PublicLineAnswer(env as never, parseQuery("NVDA weekly options")));
     expect(weekly).toContain("本輪封存快照未包含 NVDA 之期權觀察");  // no observation for NVDA in this fixture
     expect(weekly).not.toContain("OPTION_DATA_NOT_ADMITTED");
@@ -203,8 +198,9 @@ describe("sealed market observations", () => {
     const env = await sealedEnv({ observationGeneratedAt: fixedStamp });
     const monthly = await v213PublicLineAnswer(env as never, parseQuery("SIVE 每月期權")) as { text: string }[];
     expect(monthly[0]!.text).toContain("62.00 SEK");
-    expect(monthly[0]!.text).toContain("建議賣出限價 0.23 SEK");
-    expect(monthly[0]!.text).toContain("每口權利金 225.00 SEK");
+    const tiers = syntheticCalls(32.78, standardMonthlyFixture(FIXED_NOW).dte, 62, 34).suggestions;
+    expect(monthly[0]!.text).toContain(`建議賣出限價 ${tiers[0]!.limit_price}`);
+    expect(monthly[0]!.text).toContain(`每口權利金 ${tiers[1]!.premium_per_contract.toFixed(2)} SEK`);
     expect(monthly[0]!.text).toContain("Nasdaq Nordic");
     expect(monthly[0]!.text).toContain("09-28 14:30（台北）");
     expect(monthly[0]!.text).not.toContain(fixedStamp);
@@ -221,7 +217,7 @@ describe("sealed market observations", () => {
     // Exactly 6h: allowed on actual option route and helper
     const at6hAnswer = await v213PublicLineAnswer(env as never, parseQuery("SIVE 每月期權")) as { text: string }[];
     expect(at6hAnswer[0]!.text).toContain("62.00 SEK");
-    expect(at6hAnswer[0]!.text).toContain("建議賣出限價 0.23 SEK");
+    expect(at6hAnswer[0]!.text).toContain(`建議賣出限價 ${syntheticCalls(32.78, standardMonthlyFixture(FIXED_NOW).dte, 62, 34).suggestions[0]!.limit_price}`);
     expect(at6hAnswer[0]!.text).not.toContain("OPTION_DATA_UNAVAILABLE");
 
     const at6hHelper = await loadOptionObservation(view, "SIVE", "monthly", FIXED_NOW);
@@ -276,16 +272,11 @@ describe("sealed market observations", () => {
       options: {
         SIVE: {
           monthly: {
-            ticker: "SIVE", strategy: "COVERED_CALL", expiry: "2026-10-19", dte: 21, spot: 32.78, currency: "SEK",
+            ticker: "SIVE", strategy: "COVERED_CALL", ...standardMonthlyFixture(FIXED_NOW), spot: 32.78, currency: "SEK",
             multiplier: 100, quote_basis: "delayed", timestamp: "2026-09-28T11:59:00Z",
             source: "Illicit Direct Key Fallback", provenance: "https://example.com/illicit",
             rights_status: "candidate_local_review",
-            suggestions: [
-              { role: "HIGH_STRIKE", strike: 99, bid: 9.0, ask: 9.5, mid: 9.25, limit_price: 9.0,
-                premium_per_contract: 900, period_yield: 9.0 / 32.78, annualized_yield: 9.0 / 32.78 * 365 / 21,
-                upside_to_strike: 99 / 32.78 - 1, delta: 0.1, delta_basis: "QUOTE_IMPLIED", iv: 1.0,
-                oi: 10, volume: 10, spread_pct: 0.05 },
-            ],
+            ...syntheticCalls(32.78, standardMonthlyFixture(FIXED_NOW).dte, 99),
           },
         },
       },

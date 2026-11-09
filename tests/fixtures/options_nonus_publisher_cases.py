@@ -33,6 +33,7 @@ if str(ROOT / "scripts") not in sys.path:
     sys.path.insert(0, str(ROOT / "scripts"))
 
 import build_market_quotes_options as builder  # noqa: E402
+import option_delta_model as delta_math  # noqa: E402
 import publish_sealed_snapshot as publisher  # noqa: E402
 import public_options_provider_gate as option_rights  # noqa: E402
 
@@ -109,8 +110,8 @@ def _strike_text(strike: float) -> str:
 
 def synthetic_quote(spot: float, strike: float, dte: int, vol: float = 0.6) -> tuple[float, float]:
     """SYNTHETIC two-sided quote around the Black-Scholes price (deterministic; not an observation)."""
-    price = builder.bs_call_price(spot, strike, dte / 365, vol)
-    return math.floor(price * 0.97 * 100) / 100, math.ceil(price * 1.03 * 100) / 100
+    price = delta_math.bs_call_price(spot, strike, max(dte, 1) / 365, vol)
+    return math.floor(price * 0.97 * 10000) / 10000, math.ceil(price * 1.03 * 10000) / 10000
 
 
 def qualifying(spot: float, dte: int, strike: float | None = None) -> tuple[float, float, float]:
@@ -141,7 +142,7 @@ def nordic_row(root: str, dte: int, strike: float, *, bid: Any = "", ask: Any = 
     text = _strike_text(strike)
     row = {"fullName": f"{root} {_name_date(dte)} {text}C", "orderbookId": f"SYNTH-{root}-{dte}-{text}", "isin": f"SYNTH{root}{dte}",
            "symbol": native_symbol(root, dte, strike), "expirationDate": dte_date(dte), "strikePrice": f"{strike:.2f}", "contractSize": size,
-           "bidPrice": bid if isinstance(bid, str) else f"{bid:.2f}", "askPrice": ask if isinstance(ask, str) else f"{ask:.2f}",
+           "bidPrice": bid if isinstance(bid, str) else f"{bid:.4f}", "askPrice": ask if isinstance(ask, str) else f"{ask:.4f}",
            "lastSalePrice": "", "settlementPrice": "", "openInterest": "", "volume": "", "assetClass": "OPTIONS", "currency": currency}
     row.update(override)
     return row
@@ -274,6 +275,7 @@ def _sealed_world(specs: list[dict[str, Any]], now: datetime, requests: list[str
     sweden = {spec["symbol"]: spec["orderbook"] for spec in specs if spec["kind"] == "ST" and spec["cached"]}
     with contextlib.ExitStack() as stack:
         stack.enter_context(mock.patch.dict(sys.modules, {"yfinance": types.SimpleNamespace(Ticker=Ticker)}))
+        stack.enter_context(mock.patch.object(builder, "load_historical_volatility", return_value=None))
         for name, value in (("http_json", http), ("universe", lambda: list(symbols)),
                             ("broad_universe", lambda _now: {"us": [], "sweden": dict(sweden)}), ("utc_now", lambda: now),
                             ("alpha_vantage_quote", forbidden), ("alpha_vantage_key", forbidden), ("cached_universe", forbidden)):
@@ -322,12 +324,16 @@ def cycle_of(bodies: dict[str, str], symbol: str, cycle: str) -> dict[str, Any]:
     return json.loads(bodies["v213:options:v2"])["options"][symbol][cycle]
 
 
-def expect_available(case: str, bodies: dict[str, str], symbol: str, cycle: str, *, currency: str | None = None) -> None:
+def expect_available(case: str, bodies: dict[str, str], symbol: str, cycle: str, *, currency: str | None = None, observation: bool = False) -> None:
     value = cycle_of(bodies, symbol, cycle)
     assert "unavailable" not in value, f"{case}: {symbol}/{cycle} should carry verified source evidence but is {value}"
     assert value["ticker"] == symbol and value["multiplier"] == 100, f"{case}: {symbol}/{cycle} identity {value.get('ticker')}"
     if currency:
         assert value["currency"] == currency, f"{case}: {symbol}/{cycle} currency {value.get('currency')}"
+    if not observation:
+        assert value["suggestions"] and "quote_observation" not in value, (case, symbol, cycle, value)
+        assert value["delta_model"]["basis"] == "QUOTE_IMPLIED", (case, symbol, cycle, value)
+        assert all(item["delta_basis"] == value["delta_model"]["basis"] for item in value["suggestions"]), (case, symbol, cycle)
 
 
 def expect_unavailable(case: str, bodies: dict[str, str], symbol: str, cycle: str) -> None:
@@ -340,7 +346,7 @@ def expect_unavailable(case: str, bodies: dict[str, str], symbol: str, cycle: st
 def expect_observation(case: str, bodies: dict[str, str], symbol: str, *, currency: str, dte: int, strike: float,
                        bid: float | None = None, ask: float | None = None, last: float | None = None) -> None:
     """Source-backed informational prices must not become executable tiers or a fabricated two-sided quote."""
-    expect_available(case, bodies, symbol, "monthly", currency=currency)
+    expect_available(case, bodies, symbol, "monthly", currency=currency, observation=True)
     value = cycle_of(bodies, symbol, "monthly")
     assert value["expiry"] == dte_date(dte) and value["dte"] == dte, (case, symbol, value)
     assert value["suggestions"] == [] and not value.get("middle_suggestion"), (case, symbol, value)
@@ -562,7 +568,7 @@ def case_terms_and_quote_states() -> tuple[str, str, list[dict[str, Any]], Any]:
         chain("QCROSSED", nordic_row("QCROSSED", 16, k16, bid="0.60", ask="0.50")),
         chain("QLASTSALE", nordic_row("QLASTSALE", 16, k16, lastSalePrice="0.55", settlementPrice="0.55", openInterest="500", volume="40")),
         chain("QMISS", nordic_row("QMISS", 16, 101.0, bid="4.00", ask="4.20")),  # an out-of-the-money strike whose quote implies a delta over the 0.20 cap
-        chain("QCHEAP", nordic_row("QCHEAP", 16, k16, bid="0.01", ask="0.02")),  # low premium is not a selection hurdle
+        chain("QCHEAP", nordic_row("QCHEAP", 16, k16, bid="0.0100", ask="0.0110")),  # synthetic tight low premium: no selection hurdle
         chain("QGOOD", nordic_row("QGOOD", 16, k16, bid=b16, ask=a16)),
         chain("TSZEXACT", nordic_row("TSZEXACT", 16, k16, bid=b16, ask=a16, size="100.00")),
         chain("TSZLEADING", nordic_row("TSZLEADING", 16, k16, bid=b16, ask=a16, size="0100")),
@@ -643,7 +649,7 @@ def case_dte_us_matrix() -> tuple[str, str, list[dict[str, Any]], Any]:
         strike, bid, ask = k, b, a
         date_text = (TODAY + timedelta(days=dte)).strftime("%B %d, %Y")
         specs.append(us(f"UN{dte}", {}, yahoo_expiries=[], nasdaq_rows=[
-            {"expirygroup": date_text}, {"strike": f"{strike:.1f}", "c_Bid": f"{bid:.2f}", "c_Ask": f"{ask:.2f}", "c_Openinterest": "10", "c_Volume": "5"}]))
+            {"expirygroup": date_text}, {"strike": f"{strike:.1f}", "c_Bid": f"{bid:.4f}", "c_Ask": f"{ask:.4f}", "c_Openinterest": "10", "c_Volume": "5"}]))
     specs.append(us("UYMISS", {7: [(101.0, 4.0, 4.2)], 16: [(101.0, 4.0, 4.2)]}))  # a strike whose quote implies a delta over the 0.20 cap
     specs.append(us("UYEMPTY", {}, yahoo_expiries=[]))
     specs.append(us("UYZERO", {7: [(120.0, 0.0, 0.0)], 16: [(120.0, 0.0, 0.0)]}))
@@ -668,11 +674,8 @@ def case_dte_us_matrix() -> tuple[str, str, list[dict[str, Any]], Any]:
         assert sum(1 for u in nasdaq if "/api/quote/uyempty/" in u) == 2, "one Nasdaq fallback plus one bounded nearest-month fetch"
         expect_unavailable(case, bodies, "UYZERO", "weekly")
         expect_observation(case, bodies, "UYZERO", currency="USD", dte=16, strike=120.0)
-        for period in ("weekly", "monthly"):
-            expect_available(case, bodies, "UYONESIDED", period, currency="USD")
-            item = cycle_of(bodies, "UYONESIDED", period)["suggestions"][0]
-            assert (item["bid"], item["ask"], item["mid"], item["limit_price"]) == (0.5, None, None, 0.5)
-            assert item["delta_basis"] == "QUOTED_IV" and item["delta"] <= 0.20
+        expect_unavailable(case, bodies, "UYONESIDED", "weekly")
+        expect_observation(case, bodies, "UYONESIDED", currency="USD", dte=16, strike=120.0)
         for symbol in ("UYZERO", "UYONESIDED"):
             assert not any(f"/api/quote/{symbol.lower()}/" in u for u in nasdaq), f"{symbol}: a read chain is never retried"
     return ("dte_us_matrix", "SYNTHETIC: Yahoo and Nasdaq-fallback selector boundaries, retry preserved for unread chains and not for read strategy misses", specs, check)

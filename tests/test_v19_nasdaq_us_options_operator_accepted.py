@@ -291,6 +291,8 @@ class NasdaqProducerSealerTests(unittest.TestCase):
             self.assertNotIn("unavailable", cycle, period)
             self.assertEqual({key: cycle[key] for key in support.NASDAQ_IDENTITY}, support.NASDAQ_IDENTITY)
             self.assertEqual((cycle["quote_basis"], cycle["currency"], cycle["rights_status"]), ("delayed", "USD", "operator_accepted_unlicensed"))
+            self.assertTrue(cycle["suggestions"])
+            self.assertEqual(cycle["delta_model"]["basis"], "QUOTE_IMPLIED")
         sibling = self.allowed["options"][cases.US_SIBLING]["monthly"]  # Yahoo cycles unchanged: the Yahoo identity
         self.assertEqual({key: sibling[key] for key in support.IDENTITY}, support.IDENTITY)
 
@@ -571,9 +573,10 @@ class NasdaqSourceQuoteDateTests(unittest.TestCase):
     NOW = datetime(2026, 11, 9, 5, 50, 30, tzinfo=timezone.utc)
 
     def payload(self, expiry="2026-11-20", observed="NOV 6, 2026", *, observation=False):
+        # Synthetic tight quotes isolate source-date provenance from the wide-book history gate.
         return {"data": {"lastTrade": f"$186.64 (AS OF {observed})", "table": {"rows": [
             {"expirationDate": expiry, "strike": "220.00", "c_Bid": "--" if observation else "0.05",
-             "c_Ask": "--" if observation else "0.10", "c_Last": "0.08",
+             "c_Ask": "--" if observation else "0.06", "c_Last": "0.08",
              "c_Openinterest": "100", "c_Volume": "10"},
         ]}}}
 

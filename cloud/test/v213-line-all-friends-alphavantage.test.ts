@@ -11,6 +11,7 @@ import { SNAPSHOT_SEAL_KEY } from "../src/v213/snapshot-seal";
 import { FRIEND_A, OWNER_USER, lineFixture, type FixtureOptions } from "./line-all-friends-fixture";
 import { sealUnboundReport } from "./sealed-report-migration";
 import { admitSyntheticTickers, resetAdmissionToReal } from "./synthetic-option-admission";
+import { syntheticCalls } from "./synthetic-coherent-options";
 
 // Rights NONE is the real default (every option row is denied); these tests opt in per test for exactly the sealed tickers they render.
 vi.mock("../src/v213/public-options-admission", async importOriginal => {
@@ -65,9 +66,7 @@ function cycle(ticker: string) {
     ticker, strategy: "COVERED_CALL", expiry, dte, spot: 300, currency: "USD", multiplier: 100, quote_basis: "delayed",
     timestamp: stamp, source: "Yahoo Finance option chain (unofficial, delayed)", provenance: `https://finance.yahoo.com/quote/${ticker}/options`,
     rights_status: "unadmitted_third_party",
-    suggestions: [{ role: "HIGH_STRIKE", strike: 330, bid: 2.0, ask: 2.1, mid: 2.05, limit_price: 2.05, premium_per_contract: 205,
-      period_yield: 2.05 / 300, annualized_yield: 2.05 / 300 * 365 / Math.max(dte, 1), upside_to_strike: 330 / 300 - 1, delta: 0.18, delta_basis: "QUOTED_IV",
-      iv: 0.4, oi: 900, volume: 50, spread_pct: 0.0488 }],
+    ...syntheticCalls(300, dte, 330),
   };
 }
 

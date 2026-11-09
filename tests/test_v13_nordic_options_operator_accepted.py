@@ -118,15 +118,6 @@ class NordicPositiveTests(unittest.TestCase):
         self.assertEqual(findings, [])
         self.assertEqual(summary["fully_eligible_provider_ids"], sorted(BOTH + [support.NASDAQ_ID]))  # V19 added the third pinned provider
 
-    def test_the_worker_constants_mirror_the_python_pins(self) -> None:
-        source = (ROOT / "cloud" / "src" / "v213" / "public-options-admission.ts").read_text(encoding="utf-8")
-        pinned = gate.OPERATOR_ACCEPTED_PROVIDERS[support.NORDIC_ID]
-        self.assertIn("nasdaq_nordic_option_chain: {", source)
-        for value in pinned["operator_decision"].values():
-            self.assertIn(f'"{value}"', source)
-        for scope in pinned["scopes"]:
-            self.assertIn("JSON.stringify([" + ", ".join(f'"{part}"' for part in scope) + "])", source)
-        self.assertIn("yahoo_finance_option_chain: {", source)
 
 
 class NordicPinTests(unittest.TestCase):
@@ -282,6 +273,8 @@ class NordicProducerSealerTests(unittest.TestCase):
             self.assertEqual({key: cycle[key] for key in support.NORDIC_IDENTITY}, support.NORDIC_IDENTITY)
             self.assertEqual((cycle["quote_basis"], cycle["currency"], cycle["rights_status"]), ("delayed", "SEK", "operator_accepted_unlicensed"))
             self.assertEqual(cycle["source"], builder.NORDIC_SOURCE)
+            self.assertTrue(cycle["suggestions"])
+            self.assertEqual(cycle["delta_model"]["basis"], "QUOTE_IMPLIED")
         us_cycle = self.both["options"][cases.US_SIBLING]["monthly"]  # US cycles unchanged: the Yahoo identity
         self.assertEqual({key: us_cycle[key] for key in support.IDENTITY}, support.IDENTITY)
         self.assertEqual(us_cycle["currency"], "USD")

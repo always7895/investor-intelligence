@@ -19,6 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import build_market_quotes_options as builder  # noqa: E402
+import option_delta_model as delta_math  # noqa: E402
 import option_recommendation_rules as rules  # noqa: E402
 from validate_v213_market_products import MarketProductValidationError, validate_covered_call_cycle  # noqa: E402
 from tests.fixtures.options_global_publisher_cases import standard_monthly_expiry  # noqa: E402
@@ -145,12 +146,19 @@ class MiddleRuleTests(unittest.TestCase):
         self.assertEqual(rules.limit_middle(0.10, 0.20, tick=0.05), 0.15)
 
 
-def q(strike, bid, ask, delta, **extra):
-    return {"strike": strike, "bid": bid, "ask": ask, "delta": delta, "iv": None, "oi": 10, "volume": 1, **extra}
+def synthetic_chain(dte=2, strikes=(112.0, 110.0, 108.0, 106.0, 104.0)):
+    """Explicitly synthetic common-sigma book; hold total volatility fixed for clock tests."""
+    sigma = 1.35 * math.sqrt(2 / max(dte, 1))
+    rows = []
+    for strike in strikes:
+        price = delta_math.bs_call_price(100.0, strike, max(dte, 1) / 365, sigma)
+        rows.append({"strike": strike, "bid": math.floor(price * 0.97 * 10000) / 10000,
+                     "ask": math.ceil(price * 1.03 * 10000) / 10000, "oi": 10, "volume": 1})
+    return rows
 
 
-# spot 100, DTE 2: HIGH 112 (delta .08), MIDDLE 108 (delta .20, nearest .25 among 110/.12 and 108/.20), BALANCED 106 (.28 nearest .30)
-CHAIN = [q(112.0, 0.10, 0.12, 0.08), q(110.0, 0.20, 0.24, 0.12), q(108.0, 0.35, 0.40, 0.20), q(106.0, 0.60, 0.66, 0.28), q(104.0, 1.10, 1.20, 0.40)]
+# DTE 2, one sigma: HIGH 112 (~.14), MIDDLE 108 (~.24), BALANCED 106 (~.30).
+CHAIN = synthetic_chain()
 
 
 class TierProducerTests(unittest.TestCase):
@@ -160,18 +168,17 @@ class TierProducerTests(unittest.TestCase):
         self.assertEqual([s["strike"] for s in suggestions], [112.0, 106.0])
         self.assertEqual((middle["role"], middle["strike"]), ("MIDDLE", 108.0))
         self.assertTrue(suggestions[0]["strike"] > middle["strike"] > suggestions[1]["strike"])
-        self.assertEqual(builder.covered_call_suggestions(CHAIN, 100.0, 2), suggestions)  # the `suggestions` contract is unchanged: 1-2 entries
         for tier in (*suggestions, middle):  # the middle follows the same limit rule: on the tick and inside bid..mid
             self.assertTrue(tier["bid"] <= tier["limit_price"] <= tier["mid"], tier)
             self.assertEqual(tier["limit_price"], round(tier["limit_price"], 2))
-        self.assertEqual(middle["limit_price"], 0.37)  # midpoint 0.375 rounded DOWN to the tick
+        self.assertEqual(middle["limit_price"], math.floor(middle["mid"] * 100 + 1e-9) / 100)
 
     def test_no_middle_when_no_strike_lies_between_and_never_a_duplicate_strike(self):
-        rows = [q(112.0, 0.10, 0.12, 0.08), q(106.0, 0.60, 0.66, 0.28)]
+        rows = synthetic_chain(strikes=(112.0, 106.0))
         suggestions, middle = builder.covered_call_tiers(rows, 100.0, 2)
         self.assertEqual(len(suggestions), 2)
         self.assertIsNone(middle)
-        only_high, none = builder.covered_call_tiers([q(112.0, 0.10, 0.12, 0.08)], 100.0, 2)
+        only_high, none = builder.covered_call_tiers(synthetic_chain(strikes=(112.0,)), 100.0, 2)
         self.assertEqual(len(only_high), 1)
         self.assertIsNone(none)
         result = builder.cycle_result("X", "2026-10-09", 2, 100.0, rows, currency="USD", source="s", provenance="https://x.test/", rights="r",
@@ -190,7 +197,7 @@ class TierProducerTests(unittest.TestCase):
         self.assertNotIn("weekly_week", plain)
 
     def test_expiry_day_dte_zero_annualizes_over_one_day_without_dividing_by_zero(self):
-        result = builder.cycle_result("X", "2026-10-09", 0, 100.0, CHAIN, currency="USD", source="s", provenance="https://x.test/", rights="r",
+        result = builder.cycle_result("X", "2026-10-09", 0, 100.0, synthetic_chain(0), currency="USD", source="s", provenance="https://x.test/", rights="r",
                                       stamp="2026-10-09T15:00:00Z", asof="2026-10-09", week="CURRENT")
         high = result["suggestions"][0]
         self.assertEqual(high["annualized_yield"], round(high["limit_price"] / 100.0 * 365 / 1, 6))
@@ -279,21 +286,34 @@ class WeeklyProducerTests(unittest.TestCase):
         self.assertEqual((choice.expiry, (choice.expiry - today).days), (D(2026, 10, 9), 3))
 
 
-def tier_item(role, strike, bid, ask, delta, spot, dte):
-    mid = round((bid + ask) / 2, 4)
+def tier_item(role, strike, spot, dte, model, quote=None):
+    if quote is None:
+        price = delta_math.bs_call_price(spot, strike, max(dte, 1) / 365, model["sigma"])
+        bid, ask = math.floor(price * 0.97 * 10000) / 10000, math.ceil(price * 1.03 * 10000) / 10000
+    else:
+        bid, ask = quote["bid"], quote["ask"]
+    mid = (bid + ask) / 2
     limit = round(math.floor(mid / 0.01 + 1e-9) * 0.01, 2)
     return {"role": role, "strike": strike, "bid": bid, "ask": ask, "mid": mid, "limit_price": limit, "premium_per_contract": round(limit * 100, 2),
             "period_yield": round(limit / spot, 6), "annualized_yield": round(limit / spot * 365 / max(dte, 1), 6),
-            "upside_to_strike": round(strike / spot - 1, 6), "delta": delta, "delta_basis": "QUOTED", "iv": None, "oi": 10, "volume": 1, "spread_pct": 0.1}
+            "upside_to_strike": round(strike / spot - 1, 6),
+            "delta": delta_math.bs_call_delta(spot, strike, max(dte, 1) / 365, model["sigma"]),
+            "delta_basis": model["basis"], "iv": round(model["sigma"], 4), "oi": 10, "volume": 1, "spread_pct": (ask - bid) / mid}
 
 
 def tier_cycle(*, dte=2, expiry="2026-10-09", asof="2026-10-07", week="CURRENT", middle=True, **override):
+    rows = synthetic_chain(dte)
+    model, reason = delta_math.build_delta_model(rows, [], 100.0, dte, None)
+    assert model is not None, reason
+    by_strike = {row["strike"]: row for row in rows}
     cycle = {"ticker": "TSM", "strategy": "COVERED_CALL", "expiry": expiry, "dte": dte, "spot": 100.0, "currency": "USD", "multiplier": 100,
              "quote_basis": "delayed", "timestamp": "2026-10-07T14:00:00Z", "source": "Yahoo Finance (unofficial, delayed)",
              "provenance": "https://finance.yahoo.com/quote/TSM/options", "rights_status": "unadmitted_third_party",
-             "suggestions": [tier_item("HIGH_STRIKE", 112.0, 0.10, 0.12, 0.08, 100.0, dte), tier_item("BALANCED", 106.0, 0.60, 0.66, 0.28, 100.0, dte)]}
+             "delta_model": model,
+             "suggestions": [tier_item("HIGH_STRIKE", 112.0, 100.0, dte, model, by_strike[112.0]),
+                             tier_item("BALANCED", 106.0, 100.0, dte, model, by_strike[106.0])]}
     if middle:
-        cycle["middle_suggestion"] = tier_item("MIDDLE", 108.0, 0.35, 0.40, 0.20, 100.0, dte)
+        cycle["middle_suggestion"] = tier_item("MIDDLE", 108.0, 100.0, dte, model, by_strike[108.0])
     if asof is not None:
         cycle["asof_date"] = asof
     if week is not None:
@@ -311,19 +331,23 @@ class TierValidatorTests(unittest.TestCase):
             validate_covered_call_cycle(cycle, period=period, **EVAL)
         self.assertEqual(str(ctx.exception), code)
 
-    def test_a_valid_three_tier_cycle_and_the_older_two_tier_shape_both_pass(self):
+    def test_valid_common_model_cycles_allow_optional_middle_and_calendar_markers(self):
         validate_covered_call_cycle(tier_cycle(), period="weekly", **EVAL)
-        old = tier_cycle(middle=False, asof=None, week=None)  # an older sealed row has neither middle, asof_date nor weekly_week
+        old = tier_cycle(middle=False, asof=None, week=None)  # calendar markers are optional; the coherent model is not
         for key in ("middle_suggestion", "asof_date", "weekly_week"):
             self.assertNotIn(key, old)
         validate_covered_call_cycle(old, period="weekly", **EVAL)
         validate_covered_call_cycle(tier_cycle(middle=False), period="weekly", **EVAL)
         validate_covered_call_cycle(tier_cycle(middle_suggestion=None), period="weekly", **EVAL)  # a null marker means no middle tier
+        missing_model = tier_cycle()
+        missing_model.pop("delta_model")
+        with self.assertRaises(MarketProductValidationError):
+            validate_covered_call_cycle(missing_model, period="weekly", **EVAL)
 
     def test_the_middle_must_sit_strictly_between_the_two_strikes(self):
         for strike in (112.0, 106.0, 113.0, 105.0):
             cycle = tier_cycle()
-            cycle["middle_suggestion"] = tier_item("MIDDLE", strike, 0.35, 0.40, 0.20, 100.0, 2)
+            cycle["middle_suggestion"] = tier_item("MIDDLE", strike, 100.0, 2, cycle["delta_model"])
             self.reject(cycle, "COVERED_CALL_MIDDLE_NOT_BETWEEN")
 
     def test_the_middle_needs_both_neighbours_the_role_middle_and_the_same_item_checks(self):
@@ -338,10 +362,10 @@ class TierValidatorTests(unittest.TestCase):
         bad_yield["middle_suggestion"]["annualized_yield"] = 0.5
         self.reject(bad_yield, "COVERED_CALL_DERIVED_MISMATCH: annualized_yield")
         above_mid = tier_cycle()
-        above_mid["middle_suggestion"]["limit_price"] = 0.99
+        above_mid["middle_suggestion"]["limit_price"] = above_mid["middle_suggestion"]["ask"] + 1
         self.reject(above_mid, "COVERED_CALL_PRICES_INCONSISTENT")
         itm = tier_cycle()
-        itm["middle_suggestion"] = tier_item("MIDDLE", 99.0, 0.35, 0.40, 0.20, 100.0, 2)
+        itm["middle_suggestion"] = tier_item("MIDDLE", 99.0, 100.0, 2, itm["delta_model"])
         self.reject(itm, "COVERED_CALL_STRIKE_NOT_OUT_OF_THE_MONEY")
         for key, value in (("delta", 1.5), ("delta_basis", "GUESS"), ("iv", -1), ("oi", -3), ("volume", float("inf"))):
             bad = tier_cycle()
@@ -351,7 +375,7 @@ class TierValidatorTests(unittest.TestCase):
 
     def test_the_suggestions_list_stays_capped_at_the_two_original_roles(self):
         three = tier_cycle(middle=False)
-        three["suggestions"].insert(1, tier_item("MIDDLE", 108.0, 0.35, 0.40, 0.20, 100.0, 2))
+        three["suggestions"].insert(1, tier_item("MIDDLE", 108.0, 100.0, 2, three["delta_model"]))
         self.reject(three, "COVERED_CALL_SUGGESTION_COUNT")
         swapped = tier_cycle(middle=False)
         swapped["suggestions"][1]["role"] = "MIDDLE"

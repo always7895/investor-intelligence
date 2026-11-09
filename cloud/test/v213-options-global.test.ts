@@ -14,6 +14,7 @@ import { asKv, MemoryKv } from "./fake-kv";
 import { sealUnboundReport } from "./sealed-report-migration";
 import { loadDetailedOptionObservation } from "../src/v213/market-observations";
 import * as admission from "../src/v213/public-options-admission";
+import { syntheticCalls } from "./synthetic-coherent-options";
 
 // OPTIONS_TEST_POLICY1: the reviewed public-options policy is rights NONE (the real catalog admits no provider), so a sealed,
 // format-valid covered-call row now renders OPTION_RIGHTS_NOT_ADMITTED instead of its quote; the former unconditional "330.00"
@@ -69,11 +70,7 @@ async function sha(text: string): Promise<string> {
 const TSM_MONTHLY = {
   ticker: "TSM", strategy: "COVERED_CALL", expiry, dte: 16, spot: 300, currency: "USD", multiplier: 100, quote_basis: "delayed",
   timestamp: stamp, source: "Yahoo Finance option chain (unofficial, delayed)", provenance: "https://finance.yahoo.com/quote/TSM/options",
-  rights_status: "unadmitted_third_party", suggestions: [{
-    role: "HIGH_STRIKE", strike: 330, bid: 2.0, ask: 2.1, mid: 2.05, limit_price: 2.05,
-    premium_per_contract: 205, period_yield: 2.05 / 300, annualized_yield: 2.05 / 300 * 365 / 16, upside_to_strike: 330 / 300 - 1,
-    delta: 0.18, delta_basis: "QUOTED_IV", iv: 0.4, oi: 900, volume: 50, spread_pct: 0.0488,
-  }],
+  rights_status: "unadmitted_third_party", ...syntheticCalls(300, 16, 330),
 };
 
 async function sealedEnv(mutate: (lazy: Record<string, any>) => void = () => {}, tamper = false, omitOptions = false, postSeal?: (kv: MemoryKv) => void) {
@@ -187,7 +184,7 @@ describe("OPTIONS-GLOBAL-01 acceptance regression tests", () => {
       const env = await sealedEnv(lazy => {
         const monthly = { ...structuredClone(TSM_MONTHLY), ticker: "NVDA" };
         const weekly = { ...structuredClone(monthly), dte: 7, expiry: new Date(FIXED_NOW + 7 * 86400000).toISOString().slice(0, 10) };
-        weekly.suggestions[0]!.annualized_yield = weekly.suggestions[0]!.limit_price / weekly.spot * 365 / 7;
+        Object.assign(weekly, syntheticCalls(300, 7, 330));
         lazy["v213:options:v2"].options.NVDA = { weekly, monthly };
       });
       const reply = await actualReply(env, command);
@@ -200,14 +197,14 @@ describe("OPTIONS-GLOBAL-01 acceptance regression tests", () => {
     const env = await sealedEnv(lazy => {
       const monthly = { ...structuredClone(TSM_MONTHLY), ticker: "NVDA" };
       const weekly = { ...structuredClone(monthly), dte: 7, expiry: new Date(FIXED_NOW + 7 * 86400000).toISOString().slice(0, 10) };
-      weekly.suggestions[0]!.annualized_yield = weekly.suggestions[0]!.limit_price / weekly.spot * 365 / 7;
+      Object.assign(weekly, syntheticCalls(300, 7, 330));
       lazy["v213:options:v2"].options.NVDA = { weekly, monthly };
     });
     for (const command of ["NVDA 期權指引", "NVDA 選擇權推薦", "NVDA covered call", "NVDA 每月期權指引", "NVDA monthly covered call"]) {
       const reply = await actualReply(env, command);
       expect(reply).toContain("期權資料未通過公開驗收");
       expect(reply).not.toContain("330.00");
-      expect(reply).not.toContain("$2.05");
+      expect(reply).not.toContain(`$${TSM_MONTHLY.suggestions[0]!.limit_price}`);
     }
   });
 
@@ -247,7 +244,7 @@ describe("OPTIONS-GLOBAL-01 acceptance regression tests", () => {
     const env = await sealedEnv(lazy => {
       const monthly = { ...structuredClone(TSM_MONTHLY), ticker: "NVDA" };
       const weekly = { ...structuredClone(monthly), dte: 7, expiry: new Date(FIXED_NOW + 7 * 86400000).toISOString().slice(0, 10) };
-      weekly.suggestions[0]!.annualized_yield = weekly.suggestions[0]!.limit_price / weekly.spot * 365 / 7;
+      Object.assign(weekly, syntheticCalls(300, 7, 330));
       lazy["v213:options:v2"].options.NVDA = { weekly, monthly };
     });
     const reply = await actualReply(env, "NVDA covered call 文字！");
@@ -359,7 +356,7 @@ describe("OPTIONS-GLOBAL-01 acceptance regression tests", () => {
       cycle.ticker = "NVDA";
       cycle.dte = 61;  // the monthly bucket is 0-60
       cycle.expiry = new Date(FIXED_NOW + 61 * 86400000).toISOString().slice(0, 10);
-      cycle.suggestions[0]!.annualized_yield = cycle.suggestions[0]!.limit_price / cycle.spot * 365 / 61;
+      Object.assign(cycle, syntheticCalls(300, 61, 330));
       lazy["v213:options:v2"].options.NVDA = { monthly: cycle };
     }), "NVDA 每月期權");
     expect(monthlyReply).not.toContain("330.00");
@@ -400,7 +397,9 @@ describe("OPTIONS-GLOBAL-01 acceptance regression tests", () => {
     // Quote sides, derived spread and liquidity diagnostics are visible in both editions.
     const text = await actualReply({ ...env, V213_LINE_PRESENTATION: "flex" }, "TSM 每月期權 文字");
     expect(text).toContain("https://finance.yahoo.com/quote/TSM/options");
-    for (const field of ["中價 $2.05", "OI 900", "成交量 50", "依報價隱含波動率"]) expect(text).toContain(field);
+    const item = TSM_MONTHLY.suggestions[0]!;
+    for (const field of [`Bid $${item.bid}`, `Ask $${item.ask}`, `OI ${item.oi}`, `成交量 ${item.volume}`,
+      "Delta 以買賣報價 IV 共同區間估算", "限價成交前不計入收益"]) expect(text).toContain(field);
     expect(text).not.toContain("NaN");
   });
 
@@ -414,7 +413,7 @@ describe("OPTIONS-GLOBAL-01 acceptance regression tests", () => {
     expect(body).toContain(`${(TSM_MONTHLY.suggestions[0]!.annualized_yield * 100).toFixed(1)}%`);
     expect(body).toContain("3xl");
     expect(body).toContain("$330.00");
-    expect(body).toContain("$205.00");
+    expect(body).toContain(`$${TSM_MONTHLY.suggestions[0]!.premium_per_contract.toFixed(2)}`);
     expect(JSON.stringify(bubble)).toContain("正股仍有下跌風險");
   });
 
@@ -428,7 +427,7 @@ describe("OPTIONS-GLOBAL-01 acceptance regression tests", () => {
     const textReply = await actualReply({ ...env, V213_LINE_PRESENTATION: "flex" }, "TSM 每月期權 文字");
     expect(textReply).not.toContain("NaN");
     const item = TSM_MONTHLY.suggestions[0]!;
-    const spread = ((item.ask - item.bid) / ((item.ask + item.bid) / 2) * 100).toFixed(0);
+    const spread = ((item.ask! - item.bid) / (item.bid / 2 + item.ask! / 2) * 100).toFixed(0);
     for (const reply of [textReply, flexReply]) expect(reply).toContain(`價差占中價 ${spread}%`);
   });
 });
@@ -446,7 +445,7 @@ function rawOptionsBody(field: "oi" | "volume" | "spread_pct", token: string): s
     },
   };
   const json = JSON.stringify(doc);
-  const original = `"${field}":${JSON.stringify((TSM_MONTHLY.suggestions[0] as Record<string, unknown>)[field])}`;
+  const original = `"${field}":${JSON.stringify(TSM_MONTHLY.suggestions[0]![field])}`;
   return json.replace(original, `"${field}":${token}`);  // first occurrence = TSM; GOOD stays healthy
 }
 

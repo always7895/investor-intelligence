@@ -61,6 +61,7 @@ def generate_fixture_document() -> dict[str, Any]:
     for period in ("weekly", "monthly"):
         cycle = both["options"][SIVE][period]
         assert "unavailable" not in cycle and cycle["provider_id"] == support.NORDIC_ID and cycle["quote_basis"] == "delayed", cycle
+        assert cycle["suggestions"] and cycle["delta_model"]["basis"] == "QUOTE_IMPLIED", cycle
     assert both["options"][US_SIBLING]["monthly"]["provider_id"] == support.YAHOO_ID
 
     def keep(document: dict[str, Any]) -> dict[str, Any]:

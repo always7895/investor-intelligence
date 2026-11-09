@@ -49,7 +49,7 @@ def nasdaq_rows(spot: float = 100.0) -> list[dict[str, Any]]:
         strike, bid, ask = nonus.qualifying(spot, dte)
         day = WORLD_TODAY + timedelta(days=dte)
         rows.append({"expirygroup": f"{day.strftime('%B')} {day.day}, {day.year}"})
-        rows.append({"expirygroup": "", "strike": f"{strike:.2f}", "c_Bid": f"{bid:.2f}", "c_Ask": f"{ask:.2f}",
+        rows.append({"expirygroup": "", "strike": f"{strike:.2f}", "c_Bid": f"{bid:.4f}", "c_Ask": f"{ask:.4f}",
                      "c_Openinterest": "--", "c_Volume": "--"})
     return rows
 
@@ -88,6 +88,7 @@ def generate_fixture_document() -> dict[str, Any]:
     for period in ("weekly", "monthly"):
         cycle = allowed["options"][NASDAQ_TICKER][period]
         assert "unavailable" not in cycle and cycle["provider_id"] == support.NASDAQ_ID and cycle["quote_basis"] == "delayed", cycle
+        assert cycle["suggestions"] and cycle["delta_model"]["basis"] == "QUOTE_IMPLIED", cycle
     assert allowed["options"][US_SIBLING]["monthly"]["provider_id"] == support.YAHOO_ID
 
     def keep(document: dict[str, Any]) -> dict[str, Any]:

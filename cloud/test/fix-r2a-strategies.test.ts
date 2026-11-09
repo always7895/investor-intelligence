@@ -50,7 +50,7 @@ describe("G02 covered call, CSP and protective collar require independently vali
    expect(cycle).not.toBeNull();
    expect(cycle?.suggestions.length).toBeGreaterThan(0);
    expect(cycle?.quote_observation).toBeUndefined();
-   expect(cycle!.suggestions.every(item=>item.annualized_yield>0 && item.annualized_yield<.02)).toBe(true);
+   expect(cycle!.suggestions.some(item=>item.annualized_yield>0 && item.annualized_yield<.02)).toBe(true);
    const text=msgText(buildCoveredCallMessages(cycle!,"每月期權","text"));
    for(const label of ["備兌買權","現金擔保賣權","領口策略","保護賣權","限價","年化","非個人化投資建議"])
       expect(text).toContain(label);

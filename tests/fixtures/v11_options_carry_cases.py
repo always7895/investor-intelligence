@@ -25,6 +25,7 @@ import build_market_quotes_options as builder  # noqa: E402
 import public_options_provider_gate as gate  # noqa: E402
 import publish_sealed_snapshot as publisher  # noqa: E402
 from tests.fixtures import v11_operator_accepted_options as support  # noqa: E402
+from tests.fixtures.v21_put_chains import bs_chain  # noqa: E402
 
 FIXTURE_PATH = ROOT / "cloud" / "test" / "fixtures" / "v11-options-carry.json"
 UTC = timezone.utc
@@ -34,8 +35,15 @@ EXPIRIES = ["2026-10-16", "2026-10-23", "2026-11-13", "2026-11-20"]
 
 CallRow = namedtuple("CallRow", ["strike", "bid", "ask", "impliedVolatility", "openInterest", "volume", "lastPrice", "contractSize", "currency"],
                      defaults=("REGULAR", "USD"))
-GOOD_ROWS = [CallRow(115.0, 0.90, 1.00, 0.35, 120, 15, 0.95), CallRow(110.0, 1.40, 1.50, 0.35, 200, 30, 1.45),
-             CallRow(105.0, 2.40, 2.50, 0.35, 300, 40, 2.45)]
+
+
+def good_rows(dte: int, spot: float = 100.0) -> list[CallRow]:
+    """Explicitly synthetic common-sigma quotes at the requested capture clock and spot."""
+    return [CallRow(k, b, a, 0.30, 120, 15, round((b + a) / 2, 4)) for k, b, a in bs_chain(dte, spot=spot)[0]]
+
+
+# GOOD_ROWS selects a fresh synthetic book per expiry; zero/ITM rows stay literal negatives.
+GOOD_ROWS = good_rows(3)
 ZERO_ROWS = [CallRow(row.strike, 0.0, 0.0, row.impliedVolatility, row.openInterest, 0, row.lastPrice) for row in GOOD_ROWS]  # the after-hours read
 ITM_ROWS = [CallRow(80.0, 20.1, 20.3, 0.5, 10, 1, 20.2)]  # one two-sided in-the-money row: a healthy chain without any suggestion
 US_SYMBOLS = [f"T{index:02d}" for index in range(10)] + ["GOOD0", "GOOD1"]
@@ -56,20 +64,22 @@ class _Chain:
 
 
 class _Ticker:
-    def __init__(self, rows: list[Any], price: float) -> None:
+    def __init__(self, rows: list[Any], price: float, now: datetime) -> None:
         self.fast_info = {"lastPrice": price, "previousClose": price - 1, "currency": "USD"}
         self.options = list(EXPIRIES)
         self._rows = rows
+        self._today = now.date()
 
-    def option_chain(self, _expiry: str) -> _Chain:
-        return _Chain(self._rows)
+    def option_chain(self, expiry: str) -> _Chain:
+        rows = good_rows((datetime.fromisoformat(expiry).date() - self._today).days, self.fast_info["lastPrice"]) if self._rows is GOOD_ROWS else self._rows
+        return _Chain(rows)
 
 
 class FakeYahoo:
     """The yfinance module surface the producer uses (Ticker.fast_info, .options, .option_chain(expiry).calls.itertuples())."""
 
-    def __init__(self, rows_by_symbol: dict[str, list[Any]], price: float = 100.0) -> None:
-        self._tickers = {symbol: _Ticker(rows, price) for symbol, rows in rows_by_symbol.items()}
+    def __init__(self, rows_by_symbol: dict[str, list[Any]], price: float = 100.0, now: datetime = IN_SESSION) -> None:
+        self._tickers = {symbol: _Ticker(rows, price, now) for symbol, rows in rows_by_symbol.items()}
 
     def Ticker(self, symbol: str) -> _Ticker:  # noqa: N802 - the yfinance API name
         return self._tickers[symbol]
@@ -89,7 +99,8 @@ def run_main(output: Path, now: datetime, rows_by_symbol: dict[str, list[Any]], 
         stack.enter_context(mock.patch.object(builder, "alpha_vantage_quote", lambda *_a, **_k: None))
         stack.enter_context(mock.patch.object(builder, "alpha_vantage_key", lambda: None))
         stack.enter_context(mock.patch.object(builder, "http_json", mock.Mock(side_effect=AssertionError("NETWORK_FORBIDDEN"))))
-        stack.enter_context(mock.patch.dict(sys.modules, {"yfinance": FakeYahoo(rows_by_symbol, price)}))
+        stack.enter_context(mock.patch.object(builder, "load_historical_volatility", return_value=None))
+        stack.enter_context(mock.patch.dict(sys.modules, {"yfinance": FakeYahoo(rows_by_symbol, price, now)}))
         stack.enter_context(mock.patch.object(gate, "load_public_option_policy", return_value=policy))
         buffer = io.StringIO()
         with contextlib.redirect_stdout(buffer):

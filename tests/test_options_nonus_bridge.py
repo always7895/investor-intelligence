@@ -158,13 +158,12 @@ class BridgeFixtureTests(unittest.TestCase):
         self.assertEqual(observation["kind"], "NO_TWO_SIDED")
         self.assertEqual((observation["bid"], observation["ask"], observation["last"], observation["annualized_yield"]),
                          (None, None, None, None))
-        for period in ("weekly", "monthly"):
-            usable = options["UYONESIDED"][period]
-            item = usable["suggestions"][0]
-            self.assertEqual((item["bid"], item["ask"], item["mid"], item["limit_price"], item["delta_basis"]),
-                             (0.5, None, None, 0.5, "QUOTED_IV"))
-            self.assertLessEqual(item["delta"], 0.20)
-            self.assertNotIn("quote_observation", usable)
+        self.assertEqual(set(options["UYONESIDED"]["weekly"]), {"unavailable"})
+        one_sided = options["UYONESIDED"]["monthly"]
+        self.assertEqual(one_sided["suggestions"], [])
+        self.assertTrue(all(set(block) == {"unavailable"} for block in one_sided["strategies"].values()))
+        self.assertEqual(one_sided["quote_observation"]["kind"], "NO_TWO_SIDED")
+        self.assertEqual((one_sided["quote_observation"]["bid"], one_sided["quote_observation"]["ask"]), (None, None))
         admitted = self.options("us_1_of_10_admitted")
         self.assertEqual(admitted["DEPUS03"]["monthly"]["suggestions"], [])
         self.assertEqual(admitted["DEPUS03"]["monthly"]["quote_observation"]["kind"], "NO_TWO_SIDED")

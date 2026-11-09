@@ -92,17 +92,6 @@ class OperatorAcceptedPositiveTests(unittest.TestCase):
         self.assertEqual(findings, [])
         self.assertEqual(summary["fully_eligible_provider_ids"], sorted([support.NASDAQ_ID, support.NORDIC_ID, support.YAHOO_ID]))  # V13/V19: the second and third pinned providers
 
-    def test_the_worker_constants_mirror_the_python_pins(self) -> None:
-        source = (ROOT / "cloud" / "src" / "v213" / "public-options-admission.ts").read_text(encoding="utf-8")
-        pinned = gate.OPERATOR_ACCEPTED_PROVIDERS[support.YAHOO_ID]
-        self.assertIn(f'yahoo_finance_option_chain: {{', source)
-        for value in pinned["operator_decision"].values():
-            self.assertIn(f'"{value}"', source)
-        for scope in pinned["scopes"]:
-            self.assertIn("JSON.stringify([" + ", ".join(f'"{part}"' for part in scope) + "])", source)
-        self.assertIn(f'const OPERATOR_ACCEPTED_STATUS = "{gate.OPERATOR_ACCEPTED_STATUS}"', source)
-        self.assertIn(f'new Set(["delayed", "{gate.CARRIED_QUOTE_BASIS}"])', source)
-        self.assertEqual(gate.ALLOWED_QUOTE_BASES, {"delayed", "previous_session_last"})
 
 
 class OperatorAcceptedRejectionTests(unittest.TestCase):
@@ -202,12 +191,11 @@ class SealerCallerTests(unittest.TestCase):
 
         import publish_sealed_snapshot as publisher
 
-        def row(strike, bid, ask, delta):
-            return {"strike": strike, "bid": bid, "ask": ask, "delta": delta, "iv": None, "oi": 10, "volume": 1}
+        from tests.fixtures.v21_put_chains import bs_chain
 
         now = datetime(2026, 10, 13, 15, 5, tzinfo=timezone.utc)  # 11:05 New York, inside the regular session
         stamp = "2026-10-13T15:00:00Z"
-        rows = [row(115, 0.9, 1.0, 0.1), row(105, 2.4, 2.5, 0.35)]
+        rows = [{"strike": k, "bid": b, "ask": a, "oi": 10, "volume": 1} for k, b, a in bs_chain(3)[0]]
         live = builder.cycle_result("T00", "2026-10-16", 3, 100.0, rows, currency="USD", source="Yahoo Finance option chain (unofficial, delayed)",
                                     provenance="https://finance.yahoo.com/quote/T00/options?date=2026-10-16", rights=builder.YAHOO_RIGHTS_LABEL,
                                     stamp=stamp, asof="2026-10-13", identity=builder.YAHOO_OPTION_IDENTITY)

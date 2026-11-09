@@ -12,6 +12,7 @@ import { asKv, MemoryKv } from "./fake-kv";
 import { sealUnboundReport } from "./sealed-report-migration";
 
 import { admitSyntheticTickers, resetAdmissionToReal } from "./synthetic-option-admission";
+import { syntheticCalls } from "./synthetic-coherent-options";
 
 // TESTFIX1 / OPTIONS_TEST_POLICY1: per-test sealed-ticker admission only; rights NONE remains the default.
 // Real no-mock caller coverage: v213-public-options-admission-regression.test.ts.
@@ -35,9 +36,7 @@ async function sha(text: string): Promise<string> {
 const SIVE_MONTHLY = { ticker: "SIVE.ST", strategy: "COVERED_CALL", expiry, dte, spot: 32.78, currency: "SEK", multiplier: 100,
   quote_basis: "delayed", timestamp: stamp, source: "Nasdaq Nordic option chain (exchange public web API, delayed)",
   provenance: "https://api.nasdaq.com/api/nordic/instruments/TX2540138/option-chain", rights_status: "candidate_local_review",
-  suggestions: [{ role: "HIGH_STRIKE", strike: 62, bid: 0.2, ask: 0.35, mid: 0.275, limit_price: 0.23, premium_per_contract: 23,
-    period_yield: 0.23 / 32.78, annualized_yield: 0.23 / 32.78 * 365 / Math.max(dte, 1), upside_to_strike: 62 / 32.78 - 1,
-    delta: 0.061, delta_basis: "QUOTE_IMPLIED", iv: 1.5658, oi: 12, volume: null, spread_pct: 0.5455 }] };
+  ...syntheticCalls(32.78, dte, 62) };
 
 async function sealedEnv(v3 = doc(now - HOUR)) {
   const kv = new MemoryKv();
@@ -122,7 +121,7 @@ describe("LINE aliases for the current products", () => {
     for (const text of ["SIVE.ST 每月選擇權", "SIVE.ST 每月期權！", "期權SIVE.ST 每月", "選擇權 SIVE.ST 每月"]) {
       const body = await answer(env, text);
       expect(body, text).toContain("62.00 SEK");
-      expect(body, text).toContain("Delta 0.06（模型值，波動率由買賣報價反推 157%）");
+      expect(body, text).toContain("Delta 以買賣報價 IV 共同區間估算");
     }
     for (const text of ["SIVE.ST 期權", "SIVE.ST期權", "SIVE.ST 選擇權"]) {
       expect(await answer(env, text), text).toContain("無本週或下週到期的上市期權");  // no cycle word: weekly, as before

@@ -194,6 +194,8 @@ class CarryThroughTheProducerTests(Harness):
         tamper("foreign provider", lambda c: c.__setitem__("provider_id", "occ_public_market_data"))
         tamper("already carried basis", lambda c: c.__setitem__("quote_basis", "previous_session_last"))
         tamper("no identity", lambda c: c.pop("provider_id"))
+        tamper("missing common model", lambda c: c.pop("delta_model"))
+        tamper("inconsistent common sigma", lambda c: c["delta_model"].__setitem__("sigma", c["delta_model"]["iv_ask"] + 0.1))
 
     def test_the_catalog_must_admit_the_capture_and_the_carried_basis_itself(self) -> None:
         # No policy that admits Yahoo (the repository catalog before the operator entry, or after a revert): nothing is captured or carried.
@@ -309,7 +311,7 @@ class CarryUnitTests(unittest.TestCase):
         self.policy = support.yahoo_policy()
 
     def capture(self, expiry: str, dte: int, *, at: datetime = IN_SESSION, period: str = "weekly", week: str | None = "CURRENT") -> dict[str, Any]:
-        rows = [{"strike": 115.0, "bid": 0.9, "ask": 1.0, "delta": 0.1, "iv": None, "oi": 10, "volume": 1}]
+        rows = [{"strike": row.strike, "bid": row.bid, "ask": row.ask, "oi": 10, "volume": 1} for row in cases.good_rows(dte)]
         return builder.cycle_result("T00", expiry, dte, 100.0, rows, currency="USD", source="Yahoo Finance option chain (unofficial, delayed)",
                                     provenance=f"https://finance.yahoo.com/quote/T00/options?date={expiry}", rights=builder.YAHOO_RIGHTS_LABEL,
                                     stamp=at.strftime("%Y-%m-%dT%H:%M:%SZ"), asof=rules.exchange_date(at, "US").isoformat(), week=week,
@@ -384,7 +386,7 @@ class CarryUnitTests(unittest.TestCase):
 
     def test_unadmitted_cycles_are_never_captured(self) -> None:
         state = carry.CarryForward(Path(tempfile.gettempdir()) / "v11-unused-state.json", policy=self.policy)
-        rows = [{"strike": 115.0, "bid": 0.9, "ask": 1.0, "delta": 0.1, "iv": None, "oi": 10, "volume": 1}]
+        rows = [{"strike": row.strike, "bid": row.bid, "ask": row.ask, "oi": 10, "volume": 1} for row in cases.good_rows(3)]
         stamp = IN_SESSION.strftime("%Y-%m-%dT%H:%M:%SZ")
         nasdaq = builder.cycle_result("T00", "2026-10-16", 3, 100.0, rows, currency="USD", source="Nasdaq US option chain (fallback)",
                                       provenance="https://www.nasdaq.com/x", rights="candidate_local_review", stamp=stamp, asof="2026-10-13")

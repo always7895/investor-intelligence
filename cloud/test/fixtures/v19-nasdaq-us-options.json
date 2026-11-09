@@ -23,9 +23,9 @@
             {
               "role": "HIGH_STRIKE",
               "strike": 107.0,
-              "bid": 0.45,
-              "ask": 0.49,
-              "mid": 0.47,
+              "bid": 0.4583,
+              "ask": 0.4867,
+              "mid": 0.47250000000000003,
               "limit_price": 0.47,
               "premium_per_contract": 47.0,
               "period_yield": 0.0047,
@@ -33,12 +33,18 @@
               "upside_to_strike": 0.07,
               "delta": 0.149,
               "delta_basis": "QUOTE_IMPLIED",
-              "iv": 0.599,
+              "iv": 0.6,
               "oi": null,
               "volume": null,
-              "spread_pct": 0.0851
+              "spread_pct": 0.0601
             }
           ],
+          "delta_model": {
+            "basis": "QUOTE_IMPLIED",
+            "sigma": 0.5999751817101978,
+            "iv_bid": 0.5941427071851997,
+            "iv_ask": 0.605807656235196
+          },
           "provider_id": "nasdaq_public_option_chain",
           "jurisdiction": "US",
           "venue": "US_LISTED_OPTIONS",
@@ -65,9 +71,9 @@
             {
               "role": "HIGH_STRIKE",
               "strike": 120.0,
-              "bid": 1.54,
-              "ask": 1.65,
-              "mid": 1.595,
+              "bid": 1.5467,
+              "ask": 1.6425,
+              "mid": 1.5946,
               "limit_price": 1.59,
               "premium_per_contract": 159.0,
               "period_yield": 0.0159,
@@ -75,12 +81,18 @@
               "upside_to_strike": 0.2,
               "delta": 0.179,
               "delta_basis": "QUOTE_IMPLIED",
-              "iv": 0.6001,
+              "iv": 0.6,
               "oi": null,
               "volume": null,
-              "spread_pct": 0.069
+              "spread_pct": 0.0601
             }
           ],
+          "delta_model": {
+            "basis": "QUOTE_IMPLIED",
+            "sigma": 0.5999716515476726,
+            "iv_bid": 0.5937928176405673,
+            "iv_ask": 0.6061504854547779
+          },
           "provider_id": "nasdaq_public_option_chain",
           "jurisdiction": "US",
           "venue": "US_LISTED_OPTIONS",
@@ -103,28 +115,34 @@
           "quote_basis": "delayed",
           "timestamp": "2026-10-19T14:00:00Z",
           "source": "Yahoo Finance option chain (unofficial, delayed)",
-          "provenance": "https://finance.yahoo.com/quote/SYNTHUS00/options?date=2026-10-26; delta=Black-Scholes(quoted IV)",
+          "provenance": "https://finance.yahoo.com/quote/SYNTHUS00/options?date=2026-10-26",
           "rights_status": "operator_accepted_unlicensed",
           "suggestions": [
             {
               "role": "HIGH_STRIKE",
               "strike": 109.0,
-              "bid": 0.66,
-              "ask": 0.71,
-              "mid": 0.685,
+              "bid": 0.6639,
+              "ask": 0.7051,
+              "mid": 0.6845,
               "limit_price": 0.68,
               "premium_per_contract": 68.0,
               "period_yield": 0.0068,
               "annualized_yield": 0.354571,
               "upside_to_strike": 0.09,
               "delta": 0.162,
-              "delta_basis": "QUOTED_IV",
+              "delta_basis": "QUOTE_IMPLIED",
               "iv": 0.6,
               "oi": 10,
               "volume": 5,
-              "spread_pct": 0.073
+              "spread_pct": 0.0602
             }
           ],
+          "delta_model": {
+            "basis": "QUOTE_IMPLIED",
+            "sigma": 0.5999662613454237,
+            "iv_bid": 0.593900796311436,
+            "iv_ask": 0.6060317263794115
+          },
           "provider_id": "yahoo_finance_option_chain",
           "jurisdiction": "US",
           "venue": "US_LISTED_OPTIONS",
@@ -150,22 +168,28 @@
             {
               "role": "HIGH_STRIKE",
               "strike": 120.0,
-              "bid": 1.54,
-              "ask": 1.65,
-              "mid": 1.595,
+              "bid": 1.5467,
+              "ask": 1.6425,
+              "mid": 1.5946,
               "limit_price": 1.59,
               "premium_per_contract": 159.0,
               "period_yield": 0.0159,
               "annualized_yield": 0.181359,
               "upside_to_strike": 0.2,
               "delta": 0.179,
-              "delta_basis": "QUOTED_IV",
+              "delta_basis": "QUOTE_IMPLIED",
               "iv": 0.6,
               "oi": 10,
               "volume": 5,
-              "spread_pct": 0.069
+              "spread_pct": 0.0601
             }
           ],
+          "delta_model": {
+            "basis": "QUOTE_IMPLIED",
+            "sigma": 0.5999716515476726,
+            "iv_bid": 0.5937928176405673,
+            "iv_ask": 0.6061504854547779
+          },
           "provider_id": "yahoo_finance_option_chain",
           "jurisdiction": "US",
           "venue": "US_LISTED_OPTIONS",

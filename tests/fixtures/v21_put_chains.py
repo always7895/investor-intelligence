@@ -1,11 +1,12 @@
 """V21 synthetic option chains WITH the put side, one per provider shape (Yahoo option_chain().puts, Nasdaq US p_* fields, Nasdaq Nordic put rows).
 
-The prices are SYNTHETIC: Black-Scholes at spot 100, 28 days, volatility 0.30, rounded to the cent with a 0.04 spread (the literals are pinned here
-so a test does not re-derive them from the code under test). The shape of each provider is the retained one (tests/fixtures/v19_nasdaq_us_options_cases.py,
+The prices are SYNTHETIC: Black-Scholes at spot 100, 28 days, volatility 0.30. The smallest put uses a 0.01 spread;
+the other literal spreads are 0.04. All have a common tight-quote IV interval. Provider shapes follow tests/fixtures/v19_nasdaq_us_options_cases.py and
 tests/test_build_market_quotes_options.py). Run date 2026-10-23 (a Friday), monthly expiry 2026-11-20 (28 DTE): the third Friday, i.e. the nearest standard monthly of the run date.
 """
 from __future__ import annotations
 
+import math
 import sys
 import types
 from pathlib import Path
@@ -21,7 +22,7 @@ IV = 0.30
 
 # (strike, bid, ask): absolute put delta 0.029 .. 0.374 and call delta 0.347 .. 0.099 (see the module note).
 CALLS = [(104.0, 1.83, 1.87), (105.0, 1.53, 1.57), (106.0, 1.28, 1.32), (107.0, 1.05, 1.09), (108.0, 0.86, 0.90), (110.0, 0.56, 0.60), (112.0, 0.36, 0.40)]
-PUTS = [(86.0, 0.08, 0.12), (88.0, 0.17, 0.21), (90.0, 0.33, 0.37), (92.0, 0.59, 0.63), (94.0, 0.98, 1.02), (95.0, 1.23, 1.27),
+PUTS = [(86.0, 0.095, 0.105), (88.0, 0.17, 0.21), (90.0, 0.33, 0.37), (92.0, 0.59, 0.63), (94.0, 0.98, 1.02), (95.0, 1.23, 1.27),
         (96.0, 1.52, 1.56), (98.0, 2.23, 2.27)]
 
 
@@ -57,10 +58,10 @@ def nasdaq_rows(calls: list[tuple] = CALLS, puts: list[tuple] | None = PUTS, exp
     for strike in sorted({k for k, _, _ in calls} | set(put_by_strike)):
         row: dict[str, Any] = {"expirygroup": "", "strike": f"{strike:.2f}"}
         call = next(((b, a) for k, b, a in calls if k == strike), None)
-        row.update({"c_Bid": f"{call[0]:.2f}" if call else "--", "c_Ask": f"{call[1]:.2f}" if call else "--", "c_Openinterest": "50", "c_Volume": "5"})
+        row.update({"c_Bid": f"{call[0]:.4f}" if call else "--", "c_Ask": f"{call[1]:.4f}" if call else "--", "c_Openinterest": "50", "c_Volume": "5"})
         if puts is not None:
             put = put_by_strike.get(strike)
-            text = lambda value: f"{value:.2f}" if isinstance(value, (int, float)) and value == value else "--"  # noqa: E731
+            text = lambda value: f"{value:.4f}" if isinstance(value, (int, float)) and value == value else "--"  # noqa: E731
             row.update({"p_Bid": text(put[0]) if put else "--", "p_Ask": text(put[1]) if put else "--", "p_Openinterest": "60", "p_Volume": "6"})
         rows.append(row)
     return rows
@@ -77,7 +78,7 @@ def nordic_row(kind: str, strike: float, bid: float, ask: float, *, root: str = 
     letters = "ABCDEFGHIJKL" if kind == "C" else "MNOPQRSTUVWX"
     row = {"fullName": f"{root} {day.day:02d}{day.strftime('%b').upper()}{day.year % 100:02d} {text}{kind}", "orderbookId": f"OB{kind}{text}",
            "symbol": f"{root}{day.year % 10}{letters[day.month - 1]}{text}", "expirationDate": expiry, "strikePrice": f"{strike:.2f}",
-           "contractSize": "100", "bidPrice": f"{bid:.2f}", "askPrice": f"{ask:.2f}", "openInterest": "40", "volume": "4",
+           "contractSize": "100", "bidPrice": f"{bid:.4f}", "askPrice": f"{ask:.4f}", "openInterest": "40", "volume": "4",
            "assetClass": "OPTIONS", "currency": "SEK"}
     row.update(override)
     return row
@@ -88,20 +89,21 @@ def nordic_rows(calls: list[tuple] = CALLS, puts: list[tuple] | None = PUTS) -> 
 
 
 def bs_chain(dte: int, *, spot: float = SPOT, iv: float = IV, half_spread: float = 0.02) -> tuple[list[tuple], list[tuple]]:
-    """A synthetic chain for any DTE (calls above, puts below the spot, strikes 1.00 apart): Black-Scholes prices of the producer's own model, so
-    the deltas land in the bands at every maturity. Used for the weekly, the carry-forward and the size tests, never to pin a number."""
+    """Synthetic tight book around one sigma. Fixtures list quotes worth at least .01;
+    this is only a fixture universe, never a production premium eligibility floor."""
     sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
-    import build_market_quotes_options as builder
+    import option_delta_model as delta_math
     years = max(dte, 1) / 365
     calls, puts = [], []
     for strike in range(int(spot * 0.75), int(spot * 1.25) + 1):
         strike = float(strike)
-        if strike > spot:
-            price = builder.bs_call_price(spot, strike, years, iv)
-            if price - half_spread > 0.0:
-                calls.append((strike, round(price - half_spread, 2), round(price + half_spread, 2)))
-        elif strike < spot:
-            price = builder.bs_put_price(spot, strike, years, iv)
-            if price - half_spread > 0.0:
-                puts.append((strike, round(price - half_spread, 2), round(price + half_spread, 2)))
+        if strike == spot:
+            continue
+        price = (delta_math.bs_call_price if strike > spot else delta_math.bs_put_price)(spot, strike, years, iv)
+        if price is None or price < 0.01:
+            continue
+        spread = min(half_spread, price * 0.04)
+        bid = math.floor((price - spread) * 10000) / 10000
+        ask = math.ceil((price + spread) * 10000) / 10000
+        (calls if strike > spot else puts).append((strike, bid, ask))
     return calls, puts

@@ -10,8 +10,10 @@ import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { asKv, MemoryKv } from "./fake-kv";
 import { sealUnboundReport } from "./sealed-report-migration";
-import { effectiveDays, exchangeDate, usRegularSessionOpen, weeklyWeekFor, dayMs } from "../src/v213/option-recommendation-rules";
+import { exchangeDate, usRegularSessionOpen, weeklyWeekFor, dayMs } from "../src/v213/option-recommendation-rules";
 import { SNAPSHOT_SEAL_KEY } from "../src/v213/snapshot-seal";
+import type { CoveredCallCycle } from "../src/v213/covered-call";
+import { repriceSyntheticCycle } from "./synthetic-coherent-options";
 
 const CATALOG_MODULE = "../../config/public-options-provider-candidates.json";
 const repository = JSON.parse(readFileSync(resolve(__dirname, CATALOG_MODULE), "utf-8")) as Doc;
@@ -111,16 +113,14 @@ async function lineReply(w: World, env: any, command: string, now: number): Prom
   return JSON.stringify(messages);
 }
 
-/** A capture moved to another instant with every figure kept consistent (asof_date, dte, weekly marker, annualized yield). */
+/** Explicitly synthetic retiming: rebuild the common model, quotes, Greeks and economics, not only the clock. */
 function captureAt(base: Doc, timestamp: string, expiry: string, period: "weekly" | "monthly" = "weekly"): Doc {
-  const cycle = clone(base);
+  const cycle = clone(base) as CoveredCallCycle;
   const asof = exchangeDate(Date.parse(timestamp), "US");
   const dte = Math.round((dayMs(expiry)! - dayMs(asof)!) / 86_400_000);
-  Object.assign(cycle, { timestamp, expiry, asof_date: asof, dte });
-  if (period === "weekly") cycle.weekly_week = weeklyWeekFor(expiry, asof);
-  for (const item of [...cycle.suggestions, ...(cycle.middle_suggestion ? [cycle.middle_suggestion] : [])]) {
-    item.annualized_yield = item.limit_price / cycle.spot * 365 / effectiveDays(dte);
-  }
+  repriceSyntheticCycle(cycle, dte);
+  Object.assign(cycle, { timestamp, expiry, asof_date: asof });
+  if (period === "weekly") cycle.weekly_week = weeklyWeekFor(expiry, asof) ?? undefined;
   return cycle;
 }
 
@@ -300,7 +300,8 @@ describe("W1 + W2 through the real LINE entry", () => {
       for (const command of ["T00 每週期權", "T00 每月期權"]) {
         const reply = await lineReply(w, env, command, IN_NOW);
         expect(reply, command).toContain("T00");
-        expect(reply).toContain("115.00");
+        const period = command.includes("每週") ? "weekly" : "monthly";
+        expect(reply).toContain(IN_DOC.T00[period].suggestions[0].strike.toFixed(2));
         expect(reply).toContain("Yahoo Finance 期權鏈（非官方，延遲）");
         expect(reply).toContain(w.covered.OPERATOR_ACCEPTED_NOTICE_ZH);
         for (const rule of ["LIMIT", "中價", "未成交", "不低於Bid"]) expect(reply).toContain(rule);
@@ -315,7 +316,8 @@ describe("W1 + W2 through the real LINE entry", () => {
       for (const command of ["T00 每週期權", "T01 每月期權"]) {
         const reply = await lineReply(w, env, command, OFF_NOW);
         expect(reply, command).toContain(LABEL);
-        expect(reply).toContain("115.00");                        // the capture's own strike and quotes, not recomputed
+        const ticker = command.split(" ")[0]!, period = command.includes("每週") ? "weekly" : "monthly";
+        expect(reply).toContain(OFF_DOC[ticker][period].suggestions[0].strike.toFixed(2));
         expect(reply).toContain("10-13 23:00（台北）");           // the capture instant is shown, never relabelled as fresh
         expect(reply).toContain("Yahoo Finance 期權鏈（非官方，延遲）");
         expect(reply).toContain(w.covered.OPERATOR_ACCEPTED_NOTICE_ZH);
@@ -345,7 +347,7 @@ describe("W1 + W2 through the real LINE entry", () => {
     vi.setSystemTime(IN_NOW);
     const denied = await lineReply(without, env, "T00 每週期權", IN_NOW);
     expect(denied).toContain("期權資料未通過公開驗收");
-    expect(denied).not.toContain("115.00");
+    expect(denied).not.toContain(live().suggestions[0].strike.toFixed(2));
     expect(denied).not.toContain(without.covered.OPERATOR_ACCEPTED_NOTICE_ZH);
     // a cycle that claims no identity (an older producer, the Nasdaq fallback) is denied even under the full catalog
     const bare = live(); for (const key of ["provider_id", "jurisdiction", "venue", "instrument_kind", "publication_scope"]) delete bare[key];
@@ -353,7 +355,7 @@ describe("W1 + W2 through the real LINE entry", () => {
     const bareEnv = await sealedEnv({ T00: { weekly: bare } }, fixture.in_session.generated_at, IN_NOW);
     const bareReply = await lineReply(w, bareEnv, "T00 每週期權", IN_NOW);
     expect(bareReply).toContain("期權資料未通過公開驗收");
-    expect(bareReply).not.toContain("115.00");
+    expect(bareReply).not.toContain(bare.suggestions[0].strike.toFixed(2));
   });
 
   it("an unknown or unadmitted carried basis never reaches a quote: refused by validation, by admission and by an older catalog", async () => {
@@ -371,13 +373,13 @@ describe("W1 + W2 through the real LINE entry", () => {
       const reply = await lineReply(w, env, "T00 每週期權", OFF_NOW);
       expect(reply, name).toContain(UNVERIFIED);
       expect(reply, name).not.toContain("前一交易時段最後報價");
-      expect(reply, name).not.toContain("115.00");
+      expect(reply, name).not.toContain(cycle.suggestions[0].strike.toFixed(2));
     }
     // The catalog stops admitting the carried basis (its scope removed): rights denial, no quote.
     const delayedOnly = await world(catalogWith(yahoo => { yahoo.admitted_scopes.pop(); }));
     const reply = await lineReply(delayedOnly, await sealedEnv(OFF_DOC, fixture.off_session.generated_at, OFF_NOW), "T00 每週期權", OFF_NOW);
     expect(reply).toContain("期權資料未通過公開驗收");
-    expect(reply).not.toContain("115.00");
+    expect(reply).not.toContain(carried().suggestions[0].strike.toFixed(2));
     // The renderer re-checks admission independently (no loader in front of it).
     const { covered, admission } = delayedOnly;
     const cycle = covered.validateCoveredCallCycle(carried(), OFF_NOW, fixture.off_session.generated_at, "weekly", { allowPreviousSession: true });
