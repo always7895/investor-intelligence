@@ -1,6 +1,6 @@
 # Current state / 目前狀態
 
-**As of 2026-11-09 (Asia/Taipei).** Branch **`integ/r2`** is the isolated Stage 1 integration candidate based on **`65e8f5b`**, not an accepted release or deployment. Its status is **IMPLEMENTED_UNVERIFIED** pending master re-review of the fixed snapshot and evidence. Release **`v3.3.0`** remains the earlier dual-accepted source snapshot **`8ff4b0722f71f983716b2accc1fadeb301e848e4`**, not the installed Worker version.
+**As of 2026-11-09 (Asia/Taipei).** Branch **`integ/r2`** is the isolated Stage 1B integration candidate based on **`65e8f5b`**, not an accepted release or deployment. Round-two **ACCEPT_WITH_FIXES** is not release acceptance; status remains **IMPLEMENTED_UNVERIFIED** pending master re-review of the fixed snapshot and evidence. Release **`v3.3.0`** remains the earlier dual-accepted source snapshot **`8ff4b0722f71f983716b2accc1fadeb301e848e4`**, not the installed Worker version.
 
 ## Production and rollout
 
@@ -25,6 +25,15 @@
 - The lane's `REPORT-STAGE1.txt` records commits, committed-tree gates, identical-input route scans and separately recorded producer-function replay. Historical samples, synthetic fixtures, new raw recordings and regenerated metadata are distinct evidence populations.
 - No Stage 2/R2B artifact, push, release, Production change or rollout is included. Local gates do not replace independent acceptance or fresh source evidence.
 
+### Stage 1B follow-through
+
+- M1 separates genuine provider observation clocks from acquisition clocks, including conservative handling of legacy generation-time collisions and observation-only lookup ranking.
+- M2 preserves precise per-strategy refusal reasons on validated monthly observations. Missing metadata is not proof of an absent put chain; diagnostic-only blocks do not suppress otherwise eligible prior-session carry.
+- m1 restores positive localized refusal assertions for corrupted snapshots; m3 applies currency-aware quote precision to Top20 cross-check lines without changing source values.
+- `REPORT-STAGE1B.txt` records the separate commits, bounded public acquisition, offline whole-universe function/sealer/Worker evidence and committed-tree gates. Fresh recordings, synthetic regressions and unchanged historical-corpus checks remain distinct populations; function replay is not producer-main, publication-gate or Production acceptance.
+- M3 and Stage 2 remain outside this stage; no push, tag, merge, deployment or real LINE delivery is authorized by these changes.
+
+
 ## Release acceptance (v3.3.0)
 
 - **Writer:** complete H5 gate `rel1-g2` on `8ff4b07`: 346 modules, 326 PASS, 20 BLOCKED as ruled before launch (host-bound modules), 0 FAIL; verdict PASS_AS_RULED.
@@ -32,7 +41,7 @@
 
 ## Next actions
 
-1. Review the Stage 1 fixed snapshot using its per-finding evidence report. Unproved source-data cases remain open; do not infer acceptance from a successful test command.
+1. Re-review the Stage 1B fixed snapshot using `REPORT-STAGE1B.txt`; retain Stage 1 evidence separately. Unproved source-data cases remain open, and successful local commands do not grant release acceptance or permission to start Stage 2.
 2. Any later combined rollout requires a new plan, **master GO** and **explicit current-session operator authorization**; do not activate deployments, schedules or `all_friends` access.
 
 ## Open follow-ups
