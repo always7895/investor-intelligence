@@ -29,7 +29,7 @@ const FEEDS = [{ id: "nordic-shares", url: "https://example.com", retrieved_at: 
                { id: "lse-aim", url: "https://api.londonstockexchange.com/api/v1/components/refresh", retrieved_at: stamp, sha256: "d".repeat(64), rows: 1 }];
 
 type Options = { options?: string; quotes?: string; tamper?: boolean; dropBlob?: boolean; badPointer?: boolean; flex?: boolean };
-type Cycle = { unavailable?: string; ticker?: string; currency?: string; dte?: number; multiplier?: number; suggestions?: { strike: number }[]; quote_observation?: { strike: number } };
+type Cycle = { unavailable?: string; ticker?: string; currency?: string; expiry?: string; dte?: number; multiplier?: number; suggestions?: { strike: number }[]; quote_observation?: { strike: number } };
 
 async function sha(text: string): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
