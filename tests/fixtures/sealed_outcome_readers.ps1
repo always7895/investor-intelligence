@@ -2,7 +2,7 @@ param([Parameter(Mandatory=$true)][string]$ProjectRoot,
       [Parameter(Mandatory=$true)][string]$CasesPath)
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
-$cases = @(Get-Content -LiteralPath $CasesPath -Raw -Encoding utf8 | ConvertFrom-Json)
+$cases = Get-Content -LiteralPath $CasesPath -Raw -Encoding utf8 | ConvertFrom-Json
 $answers = [Collections.Generic.List[object]]::new()
 foreach ($operation in @('SYNC','WATCHDOG')) {
     # Separate scopes retain each caller's own integer/path guard definitions.
