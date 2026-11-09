@@ -180,6 +180,7 @@ describe("LINE caller acquisition metadata isolation and publication refusal", (
     f.publicKv.values.set("snapshot:current", "{broken");
     const messages = await actualReply(cmd, f);
     const body = JSON.stringify(messages);
+    expect(body).toMatch(/證據不足|當輪產業資料不可用/);
     expect(body).not.toContain("T00");
     expect(body).not.toContain(SENTINEL);
   });
