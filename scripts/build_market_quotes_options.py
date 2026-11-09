@@ -80,6 +80,8 @@ from pathlib import Path
 from typing import Any, Callable, Iterable
 
 import option_recommendation_rules as rules
+import option_historical_volatility as history_vol
+import option_delta_model as delta_math
 import options_carry_forward as carry_forward
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -118,7 +120,6 @@ MIN_COMPLETED_SHARE = 0.5
 # weekly: the current-week rule of option_recommendation_rules (the window is only the fetch/validator outer bound, 0-14 DTE);
 # monthly: the nearest standard monthly of option_recommendation_rules (the window is only the fetch/validator outer bound, 0-60 DTE)
 CYCLES = {"weekly": rules.WEEKLY_DTE_BUCKET, "monthly": rules.MONTHLY_DTE_BUCKET}
-RISK_FREE = 0.04
 MAX_HIGH_STRIKE_DELTA = 0.20  # the high-strike suggestion keeps the model assignment reference low
 BALANCED_DELTA = 0.30
 BALANCED_MONEYNESS = 1.05     # when a lower strike has no delta at all, about 5% out of the money
@@ -224,16 +225,72 @@ def _request_until() -> float:
     return until
 
 
-def http_json(url: str) -> Any:
+def _http_bytes(url: str, *, max_bytes: int | None = None, opener: Callable[..., Any] | None = None) -> bytes:
     request = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (InvestorIntelligence public observation)"})
     until = _request_until()
-    with urllib.request.urlopen(request, timeout=until - time.monotonic()) as response:  # noqa: S310 - fixed public hosts
+    with (opener or urllib.request.urlopen)(request, timeout=until - time.monotonic()) as response:  # noqa: S310 - fixed public hosts
         body = bytearray()
         while chunk := response.read(65536):  # a body that trickles is cut at the request's end, not only per read
             body += chunk
+            if max_bytes is not None and len(body) > max_bytes:
+                raise ValueError("PUBLIC_RESPONSE_SIZE_LIMIT")
             if time.monotonic() > until:
                 raise TimeoutError("RESPONSE_BODY_DEADLINE")
-        return json.loads(bytes(body).decode("utf-8"))
+        return bytes(body)
+
+
+def http_json(url: str) -> Any:
+    return json.loads(_http_bytes(url).decode("utf-8"))
+
+
+class _HistoryRedirectDenied(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        raise ValueError("PRICE_HISTORY_REDIRECT_DENIED")
+
+
+def load_historical_volatility(symbol: str, currency: str, stamp: str) -> dict[str, Any] | None:
+    """Reuse the existing Yahoo chart cache, else one bounded public daily-chart read.
+
+    Raw bytes, adjusted-close identity and prior completed session dates are bound
+    by the pure estimator. Never use an aggregate price-change field as history.
+    """
+    if currency not in ("USD", "SEK") or not re.fullmatch(r"[A-Z0-9][A-Z0-9.\-]{0,31}", symbol) or ".." in symbol:
+        return None
+    try:
+        capture = rules.exchange_date(rules.parse_utc_instant(stamp), "STOCKHOLM" if currency == "SEK" else "US")
+        source = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
+        root = ROOT / "data" / "cache"
+        # Same four mirrored operand paths as serenity_calibration.cached_price_reader.
+        for folder in (root / "yahoo/chart", root / "v3/yahoo/chart"):
+            for filename in (symbol, symbol + ".json"):
+                path = folder / filename
+                try:
+                    if any(part.is_symlink() or (hasattr(part, "is_junction") and part.is_junction())
+                           for part in (path, *path.parents)):
+                        continue
+                    if path.is_file() and path.stat().st_size <= 8 * 1024 * 1024:
+                        value = history_vol.from_yahoo_chart(path.read_bytes(), symbol, currency, capture, source)
+                        if value is not None:
+                            return value
+                except OSError:
+                    continue
+        end = int(datetime(capture.year, capture.month, capture.day, tzinfo=timezone.utc).timestamp())
+        url = f"{source}?period1={end - 120 * 86400}&period2={end}&interval=1d&events=div%2Csplits&includeAdjustedClose=true"
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), _HistoryRedirectDenied())
+        raw = _http_bytes(url, max_bytes=8 * 1024 * 1024, opener=opener.open)
+        return history_vol.from_yahoo_chart(raw, symbol, currency, capture, url)
+    except (OSError, ValueError, TypeError, OverflowError, TimeoutError):
+        return None
+
+
+def _checked_history(value: Any, ticker: str, currency: str, stamp: str) -> dict[str, Any] | None:
+    if value is None:
+        return None
+    try:
+        capture = rules.exchange_date(rules.parse_utc_instant(stamp), "STOCKHOLM" if currency == "SEK" else "US")
+        return value if history_vol.valid_historical_volatility(value, ticker, currency, capture) else None
+    except (TypeError, ValueError):
+        return None
 
 
 def universe() -> list[str]:
@@ -342,102 +399,30 @@ def broad_universe(now: datetime, path: Path | None = None) -> dict[str, Any]:
     return document
 
 
-def bs_call_delta(spot: float, strike: float, years: float, vol: float | None, digits: int | None = 3) -> float | None:
-    """Black-Scholes call delta, rounded for display; digits=None keeps full precision for limit checks."""
-    if not all(_is_finite_positive(value) for value in (vol, years, spot, strike)):
-        return None
-    try:
-        d1 = (math.log(spot / strike) + (RISK_FREE + vol * vol / 2) * years) / (vol * math.sqrt(years))
-    except (ValueError, OverflowError, ZeroDivisionError):
-        return None
-    if not math.isfinite(d1):
-        return None
-    delta = 0.5 * (1 + math.erf(d1 / math.sqrt(2)))
-    return round(delta, digits) if digits is not None else delta
+def _ranking_rows(rows: list[dict[str, Any]], spot: float, *, put: bool,
+                  cent_exact_only: bool = True) -> list[dict[str, Any]]:
+    """Contract/OTM/quote eligibility only; never prefilter by a strike-specific Greek."""
+    return [row for row in rows if _is_finite_positive(row.get("strike"))
+            and (row["strike"] < spot if put else row["strike"] > spot)
+            and _is_two_sided(row.get("bid"), row.get("ask"))
+            and (not cent_exact_only or _cent_exact(row["strike"]))]
 
 
-def bs_call_price(spot: float, strike: float, years: float, vol: float) -> float:
-    d1 = (math.log(spot / strike) + (RISK_FREE + vol * vol / 2) * years) / (vol * math.sqrt(years))
-    d2 = d1 - vol * math.sqrt(years)
-    cdf = lambda x: 0.5 * (1 + math.erf(x / math.sqrt(2)))  # noqa: E731
-    return spot * cdf(d1) - strike * math.exp(-RISK_FREE * years) * cdf(d2)
+def _ranking_model(calls: list[dict[str, Any]], puts: list[dict[str, Any]], spot: float, dte: int,
+                   history: dict[str, Any] | None, *, cent_exact_only: bool = True) -> tuple[dict[str, Any] | None, str | None]:
+    return delta_math.build_delta_model(
+        _ranking_rows(calls, spot, put=False, cent_exact_only=cent_exact_only),
+        _ranking_rows(puts, spot, put=True, cent_exact_only=cent_exact_only), spot, dte, history)
 
 
-def implied_vol(price: float, spot: float, strike: float, years: float) -> float | None:
-    """The Black-Scholes volatility that reproduces a quoted call price (bisection between 1% and 500%); None when the
-    quote lies outside that range."""
-    low, high = 0.01, 5.0
-    if price <= 0 or years <= 0 or spot <= 0 or strike <= 0 or not bs_call_price(spot, strike, years, low) < price < bs_call_price(spot, strike, years, high):
-        return None
-    for _ in range(60):
-        mid = (low + high) / 2
-        if bs_call_price(spot, strike, years, mid) < price:
-            low = mid
-        else:
-            high = mid
-    return (low + high) / 2
+def _with_model_delta(row: dict[str, Any], spot: float, dte: int, model: dict[str, Any], *,
+                      put: bool = False) -> dict[str, Any]:
+    call = delta_math.bs_call_delta(spot, row["strike"], rules.effective_days(dte) / 365, model["sigma"], digits=None)
+    exact = (1 - call if put else call) if call is not None else None
+    return {**row, "iv": None if model["basis"] == "HISTORICAL_VOL" else round(model["sigma"], 4),
+            "delta": round(exact, 3) if exact is not None else None,
+            "delta_exact": exact, "delta_basis": model["basis"]}
 
-
-def bs_put_price(spot: float, strike: float, years: float, vol: float) -> float:
-    d1 = (math.log(spot / strike) + (RISK_FREE + vol * vol / 2) * years) / (vol * math.sqrt(years))
-    d2 = d1 - vol * math.sqrt(years)
-    cdf = lambda x: 0.5 * (1 + math.erf(x / math.sqrt(2)))  # noqa: E731
-    return strike * math.exp(-RISK_FREE * years) * cdf(-d2) - spot * cdf(-d1)
-
-
-def implied_vol_put(price: float, spot: float, strike: float, years: float) -> float | None:
-    """The Black-Scholes volatility that reproduces a quoted put price (bisection between 1% and 500%); None outside that range."""
-    low, high = 0.01, 5.0
-    if price <= 0 or years <= 0 or spot <= 0 or strike <= 0 or not bs_put_price(spot, strike, years, low) < price < bs_put_price(spot, strike, years, high):
-        return None
-    for _ in range(60):
-        mid = (low + high) / 2
-        if bs_put_price(spot, strike, years, mid) < price:
-            low = mid
-        else:
-            high = mid
-    return (low + high) / 2
-
-
-def with_put_delta(row: dict[str, Any], spot: float, dte: int) -> dict[str, Any]:
-    """Absolute put delta from quoted IV, a signed quoted PUT delta, or its own two-sided midpoint."""
-    row = _normalized_quote(row)
-    years = rules.effective_days(dte) / 365
-    if row["iv"] is not None:
-        call = bs_call_delta(spot, row["strike"], years, row["iv"], digits=None)
-        if call is not None:
-            exact = 1 - call
-            return {**row, "delta": round(exact, 3), "delta_exact": exact, "delta_basis": "QUOTED_IV"}
-        row["iv"] = None
-    quoted = row.get("delta")
-    if _valid_delta(quoted) and quoted < 0:
-        return {**row, "delta": round(-quoted, 3), "delta_exact": -quoted, "delta_basis": "QUOTED"}
-    vol = (implied_vol_put((row["bid"] + row["ask"]) / 2, spot, row["strike"], years)
-           if _is_two_sided(row["bid"], row["ask"]) else None)
-    if vol is None:
-        return {**row, "delta": None, "delta_exact": None, "delta_basis": None}
-    exact = 1 - bs_call_delta(spot, row["strike"], years, vol, digits=None)
-    return {**row, "iv": round(vol, 4), "delta": round(exact, 3), "delta_exact": exact, "delta_basis": "QUOTE_IMPLIED"}
-
-
-def with_delta(row: dict[str, Any], spot: float, dte: int) -> dict[str, Any]:
-    """Call delta with full-precision cap evidence; no midpoint-derived Greek from a one-sided quote."""
-    row = _normalized_quote(row)
-    years = rules.effective_days(dte) / 365
-    if row["iv"] is not None:
-        exact = bs_call_delta(spot, row["strike"], years, row["iv"], digits=None)
-        if exact is not None:
-            return {**row, "delta": round(exact, 3), "delta_exact": exact, "delta_basis": "QUOTED_IV"}
-        row["iv"] = None
-    quoted = row.get("delta")
-    if _valid_delta(quoted) and quoted >= 0:
-        return {**row, "delta": round(quoted, 3), "delta_exact": quoted, "delta_basis": "QUOTED"}
-    vol = (implied_vol((row["bid"] + row["ask"]) / 2, spot, row["strike"], years)
-           if _is_two_sided(row["bid"], row["ask"]) else None)
-    if vol is None:
-        return {**row, "delta": None, "delta_exact": None, "delta_basis": None}
-    exact = bs_call_delta(spot, row["strike"], years, vol, digits=None)
-    return {**row, "iv": round(vol, 4), "delta": round(exact, 3), "delta_exact": exact, "delta_basis": "QUOTE_IMPLIED"}
 
 
 def _int(value: Any) -> int | None:
@@ -465,15 +450,6 @@ def _quote_value(value: Any, parser: Callable[[Any], float | None] = _float) -> 
     return (None if parsed == 0 else parsed) if parsed is not None else value
 
 
-def _valid_delta(value: Any) -> bool:
-    return (isinstance(value, (int, float)) and not isinstance(value, bool)
-            and -1 <= value <= 1 and math.isfinite(value))
-
-
-def _normalized_quote(row: dict[str, Any]) -> dict[str, Any]:
-    return {**row, "bid": row.get("bid") or None, "ask": row.get("ask") or None,
-            "iv": row.get("iv") if _is_finite_positive(row.get("iv")) else None}
-
 
 def _suggestion(role: str, row: dict[str, Any], spot: float, dte: int) -> dict[str, Any]:
     days = rules.effective_days(dte)  # annualization never uses fewer than one day (DTE 0 is the expiry day)
@@ -489,18 +465,20 @@ def _suggestion(role: str, row: dict[str, Any], spot: float, dte: int) -> dict[s
 
 
 def covered_call_tiers(rows: list[dict[str, Any]], spot: float, dte: int, *,
-                       cent_exact_only: bool = True) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
+                       cent_exact_only: bool = True, model: dict[str, Any] | None = None) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
     """(suggestions, middle): the highest usable strike (HIGH_STRIKE; no yield floor), a balanced strike below it (BALANCED), and
     the optional MIDDLE strike strictly between the two (never padded, never a duplicate strike). Only out-of-the-money
-    strikes with an executable bid qualify, and the high strike needs a delta (quoted or implied by its quote) within
-    MAX_HIGH_STRIKE_DELTA. Only a strike the two-decimal display represents exactly is recommended (cent_exact_only); health
-    is computed before and never depends on this fence. DTE 0 (the expiry day) annualizes over one day."""
+    strikes with two-sided quotes qualify, and one common sigma supplies every delta.
+    MAX_HIGH_STRIKE_DELTA is checked before rounding. Only cent-exact strikes are recommended;
+    raw chain health is independent. DTE 0 annualizes over one day."""
     if dte < 0:
         return [], None
     days = rules.effective_days(dte)
-    usable = [with_delta(row, spot, dte) for row in rows if _is_finite_positive(row.get("strike")) and row["strike"] > spot
-              and _quote_usable(row)
-              and (not cent_exact_only or _cent_exact(row["strike"]))]
+    if model is None:
+        model, _ = _ranking_model(rows, [], spot, dte, None, cent_exact_only=cent_exact_only)
+    if model is None:
+        return [], None
+    usable = _otm_calls(rows, spot, dte, cent_exact_only, model=model)
     if not usable:
         return [], None
     annual = lambda row: row["bid"] / spot * 365 / days  # noqa: E731 - compare quoted-side premium, not guaranteed proceeds
@@ -512,10 +490,7 @@ def covered_call_tiers(rows: list[dict[str, Any]], spot: float, dte: int, *,
     lower = [row for row in usable if row["strike"] < first["strike"] and annual(row) > annual(first)]
     middle: dict[str, Any] | None = None
     if lower:
-        if all(row.get("delta") is not None for row in lower):
-            second = min(lower, key=lambda row: abs(row["delta"] - BALANCED_DELTA))
-        else:
-            second = min(lower, key=lambda row: abs(row["strike"] / spot - BALANCED_MONEYNESS))
+        second = min(lower, key=lambda row: abs(row["delta_exact"] - BALANCED_DELTA))
         suggestions.append(_suggestion("BALANCED", second, spot, dte))
         between = rules.pick_middle(lower, first["strike"], second["strike"], spot)
         if between is not None:
@@ -523,22 +498,14 @@ def covered_call_tiers(rows: list[dict[str, Any]], spot: float, dte: int, *,
     return suggestions, middle
 
 
-def covered_call_suggestions(rows: list[dict[str, Any]], spot: float, dte: int, *, cent_exact_only: bool = True) -> list[dict[str, Any]]:
-    """The HIGH_STRIKE and BALANCED suggestions of covered_call_tiers (the contract of `suggestions`: one or two entries)."""
-    return covered_call_tiers(rows, spot, dte, cent_exact_only=cent_exact_only)[0]
+def covered_call_suggestions(rows: list[dict[str, Any]], spot: float, dte: int, *, cent_exact_only: bool = True,
+                             model: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    """The HIGH_STRIKE and BALANCED suggestions of covered_call_tiers."""
+    return covered_call_tiers(rows, spot, dte, cent_exact_only=cent_exact_only, model=model)[0]
 
 
 # ---- V21 (operator 2026-10-19): cash-secured put and collar beside the covered call, conservative first ----------------------------------
 
-def _quote_usable(row: dict[str, Any], *, buy: bool = False) -> bool:
-    """Require the executable side; optional zero/absent opposite side is unknown, not a crossed quote."""
-    bid, ask = row.get("bid"), row.get("ask")
-    required, opposite = (ask, bid) if buy else (bid, ask)
-    if not _is_finite_positive(required):
-        return False
-    if opposite is None or (type(opposite) in (int, float) and opposite == 0):
-        return True
-    return _is_two_sided(bid, ask)
 
 
 def _sell_limit(bid: float, ask: float | None) -> float:
@@ -574,16 +541,16 @@ def _in_band(row: dict[str, Any], band: tuple[float, float]) -> bool:
     return row.get("delta_exact") is not None and band[0] - 1e-12 <= row["delta_exact"] <= band[1] + 1e-12
 
 
-def _otm_puts(puts: list[dict[str, Any]], spot: float, dte: int, cent_exact_only: bool, *, buy: bool = False) -> list[dict[str, Any]]:
-    rows = [with_put_delta(row, spot, dte) for row in puts if _is_finite_positive(row.get("strike")) and row["strike"] < spot and _quote_usable(row, buy=buy)
-            and (not cent_exact_only or _cent_exact(row["strike"]))]
-    return [row for row in rows if row.get("delta_exact") is not None]
+def _otm_puts(puts: list[dict[str, Any]], spot: float, dte: int, cent_exact_only: bool, *,
+              model: dict[str, Any]) -> list[dict[str, Any]]:
+    return [_with_model_delta(row, spot, dte, model, put=True)
+            for row in _ranking_rows(puts, spot, put=True, cent_exact_only=cent_exact_only)]
 
 
-def _otm_calls(rows: list[dict[str, Any]], spot: float, dte: int, cent_exact_only: bool) -> list[dict[str, Any]]:
-    usable = [with_delta(row, spot, dte) for row in rows if _is_finite_positive(row.get("strike")) and row["strike"] > spot and _quote_usable(row)
-              and (not cent_exact_only or _cent_exact(row["strike"]))]
-    return [row for row in usable if row.get("delta_exact") is not None]
+def _otm_calls(rows: list[dict[str, Any]], spot: float, dte: int, cent_exact_only: bool, *,
+               model: dict[str, Any]) -> list[dict[str, Any]]:
+    return [_with_model_delta(row, spot, dte, model)
+            for row in _ranking_rows(rows, spot, put=False, cent_exact_only=cent_exact_only)]
 
 
 def _leg_quote_unavailable(rows: list[dict[str, Any]], spot: float, *, put: bool, buy: bool = False, cent_exact_only: bool = True) -> str | None:
@@ -598,29 +565,33 @@ def _leg_quote_unavailable(rows: list[dict[str, Any]], spot: float, *, put: bool
     exact = [row for row in otm if not cent_exact_only or _cent_exact(row["strike"])]
     if not exact:
         return f"所選到期價外{side}履約價含超過兩位小數，顯示無法如實呈現；不提供建議"
+    if not any(_is_two_sided(row.get("bid"), row.get("ask")) for row in exact):
+        if any((_is_finite_positive(row.get("bid")) and row.get("ask") in (None, 0))
+               or (_is_finite_positive(row.get("ask")) and row.get("bid") in (None, 0)) for row in exact):
+            return f"所選到期價外{side}僅有單邊報價，缺少買賣報價 IV 區間；不提供建議"
     required = "ask" if buy else "bid"
     executable = [row for row in exact if _is_finite_positive(row.get(required))]
     if not executable:
         return f"所選到期價外{side}缺少有效{'買入 Ask' if buy else '賣出 Bid'}（須為有限正數）"
-    if not any(_quote_usable(row, buy=buy) for row in executable):
+    if not any(_is_two_sided(row.get("bid"), row.get("ask")) for row in executable):
         return f"所選到期價外{side}報價格式無效、非有限值、負值或買賣價倒掛"
     return None
 
 
 def cash_secured_put_tiers(puts: list[dict[str, Any]], spot: float, dte: int, *,
-                           cent_exact_only: bool = True) -> tuple[list[dict[str, Any]], str | None]:
-    """(items, reason): out-of-the-money puts with an executable bid and an absolute delta inside CONSERVATIVE_DELTA_BAND (there is
-    no yield floor); CONSERVATIVE = the delta nearest the band's lower edge, optional BALANCED =
-    the delta nearest its upper edge among the higher strikes. Nothing is modelled: with no such strike the reason says which step failed."""
+                           cent_exact_only: bool = True, model: dict[str, Any] | None = None) -> tuple[list[dict[str, Any]], str | None]:
+    """Two-sided OTM puts in the full-precision conservative delta band; premiums remain quote-based."""
     if dte < 0:
         return [], "所選到期已過期，不提供現金擔保賣權建議"
     reason = _leg_quote_unavailable(puts, spot, put=True, cent_exact_only=cent_exact_only)
     if reason:
         return [], reason
     days = rules.effective_days(dte)
-    usable = _otm_puts(puts, spot, dte, cent_exact_only)
-    if not usable:
-        return [], "所選到期價外賣權缺少可核驗 delta（單邊報價不能由中價推算）"
+    if model is None:
+        model, reason = _ranking_model([], puts, spot, dte, None, cent_exact_only=cent_exact_only)
+        if model is None:
+            return [], reason
+    usable = _otm_puts(puts, spot, dte, cent_exact_only, model=model)
     band = [row for row in usable if _in_band(row, rules.CONSERVATIVE_DELTA_BAND)]
     if not band:
         low, high = rules.CONSERVATIVE_DELTA_BAND
@@ -640,28 +611,28 @@ def cash_secured_put_tiers(puts: list[dict[str, Any]], spot: float, dte: int, *,
 
 
 def collar_tiers(calls: list[dict[str, Any]], puts: list[dict[str, Any]], spot: float, dte: int, *,
-                 cent_exact_only: bool = True) -> tuple[dict[str, Any] | None, str | None]:
+                 cent_exact_only: bool = True, model: dict[str, Any] | None = None) -> tuple[dict[str, Any] | None, str | None]:
     """({put, items}, reason): long stock + a protective put (absolute delta nearest PROTECTIVE_PUT_DELTA inside its window; buy limit = mid
     rounded up, never above the ask) + the short call in CONSERVATIVE_DELTA_BAND (the delta nearest the lower edge first, optional
-    BALANCED nearest the upper edge). Every leg needs its executable quote side and a delta; there is no yield floor on a collar."""
+    BALANCED nearest the upper edge). Every leg needs both quote sides and the same sigma; there is no yield floor."""
     if dte < 0:
         return None, "所選到期已過期，不提供領口策略建議"
     reason = _leg_quote_unavailable(puts, spot, put=True, buy=True, cent_exact_only=cent_exact_only)
     if reason:
         return None, reason
     window = rules.PROTECTIVE_PUT_DELTA_BAND
-    usable_puts = _otm_puts(puts, spot, dte, cent_exact_only, buy=True)
-    if not usable_puts:
-        return None, "所選到期保護性賣權缺少可核驗 delta（單邊報價不能由中價推算）"
+    if model is None:
+        model, reason = _ranking_model(calls, puts, spot, dte, None, cent_exact_only=cent_exact_only)
+        if model is None:
+            return None, reason
+    usable_puts = _otm_puts(puts, spot, dte, cent_exact_only, model=model)
     protective = [row for row in usable_puts if _in_band(row, window)]
     if not protective:
         return None, f"所選到期價外賣權中，沒有 delta 絕對值約 {rules.PROTECTIVE_PUT_DELTA:.2f}（{window[0]:.2f}–{window[1]:.2f}）的履約價"
     reason = _leg_quote_unavailable(calls, spot, put=False, cent_exact_only=cent_exact_only)
     if reason:
         return None, reason
-    usable_calls = _otm_calls(calls, spot, dte, cent_exact_only)
-    if not usable_calls:
-        return None, "所選到期價外買權缺少可核驗 delta（單邊報價不能由中價推算）"
+    usable_calls = _otm_calls(calls, spot, dte, cent_exact_only, model=model)
     band = [row for row in usable_calls if _in_band(row, rules.CONSERVATIVE_DELTA_BAND)]
     if not band:
         low, high = rules.CONSERVATIVE_DELTA_BAND
@@ -684,15 +655,17 @@ def collar_tiers(calls: list[dict[str, Any]], puts: list[dict[str, Any]], spot: 
     return {"put": put_leg, "items": items}, None
 
 
-def strategy_blocks(calls: list[dict[str, Any]], puts: list[dict[str, Any]], spot: float, dte: int, label: dict[str, Any]) -> dict[str, Any]:
-    """The additive `strategies` blocks beyond the covered call: csp and collar, each {suggestions|items, label} or {unavailable}."""
-    csp, csp_reason = cash_secured_put_tiers(puts, spot, dte)
-    collar, collar_reason = collar_tiers(calls, puts, spot, dte)
+def strategy_blocks(calls: list[dict[str, Any]], puts: list[dict[str, Any]], spot: float, dte: int, label: dict[str, Any], *,
+                    model: dict[str, Any]) -> dict[str, Any]:
+    """The additive csp and collar blocks use the cycle's single common model."""
+    csp, csp_reason = cash_secured_put_tiers(puts, spot, dte, model=model)
+    collar, collar_reason = collar_tiers(calls, puts, spot, dte, model=model)
     return {"csp": {"suggestions": csp, **label} if csp else {"unavailable": _diag(csp_reason or "")},
             "collar": {**collar, **label} if collar else {"unavailable": _diag(collar_reason or "")}}
 
 
-def _covered_call_unavailable(rows: list[dict[str, Any]], spot: float, dte: int, expiry: str) -> str:
+def _covered_call_unavailable(rows: list[dict[str, Any]], spot: float, dte: int, expiry: str, *,
+                              model: dict[str, Any] | None, model_reason: str | None = None) -> str:
     """Explain a refused call using its actual quote and strategy evidence."""
     if dte < 0:
         return f"{expiry} 到期已過期，不提供備兌買權建議"
@@ -703,31 +676,35 @@ def _covered_call_unavailable(rows: list[dict[str, Any]], spot: float, dte: int,
         # Keep the explicit quote-absence marker only for genuinely unusable quotes,
         # so carry-forward cannot hide a delta/OTM/contract refusal.
         suffix = (f"；{carry_forward.NO_TWO_SIDED_REASON}"
-                  if not any(_is_two_sided(row.get("bid"), row.get("ask")) or _quote_usable(row) for row in rows) else "")
+                  if not any(_is_two_sided(row.get("bid"), row.get("ask")) for row in rows) else "")
         return _diag(f"{expiry}：{reason}{suffix}")
-    if not _otm_calls(rows, spot, dte, True):
-        return f"{expiry} 到期價外買權缺少可核驗 delta（單邊報價不能由中價推算），不提供備兌買權建議"
+    if model is None:
+        return _diag(f"{expiry}：{model_reason or '缺少可核驗的共同 Delta 模型'}；不提供備兌買權建議")
     return f"{expiry} 到期的價外買權中，沒有 Delta 不超過 {MAX_HIGH_STRIKE_DELTA:.2f} 的履約價"
 
 
 def cycle_result(ticker: str, expiry: str, dte: int, spot: float, rows: list[dict[str, Any]], *, currency: str, source: str,
                  provenance: str, rights: str, stamp: str, asof: str | None = None, week: str | None = None,
                  identity: dict[str, str] | None = None, puts: list[dict[str, Any]] | None = None,
-                 monthly_rule: str | None = None) -> dict[str, Any]:
+                 monthly_rule: str | None = None, historical_volatility: dict[str, Any] | None = None) -> dict[str, Any]:
     """puts (V21): the same expiry's put rows when the source answered a put side (None: the response carried none, so no `strategies`)."""
-    suggestions, middle = covered_call_tiers(rows, spot, dte)
+    history = _checked_history(historical_volatility, ticker, currency, stamp)
+    model, model_reason = _ranking_model(rows, puts or [], spot, dte, history)
+    if model is None:
+        return {"unavailable": _covered_call_unavailable(rows, spot, dte, expiry, model=None, model_reason=model_reason)}
+    suggestions, middle = covered_call_tiers(rows, spot, dte, model=model)
     strategies: dict[str, Any] | None = None
     if puts is not None and identity is not None:
         label = {"rights_status": rights, "provider_id": identity["provider_id"], "quote_basis": "delayed", "timestamp": stamp}
-        strategies = strategy_blocks(rows, puts, spot, dte, label)
+        strategies = strategy_blocks(rows, puts, spot, dte, label, model=model)
     cc_reason = ""
     if not suggestions:
-        cc_reason = _covered_call_unavailable(rows, spot, dte, expiry)
+        cc_reason = _covered_call_unavailable(rows, spot, dte, expiry, model=model)
         if strategies is None or all("unavailable" in block for block in strategies.values()):
             return {"unavailable": cc_reason}
     result = {"ticker": ticker, "strategy": "COVERED_CALL", "expiry": expiry, "dte": dte, "spot": spot, "currency": currency,
               "multiplier": 100, "quote_basis": "delayed", "timestamp": stamp, "source": source, "provenance": provenance,
-              "rights_status": rights, "suggestions": suggestions}
+              "rights_status": rights, "suggestions": suggestions, "delta_model": model}
     if strategies is not None:  # additive and optional: an older reader ignores it; a cycle without a covered call keeps suggestions == []
         result["strategies"] = {"cc": {"unavailable": cc_reason}, **strategies} if not suggestions else strategies
     if identity is not None:  # the CLAIMED catalog join identity (additive; an older reader ignores it and its catalog does not admit it)
@@ -740,6 +717,8 @@ def cycle_result(ticker: str, expiry: str, dte: int, spot: float, rows: list[dic
         result["weekly_week"] = week
     if monthly_rule is not None:  # monthly only: which branch of the standard-monthly rule chose the expiry (additive; old readers ignore it)
         result["monthly_rule"] = monthly_rule
+    if history is not None:
+        result["historical_volatility"] = history
     return result
 
 
@@ -814,7 +793,8 @@ def _monthly_quote_observation(ticker: str, spot: float, choices: list["rules.Mo
                                calls: list[dict[str, Any]], stamp: str, today: date, *,
                                currency: str, source: str, provenance: str, rights: str,
                                identity: dict[str, str] | None, cc_reason: str,
-                               puts: list[dict[str, Any]] | None = None) -> dict[str, Any] | None:
+                               puts: list[dict[str, Any]] | None = None,
+                               historical_volatility: dict[str, Any] | None = None) -> dict[str, Any] | None:
     """Observation-only quote when the call fails strike, delta or quote eligibility.
     The two-sided bid (not mid) defines annualized collectible premium; without it,
     a LAST quote is purely indicative. Neither lane qualifies as a recommendation."""
@@ -861,7 +841,15 @@ def _monthly_quote_observation(ticker: str, spot: float, choices: list["rules.Mo
     if identity is not None and puts is not None:
         label = {"rights_status":rights,"provider_id":identity["provider_id"],
                  "quote_basis":"delayed","timestamp":stamp}
-        blocks = strategy_blocks(same_calls,same_puts,spot,dte,label)
+        history = _checked_history(historical_volatility, ticker, currency, stamp)
+        model, reason = _ranking_model(same_calls, same_puts, spot, dte, history)
+        if model is not None:
+            result["delta_model"] = model
+            blocks = strategy_blocks(same_calls, same_puts, spot, dte, label, model=model)
+        else:
+            blocks = {name: {"unavailable": _diag(reason or "缺少可核驗的共同 Delta 模型")} for name in ("csp", "collar")}
+        if history is not None:
+            result["historical_volatility"] = history
     else:
         reason = ("本輪來源未提供可核驗的賣權資料，無法判定賣權鏈是否缺漏" if puts is None
                   else "本輪來源缺少策略報價身分標記，無法核驗賣權策略")
@@ -878,7 +866,8 @@ def _cycles_from_calls(calls: list[dict[str, Any]], ticker: str, spot: float, st
                        no_window: Callable[[str, int, int], tuple[str, str]] | None = None,
                        today: date | None = None, week_expiries: Iterable[str] | None = None,
                        identity: dict[str, str] | None = None, puts: list[dict[str, Any]] | None = None,
-                       verified_monthly_expiries: Iterable[date] = ()) -> CyclesResult:
+                       verified_monthly_expiries: Iterable[date] = (),
+                       historical_volatility: dict[str, Any] | None = None) -> CyclesResult:
     """Weekly: the current calendar week's earliest listed expiry (the next week's only when this week has none left; see
     option_recommendation_rules); monthly: the nearest standard monthly (shared rule). Standard 100-share contracts only.
     today is the exchange-local as-of date (derived from the rows' expiry and dte when absent); week_expiries lets the caller
@@ -888,6 +877,7 @@ def _cycles_from_calls(calls: list[dict[str, Any]], ticker: str, spot: float, st
     out: dict[str, Any] = {}
     health_records: list[dict[str, Any]] = []
     und = underlying or ticker
+    history = _checked_history(historical_volatility, ticker, currency, stamp)
     if today is None and calls:
         today = date.fromisoformat(calls[0]["expiry"]) - timedelta(days=int(calls[0]["dte"]))
     for cycle, (low, high) in CYCLES.items():
@@ -906,20 +896,6 @@ def _cycles_from_calls(calls: list[dict[str, Any]], ticker: str, spot: float, st
             monthly_rule = monthly.rule if monthly else None
             window = [row for row in calls if monthly and row["expiry"] == monthly.expiry.isoformat()
                       and row["strike"] and row["size"] == 100]
-            # The nearest standard expiry is binding even when quotes or deltas are unusable.
-            if monthly is not None:
-                tiers, _ = covered_call_tiers(window, spot, window[0]["dte"]) if window else ([],None)
-                if not tiers:
-                    cc_reason = _covered_call_unavailable(window, spot, (monthly.expiry - today).days, monthly.expiry.isoformat())
-                    observation = _monthly_quote_observation(
-                        ticker, spot, [monthly], calls, stamp, today, currency=currency, source=source,
-                        provenance=provenance, rights=rights, identity=identity, cc_reason=cc_reason, puts=puts)
-                    if observation is not None:
-                        health_records.append({"venue": venue, "underlying": und,
-                           "expiry": observation["expiry"], "cycle": "monthly", "status": "READ",
-                           "read": True, "two_sided": observation["quote_observation"]["kind"] == "TWO_SIDED"})
-                        out["monthly"] = observation
-                        continue
         if not window and cycle == "monthly" and monthly is not None and puts is not None:
             put_rows = [row for row in puts if row.get("expiry") == monthly.expiry.isoformat()
                         and row.get("size") == 100]
@@ -928,13 +904,12 @@ def _cycles_from_calls(calls: list[dict[str, Any]], ticker: str, spot: float, st
                     (monthly.expiry-today).days, spot, [], currency=currency, source=source,
                     provenance=provenance, rights=rights, stamp=stamp,
                     asof=today.isoformat(), identity=identity, puts=put_rows,
-                    monthly_rule=monthly_rule)
-                if "unavailable" not in only_put:
-                    out[cycle] = only_put
-                    health_records.append({"venue":venue,"underlying":und,"expiry":monthly.expiry.isoformat(),
-                        "cycle":cycle,"status":"READ","read":True,
-                        "two_sided":any(_is_two_sided(row.get("bid"), row.get("ask")) for row in put_rows)})
-                    continue
+                    monthly_rule=monthly_rule, historical_volatility=history)
+                out[cycle] = only_put
+                health_records.append({"venue":venue,"underlying":und,"expiry":monthly.expiry.isoformat(),
+                    "cycle":cycle,"status":"READ","read":True,
+                    "two_sided":any(_is_two_sided(row.get("bid"), row.get("ask")) for row in put_rows)})
+                continue
         if not window:
             message, status = no_window(cycle, low, high) if no_window else (_missing_text(missing, cycle, low, high), "NO_EXPIRY")
             if cycle == "monthly":
@@ -960,7 +935,16 @@ def _cycles_from_calls(calls: list[dict[str, Any]], ticker: str, spot: float, st
         out[cycle] = cycle_result(ticker, chosen_expiry, target, spot, chosen, currency=currency, source=source,
                                   provenance=provenance, rights=rights, stamp=stamp,
                                   asof=today.isoformat() if today else None, week=week, identity=identity, puts=chosen_puts,
-                                  monthly_rule=monthly_rule)
+                                  monthly_rule=monthly_rule, historical_volatility=history)
+        if cycle == "monthly" and monthly is not None and not out[cycle].get("suggestions"):
+            cc_reason = out[cycle].get("unavailable") or out[cycle]["strategies"]["cc"]["unavailable"]
+            observation = _monthly_quote_observation(
+                ticker, spot, [monthly], calls, stamp, today, currency=currency, source=source,
+                provenance=provenance, rights=rights, identity=identity, cc_reason=cc_reason, puts=puts,
+                historical_volatility=history)
+            if observation is not None:
+                out[cycle] = observation
+                health_records[-1]["two_sided"] = observation["quote_observation"]["kind"] == "TWO_SIDED"
     return CyclesResult(out, health=health_records)
 
 
@@ -1015,7 +999,19 @@ def _nasdaq_us_quote(value: Any) -> float | None:
     return _float(value)
 
 
-def nasdaq_us_options(symbol: str, spot: float, today: date, stamp: str) -> CyclesResult:
+def _monthly_refetch_failure(result: CyclesResult, today: date, stamp: str, venue: str) -> CyclesResult:
+    """A failed bounded lookup proves neither absence nor a listing."""
+    if "unavailable" in result.get("monthly", {}):
+        result["monthly"] = {"unavailable": _diag(
+            f"{_missing_monthly_date(today, stamp, venue)}；補查讀取失敗；是否上市未確認")}
+        for health in result.health:
+            if health["cycle"] == "monthly":
+                health.update(status="READ_ERROR", read=False, two_sided=False)
+    return result
+
+
+def nasdaq_us_options(symbol: str, spot: float, today: date, stamp: str, *,
+                      historical_volatility: dict[str, Any] | None = None) -> CyclesResult:
     """Fallback US chain from Nasdaq's public quote-page API; without quoted IV, only two-sided quotes can imply delta.
     Class shares use a dot there (BRK-B -> brk.b)."""
     low, high = min(window[0] for window in CYCLES.values()), max(window[1] for window in CYCLES.values())
@@ -1044,6 +1040,7 @@ def nasdaq_us_options(symbol: str, spot: float, today: date, stamp: str) -> Cycl
     saw_source_rows = bool(rows)
     # Bind metadata to decoded contracts, not to whichever HTTP response happened last.
     source_dates: dict[str, str] = {}
+    refetch_failed = False
 
     def decode_rows(source_rows: list, source_day: date | None, expected_expiry: str | None = None) -> None:
         nonlocal saw_put_side
@@ -1087,13 +1084,14 @@ def nasdaq_us_options(symbol: str, spot: float, today: date, stamp: str) -> Cycl
                 source_rows = response["data"]["table"]["rows"]
                 source_asof = _nasdaq_us_asof(response)
                 if not isinstance(source_rows, list):
-                    continue
+                    raise ValueError("UNREADABLE_TARGETED_OPTION_ROWS")
                 saw_source_rows = saw_source_rows or bool(source_rows)
                 if (source_asof is None or source_asof > capture_day
                         or not 0 <= (today-source_asof).days <= NASDAQ_US_MAX_ASOF_AGE_DAYS):
                     continue
                 decode_rows(source_rows, source_asof, expected_expiry=standard_day)
             except (ValueError,TypeError,KeyError,AttributeError,OSError):
+                refetch_failed = True
                 continue
             if any(row["expiry"] == standard_day for row in calls+puts):
                 break
@@ -1102,20 +1100,21 @@ def nasdaq_us_options(symbol: str, spot: float, today: date, stamp: str) -> Cycl
                   "status":"SOURCE_ROWS_NOT_TYPED" if saw_source_rows else "EMPTY_RESPONSE","read":False,"two_sided":False} for c in CYCLES]
         msg = ("Nasdaq US 已回應鏈資料，但到期日／履約價／買賣欄位無法解析為經核驗標準契約（非證明未上市）"
                if saw_source_rows else "Nasdaq US 本次回應無期權鏈資料；是否上市未確認")
-        return CyclesResult({c:{"unavailable":
+        result = CyclesResult({c:{"unavailable":
             _diag(f"{_missing_monthly_date(today, stamp, 'US')}；{msg}") if c == "monthly"
             else msg
             } for c in CYCLES},health=health)
+        return _monthly_refetch_failure(result, today, stamp, "US") if refetch_failed else result
     result = _cycles_from_calls(calls, symbol, spot, stamp, currency="USD",
                               source="Nasdaq US option chain (public quote page API, delayed; Yahoo fallback)",
                               provenance=f"https://www.nasdaq.com/market-activity/stocks/{symbol.replace('-', '.').lower()}/option-chain",
                               rights=NASDAQ_US_RIGHTS_LABEL, missing="Nasdaq 無 {low}-{high} 天到期的上市期權",
                               venue="US", underlying=symbol, today=today, identity=NASDAQ_US_OPTION_IDENTITY,
-                              puts=puts if saw_put_side else None)
+                              puts=puts if saw_put_side else None, historical_volatility=historical_volatility)
     for cycle in result.values():
         if "unavailable" not in cycle and cycle.get("expiry") in source_dates:
             cycle["source_quote_date"] = source_dates[cycle["expiry"]]
-    return result
+    return _monthly_refetch_failure(result, today, stamp, "US") if refetch_failed else result
 
 
 def _yahoo_unread(value: dict[str, Any] | None) -> bool:
@@ -1124,12 +1123,13 @@ def _yahoo_unread(value: dict[str, Any] | None) -> bool:
             or "標準月選鏈無可驗證合約資料" in reason)
 
 
-def us_cycles(symbol: str, spot: float, today: date, stamp: str) -> CyclesResult:
+def us_cycles(symbol: str, spot: float, today: date, stamp: str, *,
+              historical_volatility: dict[str, Any] | None = None) -> CyclesResult:
     """Yahoo first; only unread cycles use Nasdaq's bounded source-specific lookup.
     Preserve the fallback's validated refusal (including stale/unconfirmed as-of);
     combine transport failures only when both providers actually failed to read."""
     try:
-        out = us_options(symbol, spot, today, stamp)
+        out = us_options(symbol, spot, today, stamp, historical_volatility=historical_volatility)
     except Exception:
         out = CyclesResult({cycle: {"unavailable": "期權鏈讀取失敗"} for cycle in CYCLES},
                            health=[{"venue": "US", "underlying": symbol, "expiry": None, "cycle": c,
@@ -1138,7 +1138,7 @@ def us_cycles(symbol: str, spot: float, today: date, stamp: str) -> CyclesResult
     retry = [cycle for cycle in CYCLES if _yahoo_unread(out.get(cycle))]
     if not retry:
         return out if isinstance(out, CyclesResult) else CyclesResult(out, health=yahoo_health)
-    fallback = nasdaq_us_options(symbol, spot, today, stamp)
+    fallback = nasdaq_us_options(symbol, spot, today, stamp, historical_volatility=historical_volatility)
     fallback_health = list(getattr(fallback, "health", []) or [])
     combined_health = [h for h in yahoo_health if h.get("cycle") not in retry]
     combined_health += [h for h in fallback_health if h.get("cycle") in retry]
@@ -1263,7 +1263,8 @@ def _yahoo_put_rows(option_chain: Any) -> list[dict[str, Any]] | None:
         return None
 
 
-def us_options(symbol: str, spot: float, today: date, stamp: str) -> CyclesResult:
+def us_options(symbol: str, spot: float, today: date, stamp: str, *,
+               historical_volatility: dict[str, Any] | None = None) -> CyclesResult:
     import yfinance as yf
     ticker = yf.Ticker(symbol)
     out: dict[str, Any] = {}
@@ -1330,7 +1331,6 @@ def us_options(symbol: str, spot: float, today: date, stamp: str) -> CyclesResul
                     all_calls.append({"expiry": month_expiry, "dte": month_dte, "strike": strike,
                         "bid": _quote_value(getattr(call, "bid", None)), "ask": _quote_value(getattr(call, "ask", None)),
                         "last": _float(getattr(call, "lastPrice", None)), "iv": iv,
-                        "delta": bs_call_delta(spot, strike, rules.effective_days(month_dte)/365, iv),
                         "oi": _int(getattr(call, "openInterest", None)),
                         "volume": _int(getattr(call, "volume", None)), "size": 100})
                 puts = _yahoo_put_rows(option_chain)
@@ -1358,7 +1358,8 @@ def us_options(symbol: str, spot: float, today: date, stamp: str) -> CyclesResul
                 rights=YAHOO_RIGHTS_LABEL,missing="Yahoo 交易所到期清單沒有最近標準月選",
                 venue="US",underlying=symbol,today=today,
                 week_expiries=sorted({row["expiry"] for row in all_calls + all_puts}),
-                identity=YAHOO_OPTION_IDENTITY,puts=all_puts if put_side_seen else None)
+                identity=YAHOO_OPTION_IDENTITY,puts=all_puts if put_side_seen else None,
+                historical_volatility=historical_volatility)
             out["monthly"]=monthly_result["monthly"]
             health_records.extend(h for h in monthly_result.health if h.get("cycle")=="monthly")
             continue
@@ -1384,7 +1385,7 @@ def us_options(symbol: str, spot: float, today: date, stamp: str) -> CyclesResul
             vol = _int(getattr(row, "volume", None))
             if strike is not None and _is_finite_positive(strike):
                 r_dict = {"strike": float(strike), "bid": bid, "ask": ask, "iv": iv,
-                          "delta": bs_call_delta(spot, float(strike), rules.effective_days(dte) / 365, iv), "oi": oi, "volume": vol}
+                          "oi": oi, "volume": vol}
                 rows.append(r_dict)
                 eligible_rows.append(r_dict)
         put_rows = _yahoo_put_rows(option_chain)
@@ -1399,9 +1400,9 @@ def us_options(symbol: str, spot: float, today: date, stamp: str) -> CyclesResul
                                    "status": "READ", "read": True, "two_sided": two_sided, "eligible_rows": len(eligible_rows)})
         out[cycle] = cycle_result(symbol, expiry, dte, spot, rows, currency="USD",
                                   source="Yahoo Finance option chain (unofficial, delayed)",
-                                  provenance=f"https://finance.yahoo.com/quote/{symbol}/options?date={expiry}; delta=Black-Scholes(quoted IV)",
+                                  provenance=f"https://finance.yahoo.com/quote/{symbol}/options?date={expiry}",
                                   rights=YAHOO_RIGHTS_LABEL, stamp=stamp, asof=today.isoformat(), week=week, identity=YAHOO_OPTION_IDENTITY,
-                                  puts=put_rows, monthly_rule=monthly_rule)
+                                  puts=put_rows, monthly_rule=monthly_rule, historical_volatility=historical_volatility)
     return CyclesResult(out, health=health_records)
 
 
@@ -1619,8 +1620,38 @@ def _nordic_unavailable(symbol: str, status: str, message: str) -> CyclesResult:
     return CyclesResult({cycle: {"unavailable": _diag(message)} for cycle in CYCLES}, health=health)
 
 
+def _nordic_x_refusals(result: CyclesResult, rows: list[Any], listed: list[dict[str, Any]], root: str | None,
+                        spot: float, today: date, stamp: str) -> CyclesResult:
+    """Diagnose terminal-X calls only; never use stripped identities for root proof or selection."""
+    if root is None and any(_nordic_contract_identity(row) or _nordic_contract_identity(row, put=True) for row in rows):
+        return result  # Conflicting proved roots retain their identity refusal.
+    x_dates: set[str] = set()
+    for row in rows:
+        native = row.get("symbol") if isinstance(row, dict) else None
+        if not isinstance(native, str) or not native.endswith("X"):
+            continue
+        identity = _nordic_contract_identity({**row, "symbol": native[:-1]})
+        if identity is not None and (root is None or identity[0] == root) and float(identity[2]) > spot:
+            x_dates.add(identity[1].isoformat())
+    x_dates.difference_update(call["expiry"] for call in listed if call["strike"] > spot)
+    dates = x_dates | {call["expiry"] for call in listed}
+    reason = "價外買權僅有原生代號帶X之系列，未核驗是否為調整後系列；不提供建議"
+    for period, cycle in result.items():
+        choice = (_weekly_choice(dates, today, stamp, "STOCKHOLM") if period == "weekly"
+                  else _monthly_choice(dates, today, stamp, "STOCKHOLM"))
+        if choice is None or choice.expiry.isoformat() not in x_dates or cycle.get("suggestions"):
+            continue
+        if "unavailable" in cycle:
+            cycle["unavailable"] = reason
+        elif isinstance(cycle.get("strategies"), dict):
+            cycle["strategies"]["cc"] = {"unavailable": reason}
+            if "unavailable" in cycle["strategies"].get("collar", {}):
+                cycle["strategies"]["collar"] = {"unavailable": reason}
+    return result
+
+
 def nordic_options(symbol: str, base: str, spot: float, today: date, stamp: str, orderbook: str | None = None,
-                   *, spot_currency: Any = None) -> CyclesResult:
+                   *, spot_currency: Any = None, historical_volatility: dict[str, Any] | None = None) -> CyclesResult:
     """Stockholm covered calls. Every claim rests on typed source evidence: the underlying's quote currency (spot_currency,
     and the search result's share currency when the search ran) and each CONTRACT's own currency and size must all be the
     canonical SEK / 100 before a strategy is offered; an unknown or conflicting term is a source-scoped unavailable reason,
@@ -1653,18 +1684,20 @@ def nordic_options(symbol: str, base: str, spot: float, today: date, stamp: str,
     if any(state != "OK" for state in states):
         return _nordic_unavailable(symbol, "UNDERLYING_CURRENCY_UNCONFIRMED", "標的報價或上市幣別未確認為 SEK；不推薦")
     monthly_refetched = False
+    refetch_failed = False
     if not rows:
         monthly_refetched = True
         try:
             refreshed = http_json(NORDIC_CHAIN.format(orderbook=orderbook))["data"]["instrumentListing"]["rows"]
-            if isinstance(refreshed, list):
-                rows = refreshed
+            if not isinstance(refreshed, list):
+                raise ValueError("UNREADABLE_TARGETED_OPTION_ROWS")
+            rows = refreshed
         except (TypeError, ValueError, KeyError, AttributeError, OSError):
-            pass
+            refetch_failed = True
         if not rows:
             result = _nordic_unavailable(symbol, "EMPTY_RESPONSE", "本次來源回應無可用之買權紀錄；是否上市未確認")
             result["monthly"]["unavailable"] = _diag(f"{_missing_monthly_date(today, stamp, 'STOCKHOLM')}；{result['monthly']['unavailable']}")
-            return result
+            return _monthly_refetch_failure(result, today, stamp, "STOCKHOLM") if refetch_failed else result
     root = _nordic_chain_root(rows)
     listed: list[dict[str, Any]] = []
     listed_puts: list[dict[str, Any]] = []
@@ -1684,8 +1717,9 @@ def nordic_options(symbol: str, base: str, spot: float, today: date, stamp: str,
             malformed += 1
     if not listed:
         if malformed:
-            return _nordic_unavailable(symbol, "MALFORMED_ROWS",
+            result = _nordic_unavailable(symbol, "MALFORMED_ROWS",
                 "Nasdaq Nordic 已回應買權列，但合約名稱／原生代號／履約價與到期日未能同時核驗；未解析者不可推定未上市")
+            return _nordic_x_refusals(result, rows, listed, root, spot, today, stamp)
         return _nordic_unavailable(symbol, "NO_EXPIRY", "本次來源回應無可用之買權紀錄；是否上市未確認")
     # The Nordic endpoint has no per-expiry parameter. Re-read once for the exact
     # nearest standard date; failure never authorizes a weekly or a later month.
@@ -1693,26 +1727,28 @@ def nordic_options(symbol: str, base: str, spot: float, today: date, stamp: str,
     if not monthly_refetched and standard_targets and not _monthly_candidates([x["expiry"] for x in listed],today,stamp,"STOCKHOLM"):
         try:
             refreshed = http_json(NORDIC_CHAIN.format(orderbook=orderbook))["data"]["instrumentListing"]["rows"]
-            if isinstance(refreshed,list):
-                if _nordic_chain_root(row for batch in (rows, refreshed) for row in batch) != root:
-                    return _nordic_unavailable(symbol, "MALFORMED_ROWS",
-                        "Nasdaq Nordic 有互相衝突之合約根代號；同一標的訂單簿的跨次鏈回應未能同時核驗")
-                used_calls={(x["expiry"],x["strike"]) for x in listed}
-                used_puts={(x["expiry"],x["strike"]) for x in listed_puts}
-                for source_row in refreshed:
-                    verified_put=_nordic_put_evidence(source_row,root,today)
-                    if isinstance(verified_put,dict) and verified_put["expiry"] in standard_targets:
-                        key=(verified_put["expiry"],verified_put["strike"])
-                        if key not in used_puts:
-                            listed_puts.append(verified_put);used_puts.add(key);saw_put_side=True
-                        continue
-                    kind, verified_call=_nordic_row_evidence(source_row,root,today)
-                    if kind=="CALL" and verified_call["expiry"] in standard_targets:
-                        key=(verified_call["expiry"],verified_call["strike"])
-                        if key not in used_calls:
-                            listed.append(verified_call);used_calls.add(key)
+            if not isinstance(refreshed, list):
+                raise ValueError("UNREADABLE_TARGETED_OPTION_ROWS")
+            if _nordic_chain_root(row for batch in (rows, refreshed) for row in batch) != root:
+                return _nordic_unavailable(symbol, "MALFORMED_ROWS",
+                    "Nasdaq Nordic 有互相衝突之合約根代號；同一標的訂單簿的跨次鏈回應未能同時核驗")
+            used_calls={(x["expiry"],x["strike"]) for x in listed}
+            used_puts={(x["expiry"],x["strike"]) for x in listed_puts}
+            for source_row in refreshed:
+                verified_put=_nordic_put_evidence(source_row,root,today)
+                if isinstance(verified_put,dict) and verified_put["expiry"] in standard_targets:
+                    key=(verified_put["expiry"],verified_put["strike"])
+                    if key not in used_puts:
+                        listed_puts.append(verified_put);used_puts.add(key);saw_put_side=True
+                    continue
+                kind, verified_call=_nordic_row_evidence(source_row,root,today)
+                if kind=="CALL" and verified_call["expiry"] in standard_targets:
+                    key=(verified_call["expiry"],verified_call["strike"])
+                    if key not in used_calls:
+                        listed.append(verified_call);used_calls.add(key)
+            rows = [*rows, *refreshed]
         except (TypeError,ValueError,KeyError,AttributeError,OSError):
-            pass
+            refetch_failed = True
 
     session_open = rules.expiry_day_open(rules.parse_utc_instant(stamp), "STOCKHOLM")
 
@@ -1749,11 +1785,13 @@ def nordic_options(symbol: str, base: str, spot: float, today: date, stamp: str,
     usable_puts = [{"expiry": put["expiry"], "dte": put["dte"], "strike": put["strike"], "bid": put["bid"], "ask": put["ask"],
                     "oi": put["oi"], "volume": put["volume"], "size": 100}
                    for put in listed_puts if put["ccy"] in ("OK", NORDIC_BLANK_CURRENCY) and put["size"] == "OK"]
-    return _cycles_from_calls(usable, symbol, spot, stamp, currency=SEK, source=NORDIC_SOURCE,
+    result = _cycles_from_calls(usable, symbol, spot, stamp, currency=SEK, source=NORDIC_SOURCE,
                               provenance=NORDIC_CHAIN.format(orderbook=orderbook), rights=NORDIC_RIGHTS_LABEL,
                               missing="", venue="STOCKHOLM", underlying=symbol, no_window=no_window, today=today,
                               week_expiries=[call["expiry"] for call in listed], identity=NORDIC_OPTION_IDENTITY,
-                              puts=usable_puts if saw_put_side else None)
+                              puts=usable_puts if saw_put_side else None, historical_volatility=historical_volatility)
+    result = _nordic_x_refusals(result, rows, listed, root, spot, today, stamp)
+    return _monthly_refetch_failure(result, today, stamp, "STOCKHOLM") if refetch_failed else result
 
 
 def _yahoo_regular_market_time(value: Any) -> str | None:
@@ -1804,10 +1842,13 @@ def observe(symbol: str, today: date, stamp: str, orderbook: str | None = None) 
         quote, price = fallback, fallback["price"]
     try:
         if "." not in symbol:
-            cycles = us_cycles(symbol, price, today, stamp)
+            history = load_historical_volatility(symbol, quote.get("currency"), stamp)
+            cycles = us_cycles(symbol, price, today, stamp, historical_volatility=history)
             return Observation(quote, symbol, cycles)
         if symbol.endswith(".ST"):
-            cycles = nordic_options(symbol, base, price, today, stamp, orderbook, spot_currency=quote.get("currency"))
+            history = load_historical_volatility(symbol, quote.get("currency"), stamp)
+            cycles = nordic_options(symbol, base, price, today, stamp, orderbook, spot_currency=quote.get("currency"),
+                                    historical_volatility=history)
             return Observation(quote, symbol, cycles)
     except Exception:  # one malformed chain never aborts the other underlyings
         venue = "STOCKHOLM" if symbol.endswith(".ST") else "US"

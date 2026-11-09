@@ -53,9 +53,9 @@ TICKER_RE = re.compile(r"^[A-Z0-9][A-Z0-9\-]{0,15}$")  # US keys only: no dotted
 CYCLE_KEYS = frozenset({
     "ticker", "strategy", "expiry", "dte", "spot", "currency", "multiplier", "quote_basis", "timestamp", "source", "provenance",
     "rights_status", "provider_id", "jurisdiction", "venue", "instrument_kind", "publication_scope", "suggestions", "middle_suggestion",
-    "asof_date", "weekly_week", "monthly_rule", "strategies", "source_quote_date",
+    "asof_date", "weekly_week", "monthly_rule", "strategies", "source_quote_date", "historical_volatility", "delta_model",
 })
-REQUIRED_CYCLE_KEYS = CYCLE_KEYS - {"middle_suggestion", "weekly_week", "monthly_rule", "strategies", "source_quote_date"}
+REQUIRED_CYCLE_KEYS = CYCLE_KEYS - {"middle_suggestion", "weekly_week", "monthly_rule", "strategies", "source_quote_date", "historical_volatility"}
 SUGGESTION_KEYS = frozenset({
     "role", "strike", "bid", "ask", "mid", "limit_price", "premium_per_contract", "period_yield", "annualized_yield", "upside_to_strike",
     "delta", "delta_basis", "iv", "oi", "volume", "spread_pct",

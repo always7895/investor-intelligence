@@ -22,6 +22,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import option_recommendation_rules as rules
+import option_historical_volatility as history_vol
+import option_delta_model as delta_math
 
 
 class MarketProductValidationError(Exception):
@@ -265,7 +267,7 @@ CARRIED_MAX_AGE_SECONDS = 4 * 86400  # four calendar days (a weekend or a holida
 # (suggestions == []). Without a validated monthly quote observation, at least one real csp or collar block is required.
 STRATEGY_NAMES = ("cc", "csp", "collar")
 STRATEGY_LABEL_KEYS = ("rights_status", "provider_id", "quote_basis", "timestamp")
-STRATEGY_DELTA_BASES = (None, "QUOTED", "QUOTED_IV", "QUOTE_IMPLIED")
+STRATEGY_DELTA_BASES = rules.DELTA_MODEL_BASES
 STRATEGY_ROLES = (["CONSERVATIVE"], ["CONSERVATIVE", "BALANCED"])
 STRATEGY_UNAVAILABLE_MAX = 200
 
@@ -297,21 +299,14 @@ STRATEGY_COLLAR_KEYS = frozenset({"role", "call", "net_premium_per_share", "max_
 
 
 def _execution_quote(leg: dict, *, buy: bool, code: str) -> tuple:
-    """Validate wire nullability and the bounded legacy-compatible limit envelope."""
+    """Both quote sides are required; retain the quote-bounded limit envelope."""
     bid = None if leg.get("bid") is None else _finite_number(leg["bid"], "bid")
     ask = None if leg.get("ask") is None else _finite_number(leg["ask"], "ask")
     limit = _finite_number(leg.get("limit_price"), "limit_price")
     if not {"bid", "ask"} <= set(leg) or any(side is not None and side <= 0 for side in (bid, ask)):
         raise MarketProductValidationError(f"{code}_PRICES_INCONSISTENT")
-    required = ask if buy else bid
-    if required is None:
-        raise MarketProductValidationError(f"{code}_REQUIRED_{'ASK' if buy else 'BID'}_MISSING")
     if bid is None or ask is None:
-        if limit != required:
-            raise MarketProductValidationError(f"{code}_ONE_SIDED_LIMIT_INCONSISTENT")
-        if leg.get("delta_basis") == "QUOTE_IMPLIED":
-            raise MarketProductValidationError("ONE_SIDED_QUOTE_IMPLIED_DELTA_FORBIDDEN")
-        return bid, ask, None, limit
+        raise MarketProductValidationError(f"{code}_TWO_SIDED_IV_BRACKET_REQUIRED")
     if bid > ask or not bid <= limit <= ask:
         raise MarketProductValidationError(f"{code}_PRICES_INCONSISTENT")
     mid = (bid + ask) / 2
@@ -336,8 +331,27 @@ def has_two_sided_recommendations(cycle: dict) -> bool:
     return bool(legs) and all(leg["bid"] is not None and leg["ask"] is not None for leg in legs)
 
 
-def _strategy_leg(leg, *, buy: bool, spot: float, put: bool, band: tuple[float, float], code: str, extra: frozenset = frozenset()) -> dict:
-    """One quoted leg: executable side, bounded limit, OTM cent-exact strike, and a verified delta in the band."""
+def _history_evidence_valid(cycle: dict) -> bool:
+    if "historical_volatility" not in cycle:
+        return False
+    try:
+        capture = rules.exchange_date(rules.parse_utc_instant(cycle.get("timestamp")),
+                                      "STOCKHOLM" if cycle.get("currency") == "SEK" else "US")
+        return history_vol.valid_historical_volatility(cycle["historical_volatility"], cycle.get("ticker"),
+                                                       cycle.get("currency"), capture)
+    except (TypeError, ValueError, AttributeError):
+        return False
+
+
+def _cycle_delta_model(cycle: dict) -> dict | None:
+    history = cycle.get("historical_volatility") if _history_evidence_valid(cycle) else None
+    model = cycle.get("delta_model")
+    return model if delta_math.valid_delta_model(model, history) else None
+
+
+def _strategy_leg(leg, *, buy: bool, spot: float, put: bool, band: tuple[float, float], code: str,
+                  dte: int, model: dict, extra: frozenset = frozenset()) -> dict:
+    """Two-sided OTM leg, bounded quote limit, and full-precision common-model delta."""
     if not isinstance(leg, dict) or set(leg) != STRATEGY_LEG_KEYS | extra:
         raise MarketProductValidationError(f"{code}_SHAPE")
     strike = _finite_number(leg.get("strike"), "strike")
@@ -353,6 +367,8 @@ def _strategy_leg(leg, *, buy: bool, spot: float, put: bool, band: tuple[float, 
         raise MarketProductValidationError(f"{code}_DELTA_OUTSIDE_BAND")
     if leg.get("delta_basis") not in STRATEGY_DELTA_BASES or leg.get("delta_basis") is None:
         raise MarketProductValidationError("INVALID_DELTA_BASIS")
+    if not delta_math.model_leg_consistent(leg, model, spot, dte, put=put, band=band):
+        raise MarketProductValidationError(f"{code}_COMMON_DELTA_MODEL_INCONSISTENT")
     return {"strike": strike, "bid": bid, "ask": ask, "mid": mid, "limit": limit}
 
 
@@ -388,12 +404,16 @@ def validate_strategy_block(name: str, block, cycle: dict) -> None:
         raise MarketProductValidationError("INVALID_DTE")
     days = rules.effective_days(dte)
     band = rules.CONSERVATIVE_DELTA_BAND
+    model = _cycle_delta_model(cycle)
+    if model is None:
+        raise MarketProductValidationError("VALID_COMMON_DELTA_MODEL_REQUIRED")
     if name == "csp":
         items = _strategy_label(block, cycle, "suggestions")
         for item in items:
             if set(item) != STRATEGY_CSP_KEYS:
                 raise MarketProductValidationError("CSP_SHAPE")
-            leg = _strategy_leg({key: item[key] for key in STRATEGY_LEG_KEYS}, buy=False, spot=spot, put=True, band=band, code="CSP")
+            leg = _strategy_leg({key: item[key] for key in STRATEGY_LEG_KEYS}, buy=False, spot=spot, put=True, band=band, code="CSP",
+                                dte=dte, model=model)
             strike, limit = leg["strike"], leg["limit"]
             expected = {"premium_per_contract": limit * 100, "cash_required": strike * 100, "annualized_yield": limit / strike * 365 / days,
                         "breakeven": strike - limit, "downside_buffer": 1 - strike / spot}
@@ -403,11 +423,13 @@ def validate_strategy_block(name: str, block, cycle: dict) -> None:
             raise MarketProductValidationError("CSP_BALANCED_NOT_HIGHER")
         return
     items = _strategy_label(block, cycle, "items", ("put",))
-    put = _strategy_leg(block["put"], buy=True, spot=spot, put=True, band=rules.PROTECTIVE_PUT_DELTA_BAND, code="COLLAR_PUT")
+    put = _strategy_leg(block["put"], buy=True, spot=spot, put=True, band=rules.PROTECTIVE_PUT_DELTA_BAND, code="COLLAR_PUT",
+                        dte=dte, model=model)
     for item in items:
         if set(item) != STRATEGY_COLLAR_KEYS:
             raise MarketProductValidationError("COLLAR_SHAPE")
-        call = _strategy_leg(item["call"], buy=False, spot=spot, put=False, band=band, code="COLLAR_CALL")
+        call = _strategy_leg(item["call"], buy=False, spot=spot, put=False, band=band, code="COLLAR_CALL",
+                             dte=dte, model=model)
         net = call["limit"] - put["limit"]
         expected = {"net_premium_per_share": net, "max_loss_per_share": spot - put["strike"] - net, "max_gain_per_share": call["strike"] - spot + net,
                     "break_even": spot - net, "worst_case_net_per_share": call["bid"] - put["ask"]}
@@ -543,6 +565,13 @@ def validate_covered_call_cycle(cycle: dict, evaluated_at: str | datetime | None
             doc_dt = None
         if doc_dt and (dt - doc_dt).total_seconds() > 300:
             raise MarketProductValidationError("ROW_TIMESTAMP_LATER_THAN_DOCUMENT")
+    history_valid = _history_evidence_valid(cycle)
+    if "historical_volatility" in cycle and not history_valid:
+        raise MarketProductValidationError("INVALID_HISTORICAL_VOLATILITY_EVIDENCE")
+    model = _cycle_delta_model(cycle)
+    if "delta_model" in cycle and model is None:
+        raise MarketProductValidationError("INVALID_COMMON_DELTA_MODEL")
+
 
     # Date-only source-page evidence, separate from acquisition and expiry-rule clocks.
     # Compare to the capture (also for carry), never re-stamp an old observation.
@@ -689,10 +718,7 @@ def validate_covered_call_cycle(cycle: dict, evaluated_at: str | datetime | None
             raise MarketProductValidationError("COVERED_CALL_STRIKE_NOT_OUT_OF_THE_MONEY")
         if strike != round(strike, 2):
             raise MarketProductValidationError("COVERED_CALL_STRIKE_NOT_CENT_EXACT")
-        if expected_mid is None:
-            if "mid" not in item or item["mid"] is not None or "spread_pct" not in item or item["spread_pct"] is not None:
-                raise MarketProductValidationError("COVERED_CALL_ONE_SIDED_MID_SPREAD")
-        elif abs(finite(item.get("mid"), "mid") - expected_mid) > 0.001:
+        if abs(finite(item.get("mid"), "mid") - expected_mid) > 0.001:
             raise MarketProductValidationError("COVERED_CALL_PRICES_INCONSISTENT")
         checks = {"premium_per_contract": limit * 100, "period_yield": limit / spot,
                   "annualized_yield": limit / spot * 365 / annual_days, "upside_to_strike": strike / spot - 1}
@@ -703,9 +729,11 @@ def validate_covered_call_cycle(cycle: dict, evaluated_at: str | datetime | None
             raise MarketProductValidationError("INVALID_DELTA_RANGE")
         if item.get("role") == "HIGH_STRIKE" and (delta is None or finite(delta, "delta") > MAX_HIGH_STRIKE_DELTA):
             raise MarketProductValidationError("COVERED_CALL_HIGH_STRIKE_DELTA_ABOVE_LIMIT")
-        if (item.get("delta_basis") not in (None, "QUOTED", "QUOTED_IV", "QUOTE_IMPLIED")
-                or (expected_mid is None and delta is not None and item.get("delta_basis") is None)):
+        if item.get("delta_basis") not in STRATEGY_DELTA_BASES:
             raise MarketProductValidationError("INVALID_DELTA_BASIS")
+        band = (0.0, MAX_HIGH_STRIKE_DELTA) if item.get("role") == "HIGH_STRIKE" else None
+        if model is None or not delta_math.model_leg_consistent(item, model, spot, dte, band=band):
+            raise MarketProductValidationError("COVERED_CALL_COMMON_DELTA_MODEL_INCONSISTENT")
         if item.get("iv") is not None and not finite(item["iv"], "iv") > 0:
             raise MarketProductValidationError("INVALID_IMPLIED_VOLATILITY")
         # Optional liquidity/spread fields, when supplied, must be a finite non-negative number (amendment-02): a

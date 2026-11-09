@@ -53,6 +53,9 @@ CONSERVATIVE_DELTA_BAND = (0.20, 0.30)
 PROTECTIVE_PUT_DELTA = 0.15
 PROTECTIVE_PUT_DELTA_BAND = (0.05, 0.25)
 DELTA_BAND_TOLERANCE = 0.0005    # a displayed delta is rounded to three digits; validators accept the band edge within this
+# Per-leg reliability, before ranking: equality stays quote-implied. A mixed cohort is refused.
+MAX_QUOTE_IMPLIED_SPREAD_RATIO = 0.25
+DELTA_MODEL_BASES = ("QUOTE_IMPLIED", "HISTORICAL_VOL")
 WEEK_CURRENT = "CURRENT"
 WEEK_NEXT = "NEXT"
 # Regular-session close in exchange-local minutes after midnight (expiry-day cut-off; no holiday calendar is inferred).

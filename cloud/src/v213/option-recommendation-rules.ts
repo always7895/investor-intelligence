@@ -23,6 +23,9 @@ export const MIN_ANNUALIZATION_DAYS = 1;
 export const SHORT_DTE_NOTICE_MAX = 2;
 export const MIDDLE_DELTA = 0.25;
 export const MIDDLE_MONEYNESS = 1.025;
+/** Per-leg reliability; equality is tight. Mixed cohorts never share a ranking. */
+export const MAX_QUOTE_IMPLIED_SPREAD_RATIO = 0.25;
+export const DELTA_MODEL_BASES = ["QUOTE_IMPLIED", "HISTORICAL_VOL"] as const;
 export type WeeklyWeek = "CURRENT" | "NEXT";
 export type OptionVenue = "US" | "STOCKHOLM" | "TAIFEX";
 /** Regular-session close in exchange-local minutes after midnight (expiry-day cut-off; no holiday calendar is inferred). */
