@@ -395,7 +395,7 @@ describe("V25 Flex density baseline and budgets", () => {
       sample.bubbles.forEach((bubble, index) => {
         if (sample.name === "covered-call (3 tiers)" && visibleText(bubble).includes("Bid情境")) {
           // Every scenario repeats its non-guarantee qualifier; advice/non-execution caveats still stay single-use.
-          expect(repeatedD1Caveats(bubble).filter(token => token !== "非保證"), `${sample.name} bubble ${index + 1}`).toEqual([]);
+          expect(repeatedD1Caveats(bubble).filter(caveat => caveat !== "非保證"), `${sample.name} bubble ${index + 1}`).toEqual([]);
         } else expect(repeatedD1Caveats(bubble), `${sample.name} bubble ${index + 1}`).toEqual([]);
       });
     }
