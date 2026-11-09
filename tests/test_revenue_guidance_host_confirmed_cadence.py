@@ -109,7 +109,8 @@ class HostConfirmedCadenceTests(unittest.TestCase):
         objects = json.loads((self.h.snapshots / staged["run_id"] / "objects.json").read_bytes())
         # Fail an immutable object before pointer launch; local B is completed,
         # but actual all-object/pointer confirmation still describes remote A.
-        failed_key = next(key for key in sorted(objects) if not key.startswith("blob:v1:"))
+        seal = json.loads(objects[f"snapshot:{staged['run_id']}:{publisher.SEAL_KEY}"])
+        failed_key = "blob:v1:" + seal["objects"][publisher.BOTTLENECK_V3_KEY]["sha256"]
         self.h.kv.fail_put(failed_key, None, NETWORK)
         failed = self.h.upload(staged)
         self.assertNotEqual(failed.exit, 0)

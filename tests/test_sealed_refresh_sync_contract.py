@@ -30,6 +30,7 @@ VIEW = ("status", "phase", "error_category", "pointer_state")
 CALLER_REFUSES = "CALLER_REFUSES"
 HOSTS = tuple(dict.fromkeys(path for name in ("powershell.exe", "pwsh.exe")
                            if (path := shutil.which(name))))
+NATIVE_RUN, NATIVE_POPEN = subprocess.run, subprocess.Popen
 
 
 def read_outcome_cases(cases, host):
@@ -47,11 +48,14 @@ def read_outcome_cases(cases, host):
                            "path": str(path), "expected_run": case.get("expected_run", RUN)})
         cases_path = root / "cases.json"
         cases_path.write_text(json.dumps(inputs, separators=(",", ":")), encoding="utf-8")
-        completed = subprocess.run(
-            [host, "-NoProfile", "-NonInteractive", "-File",
-             str(ROOT / "tests/fixtures/sealed_outcome_readers.ps1"),
-             "-ProjectRoot", str(ROOT), "-CasesPath", str(cases_path)],
-            cwd=ROOT, capture_output=True, text=True, encoding="utf-8", timeout=120)
+        # Only this fixed, read-only AST-reader fixture may escape KvTestCase's
+        # transport guard; the real sync remains unable to launch a native CLI.
+        with mock.patch.object(subprocess, "run", NATIVE_RUN), mock.patch.object(subprocess, "Popen", NATIVE_POPEN):
+            completed = subprocess.run(
+                [host, "-NoProfile", "-NonInteractive", "-File",
+                 str(ROOT / "tests/fixtures/sealed_outcome_readers.ps1"),
+                 "-ProjectRoot", str(ROOT), "-CasesPath", str(cases_path)],
+                cwd=ROOT, capture_output=True, text=True, encoding="utf-8", timeout=120)
         if completed.returncode != 0:
             raise AssertionError("original outcome-reader harness failed: " + completed.stdout + completed.stderr)
         answers = json.loads(completed.stdout.lstrip("\ufeff"))
@@ -99,7 +103,7 @@ class RefreshSyncContract(KvTestCase):
         self.outcome = self.logs / ("sealed-sync-" + GUID + ".json")
 
     def caller_row(self, fx, **kwargs) -> tuple:
-        """One sync started with the caller's argv shape (P6-1) at seam B; the row adds what the caller's reader sees."""
+        """Run the sync at its transport seam; feed its exact outcome bytes to the original reader."""
         run_dir = fx.write_to(self.tmp / "runs" / fx.run)
         r = run_sy(SY, self.kv, run_dir, self.ledger, fx.names, seam="B", outcome_path=self.outcome, **kwargs)
         try:

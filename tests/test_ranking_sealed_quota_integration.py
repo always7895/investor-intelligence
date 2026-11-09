@@ -397,7 +397,7 @@ class SealedQuotaIntegration(KvTestCase):
         self.assertEqual((stopped.exit, stopped.record["status"], stopped.record["retention_reason"],
                           stopped.record["pointer_state"]), (0, "RETAINED_LAST_GOOD", "WRITE_BUDGET", "NOT_ATTEMPTED"))
         self.assertEqual((launch_days, old_reserved), ([START.date()], [102]))
-        self.assertEqual((stopped.record["writes_attempted"], stopped.record["writes_reserved"]), (1, 123))
+        self.assertEqual((stopped.record["writes_attempted"], stopped.record["writes_reserved"]), (1, 51))
         self.assertEqual(json.loads(self.budget_path.read_text())["reserved"], 353)
         self.assertEqual(self.kv.store[POINTER_KEY], old_pointer)
         _, resumed = self.publish(START + timedelta(days=2), list(reversed(self.symbols)))
@@ -422,7 +422,7 @@ class SealedQuotaIntegration(KvTestCase):
                 self.kv.fail_put(argv[argv.index("put") + 1], 1, NETWORK)
                 result = original(*args, **kwargs)
                 Clock.instant = START + timedelta(days=1)
-                remaining = sync.ACTIVE_WRITE_RESERVATION.remaining["ranking"]
+                remaining = sync.ACTIVE_WRITE_RESERVATION.parts["ranking"].remaining
                 self.assertTrue(policy.DailyWriteBudget(self.budget_path).reserve(400 - remaining, Clock.instant))
                 return result
             return original(*args, **kwargs)
@@ -431,9 +431,9 @@ class SealedQuotaIntegration(KvTestCase):
             result = self.upload(candidate)
         self.assertEqual((result.exit, result.record["status"], result.record["pointer_state"]),
                          (0, "SUCCEEDED", "READBACK_CONFIRMED"))
-        self.assertEqual((result.record["writes_attempted"], result.record["writes_reserved"]), (42, 245))
+        self.assertEqual((result.record["writes_attempted"], result.record["writes_reserved"]), (18, 101))
         self.assertEqual(launch_days.count(START.date()), 1)
-        self.assertEqual(launch_days.count((START + timedelta(days=1)).date()), 41)
+        self.assertEqual(launch_days.count((START + timedelta(days=1)).date()), 17)
         self.assertEqual(json.loads(self.budget_path.read_text())["reserved"], 400)
         self.assertEqual(self.kv.puts[-1][0], POINTER_KEY)
 

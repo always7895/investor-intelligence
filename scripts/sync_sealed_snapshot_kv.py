@@ -494,12 +494,12 @@ def sync_run(run_dir: Path, record: dict) -> int:
     bootstrap_safe = False
     # Discover before deciding whether ANY insufficient candidate can replace
     # remote custody, regardless of whether a local receipt exists yet.
-    if previous is None:
+    if previous is None and detail is not None:
         previous, bootstrap_safe = _discover_last_good(run_dir.parent)
     instant = datetime.now(timezone.utc)  # Discovery may have crossed 00:00 UTC.
-    if candidate is None and previous is not None:
+    if detail is not None and candidate is None and previous is not None:
         return _retain(record, previous, "CANDIDATE_UNAVAILABLE")
-    if candidate is None and not bootstrap_safe:
+    if detail is not None and candidate is None and not bootstrap_safe:
         return _retain(record, None, "CANDIDATE_UNAVAILABLE")
     reused_core = detail is not None and detail["core_run_id"] != pointer["run_id"]
     if reused_core:

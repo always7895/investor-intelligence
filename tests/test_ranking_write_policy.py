@@ -223,6 +223,24 @@ class QuotaPolicy(unittest.TestCase):
             with self.assertRaises(ValueError):
                 plan.retire(plan.remaining + 1)
 
+    def test_midnight_product_exhaustion_prevents_launch_and_charges_partial_authorization(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "ranking-kv-write-budget.json"
+            budget = policy.PublicationWriteBudget(path)
+            plan = policy.PublicationWriteReservation(budget, {"ranking": 3, "market": 6})
+            plan.select("market")
+            self.assertTrue(plan.launch(START))
+            tomorrow = START + timedelta(days=1)
+            self.assertTrue(budget.parts["market"].reserve(596, tomorrow))
+            self.assertFalse(plan.launch(tomorrow))  # Four free market slots cannot authorize all five remaining.
+            self.assertEqual(plan.attempted, {"ranking": 0, "market": 1})
+            self.assertEqual(plan.reserved_by_product, {"ranking": 6, "market": 6})
+            self.assertEqual(json.loads(path.read_bytes())["reserved"], 3)
+            self.assertEqual(json.loads(path.with_name("market-kv-write-budget.json").read_bytes())["reserved"], 596)
+            self.assertTrue(plan.launch(START + timedelta(days=2)))
+            self.assertEqual(plan.attempted, {"ranking": 0, "market": 2})
+            self.assertEqual(plan.reserved_by_product, {"ranking": 9, "market": 11})
+
     def test_thirty_days_hourly_serving_budget_reset_and_bounded_journal(self):
         with tempfile.TemporaryDirectory() as td, patch.object(rotation, "MAX_SEGMENT_BYTES", 32 * 1024):
             journal = Path(td) / "shadow.jsonl"
@@ -236,7 +254,7 @@ class QuotaPolicy(unittest.TestCase):
                 moment = START + timedelta(hours=hour)
                 day = moment.date().isoformat()
                 attempts_by_day.setdefault(day, 0)
-                # Realistic ordered-membership change every 13h; prices change hourly.
+                # Synthetic policy transitions only; not an observed order rate or production-shaped proof.
                 evaluated = candidate(moment, reverse=bool((hour // 13) % 2))
                 evaluated["input_context"] = {"prices": hour}
                 if hour == 3 * 24:
@@ -246,7 +264,7 @@ class QuotaPolicy(unittest.TestCase):
                     budget.stop_until_reset(moment)  # Provider daily quota response, no retry storm.
                 due = policy.publication_due(last_good, evaluated, moment)
                 if due != "NO_CHANGE":
-                    worst_case = 16  # Three immutable puts + pointer, four attempts each.
+                    worst_case = 16  # Arbitrary ledger requests, not a measurement of native PUTs/retries.
                     if budget.reserve(worst_case, moment):
                         attempts_by_day[day] += worst_case
                         rotation.append_signed(journal, evaluated, key=KEY, asof=evaluated["generated_at"])
