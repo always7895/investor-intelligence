@@ -100,17 +100,18 @@ describe("shared LINE free-only push admission (no real transport)", () => {
     const code = "SYNTHETIC_EDUCATIONAL";
     const messages = [
       { type: "text" as const, text: code },
-      { type: "flex" as const, altText: code, contents: { type: "bubble",
+      { type: "flex" as const, altText: code, contents: { type: "carousel", contents: [{ type: "bubble",
         body: { type: "box", layout: "vertical", contents: [{ type: "text", text: code }] },
         footer: { type: "box", layout: "vertical", contents: [{ type: "button",
-          action: { type: "postback", label: code, title: code, displayText: code, data: code } }] } } },
+          action: { type: "postback", label: code, title: code, displayText: code, data: code } }] } }] } },
     ];
     const before = JSON.stringify(messages);
     await pushMessages(env, TARGET, messages);
     const body = String(network.mock.calls[3]![1]!.body);
     const sent = JSON.parse(body).messages;
-    const action = sent[1].contents.footer.contents[0].action;
-    for (const value of [sent[0].text, sent[1].altText, sent[1].contents.body.contents[0].text,
+    const bubble = sent[1].contents.contents[0];
+    const action = bubble.footer.contents[0].action;
+    for (const value of [sent[0].text, sent[1].altText, bubble.body.contents[0].text,
       action.label, action.title, action.displayText]) {
       expect(value).not.toContain(code);
       expect(value).toMatch(/[\u3400-\u9fff]/);
