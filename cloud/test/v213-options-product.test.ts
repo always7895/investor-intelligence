@@ -44,7 +44,7 @@ const validQuote: OptionContractQuote = {
   timestamp: "2026-09-14T12:00:00Z",
   quote_basis: "delayed",
   source: "yfinance_public",
-  provenance: "OP_TEST_SUITE",
+  provenance: "https://example.invalid/options",
   currency: "USD",
   multiplier: 100,
   rights_status: "reviewed_public_access",
@@ -159,7 +159,7 @@ describe("Options Product Contract and Validation", () => {
     expect(flexStr).toContain("Bid/Ask/Spread"); // UI-R3: strike is in the header and Mid is the single hero; no duplicate summary tile.
     expect(flexStr).not.toContain("推薦");
     // V25-FIX3 keeps source/date, rights, provenance and both risk operands in three labelled rows on this bubble.
-    for (const qualifier of [formatTaipeiTimestamp(validQuote.timestamp), "來源｜", "權利｜", "出處 OP_TEST_SUITE", "風險｜", validQuote.assignment_risk, validQuote.liquidity_warning]) {
+    for (const qualifier of [formatTaipeiTimestamp(validQuote.timestamp), validQuote.provenance, validQuote.assignment_risk, validQuote.liquidity_warning]) {
       expect(flexStr).toContain(qualifier);
     }
 
