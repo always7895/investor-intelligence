@@ -1,19 +1,18 @@
-"""P6, offline: the contract between scripts/run_production_sealed_refresh.ps1 (the hourly caller) and
-scripts/sync_sealed_snapshot_kv.py. The PowerShell scripts are read as text and never run.
+"""P6, offline: real sync emission and BOTH original PowerShell outcome readers.
 
-The caller starts the sync with `--run-dir $runDir --outcome-path $outcomePath` (a fresh sealed-sync-<guid>.json per
-run) and trusts only an outcome file that its Read-SafeSyncOutcome accepts. These rows bind both sides: the argv read
-from the script is the argv the real SY.main parses here (seam B of tests/sealed_kv_fakes.py: the real retry and CLI
-layers over a fake subprocess.run, no process is launched); every outcome file the sync writes is checked by a Python
-mirror of Read-SafeSyncOutcome built from the closed value lists read from the script; and every status, phase,
-pointer state and error category literal of the sync is inside those lists (the freshness watchdog's lists for
---read-freshness). Running the scripts themselves needs a PowerShell host and stays outside this module. Each row
-compares a literal designed from the code; the comment above each row cites the lines it was designed from."""
+Only transport is fake. The harness parses FunctionDefinitionAst bodies and loads
+the real readers and their original path/integer guards, never script entrypoints.
+P6_3 drives the emitter's enforced closed wire schema through those consumers,
+including invalid types and retention/category separation. No Python reader mirror.
+"""
 from __future__ import annotations
 
 import json
+import shutil
+import subprocess
 import re
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -31,50 +30,67 @@ REFRESH = (ROOT / "scripts" / "run_production_sealed_refresh.ps1").read_text(enc
 GUID = "0123456789abcdef0123456789abcdef"
 VIEW = ("status", "phase", "error_category", "pointer_state")
 CALLER_REFUSES = "CALLER_REFUSES"
+HOSTS = tuple(dict.fromkeys(path for name in ("powershell.exe", "pwsh.exe")
+                           if (path := shutil.which(name))))
 
 
-def quoted(fragment: str) -> tuple:
-    return tuple(re.findall(r"'([A-Z_]+)'", fragment))
+def read_outcome_cases(cases, host):
+    """Materialize exact JSON types; consumers read these bytes, not PS reserialization."""
+    with tempfile.TemporaryDirectory(prefix="sealed-outcome-consumers-") as directory:
+        root = Path(directory)
+        inputs = []
+        for index, case in enumerate(cases):
+            path = root / f"outcome-{index}.json"
+            if "raw" in case:
+                path.write_bytes(case["raw"])
+            else:
+                path.write_text(json.dumps(case["record"], separators=(",", ":"), allow_nan=False), encoding="utf-8")
+            inputs.append({"name": case["name"], "operation": case["operation"],
+                           "path": str(path), "expected_run": case.get("expected_run", RUN)})
+        cases_path = root / "cases.json"
+        cases_path.write_text(json.dumps(inputs, separators=(",", ":")), encoding="utf-8")
+        completed = subprocess.run(
+            [host, "-NoProfile", "-NonInteractive", "-File",
+             str(ROOT / "tests/fixtures/sealed_outcome_readers.ps1"),
+             "-ProjectRoot", str(ROOT), "-CasesPath", str(cases_path)],
+            cwd=ROOT, capture_output=True, text=True, encoding="utf-8", timeout=120)
+        if completed.returncode != 0:
+            raise AssertionError("original outcome-reader harness failed: " + completed.stdout + completed.stderr)
+        answers = json.loads(completed.stdout.lstrip("\ufeff"))
+        if not isinstance(answers, list) or len(answers) != len(cases):
+            raise AssertionError("original outcome-reader harness returned an incomplete case set")
+        return {answer["name"]: answer for answer in answers}
 
 
-def refresh_lists() -> dict:
-    """The closed value lists of Read-SafeSyncOutcome (refresh ps1 266-283)."""
-    block = REFRESH[REFRESH.index("function Read-SafeSyncOutcome"):REFRESH.index("function Invoke-AdmittedLocalMaintenance")]
-    return {field: quoted(re.search(r"\$r\." + field + r" -cnotin @\(([^)]*)\)", block).group(1))
-            for field in ("status", "pointer_state", "error_category", "phase")}
-
-
-
-
-def read_safe_sync_outcome(path: Path, expected_run: str, lists: dict) -> dict:
-    """Python mirror of Read-SafeSyncOutcome (refresh ps1 266-283) over the lists read from the script; raises
-    ValueError where the script throws (unavailable, unparseable or invalid outcome)."""
-    if not path.is_file() or path.stat().st_size > 8192:
-        raise ValueError("SYNC_OUTCOME_UNAVAILABLE")
-    record = json.loads(path.read_bytes().decode("utf-8"))
-
-    def integer(value, low, high):  # Test-OutcomeInteger (ps1 261-265): a JSON integer, never a bool or a float
-        return type(value) is int and low <= value <= high
-
-    ok = (isinstance(record, dict) and integer(record.get("schema_version"), 1, 1) and record.get("operation") == "SYNC"
-          and record.get("run_id") == expected_run and record.get("status") in lists["status"]
-          and record.get("pointer_state") in lists["pointer_state"]
-          and record.get("error_category") in lists["error_category"] and record.get("phase") in lists["phase"]
-          and integer(record.get("cli_attempts_total"), 0, 2147483647) and integer(record.get("last_cli_attempts"), 0, 3)
-          and record["last_cli_attempts"] <= record["cli_attempts_total"]
-          and all(integer(record.get(name), 0, 2147483647) for name in ("objects_uploaded", "objects_reused", "objects_verified"))
-          and (record.get("last_cli_exit_code") is None or integer(record["last_cli_exit_code"], -2147483648, 4294967295)))
-    if not ok:
-        raise ValueError("SYNC_OUTCOME_INVALID")
-    if record["status"] == "RETAINED_LAST_GOOD" and (
-            record["pointer_state"] != "NOT_ATTEMPTED" or record["error_category"] != "NONE" or record["phase"] != "COMPLETE"
-            or record.get("retention_reason") not in {"NO_CHANGE", "WRITE_BUDGET", "DAILY_KV_LIMIT", "CANDIDATE_UNAVAILABLE"}
-            or not isinstance(record.get("retained_run_id"), str)
-            or not re.fullmatch(r"\d{8}T\d{6}Z-[0-9a-f]{12}", record["retained_run_id"])):
-        raise ValueError("SYNC_OUTCOME_INVALID")
+def wire_record(operation, field=None, value=None):
+    """Use actual emitter constructors, with valid companion fields for each wire value."""
+    record = SY._outcome(operation)
+    record["run_id"] = RUN
+    if operation == "SYNC" and ((field == "retention_reason" and value is not None) or
+                                (field == "status" and value == "RETAINED_LAST_GOOD")):
+        reason = value if field == "retention_reason" else "NO_CHANGE"
+        with mock.patch.object(SY, "TOTAL_ATTEMPTS", 0), mock.patch.object(SY, "PUT_ATTEMPTS", 0), \
+                mock.patch.object(SY, "ACTIVE_WRITE_RESERVATION", None), \
+                mock.patch.object(SY, "LAST_CALL", {"attempts": 0, "exit_code": None, "error_category": "NONE"}):
+            if SY._retain(record, {"run_id": RUN}, reason) != 0:
+                raise AssertionError("actual retained-outcome emitter refused confirmed custody")
+    elif ((field == "status" and value == "SUCCEEDED") or (field == "phase" and value == "COMPLETE") or
+          (field == "error_category" and value == "NONE")):
+        record.update(status="SUCCEEDED", phase="COMPLETE", error_category="NONE")
+        if operation == "SYNC":
+            record["pointer_state"] = "READBACK_CONFIRMED"
+    elif field == "pointer_state" and value == "READBACK_CONFIRMED":
+        record.update(phase="LOCAL_LEDGER", error_category="LOCAL_IO_FAILURE")
+    elif field == "pointer_state" and value == "ATTEMPTED_UNCONFIRMED":
+        record["phase"] = "POINTER_READBACK"
+    elif field == "error_category":
+        record["phase"] = "OBJECT_PUT" if operation == "SYNC" else "POINTER_READ"
+    if field is not None:
+        record[field] = value
     return record
 
 
+@unittest.skipUnless(HOSTS, "native PowerShell required for original consumer bodies")
 class RefreshSyncContract(KvTestCase):
     def setUp(self):
         super().setUp()
@@ -83,16 +99,17 @@ class RefreshSyncContract(KvTestCase):
         self.logs = self.tmp / "logs"
         self.logs.mkdir()
         self.outcome = self.logs / ("sealed-sync-" + GUID + ".json")
-        self.lists = refresh_lists()
 
     def caller_row(self, fx, **kwargs) -> tuple:
         """One sync started with the caller's argv shape (P6-1) at seam B; the row adds what the caller's reader sees."""
         run_dir = fx.write_to(self.tmp / "runs" / fx.run)
         r = run_sy(SY, self.kv, run_dir, self.ledger, fx.names, seam="B", outcome_path=self.outcome, **kwargs)
         try:
-            caller = read_safe_sync_outcome(self.outcome, fx.run, self.lists)
-            view = tuple(caller[name] for name in VIEW)
-        except ValueError:
+            case = {"name": "emitted", "operation": "SYNC", "expected_run": fx.run,
+                    "raw": self.outcome.read_bytes()}
+            answer = read_outcome_cases([case], HOSTS[0])["emitted"]
+            view = tuple(answer["record"][name] for name in VIEW) if answer["accepted"] else CALLER_REFUSES
+        except OSError:
             view = CALLER_REFUSES
         return r, Row(("exit", "outcome", "caller_view"), (r.exit, r.outcome, view))
 
@@ -164,6 +181,105 @@ class RefreshSyncContract(KvTestCase):
         r, row = self.caller_row(Fixture(RUN, "sy"))
         self.assertRow(row, (1, ("FAILED", "INPUT", "OUTCOME_WRITE_FAILED", "NOT_ATTEMPTED"), CALLER_REFUSES))
         self.assertEqual((r.ops, self.kv.store[POINTER_KEY]), ((), OLD_POINTER))
+
+    def test_P6_3_every_emitted_wire_value_reaches_both_original_consumers(self):
+        cases = []
+
+        def add(operation, label, record, accepted, **kwargs):
+            cases.append({"name": f"{operation}:{label}", "operation": operation,
+                          "record": record, "accepted": accepted, **kwargs})
+
+        # This is the schema the REAL emitter enforces at serialization, not a
+        # scrape/equality check against consumer source or a Python reader mirror.
+        for operation, fields in SY.OUTCOME_WIRE_VALUES.items():
+            for field, values in fields.items():
+                for value in sorted(values, key=repr):
+                    add(operation, f"emitted:{field}:{value!r}",
+                        wire_record(operation, field, value), True)
+
+            base = wire_record(operation)
+            for field in ("operation", "status", "phase", "pointer_state", "error_category"):
+                for index, value in enumerate(("SYNTHETIC_UNKNOWN", None, True, 1, 1.0,
+                                               [base[field]], {"value": base[field]})):
+                    add(operation, f"invalid:{field}:{index}", dict(base, **{field: value}), False)
+            for index, value in enumerate((None, True, 1, [RUN], {"value": RUN})):
+                add(operation, f"invalid:run_id:{index}", dict(base, run_id=value), False)
+            for field in ("schema_version", "cli_attempts_total", "last_cli_attempts",
+                          "objects_uploaded", "objects_reused", "objects_verified"):
+                for index, value in enumerate((None, True, "1", 1.0, [1], {"value": 1})):
+                    add(operation, f"invalid:{field}:type:{index}", dict(base, **{field: value}), False)
+                add(operation, f"invalid:{field}:negative", dict(base, **{field: -1}), False)
+            limits = {"schema_version": 2, "cli_attempts_total": 2147483648 if operation == "SYNC" else 7,
+                      "last_cli_attempts": 4}
+            if operation == "WATCHDOG":
+                limits.update(objects_uploaded=1, objects_reused=1, objects_verified=1)
+            for field, value in limits.items():
+                add(operation, f"invalid:{field}:upper", dict(base, **{field: value}), False)
+            add(operation, "invalid:attempts:inconsistent", dict(base, last_cli_attempts=1), False)
+            for index, value in enumerate((True, "0", 0.0, [], {}, -2147483649, 4294967296)):
+                add(operation, f"invalid:exit_code:{index}", dict(base, last_cli_exit_code=value), False)
+            for value in (None, -2147483648, 0, 4294967295):
+                add(operation, f"valid:exit_code:{value}", dict(base, last_cli_exit_code=value), True)
+            for index, value in enumerate(([base], [], True, None, "SYNTHETIC_UNKNOWN")):
+                add(operation, f"invalid:json_root:{index}", base, False,
+                    raw=json.dumps(value, separators=(",", ":")).encode("utf-8"))
+            for field in ("operation", "schema_version", "status", "phase", "pointer_state", "error_category"):
+                missing = dict(base)
+                del missing[field]
+                add(operation, f"invalid:missing:{field}", missing, False)
+            add(operation, "invalid:reason_as_category", dict(base, error_category="WRITE_BUDGET"), False)
+
+        # WRITE_BUDGET is a retained-last-good REASON; the unavailable allowance
+        # authorization is a distinct SYNC failure CATEGORY, never a reason.
+        retained = wire_record("SYNC", "retention_reason", "WRITE_BUDGET")
+        add("SYNC", "budget:retention_reason", retained, True)
+        add("SYNC", "budget:unavailable_category",
+            wire_record("SYNC", "error_category", "WRITE_BUDGET_UNAVAILABLE"), True)
+        for index, value in enumerate(("WRITE_BUDGET_UNAVAILABLE", "UNKNOWN", None, True, 1,
+                                       ["WRITE_BUDGET"], {"value": "WRITE_BUDGET"})):
+            add("SYNC", f"invalid:retention_reason:{index}", dict(retained, retention_reason=value), False)
+            if value is not None:
+                add("SYNC", f"invalid:failed_retention_reason:{index}",
+                    dict(wire_record("SYNC"), retention_reason=value), False)
+        for state in ("ATTEMPTED_UNCONFIRMED", "READBACK_CONFIRMED"):
+            add("SYNC", f"invalid:ambiguous_retained_pointer:{state}", dict(retained, pointer_state=state), False)
+        for category in ("WRITE_BUDGET_UNAVAILABLE", "DAILY_KV_LIMIT"):
+            add("SYNC", f"invalid:retained_error:{category}", dict(retained, error_category=category), False)
+        add("SYNC", "invalid:retained_phase", dict(retained, phase="PREFLIGHT"), False)
+        for index, value in enumerate((None, True, 1, [RUN], "not-a-run")):
+            add("SYNC", f"invalid:retained_run_id:{index}", dict(retained, retained_run_id=value), False)
+        add("SYNC", "invalid:other_run", wire_record("SYNC"), False, expected_run="different-run")
+        add("WATCHDOG", "invalid:sync_budget_category",
+            dict(wire_record("WATCHDOG"), error_category="WRITE_BUDGET_UNAVAILABLE"), False)
+        for reason in ("NO_CHANGE", "WRITE_BUDGET", "DAILY_KV_LIMIT", "CANDIDATE_UNAVAILABLE"):
+            add("SYNC", f"valid:bootstrap_retention_reason:{reason}",
+                dict(wire_record("SYNC"), error_category="BOOTSTRAP_REQUIRED", retention_reason=reason), True)
+            add("WATCHDOG", f"invalid:sync_retention:{reason}",
+                dict(wire_record("WATCHDOG"), retention_reason=reason, retained_run_id=RUN), False)
+        for index, value in enumerate((True, 1, ["WRITE_BUDGET"], {"value": "WRITE_BUDGET"})):
+            add("WATCHDOG", f"invalid:retention_reason_type:{index}",
+                dict(wire_record("WATCHDOG"), retention_reason=value), False)
+
+        # One genuine read-only emitter path, with transport bytes as its only
+        # fixture seam, complements the exhaustive enforced-schema value table.
+        observed = SY._outcome("WATCHDOG")
+        pointer = json.dumps({"run_id": RUN, "public_data_as_of": "2026-11-09T00:00:00Z"})
+        report = json.dumps({"generated_at": "2026-11-09T00:00:00Z", "records": [{}] * 20})
+        with mock.patch.object(SY, "client_get", side_effect=[pointer, report]), \
+                mock.patch.object(SY, "TOTAL_ATTEMPTS", 0), \
+                mock.patch.object(SY, "LAST_CALL", {"attempts": 0, "exit_code": 0, "error_category": "NONE"}):
+            self.assertEqual(SY.read_freshness(observed), 0)
+        add("WATCHDOG", "actual_read_freshness_emission", observed, True)
+
+        for host in HOSTS:
+            answers = read_outcome_cases(cases, host)
+            self.assertEqual(set(answers), {case["name"] for case in cases})
+            for case in cases:
+                with self.subTest(host=host, case=case["name"]):
+                    answer = answers[case["name"]]
+                    self.assertIs(answer["accepted"], case["accepted"])
+                    if case["accepted"]:
+                        self.assertEqual(answer["record"], case["record"])
 
 
 

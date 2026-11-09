@@ -34,6 +34,31 @@ function Test-OutcomeInteger([object]$Value, [long]$Minimum, [long]$Maximum) {
     if ($Value -isnot [int32] -and $Value -isnot [int64]) { return $false }
     return ($Value -ge $Minimum -and $Value -le $Maximum)
 }
+function Read-SafeWatchdogOutcome([string]$Path) {
+    Assert-PlainLocalPath $Path
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf) -or (Get-Item -LiteralPath $Path).Length -gt 8192) { throw 'OUTCOME_INVALID' }
+    # Only the shared adapter's bounded, whitelist metadata is admitted here.
+    $rawOutcome = Get-Content -LiteralPath $Path -Raw -Encoding utf8
+    if ($rawOutcome -notmatch '^\s*\{') { throw 'OUTCOME_INVALID' }
+    $record = $rawOutcome | ConvertFrom-Json
+    $categories = @('NONE','AUTHENTICATION_ERROR','DAILY_KV_LIMIT','NETWORK_FAILURE','TRANSIENT_HTTP','TIMEOUT','UNKNOWN','CLI_UNAVAILABLE','CLI_LAUNCH_FAILED','PARSE_FAILED','LOCAL_IO_FAILURE','OUTCOME_WRITE_FAILED')
+    $phases = @('INPUT','POINTER_READ','POINTER_PARSE','REPORT_READ','REPORT_PARSE','COMPLETE')
+    if (-not (Test-OutcomeInteger $record.schema_version 1 1) -or
+        $record.operation -isnot [string] -or $record.operation -cne 'WATCHDOG' -or
+        $record.run_id -isnot [string] -or $record.status -isnot [string] -or $record.status -cnotin @('SUCCEEDED','FAILED') -or
+        $record.pointer_state -isnot [string] -or $record.pointer_state -cne 'NOT_ATTEMPTED' -or
+        $null -ne $record.retention_reason -or $null -ne $record.retained_run_id -or
+        $record.error_category -isnot [string] -or $record.error_category -cnotin $categories -or
+        $record.phase -isnot [string] -or $record.phase -cnotin $phases -or
+        -not (Test-OutcomeInteger $record.cli_attempts_total 0 6) -or
+        -not (Test-OutcomeInteger $record.last_cli_attempts 0 3) -or
+        $record.last_cli_attempts -gt $record.cli_attempts_total -or
+        -not (Test-OutcomeInteger $record.objects_uploaded 0 0) -or
+        -not (Test-OutcomeInteger $record.objects_reused 0 0) -or
+        -not (Test-OutcomeInteger $record.objects_verified 0 0) -or
+        ($null -ne $record.last_cli_exit_code -and -not (Test-OutcomeInteger $record.last_cli_exit_code -2147483648 4294967295))) { throw 'OUTCOME_INVALID' }
+    return $record
+}
 function ConvertTo-UtcAnchor([object]$Value) {
     if ($Value -is [DateTime]) {
         if ($Value.Kind -eq [DateTimeKind]::Local) { return $Value.ToUniversalTime() }
@@ -77,22 +102,7 @@ try {
         $entry.errorCategory = 'CLI_ADAPTER_UNAVAILABLE'
         throw 'NO_SAFE_OUTCOME'
     }
-    Assert-PlainLocalPath $resultPath
-    if ((Get-Item -LiteralPath $resultPath).Length -gt 8192) { throw 'OUTCOME_INVALID' }
-    # Not raw CLI stdout: the shared adapter checked the native exit before
-    # parsing any KV body and persisted only whitelist metadata, even on failure.
-    $record = Get-Content -LiteralPath $resultPath -Raw -Encoding utf8 | ConvertFrom-Json
-    $categories = @('NONE','AUTHENTICATION_ERROR','DAILY_KV_LIMIT','NETWORK_FAILURE','TRANSIENT_HTTP','TIMEOUT','UNKNOWN','CLI_UNAVAILABLE','CLI_LAUNCH_FAILED','PARSE_FAILED','LOCAL_IO_FAILURE','OUTCOME_WRITE_FAILED')
-    $phases = @('INPUT','POINTER_READ','POINTER_PARSE','REPORT_READ','REPORT_PARSE','COMPLETE')
-    if (-not (Test-OutcomeInteger $record.schema_version 1 1) -or $record.operation -cne 'WATCHDOG' -or $record.status -cnotin @('SUCCEEDED','FAILED') -or
-        $record.error_category -cnotin $categories -or $record.phase -cnotin $phases -or
-        -not (Test-OutcomeInteger $record.cli_attempts_total 0 6) -or
-        -not (Test-OutcomeInteger $record.last_cli_attempts 0 3) -or
-        $record.last_cli_attempts -gt $record.cli_attempts_total -or
-        -not (Test-OutcomeInteger $record.objects_uploaded 0 0) -or
-        -not (Test-OutcomeInteger $record.objects_reused 0 0) -or
-        -not (Test-OutcomeInteger $record.objects_verified 0 0) -or
-        ($null -ne $record.last_cli_exit_code -and -not (Test-OutcomeInteger $record.last_cli_exit_code -2147483648 4294967295))) { throw 'OUTCOME_INVALID' }
+    $record = Read-SafeWatchdogOutcome $resultPath
     $entry.errorCategory = $record.error_category
     $entry.failedPhase = $record.phase
     $entry.cliAttempts = $record.cli_attempts_total

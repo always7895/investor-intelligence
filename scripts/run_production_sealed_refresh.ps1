@@ -302,8 +302,13 @@ function Test-OutcomeInteger([object]$Value, [long]$Minimum, [long]$Maximum) {
 function Read-SafeSyncOutcome([string]$Path, [string]$ExpectedRun) {
     Assert-PlainLocalRefreshPath $Path
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf) -or (Get-Item -LiteralPath $Path).Length -gt 8192) { throw 'SYNC_OUTCOME_UNAVAILABLE' }
-    $r = Get-Content -LiteralPath $Path -Raw -Encoding utf8 | ConvertFrom-Json
-    if (-not (Test-OutcomeInteger $r.schema_version 1 1) -or $r.operation -cne 'SYNC' -or $r.run_id -cne $ExpectedRun -or
+    $raw = Get-Content -LiteralPath $Path -Raw -Encoding utf8
+    if ($raw -notmatch '^\s*\{') { throw 'SYNC_OUTCOME_INVALID' }
+    $r = $raw | ConvertFrom-Json
+    if (-not (Test-OutcomeInteger $r.schema_version 1 1) -or
+        $r.operation -isnot [string] -or $r.run_id -isnot [string] -or $r.status -isnot [string] -or
+        $r.pointer_state -isnot [string] -or $r.error_category -isnot [string] -or $r.phase -isnot [string] -or
+        $r.operation -cne 'SYNC' -or $r.run_id -cne $ExpectedRun -or
         $r.status -cnotin @('SUCCEEDED','FAILED','RETAINED_LAST_GOOD') -or
         $r.pointer_state -cnotin @('NOT_ATTEMPTED','ATTEMPTED_UNCONFIRMED','READBACK_CONFIRMED') -or
         $r.error_category -cnotin @('NONE','AUTHENTICATION_ERROR','DAILY_KV_LIMIT','NETWORK_FAILURE','TRANSIENT_HTTP','TIMEOUT','UNKNOWN','CLI_UNAVAILABLE','CLI_LAUNCH_FAILED','READBACK_MISMATCH','INPUT_INVALID','LOCAL_IO_FAILURE','OUTCOME_WRITE_FAILED','BOOTSTRAP_REQUIRED','WRITE_BUDGET_UNAVAILABLE') -or
@@ -315,6 +320,11 @@ function Read-SafeSyncOutcome([string]$Path, [string]$ExpectedRun) {
         -not (Test-OutcomeInteger $r.objects_reused 0 2147483647) -or
         -not (Test-OutcomeInteger $r.objects_verified 0 2147483647) -or
         ($null -ne $r.last_cli_exit_code -and -not (Test-OutcomeInteger $r.last_cli_exit_code -2147483648 4294967295))) { throw 'SYNC_OUTCOME_INVALID' }
+    if ($null -ne $r.retention_reason -and
+        ($r.retention_reason -isnot [string] -or
+         $r.retention_reason -cnotin @('NO_CHANGE','WRITE_BUDGET','DAILY_KV_LIMIT','CANDIDATE_UNAVAILABLE'))) {
+        throw 'SYNC_OUTCOME_INVALID'
+    }
     if ($r.status -ceq 'RETAINED_LAST_GOOD' -and
         ($r.pointer_state -cne 'NOT_ATTEMPTED' -or $r.error_category -cne 'NONE' -or $r.phase -cne 'COMPLETE' -or
          $r.retention_reason -cnotin @('NO_CHANGE','WRITE_BUDGET','DAILY_KV_LIMIT','CANDIDATE_UNAVAILABLE') -or

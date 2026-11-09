@@ -288,6 +288,35 @@ def sha(raw: str) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
+_COMMON_ERRORS = frozenset({
+    "NONE", "AUTHENTICATION_ERROR", "DAILY_KV_LIMIT", "NETWORK_FAILURE", "TRANSIENT_HTTP",
+    "TIMEOUT", "UNKNOWN", "CLI_UNAVAILABLE", "CLI_LAUNCH_FAILED", "LOCAL_IO_FAILURE", "OUTCOME_WRITE_FAILED",
+})
+OUTCOME_WIRE_VALUES = {
+    "SYNC": {
+        "status": frozenset({"FAILED", "SUCCEEDED", "RETAINED_LAST_GOOD"}),
+        "phase": frozenset({"INPUT", "PREFLIGHT", "OBJECT_PUT", "OBJECT_READBACK", "POINTER_PUT",
+                            "POINTER_READBACK", "LOCAL_LEDGER", "COMPLETE"}),
+        "pointer_state": frozenset({"NOT_ATTEMPTED", "ATTEMPTED_UNCONFIRMED", "READBACK_CONFIRMED"}),
+        "error_category": _COMMON_ERRORS | {"READBACK_MISMATCH", "INPUT_INVALID", "BOOTSTRAP_REQUIRED", "WRITE_BUDGET_UNAVAILABLE"},
+        "retention_reason": frozenset({None, "NO_CHANGE", "WRITE_BUDGET", "DAILY_KV_LIMIT", "CANDIDATE_UNAVAILABLE"}),
+    },
+    "WATCHDOG": {
+        "status": frozenset({"FAILED", "SUCCEEDED"}),
+        "phase": frozenset({"INPUT", "POINTER_READ", "POINTER_PARSE", "REPORT_READ", "REPORT_PARSE", "COMPLETE"}),
+        "pointer_state": frozenset({"NOT_ATTEMPTED"}),
+        "error_category": _COMMON_ERRORS | {"PARSE_FAILED"},
+        "retention_reason": frozenset({None}),
+    },
+}
+
+
+def validate_outcome_wire(record: dict) -> None:
+    fields = OUTCOME_WIRE_VALUES.get(record.get("operation"))
+    if fields is None or any(record.get(field) not in values for field, values in fields.items()):
+        raise ValueError("OUTCOME_WIRE_INVALID")
+
+
 def _outcome(operation: str) -> dict:
     return {"schema_version": 1, "operation": operation, "status": "FAILED",
             "phase": "INPUT", "error_category": "UNKNOWN", "pointer_state": "NOT_ATTEMPTED",
@@ -629,6 +658,7 @@ def main() -> int:
         code = 1
     ACTIVE_WRITE_BUDGET = None
     ACTIVE_WRITE_RESERVATION = None
+    validate_outcome_wire(record)  # actual emitter enforces the domains consumed by both callers
     if stream is not None:
         try:
             with stream:

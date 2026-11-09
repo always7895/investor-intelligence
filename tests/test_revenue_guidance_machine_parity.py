@@ -3,8 +3,8 @@
 No model/serializer/resolver is mocked. Deliberately missing required state and
 invalid synthetic baselines must remain unavailable through the actual publisher.
 The historical clock and existing synthetic report shell are test inputs only.
-Historical Worker fixtures are consumer inputs, not current-source goldens;
-the snapshot input digest includes the reviewed admission implementation identity.
+Historical Worker fixtures bind the consumer-visible contract after projecting
+only reviewed admission-source identity and its directly dependent digest fields.
 """
 from __future__ import annotations
 
@@ -17,12 +17,15 @@ from datetime import datetime, timezone
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT))
 import order_claims
 import publish_sealed_snapshot as publisher
 import revenue_guidance_machine as machine
 import revenue_guidance_overlay as overlay
+from tests.revenue_guidance_machine_parity_support import consumer_view
 
 CUTOFF = datetime(2026, 9, 28, 15, tzinfo=timezone.utc)
+FIXTURE = ROOT / "tests/fixtures/revenue-guidance-machine-barrier-functional.json"
 
 
 def produce(root: Path) -> dict:
@@ -52,11 +55,12 @@ def produce(root: Path) -> dict:
 
 
 class MachineBarrierProducerTests(unittest.TestCase):
-    def test_real_producer_preserves_refusal_and_fresh_root_determinism(self):
+    def test_real_producer_preserves_frozen_parity_and_fresh_root_determinism(self):
         with tempfile.TemporaryDirectory() as a, tempfile.TemporaryDirectory() as b:
             result = produce(Path(a))
             again = produce(Path(b))
         self.assertEqual(result, again)
+        self.assertEqual(consumer_view(result), consumer_view(json.loads(FIXTURE.read_bytes())))
         report = json.loads(result["report"])
         nvda = next(row for row in report["top"] if row["symbol"] == "NVDA")["outlook"]["order_forecast_v3"]
         self.assertEqual(nvda["schema"], machine.MACHINE_SCHEMA)
