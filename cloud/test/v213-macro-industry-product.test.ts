@@ -217,6 +217,7 @@ describe("Macro Industry Product presentation and schemas", () => {
     const fixture = mockCard(1, "growth_basis");
     const card: MacroIndustryCard = {
       ...fixture,
+      rank: growth === null ? null : fixture.rank,
       growth: growth === null ? null : { ...fixture.growth!, ...growth },
     };
     const overview: MacroTop5Overview = { ...mockOverview(1), industries: [card] };
