@@ -8,3 +8,5 @@ patches/sol-pi-small-session-guard.patch -text -whitespace
 tests/fixtures/revenue-guidance-autoupdate/raw/** binary
 # The coverage publisher and Worker bind the public provider catalog by exact bytes.
 config/public-options-provider-candidates.json text eol=lf
+# Keep the identity-card regression portable in format-patch/git am workflows.
+cloud/test/v213-identity-shards.test.ts text eol=lf
