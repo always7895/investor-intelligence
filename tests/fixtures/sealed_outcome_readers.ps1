@@ -13,7 +13,7 @@ foreach ($operation in @('SYNC','WATCHDOG')) {
             $names = @('Assert-PlainLocalRefreshPath','Test-OutcomeInteger','Read-SafeSyncOutcome')
         } else {
             $source = Join-Path $ProjectRoot 'scripts/freshness_watchdog.ps1'
-            $names = @('Assert-PlainLocalPath','Test-OutcomeInteger','Read-SafeWatchdogOutcome')
+            $names = @('Assert-PlainLocalPath','Test-OutcomeInteger','Read-SafeWatchdogOutcome','ConvertTo-UtcAnchor')
         }
         $tokens = $null; $parseErrors = $null
         $ast = [System.Management.Automation.Language.Parser]::ParseFile($source,[ref]$tokens,[ref]$parseErrors)
@@ -35,7 +35,17 @@ foreach ($operation in @('SYNC','WATCHDOG')) {
                 } else {
                     Read-SafeWatchdogOutcome $case.path
                 }
-                $Answers.Add([pscustomobject]@{name=$case.name;accepted=$true;record=$record})
+                $metadataUtcSeconds = @{}
+                if ($Operation -ceq 'WATCHDOG') {
+                    foreach ($field in @('anchor','public_data_as_of','report_generated_at')) {
+                        if ($null -ne $record.PSObject.Properties[$field] -and $null -ne $record.$field) {
+                            $instant = ConvertTo-UtcAnchor $record.$field
+                            if ($null -eq $instant -or $instant.Kind -ne [DateTimeKind]::Utc) { throw 'METADATA_UTC_PARSE_INVALID' }
+                            $metadataUtcSeconds[$field] = ([DateTimeOffset]$instant).ToUnixTimeSeconds()
+                        }
+                    }
+                }
+                $Answers.Add([pscustomobject]@{name=$case.name;accepted=$true;record=$record;metadata_utc_seconds=$metadataUtcSeconds})
             } catch {
                 # No exception messages, paths or file contents escape the probe.
                 $Answers.Add([pscustomobject]@{name=$case.name;accepted=$false;record=$null})

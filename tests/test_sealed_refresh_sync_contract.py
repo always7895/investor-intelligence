@@ -13,6 +13,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from datetime import datetime
 from pathlib import Path
 from unittest import mock
 
@@ -280,7 +281,15 @@ class RefreshSyncContract(KvTestCase):
                     answer = answers[case["name"]]
                     self.assertIs(answer["accepted"], case["accepted"])
                     if case["accepted"]:
-                        self.assertEqual(answer["record"], case["record"])
+                        self.assertEqual(set(answer["record"]), set(case["record"]))
+                        for field, expected in case["record"].items():
+                            if field in {"anchor", "public_data_as_of", "report_generated_at"} and expected is not None:
+                                # PS7 materializes zoned JSON dates as DateTime. Exercise
+                                # the original consumer's UTC parser, not serialization spelling.
+                                self.assertEqual(answer["metadata_utc_seconds"][field],
+                                                 int(datetime.fromisoformat(expected).timestamp()))
+                            else:
+                                self.assertEqual(answer["record"][field], expected, field)
 
 
 
