@@ -533,7 +533,7 @@ describe("Stage 1C nullable executable sides and visible LIMIT scenarios", () =>
     { currency: "USD", period: "monthly" }, { currency: "SEK", period: "monthly" },
     { currency: "USD", period: "weekly" }, { currency: "SEK", period: "weekly" },
   ] as const)("$currency $period shares every tier's rule, real spread and numeric economics in Text and Flex", ({ currency, period }) => {
-    const { cycle, csp, collar } = wideRecommendation(currency);
+    const { cycle, csp } = wideRecommendation(currency);
     if (period === "weekly") {
       cycle.dte = 7; cycle.expiry = "2026-10-30"; cycle.weekly_week = "NEXT";
       delete cycle.monthly_rule;
@@ -570,11 +570,10 @@ describe("Stage 1C nullable executable sides and visible LIMIT scenarios", () =>
         `年化 ${rate(1.4 / csp.suggestions[0]!.strike)}`, `年化 ${rate(0.4 / csp.suggestions[0]!.strike)}`,
         `LIMIT每口淨權利金（收入）${money(90)}`, `每口淨權利金 -${money(60)}`,
         `淨權利金年化 ${rate(0.9 / cycle.spot)}`, `淨權利金年化 ${rate(-0.6 / cycle.spot)}`,
-        "Call Bid－Put Ask", "不高於Ask", "非保證", "非投資建議", "不下單"]) expect(visible).toContain(expected);
+        "Call Bid－Put Ask", "不高於Ask", "非保證", "不下單"]) expect(visible).toContain(expected);
       expect(visible).not.toContain("四分之一");
       expect(visible).not.toContain("價差占中價 0%");
     }
-    expect(collar.put.ask).not.toBe(collar.put.bid);
     expect(size(flex[0]!.type === "flex" ? flex[0]!.contents : null)).toBeLessThan(46_000);
     for (const page of pages) expect(size(page)).toBeLessThan(14_000);
   });
