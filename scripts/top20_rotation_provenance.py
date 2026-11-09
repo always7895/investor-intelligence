@@ -1,8 +1,12 @@
 """Append-only, signed, score-neutral Top20 rotation and screener shadow evidence.
 
 No account, broker, credential, user identity, SEC header, or private holdings enter records.
-An HMAC signing key must be explicitly provisioned by the operator; absence fails closed.
+An HMAC signing key must be explicitly provisioned; no key means no attestation.
 An input-family change is a possible cause, NOT proof of why ranking changed.
+
+Retention authenticates a bounded tail from an HMAC-signed checkpoint, NOT a
+full-lifetime genesis proof. A checkpoint anchors the final discarded observation;
+earlier history is deliberately unavailable. Legacy v2 journals are never migrated.
 """
 from __future__ import annotations
 
@@ -10,17 +14,25 @@ import hashlib
 import hmac
 import json
 import os
+import logging
+import math
 import re
 import stat
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 import validated_rule_engine as rule_engine
+import ranking_write_policy as write_policy
 
-SCHEMA = "top20-rotation-shadow-v2"
-MAX_LOG_BYTES = 80 * 1024 * 1024
-MAX_RECORD_BYTES = 2 * 1024 * 1024
+SCHEMA = "top20-rotation-shadow-v3"
+MAX_SEGMENT_BYTES = 4 * 1024 * 1024
+MAX_RETAINED_SEGMENTS = 8
+MAX_RECORD_BYTES = 1024 * 1024
+LOCK_STALE_SECONDS = 300
+UNVERIFIED_NOTICE_ZH = "本輪輪動來源鏈未驗證；排行仍依既有資料更新，請人工覆核。"
+LOGGER = logging.getLogger(__name__)
 INPUT_FAMILIES = ("prices", "filings", "serenity", "leopold", "events")
 SYMBOL = re.compile(r"[A-Z0-9][A-Z0-9.^=-]{0,15}\Z")
 SHA256 = re.compile(r"[0-9a-f]{64}\Z")
@@ -35,16 +47,19 @@ def digest(value: Any) -> str:
 
 
 def _safe_log_path(path: Path) -> None:
-    for item in (path, *path.parents):
-        if item.is_symlink():
-            raise ValueError("SHADOW_UNSAFE_PATH")
-        if item.exists():
+    # Inspect ancestors before descendants; never traverse a junction to inspect a leaf.
+    absolute = path.absolute()
+    for item in reversed((absolute, *absolute.parents)):
+        try:
             metadata = item.lstat()
-            if getattr(metadata, "st_file_attributes", 0) & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0):
-                raise ValueError("SHADOW_UNSAFE_PATH")
+        except FileNotFoundError:
+            continue
+        if (stat.S_ISLNK(metadata.st_mode)
+                or getattr(metadata, "st_file_attributes", 0) & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)):
+            raise ValueError("SHADOW_UNSAFE_PATH")
     if not path.parent.is_dir():
         raise ValueError("SHADOW_UNSAFE_PARENT")
-    if path.exists() and (not path.is_file() or path.stat().st_size > MAX_LOG_BYTES):
+    if path.exists() and not path.is_file():
         raise ValueError("SHADOW_UNSAFE_FILE")
 
 
@@ -116,9 +131,12 @@ def _screen(doc: dict[str, Any], symbols: list[str], cutoff: datetime) -> list[d
                 raise ValueError("SHADOW_SCREENER_INVALID")
             retained.append(keep)
         retained.sort(key=lambda row: row["rule_id"])
+        # Commit all validated evidence without copying source URLs, prose or the
+        # full per-rule document into every hourly journal observation.
         result.append({"symbol": symbol, "verification": "UNVERIFIED", "ruleset": screen["ruleset"],
-                       "input_sha256": screen["input_sha256"], "rules": retained,
-                       "status": {row["rule_id"]: row["status"] for row in retained}})
+                       "input_sha256": screen["input_sha256"], "rules_sha256": digest(retained),
+                       "status_counts": {status: sum(row["status"] == status for row in retained)
+                                         for status in ("PASS", "FAIL", "UNKNOWN")}})
     return result
 
 
@@ -162,8 +180,8 @@ def build_record(doc: dict[str, Any], previous: dict[str, Any] | None, *, asof: 
              for rank, symbol in enumerate(top, 1) if symbol in before and before.index(symbol) + 1 != rank]
     symbols = [row["symbol"] for row in fingerprints]
     screen = _screen(doc, symbols, now)
-    previous_screen = {row["symbol"]: digest(row["rules"]) for row in previous.get("screener_shadow", [])} if previous else {}
-    current_screen = {row["symbol"]: digest(row["rules"]) for row in screen}
+    previous_screen = {row["symbol"]: row["rules_sha256"] for row in previous.get("screener_shadow", [])} if previous else {}
+    current_screen = {row["symbol"]: row["rules_sha256"] for row in screen}
     screen_changed = sorted(symbol for symbol in previous_screen.keys() | current_screen.keys()
                             if previous_screen.get(symbol) != current_screen.get(symbol))
     ranking_changed = bool(previous and top != before)
@@ -218,10 +236,10 @@ def _unique_object(items: list[tuple[str, Any]]) -> dict[str, Any]:
     return result
 
 
-def _verify_stream(stream: Any, key: bytes) -> dict[str, Any] | None:
-    last = None
-    stream.seek(0)
-    for line in stream:
+def _verify_stream(stream: Any, key: bytes, previous: dict[str, Any] | None,
+                   segment_index: int) -> dict[str, Any] | None:
+    last = previous
+    while line := stream.readline(MAX_RECORD_BYTES + 1):
         if not line.endswith(b"\n") or len(line) > MAX_RECORD_BYTES:
             raise ValueError("SHADOW_RECORD_TRUNCATED")
         try:
@@ -234,7 +252,9 @@ def _verify_stream(stream: Any, key: bytes) -> dict[str, Any] | None:
         if not _sha(signature) or not hmac.compare_digest(
                 signature, hmac.new(key, canonical(row), hashlib.sha256).hexdigest()):
             raise ValueError("SHADOW_SIGNATURE_INVALID")
-        if row.get("previous_entry_sha256") != (last["entry_sha256"] if last else None):
+        if (row.get("previous_entry_sha256") != (last["entry_sha256"] if last else None)
+                or type(row.get("sequence")) is not int or row["sequence"] != (last["sequence"] + 1 if last else 1)
+                or type(row.get("segment_index")) is not int or row["segment_index"] != segment_index):
             raise ValueError("SHADOW_CHAIN_INVALID")
         claimed = row.pop("entry_sha256", None)
         if not _sha(claimed) or claimed != digest(row):
@@ -244,52 +264,271 @@ def _verify_stream(stream: Any, key: bytes) -> dict[str, Any] | None:
             raise ValueError("SHADOW_NON_MONOTONIC")
         _clock(row.get("asof_utc"))
         last = row
+    if last is previous and (segment_index or previous is not None):
+        raise ValueError("SHADOW_EMPTY_SEGMENT")
     return last
 
 
-def verify_log(path: Path, key: bytes) -> dict[str, Any] | None:
-    """Verify every HMAC, entry digest, UTC clock and hash link, including the genesis."""
+def _checkpoint(path: Path, key: bytes) -> dict[str, Any] | None:
+    checkpoint = path.with_name(path.name + ".checkpoint")
+    _safe_log_path(checkpoint)
+    if not checkpoint.exists():
+        return None
+    with checkpoint.open("rb") as stream:
+        raw = stream.read(MAX_RECORD_BYTES + 4097)
+    if len(raw) > MAX_RECORD_BYTES + 4096:
+        raise ValueError("SHADOW_RECORD_LIMIT")
+    wrapper = json.loads(raw, object_pairs_hook=_unique_object)
+    if not isinstance(wrapper, dict):
+        raise ValueError("SHADOW_CHAIN_INVALID")
+    signature = wrapper.pop("signature", None)
+    if (set(wrapper) != {"schema", "anchor"} or wrapper["schema"] != "top20-rotation-checkpoint-v1"
+            or not _sha(signature) or not hmac.compare_digest(
+                signature, hmac.new(key, canonical(wrapper), hashlib.sha256).hexdigest())):
+        raise ValueError("SHADOW_SIGNATURE_INVALID")
+    anchor = wrapper["anchor"]
+    if (not isinstance(anchor, dict) or type(anchor.get("sequence")) is not int or anchor["sequence"] < 1
+            or type(anchor.get("segment_index")) is not int or anchor["segment_index"] < 0):
+        raise ValueError("SHADOW_CHAIN_INVALID")
+    # Validate the anchor's original entry hash/signature as well as its wrapper.
+    unsigned = {name: value for name, value in anchor.items() if name != "signature"}
+    if (anchor.get("schema") != SCHEMA or not _sha(anchor.get("signature"))
+            or not hmac.compare_digest(anchor["signature"], hmac.new(key, canonical(unsigned), hashlib.sha256).hexdigest())
+            or unsigned.get("entry_sha256") != digest({name: value for name, value in unsigned.items()
+                                                        if name != "entry_sha256"})):
+        raise ValueError("SHADOW_ENTRY_HASH_INVALID")
+    _clock(anchor.get("asof_utc"))
+    return anchor
+
+
+def _segment_index(path: Path, segment: Path) -> int:
+    return 0 if segment == path else int(segment.name[len(path.name + ".segment-"):])
+
+
+def _segments(path: Path, *, after: int | None = None) -> list[Path]:
+    _safe_log_path(path)
+    indexed = {0: path} if path.exists() else {}
+    prefix = path.name + ".segment-"
+    for child in path.parent.iterdir():
+        if not child.name.startswith(prefix):
+            continue
+        suffix = child.name[len(prefix):]
+        if not re.fullmatch(r"[0-9]{8}", suffix) or int(suffix) == 0:
+            raise ValueError("SHADOW_SEGMENTS_INVALID")
+        _safe_log_path(child)
+        indexed[int(suffix)] = child
+    retained = sorted(index for index in indexed if after is None or index > after)
+    if after is not None and any(index != after + 1 + offset for offset, index in enumerate(retained)):
+        raise ValueError("SHADOW_SEGMENTS_INVALID")
+    return [indexed[index] for index in retained]
+
+
+def _verify_chain(path: Path, key: bytes) -> tuple[dict[str, Any] | None, list[Path]]:
     if not isinstance(key, bytes) or len(key) < 32:
         raise ValueError("SHADOW_SIGNING_KEY_UNAVAILABLE")
-    _safe_log_path(path)
-    if not path.exists():
+    last = _checkpoint(path, key)
+    segments = _segments(path, after=last["segment_index"] if last else -1)
+    if last and not segments:
+        raise ValueError("SHADOW_EMPTY_SEGMENT")
+    for segment in segments:
+        if segment.stat().st_size > MAX_SEGMENT_BYTES:
+            raise ValueError("SHADOW_SEGMENT_LIMIT")
+        with segment.open("rb") as stream:
+            last = _verify_stream(stream, key, last, _segment_index(path, segment))
+    return last, segments
+
+
+def verify_log(path: Path, key: bytes) -> dict[str, Any] | None:
+    """Authenticate the retained tail from genesis or its signed retention checkpoint."""
+    return _verify_chain(path, key)[0]
+
+
+def _retain_tail(path: Path, key: bytes, segments: list[Path]) -> None:
+    anchor = _checkpoint(path, key)
+    while len(segments) > MAX_RETAINED_SEGMENTS:
+        discarded = segments.pop(0)
+        with discarded.open("rb") as stream:
+            anchor = _verify_stream(stream, key, anchor, _segment_index(path, discarded))
+        wrapper = {"schema": "top20-rotation-checkpoint-v1", "anchor": anchor}
+        wrapper["signature"] = hmac.new(key, canonical(wrapper), hashlib.sha256).hexdigest()
+        checkpoint = path.with_name(path.name + ".checkpoint")
+        temp = path.with_name(path.name + ".checkpoint.tmp")
+        _safe_log_path(temp)
+        with temp.open("wb") as stream:
+            stream.write(canonical(wrapper))
+            stream.flush()
+            os.fsync(stream.fileno())
+        temp.replace(checkpoint)  # Publish authenticated anchor BEFORE deleting history.
+    if anchor:
+        # Also finish deletion after a crash between checkpoint publication and unlink.
+        for old in _segments(path):
+            if _segment_index(path, old) <= anchor["segment_index"]:
+                old.unlink()
+
+
+def _windows_process_alive(pid: int) -> bool | None:
+    # Query-only rights: os.kill(pid, 0) is NOT a liveness probe on Windows.
+    import ctypes
+    from ctypes import wintypes
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+    kernel.OpenProcess.restype = wintypes.HANDLE
+    kernel.GetExitCodeProcess.argtypes = (wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD))
+    kernel.GetExitCodeProcess.restype = wintypes.BOOL
+    kernel.CloseHandle.argtypes = (wintypes.HANDLE,)
+    kernel.CloseHandle.restype = wintypes.BOOL
+    handle = kernel.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION only
+    if not handle:
+        return False if ctypes.get_last_error() == 87 else None  # invalid PID; denied/unknown stays busy
+    try:
+        code = wintypes.DWORD()
+        if not kernel.GetExitCodeProcess(handle, ctypes.byref(code)):
+            return None
+        return code.value == 259  # STILL_ACTIVE
+    finally:
+        kernel.CloseHandle(handle)
+
+
+def _process_alive(pid: int) -> bool | None:
+    if os.name == "nt":
+        return _windows_process_alive(pid)
+    try:
+        os.kill(pid, 0)  # POSIX signal zero never sends a signal.
+    except ProcessLookupError:
+        return False
+    except OSError:
         return None
-    with path.open("rb") as stream:
-        return _verify_stream(stream, key)
+    return True
+
+
+def _file_lock(fd: int, *, release: bool = False) -> None:
+    # A stable lock inode plus an OS lock prevents simultaneous stale-owner
+    # recovery from unlinking a replacement writer's lock.
+    os.lseek(fd, 0, os.SEEK_SET)
+    if os.name == "nt":
+        import msvcrt
+        msvcrt.locking(fd, msvcrt.LK_UNLCK if release else msvcrt.LK_NBLCK, 1)
+    else:
+        import fcntl
+        fcntl.flock(fd, fcntl.LOCK_UN if release else fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+
+def _write_lock(fd: int, value: dict[str, Any]) -> None:
+    os.lseek(fd, 0, os.SEEK_SET)
+    body = canonical(value)
+    if os.write(fd, body) != len(body):
+        raise OSError("SHADOW_LOCK_WRITE_FAILED")
+    os.ftruncate(fd, len(body))
+    os.fsync(fd)
+
+
+def _acquire_lock(path: Path) -> int:
+    _safe_log_path(path)
+    try:
+        fd = os.open(str(path), os.O_CREAT | os.O_EXCL | os.O_RDWR | getattr(os, "O_BINARY", 0), 0o600)
+        created = True
+    except FileExistsError:
+        fd = os.open(str(path), os.O_RDWR | getattr(os, "O_BINARY", 0))
+        created = False
+    locked = False
+    try:
+        try:
+            _file_lock(fd)
+        except OSError:
+            raise ValueError("SHADOW_WRITER_BUSY") from None
+        locked = True
+        if not created:
+            try:
+                owner = json.loads(os.read(fd, 513), object_pairs_hook=_unique_object)
+            except (ValueError, UnicodeDecodeError):
+                raise ValueError("SHADOW_WRITER_BUSY") from None
+            if owner != {"released": True}:
+                if (not isinstance(owner, dict) or set(owner) != {"pid", "created_at"}
+                        or type(owner["pid"]) is not int or not 0 < owner["pid"] <= 0xFFFFFFFF
+                        or type(owner["created_at"]) not in (int, float) or not math.isfinite(owner["created_at"])
+                        or time.time() - owner["created_at"] < LOCK_STALE_SECONDS
+                        or _process_alive(owner["pid"]) is not False):
+                    raise ValueError("SHADOW_WRITER_BUSY")
+        _write_lock(fd, {"pid": os.getpid(), "created_at": time.time()})
+        return fd
+    except BaseException:
+        if locked:
+            _file_lock(fd, release=True)
+        os.close(fd)
+        raise
 
 
 def append_signed(path: Path, doc: dict[str, Any], *, key: bytes, asof: str) -> dict[str, Any]:
     if not isinstance(key, bytes) or len(key) < 32:
         raise ValueError("SHADOW_SIGNING_KEY_UNAVAILABLE")
     _safe_log_path(path)
-    # Serialize verify+append; a concurrent writer must fail, never fork the hash chain.
-    lock = path.with_name(path.name + ".lock")
-    _safe_log_path(lock)
+    # Read-only suppression does not even rewrite the writer lock or observation clock.
+    observed = verify_log(path, key)
+    if observed and _clock(observed["asof_utc"]) > _clock(asof):
+        raise ValueError("SHADOW_NON_MONOTONIC")
+    if (observed and not doc.get("source_failures") and doc.get("refresh_state") != "REFRESH_FAILED"
+            and write_policy.publication_due(observed, {**doc, "generated_at": asof}, _clock(asof)) == "NO_CHANGE"):
+        return {"state": "SKIPPED_NO_CHANGE", "asof_utc": observed["asof_utc"],
+                "changes": 0, "input_families_changed": 0, "ranking_changed": False}
+    lock_fd = _acquire_lock(path.with_name(path.name + ".lock"))
     try:
-        lock_fd = os.open(str(lock), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
-    except FileExistsError:
-        raise ValueError("SHADOW_WRITER_BUSY") from None
-    try:
-        os.close(lock_fd)
-        prev = verify_log(path, key)
+        prev, segments = _verify_chain(path, key)
         if doc.get("refresh_state") == "REFRESH_FAILED" or doc.get("source_failures"):
             return {"state": "REFRESH_FAILED", "asof_utc": prev["asof_utc"] if prev else None,
                     "changes": 0, "input_families_changed": 0, "ranking_changed": False}
-        if prev and _clock(prev["asof_utc"]) >= _clock(asof):
+        if prev and _clock(prev["asof_utc"]) > _clock(asof):
             raise ValueError("SHADOW_NON_MONOTONIC")
+        due = write_policy.publication_due(prev, {**doc, "generated_at": asof}, _clock(asof))
+        if due == "NO_CHANGE":
+            return {"state": "SKIPPED_NO_CHANGE", "asof_utc": prev["asof_utc"],
+                    "changes": 0, "input_families_changed": 0, "ranking_changed": False}
+        if prev and _clock(prev["asof_utc"]) == _clock(asof):
+            raise ValueError("SHADOW_NON_MONOTONIC")  # Changed signed rows need a later clock.
+        # Finish any interrupted retention before allowing further growth.
+        # A failed checkpoint can leave one bounded overflow record, never
+        # repeated new segments on subsequent attempts.
+        _retain_tail(path, key, segments)
         row = build_record(doc, prev, asof=asof)
+        index = _segment_index(path, segments[-1]) if segments else 0
+        row.update(sequence=prev["sequence"] + 1 if prev else 1, segment_index=index)
+        row["publication_due"] = due
         row["entry_sha256"] = digest(row)
         row["signature"] = hmac.new(key, canonical(row), hashlib.sha256).hexdigest()
         body = canonical(row) + b"\n"
-        if len(body) > MAX_RECORD_BYTES or (path.stat().st_size if path.exists() else 0) + len(body) > MAX_LOG_BYTES:
-            raise ValueError("SHADOW_LOG_LIMIT")
-        fd = os.open(str(path), os.O_APPEND | os.O_WRONLY | os.O_CREAT | getattr(os, "O_BINARY", 0), 0o600)
+        if len(body) > min(MAX_RECORD_BYTES, MAX_SEGMENT_BYTES):
+            raise ValueError("SHADOW_RECORD_LIMIT")
+        target = segments[-1] if segments else path
+        rollover = target.exists() and target.stat().st_size + len(body) > MAX_SEGMENT_BYTES
+        if rollover:
+            index += 1
+            if index > 99999999:
+                raise ValueError("SHADOW_SEGMENT_LIMIT")
+            target = path.with_name(f"{path.name}.segment-{index:08d}")
+            _safe_log_path(target)
+            row.pop("signature")
+            row.pop("entry_sha256")
+            row["segment_index"] = index
+            row["entry_sha256"] = digest(row)
+            row["signature"] = hmac.new(key, canonical(row), hashlib.sha256).hexdigest()
+            body = canonical(row) + b"\n"
+            if len(body) > min(MAX_RECORD_BYTES, MAX_SEGMENT_BYTES):
+                raise ValueError("SHADOW_RECORD_LIMIT")
+        flags = os.O_WRONLY | os.O_CREAT | getattr(os, "O_BINARY", 0)
+        flags |= os.O_EXCL if rollover else os.O_APPEND
+        fd = os.open(str(target), flags, 0o600)
         with os.fdopen(fd, "ab", closefd=True) as stream:
             stream.write(body)
             stream.flush()
             os.fsync(stream.fileno())
+        _retain_tail(path, key, [*segments, target] if target not in segments else segments)
     finally:
-        lock.unlink()
+        try:
+            _write_lock(lock_fd, {"released": True})
+        finally:
+            try:
+                _file_lock(lock_fd, release=True)
+            finally:
+                os.close(lock_fd)
     return {"state": "SIGNED", "changes": len(row["diff"]["entered"]),
             "ranking_changed": row["diff"]["ranking_changed"],
             "reason_code": row["diff"]["reason_code"],
@@ -300,5 +539,25 @@ def append_if_configured(doc: dict[str, Any], *, path: Path, asof: str) -> str:
     secret = os.environ.get("II_R2B_SHADOW_SIGNING_KEY")
     if secret is None:
         return "UNCONFIGURED"
-    # Do not print, persist, include in exception text, or log this secret.
-    return append_signed(path, doc, key=secret.encode("utf-8"), asof=asof)["state"]
+    try:
+        # Never print, persist, or include this secret in exception text.
+        return append_signed(path, doc, key=secret.encode("utf-8"), asof=asof)["state"]
+    except Exception as error:
+        causes = {
+            "SHADOW_WRITER_BUSY", "SHADOW_SIGNING_KEY_UNAVAILABLE", "SHADOW_RECORD_LIMIT", "SHADOW_SEGMENT_LIMIT",
+            "SHADOW_UNSAFE_PATH", "SHADOW_UNSAFE_PARENT", "SHADOW_UNSAFE_FILE", "SHADOW_SEGMENTS_INVALID",
+            "SHADOW_RECORD_TRUNCATED", "SHADOW_RECORD_INVALID", "SHADOW_SCHEMA_INVALID",
+            "SHADOW_SIGNATURE_INVALID", "SHADOW_CHAIN_INVALID", "SHADOW_ENTRY_HASH_INVALID",
+            "SHADOW_NON_MONOTONIC", "SHADOW_EMPTY_SEGMENT", "SHADOW_CLOCK_INVALID",
+            "SHADOW_TOP_INVALID", "SHADOW_TICKER_INVALID", "SHADOW_DUPLICATE_TICKER",
+            "SHADOW_FINGERPRINTS_INVALID", "SHADOW_FINGERPRINTS_INCOMPLETE",
+            "SHADOW_INPUT_CONTEXT_INVALID", "SHADOW_SCREENER_INVALID", "SHADOW_DUPLICATE_FIELD",
+        }
+        cause = (str(error) if type(error) is ValueError and str(error) in causes else
+                 "SHADOW_IO_ERROR" if isinstance(error, OSError) else "SHADOW_INTERNAL_ERROR")
+        doc["rotation_provenance"] = {"status": "UNVERIFIED", "notice_zh": UNVERIFIED_NOTICE_ZH}
+        try:
+            LOGGER.warning("Rotation provenance UNVERIFIED: %s", cause)
+        except Exception:
+            pass  # A logging sink is shadow-only too; never turn it into a ranking outage.
+        return "UNVERIFIED"

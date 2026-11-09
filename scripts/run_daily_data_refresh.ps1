@@ -313,11 +313,30 @@ else {
     if ($GuidanceMachinePublicationEnabled) {
         try {
             if ($result.ExitCode -ne 0 -or $null -eq $bundle) { throw 'MACHINE_EXPORT_UNAVAILABLE' }
-            $public = & $bundle.GetPublicBundle # original normal workflow ACK, observed settled Close/host exit
-            if ($public.RunId -cne $GuidancePublicRunId) { throw 'MACHINE_EXPORT_UNAVAILABLE' }
-            # ONE bounded context-bound PUBLIC metadata frame. Expected digests
-            # come from original private export/readback, not a writable manifest.
-            Write-Host ('GUIDANCE_MACHINE_RESULT_V1|'+$GuidancePublicRunId+'|'+$public.Token+'|'+$public.BodySha256+'|'+$public.BindingSha256)
+            $b2 = $result.B2
+            $retained = $null -ne $b2 -and $b2.Disposition -ceq 'PUBLICATION_SUPPRESSED' -and
+                $b2.Reason -ceq 'RETAINED_LAST_GOOD' -and $b2.ExitCode -eq 0 -and
+                $b2.PublicationSuppressed -is [bool] -and $b2.PublicationSuppressed -and
+                $b2.ServingLastGood -is [bool] -and $b2.ServingLastGood -and
+                $b2.Completed -is [bool] -and -not $b2.Completed -and
+                $b2.RebuildCompleted -is [bool] -and -not $b2.RebuildCompleted
+            if ($retained) {
+                # B2 alone is not authority: independently require the actual private
+                # host suppression and settled Close on the original backend owner.
+                $historical = & $bundle.GetRetainedResult
+                if ($historical.RunId -cne $GuidancePublicRunId -or $historical.Reason -cne 'NO_CHANGE' -or
+                    $historical.PublicationSuppressed -isnot [bool] -or -not $historical.PublicationSuppressed -or
+                    $historical.ServingLastGood -isnot [bool] -or -not $historical.ServingLastGood) {
+                    throw 'MACHINE_EXPORT_UNAVAILABLE'
+                }
+                Write-Host ('GUIDANCE_MACHINE_RETAINED_V1|'+$GuidancePublicRunId+'|NO_CHANGE')
+            } else {
+                $public = & $bundle.GetPublicBundle # original normal workflow ACK, observed settled Close/host exit
+                if ($public.RunId -cne $GuidancePublicRunId) { throw 'MACHINE_EXPORT_UNAVAILABLE' }
+                # ONE bounded context-bound PUBLIC metadata frame. Expected digests
+                # come from original private export/readback, not a writable manifest.
+                Write-Host ('GUIDANCE_MACHINE_RESULT_V1|'+$GuidancePublicRunId+'|'+$public.Token+'|'+$public.BodySha256+'|'+$public.BindingSha256)
+            }
         } catch {
             $reason='MACHINE_EXPORT_UNAVAILABLE'
             if ($null -eq $bundle) { $reason='GUIDANCE_MACHINE_PROVIDER_UNAVAILABLE' }

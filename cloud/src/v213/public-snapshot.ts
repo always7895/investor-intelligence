@@ -24,6 +24,14 @@ export function hasSealedManifestObject(view: PublicSnapshotView, logicalKey: st
   return typeof view.hasSealedObject === "function" && view.hasSealedObject(logicalKey);
 }
 
+// Only views created by the real reader (including its rights-filtered wrapper)
+// may opt into historical ranking retention. Structural lookalikes are not custody.
+const verifiedSnapshotViews = new WeakSet<PublicSnapshotView>();
+export function hasVerifiedSnapshotCustody(view: PublicSnapshotView, logicalKey: string): boolean {
+  return verifiedSnapshotViews.has(view) && view.kind === "snapshot" && view.integrity === "sealed"
+    && hasSealedManifestObject(view, logicalKey);
+}
+
 function invalidView(): PublicSnapshotView {
   return Object.freeze({ runId: null, kind: "invalid", integrity: "invalid",
     hasSealedObject() { return false; },
@@ -48,7 +56,9 @@ export function scopePublicSnapshot<T extends StorageEnv>(env: T, viewer: "owner
 
 async function readViewerSnapshot(env: StorageEnv): Promise<PublicSnapshotView> {
   const view = await readPublicSnapshot(env);
-  return (env as unknown as Record<symbol, unknown>)[NON_OWNER_VIEWER] === true ? withAlphaVantageOwnerOnly(view) : view;
+  const selected = (env as unknown as Record<symbol, unknown>)[NON_OWNER_VIEWER] === true ? withAlphaVantageOwnerOnly(view) : view;
+  if (view.kind === "snapshot" && view.integrity === "sealed") verifiedSnapshotViews.add(selected);
+  return selected;
 }
 
 export function pinPublicSnapshot(env: StorageEnv): Promise<PublicSnapshotView> {

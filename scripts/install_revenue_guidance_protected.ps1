@@ -189,6 +189,7 @@ try {
         'scripts/corporate_actions.py', 'config/corporate-actions-v1.json',
         'scripts/distribution_adjusted_returns.py', 'scripts/public_event_research.py',
         'scripts/top20_rotation_provenance.py', 'scripts/validated_rule_engine.py',
+        'scripts/ranking_write_policy.py',
         'scripts/serenity_signals.py',
         'config/reviewed-open-candidates-v1.json', 'config/public-reviewed-events-v1.json',
         'scripts/bottleneck_ranking.py', 'scripts/bottleneck_claim_admission.py',

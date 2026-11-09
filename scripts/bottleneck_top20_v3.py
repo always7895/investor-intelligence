@@ -52,6 +52,7 @@ import revenue_trend  # noqa: E402
 import corporate_actions  # noqa: E402
 import validated_rule_engine  # noqa: E402
 import top20_rotation_provenance  # noqa: E402
+import ranking_write_policy  # noqa: E402
 import public_event_research  # noqa: E402
 import distribution_adjusted_returns  # noqa: E402
 
@@ -1525,11 +1526,19 @@ def main(argv: Iterable[str] | None = None) -> int:
     parser.add_argument("--shadow-log", type=Path, default=ROOT / "data" / "cache" / "bottleneck_v3_shadow.jsonl")
     args = parser.parse_args(list(argv) if argv is not None else None)
     now = utc_now()
-    if args.if_older_than_hours > 0 and args.output.exists():
+    ranking_write_policy._safe_path(args.output)
+    previous = None
+    if args.output.exists():
         try:
-            previous = load_json(args.output)
+            loaded = load_json(args.output)
+            ranking_write_policy.ordered_rank_digest(loaded)
+            previous = loaded
+        except (OSError, ValueError, TypeError):
+            pass  # No valid previous ranking: require an honest new initial publication.
+    if args.if_older_than_hours > 0 and previous is not None:
+        try:
             age = (now - datetime.strptime(previous["generated_at"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)).total_seconds() / 3600
-            if age < args.if_older_than_hours:
+            if 0 <= age < args.if_older_than_hours:
                 print(json.dumps({"status": "SKIPPED_FRESH", "age_hours": round(age, 1)}))
                 return 0
         except (OSError, ValueError, KeyError):
@@ -1547,23 +1556,29 @@ def main(argv: Iterable[str] | None = None) -> int:
     if len(document["top"]) < 10:
         print(json.dumps({"status": "FAILED", "error": "TOO_FEW_QUALIFIED", "qualified": len(document["top"])}))
         return 1
+    try:
+        due = ranking_write_policy.publication_due(previous, document, now)
+    except ValueError:
+        print(json.dumps({"status": "FAILED", "error": "RANKING_POLICY_INVALID"}))
+        return 1
+    if due == "NO_CHANGE":
+        print(json.dumps({"status": "SKIPPED_NO_CHANGE", "generated_at": previous["generated_at"]}))
+        return 0  # Do not append the journal or advance the last-write clock.
     args.output.parent.mkdir(parents=True, exist_ok=True)
     temp = args.output.with_name(args.output.name + ".tmp")
+    ranking_write_policy._safe_path(temp)
     try:
         body = json.dumps(document, ensure_ascii=False, default=str, allow_nan=False)
     except ValueError:  # a NaN from a provider would make the publisher drop v3 later; fail here with the reason
         print(json.dumps({"status": "FAILED", "error": "NON_FINITE_VALUE"}))
         return 1
+    # Ranking stays available when the optional observation journal fails.
+    # The helper attaches the fixed unverified advisory before raw serialization.
+    shadow_state = top20_rotation_provenance.append_if_configured(
+        document, path=args.shadow_log, asof=iso(now))
+    if shadow_state == "UNVERIFIED":
+        body = json.dumps(document, ensure_ascii=False, default=str, allow_nan=False)
     temp.write_bytes(body.encode("utf-8"))
-    # The journal must be HMAC-authenticated when configured; never leak the signing value.
-    # If signing is not provisioned, emit a fixed honest status rather than an unsigned "signed" claim.
-    try:
-        shadow_state = top20_rotation_provenance.append_if_configured(
-            document, path=args.shadow_log, asof=iso(now))
-    except (OSError, ValueError):
-        temp.unlink(missing_ok=True)
-        print(json.dumps({"status": "FAILED", "error": "SHADOW_ATTESTATION_FAILED"}))
-        return 1
     temp.replace(args.output)
     print(json.dumps({"status": "OK", "shadow": shadow_state, "top": [(c["rank"], c["symbol"], c["score"], c["layer"]) for c in document["top"]],
                       "industries": [(i["rank"], i["id"], i["explosiveness"]) for i in document["industries"]],

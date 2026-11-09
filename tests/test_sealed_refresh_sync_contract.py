@@ -33,15 +33,15 @@ WATCHDOG = (ROOT / "scripts" / "freshness_watchdog.ps1").read_text(encoding="utf
 GUID = "0123456789abcdef0123456789abcdef"
 VIEW = ("status", "phase", "error_category", "pointer_state")
 CALLER_REFUSES = "CALLER_REFUSES"
-SYNC_PHASES = {"INPUT", "OBJECT_PUT", "OBJECT_READBACK", "POINTER_PUT", "POINTER_READBACK", "LOCAL_LEDGER", "COMPLETE"}
+SYNC_PHASES = {"INPUT", "PREFLIGHT", "OBJECT_PUT", "OBJECT_READBACK", "POINTER_PUT", "POINTER_READBACK", "LOCAL_LEDGER", "COMPLETE"}
 WATCH_PHASES = {"INPUT", "POINTER_READ", "POINTER_PARSE", "REPORT_READ", "REPORT_PARSE", "COMPLETE"}
 POINTER_STATES = {"NOT_ATTEMPTED", "ATTEMPTED_UNCONFIRMED", "READBACK_CONFIRMED"}
-STATUSES = {"SUCCEEDED", "FAILED"}
+STATUSES = {"SUCCEEDED", "FAILED", "RETAINED_LAST_GOOD"}
 CATEGORIES = {"NONE", "UNKNOWN", "AUTHENTICATION_ERROR", "DAILY_KV_LIMIT", "NETWORK_FAILURE", "TRANSIENT_HTTP", "TIMEOUT",
               "CLI_UNAVAILABLE", "CLI_LAUNCH_FAILED", "READBACK_MISMATCH", "PARSE_FAILED", "INPUT_INVALID",
-              "LOCAL_IO_FAILURE", "OUTCOME_WRITE_FAILED"}
+              "LOCAL_IO_FAILURE", "OUTCOME_WRITE_FAILED", "BOOTSTRAP_REQUIRED"}
 WATCH_ONLY = {"PARSE_FAILED"}  # SY main: --read-freshness parse failures
-SYNC_ONLY = {"READBACK_MISMATCH", "INPUT_INVALID"}  # SY sync_run readbacks and main input failures of --run-dir
+SYNC_ONLY = {"READBACK_MISMATCH", "INPUT_INVALID", "BOOTSTRAP_REQUIRED"}
 
 
 def quoted(fragment: str) -> tuple:
@@ -79,6 +79,12 @@ def read_safe_sync_outcome(path: Path, expected_run: str, lists: dict) -> dict:
           and all(integer(record.get(name), 0, 2147483647) for name in ("objects_uploaded", "objects_reused", "objects_verified"))
           and (record.get("last_cli_exit_code") is None or integer(record["last_cli_exit_code"], -2147483648, 4294967295)))
     if not ok:
+        raise ValueError("SYNC_OUTCOME_INVALID")
+    if record["status"] == "RETAINED_LAST_GOOD" and (
+            record["pointer_state"] != "NOT_ATTEMPTED" or record["error_category"] != "NONE" or record["phase"] != "COMPLETE"
+            or record.get("retention_reason") not in {"NO_CHANGE", "WRITE_BUDGET", "DAILY_KV_LIMIT", "CANDIDATE_UNAVAILABLE"}
+            or not isinstance(record.get("retained_run_id"), str)
+            or not re.fullmatch(r"\d{8}T\d{6}Z-[0-9a-f]{12}", record["retained_run_id"])):
         raise ValueError("SYNC_OUTCOME_INVALID")
     return record
 

@@ -10,6 +10,7 @@ import { TREND_CHIP, TREND_LABEL, trendBasisText, trendBlockLines, trendHorizonF
 import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
 import type { PublicSnapshotView } from "./public-snapshot";
 import { v213ReportAgeFresh } from "./report-age";
+import { readRetainedRanking } from "./ranking-retention";
 import { unwrapTransportV1 } from "./revenue-guidance-wire";
 import { GUIDANCE_BINDING_KEY, MACHINE_SCHEMA, resolveSealedMachineBindings, type MachineBindings } from "./revenue-guidance-machine";
 import { sourceZh } from "./source-labels";
@@ -153,6 +154,8 @@ const EXCLUDED_ACTION_REASONS: Record<"PENDING" | "DISTRIBUTION", string> = {
   PENDING: "併購待完成，暫不納入排行",
   DISTRIBUTION: "尚缺可核對的一手歷史收盤價、完整配息與拆股紀錄及衍生報酬公開使用權；零股另須實際淨現金證明，跨配發權益日報酬暫不顯示。",
 };
+const ROTATION_NOTICE_ZH = "本輪輪動來源鏈未驗證；排行仍依既有資料更新，請人工覆核。";
+interface RotationProvenanceNotice { status: "UNVERIFIED"; notice_zh: string; }
 export interface BottleneckEntry {
   rank: number; symbol: string; name: string; layer: string;
   /** Traditional Chinese name stated by the exchange, the company or Chinese Wikipedia; null when none exists. */
@@ -188,6 +191,10 @@ export interface BottleneckV3 {
   /** Sealed company data reports (SEC filers), validated per ticker when a detail is opened. */
   deep_reports: Record<string, unknown>;
   excluded_actions?: ExcludedCorporateAction[];
+  rotation_provenance?: RotationProvenanceNotice;
+  /** Runtime-only: derived by the verified sealed reader, never copied from wire metadata. */
+  historical_retention_notice?: string;
+  historical_forecasts_unavailable?: boolean;
 }
 
 const CHAIN_ZH: Record<string, string> = { compute: "算力", power: "電力", datacenter: "資料中心", chips_memory: "晶片與記憶體",
@@ -583,6 +590,13 @@ function validActionExclusions(raw: unknown, generatedAt: string, top: Bottlenec
 function excludedActionText(row: ExcludedCorporateAction): string {
   return `${row.symbol}：${row.reason_zh}\n${corporateActionNotice(row)}\n官方來源：${row.corporate_action.source_url}`;
 }
+function validRotationProvenance(raw: unknown): boolean {
+  if (raw === undefined) return true;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return false;
+  const value = raw as Record<string, unknown>;
+  return keysExactly(value, ["status", "notice_zh"]) && value.status === "UNVERIFIED"
+    && value.notice_zh === ROTATION_NOTICE_ZH;
+}
 function latestEventText(entry: BottleneckEntry): string {
   const e = entry.latest_event;
   return e ? `最新事件（${e.status === "PRIMARY_METADATA_ONLY" ? "申報紀錄，內容未核" : "官方公告"}）：${e.published_on} ${e.headline_zh}`
@@ -707,6 +721,7 @@ export function parseBottleneckV3(raw: unknown, now = Date.now(), options: Bottl
   if (!Array.isArray(doc.top) || doc.top.length < 10 || doc.top.length > 20 || !doc.top.every((entry: any) => validEntry(entry, doc.generated_at))) return null;
   if (!doc.top.every((entry: BottleneckEntry, index: number) => entry.rank === index + 1)) return null;
   if ("excluded_pending" in doc || !validActionExclusions(doc.excluded_actions, doc.generated_at, doc.top)) return null;
+  if (!validRotationProvenance(doc.rotation_provenance)) return null;
   if (!Array.isArray(doc.industries) || doc.industries.length < 3 || doc.industries.length > 20 || !doc.industries.every(validIndustry)) return null;
   const serenity = doc.serenity_source && https(doc.serenity_source.url) ? { url: doc.serenity_source.url, latest_post_at: doc.serenity_source.latest_post_at ?? null } : null;
   const leopold = doc.leopold_filing && https(doc.leopold_filing.url) ? doc.leopold_filing : null;
@@ -718,21 +733,45 @@ export function parseBottleneckV3(raw: unknown, now = Date.now(), options: Bottl
       forecast: parseOutlookForecast(entry.outlook, reportDay, entry.symbol, doc.generated_at, options), ...(trend ? { trend } : {}) };
   });
   return { generated_at: doc.generated_at, serenity_source: serenity, leopold_filing: leopold,
-    top, industries: doc.industries, deep_reports: deep, excluded_actions: doc.excluded_actions };
+    top, industries: doc.industries, deep_reports: deep, excluded_actions: doc.excluded_actions,
+    rotation_provenance: doc.rotation_provenance };
 }
 
 export async function loadBottleneckV3(view: PublicSnapshotView, options: BottleneckReadOptions = {}): Promise<BottleneckV3 | null> {
   if (view.integrity !== "sealed") return null;
+  const observedAt = Date.now();
+  let raw: unknown;
+  let effectiveOptions = options;
+  let machineUnavailable = false;
   if (options.guidanceMachineEnabled === true) {
-    if (view.kind !== "snapshot" || !view.hasSealedObject?.(BOTTLENECK_V3_KEY) || !view.hasSealedObject?.(GUIDANCE_BINDING_KEY)) return null;
+    if (view.kind !== "snapshot" || !view.hasSealedObject?.(BOTTLENECK_V3_KEY)) return null;
     const [report, binding] = await Promise.all([view.text([BOTTLENECK_V3_KEY]), view.text([GUIDANCE_BINDING_KEY])]);
-    if (report === null || binding === null) return null;
-    const selected = resolveSealedMachineBindings(report, binding);
-    if (selected === null) return null; // no second latest/KV read/legacy single object or packet-chosen expected data
-    try { return parseBottleneckV3(JSON.parse(report), Date.now(), {...options, machineBindings: selected}); }
-    catch { return null; }
+    if (report === null) return null;
+    const selected = binding === null ? null : resolveSealedMachineBindings(report, binding);
+    machineUnavailable = selected === null;
+    // A caller's bindings cannot repair missing custody or authorize an old forecast.
+    effectiveOptions = { ...options, machineBindings: selected ?? undefined };
+    try { raw = JSON.parse(report); } catch { return null; }
+  } else raw = await view.json<unknown>([BOTTLENECK_V3_KEY]);
+  const current = machineUnavailable ? null : parseBottleneckV3(raw, observedAt, effectiveOptions);
+  if (current) return current;
+  const retained = await readRetainedRanking(view, observedAt);
+  if (!retained) return null;
+  const historical = parseBottleneckV3(retained.raw, retained.parseAt, effectiveOptions);
+  if (!historical) return null;
+  historical.historical_retention_notice = retained.notice;
+  if (options.guidanceMachineEnabled === true) {
+    // Keep ranking facts, not expired machine authority or a silent legacy forecast.
+    historical.historical_forecasts_unavailable = true;
+    historical.historical_retention_notice += " 機器預估未延展核准；僅保留當時排行事實，不列新的訂單預估或股價情境。";
+    historical.deep_reports = {};
+    for (const entry of historical.top) {
+      delete entry.outlook;
+      delete entry.forecast;
+      delete entry.trend;
+    }
   }
-  return parseBottleneckV3(await view.json<unknown>([BOTTLENECK_V3_KEY]), Date.now(), options);
+  return historical;
 }
 
 const pct = (value: number | null | undefined, digits = 1) => value === null || value === undefined ? "未揭露" : `${value >= 0 ? "+" : ""}${(value * 100).toFixed(digits)}%`;
@@ -1020,6 +1059,7 @@ function parseOutlookForecast(outlook: Outlook | null | undefined, reportDay: st
 
 /** V13: the history-model view of an entry (null unless its revenue state passed the fail-closed eligibility list). */
 function historyOf(doc: BottleneckV3, entry: BottleneckEntry): HistoryView | null {
+  if (doc.historical_forecasts_unavailable) return null;
   return historyViewOf(forecastOf(doc, entry), entry.fundamentals, doc.generated_at.slice(0, 10));
 }
 
@@ -1186,6 +1226,7 @@ function median(values: number[]): number | null {
   return data.length%2 ? data[mid]! : (data[mid-1]!+data[mid]!)/2;
 }
 export function estimateTop20Fallback(doc: BottleneckV3, entry: BottleneckEntry): {m6:Top20Fallback; m12:Top20Fallback} | null {
+  if (doc.historical_forecasts_unavailable) return null;
   const f=entry.fundamentals;
   const unit=f?.revenue_unit ?? entry.market.currency;
   const currency=typeof unit==="string" && /^[A-Z]{3}$/.test(unit) ? unit : null;
@@ -1504,7 +1545,9 @@ export function buildBottleneckTop20Messages(doc: BottleneckV3, style: "flex" | 
     // Paginated into at most five messages of whole entries (never an entry cut away by a length limit).
     const blocks = [`瓶頸爆發 TOP20（v3，產生 ${formatTaipeiTimestamp(doc.generated_at)}）`,
       "排序：層級熱度＋公司捕獲＋社群與機構線索＋市場確認＋爆發性；2年年化報酬為負者排除。分拆、恢復交易、IPO 或重整新股不足2年者，改用已核實正常交易首日以來年化（至少1年，非2年）；沿革未核實且價格不足2年者不列入。非投資建議。",
+      ...(doc.historical_retention_notice ? [doc.historical_retention_notice] : []),
       ...lines, ...(doc.excluded_actions ?? []).map(excludedActionText),
+      ...(doc.rotation_provenance ? [doc.rotation_provenance.notice_zh] : []),
       "輸入「瓶頸詳情 代號」看逐項數據與來源；「產業爆發榜」看 Leopold 邏輯產業排序。", "公開研究，非投資建議；不自動下單。"];
     const pages: string[] = [];
     for (const block of blocks) {
@@ -1519,11 +1562,17 @@ export function buildBottleneckTop20Messages(doc: BottleneckV3, style: "flex" | 
   const alt = (index: number, total: number) => `瓶頸爆發 TOP20（${index + 1}/${total}）`;
   const build = (lean: boolean) => {
     const notes: ReplyDisclosure[] = [];
+    if (doc.historical_retention_notice) notes.push({
+      scope: "本頁排行與情境", label: "歷史保留資料", text: doc.historical_retention_notice,
+    });
     const cards = doc.top.map(entry => companyBubble(doc, entry, notes, lean));
     notes.push(...(doc.excluded_actions ?? []).map(row => ({
       scope: row.symbol, label: "未納入排行",
       text: `${row.reason_zh}；${corporateActionNotice(row)}；官方來源：${row.corporate_action.source_url}`,
     })));
+    if (doc.rotation_provenance) notes.push({
+      scope: "本輪排行", label: "輪動來源", text: doc.rotation_provenance.notice_zh,
+    });
     return packCarousels([...cards, replyDisclosureBubble(notes)], alt, doc.generated_at);
   };
   try {
@@ -1553,6 +1602,9 @@ function detailBubbles(doc: BottleneckV3, entry: BottleneckEntry) {
   const kind = entry.archetype === "EXPLOSION" ? "爆發型（市值<US$10B）" : "核心複利型";
   const buttons = [detailsButton(`${entry.symbol} 完整數據與網址`, `瓶頸詳情 ${entry.symbol} 文字`), menuAction("回瓶頸 TOP20", "TOP20")];
   const sharedNotes: ReplyDisclosure[] = qualificationNotes(entry);
+  if (doc.historical_retention_notice) sharedNotes.push({
+    scope: entry.symbol, label: "歷史保留資料", text: doc.historical_retention_notice,
+  });
   const page = (eyebrow: string, body: unknown[], notes: { label: string; text: string }[], compact = false) => {
     sharedNotes.push(...notes.map(note => ({ scope: eyebrow, ...note })));
     return {
@@ -1699,6 +1751,7 @@ function detailText(doc: BottleneckV3, entry: BottleneckEntry): string {
   const coverageValue = (value: number | null | undefined) => value === null || value === undefined ? "未揭露" : `${value.toFixed(0)}%`;
   return [
     `【瓶頸詳情｜#${entry.rank} ${entry.symbol} ${chineseName(entry)}（${entry.name}）】`,
+    ...(doc.historical_retention_notice ? [doc.historical_retention_notice] : []),
     `型態：${entry.archetype === "EXPLOSION" ? "瓶頸爆發型（市值<US$10B）" : "核心複利型"}；市值 ${cap(entry.market_cap_usd)}`,
     `瓶頸位置：${entry.role_zh ?? entry.role}${entry.role_zh ? `（原文：${entry.role}）` : ""}`,
     ...(needsTop20Fallback(doc,entry) ? ([0,1] as const).flatMap(index=>{
@@ -1756,8 +1809,9 @@ export function buildBottleneckDetail(doc: BottleneckV3, symbol: string, style: 
   const entry = findBottleneckEntry(doc, symbol);
   if (!entry) {
     const excluded = doc.excluded_actions?.find(row => row.symbol.toUpperCase() === symbol.toUpperCase());
-    return excluded ? excludedActionText(excluded)
+    const text = excluded ? excludedActionText(excluded)
       : `「${symbol}」不在本輪瓶頸爆發 TOP20（產生 ${formatTaipeiTimestamp(doc.generated_at)}）。`;
+    return doc.historical_retention_notice ? `${doc.historical_retention_notice}\n${text}` : text;
   }
   // The detail card first; then the company data report (SEC filings, business profile, thesis phase, order
   // realization) when one is sealed.

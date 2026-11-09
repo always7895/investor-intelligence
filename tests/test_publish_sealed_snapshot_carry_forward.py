@@ -239,9 +239,24 @@ class LkgHelperTests(unittest.TestCase):
         now = datetime.now(timezone.utc).replace(microsecond=0)
         for hour in range(1, 8):
             run = f"20260926T0{hour}0000Z-{hour:012x}"
-            carry.promote(write_bundle(self.dir, synthetic_bundle(now - timedelta(hours=1), run_id=run)), now, self.lkg)
+            bundle = synthetic_bundle(now - timedelta(hours=1), run_id=run)
+            # Distinct ordered membership is a due publication; identical hourly
+            # candidates are deliberately retained by the shared write policy.
+            for name in ("top20_json", "v212_top20_report_json", "v213_top20_report_json"):
+                edit_payload(bundle, name, lambda doc: (doc if isinstance(doc, list) else doc["records"])[0].update(ticker=f"V{hour}"))
+            carry.promote(write_bundle(self.dir, bundle), now, self.lkg)
         self.assertEqual(len(list(self.lkg.glob("*.json"))), carry.KEEP_LKG)
         self.assertEqual(carry.newest_lkg(self.lkg).stem, "20260926T070000Z-000000000007")
+
+    def test_unchanged_candidate_does_not_persist_another_lkg(self):
+        now = datetime.now(timezone.utc).replace(microsecond=0)
+        first = write_bundle(self.dir, synthetic_bundle(now - timedelta(hours=1), run_id="20260926T010000Z-aaaaaaaaaaaa"))
+        carry.promote(first, now, self.lkg)
+        next_candidate = write_bundle(self.dir, synthetic_bundle(now, run_id="20260926T020000Z-bbbbbbbbbbbb"))
+        before = {p.name: p.read_bytes() for p in self.lkg.iterdir()}
+        result = carry.promote(next_candidate, now, self.lkg)
+        self.assertEqual((result["retained"], result["reason"]), ("20260926T010000Z-aaaaaaaaaaaa", "NO_CHANGE"))
+        self.assertEqual({p.name: p.read_bytes() for p in self.lkg.iterdir()}, before)
 
 
 class StagedReplayTests(unittest.TestCase):

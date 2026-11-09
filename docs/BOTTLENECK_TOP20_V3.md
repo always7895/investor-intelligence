@@ -392,14 +392,33 @@ Source implementation only: **IMPLEMENTED_UNVERIFIED**, not deployed or independ
   Conditions never alter scores or override company, positive-return, rights or freshness gates.
   R10 ATM terms and R13 independent institutional changes remain UNKNOWN without document-level evidence.
   Relative momentum needs aligned QQQ/SOXX observations; missing benchmarks and incomplete drawdown windows remain UNKNOWN.
-- `scripts/top20_rotation_provenance.py` records the full candidate universe, per-family input hashes, per-symbol rule
-  evidence and membership/order differences in `top20-rotation-shadow-v2`. It verifies the full HMAC chain before an
-  exclusive hash-chained append. Missing candidate fingerprints, malformed old journals, stale writer locks and invalid clocks
-  fail closed. Missing process-only `II_R2B_SHADOW_SIGNING_KEY` yields UNCONFIGURED, never SIGNED.
-  The protected host additionally requires an explicit caller-owned `II_R2B_SHADOW_LOG` path; it never writes its immutable code tree.
-  Source-family changes are possible causes, not causal proof; failed refreshes never advance the last-good signed observation.
-  Source-change hashes exclude invocation dates, requested-history start, age/decay metadata and overdue-review flags;
-  the observation clock remains in the signed record. A clock-only replay does not claim new prices or filings.
+- `scripts/ranking_write_policy.py` separates hourly evaluation from persistence: only an ordered Top20 membership/order
+  change, an initial qualified ranking, or a heartbeat at least six hours after the last confirmed seal permits writes.
+  Source/score/clock-only changes within six hours do not rewrite the ranking, journal, completion witness or KV pointer.
+  A genuine retained host result uses a run-bound machine frame; it consumes no pending input and creates no new ACK.
+- KV free-tier writes are [1,000/day](https://developers.cloudflare.com/kv/platform/limits/). The local UTC ledger reserves
+  600 for other products and permits at most 400 ranking writes/day. Before any remote write, one atomic reservation
+  covers all unreused objects, the pointer, and every bounded caller retry; failed attempts are not refunded. Other
+  products must remain within their reserve: this is not an account-wide meter. Provider daily-limit errors stop further
+  writes until 00:00 UTC; the next permitted evaluation resumes automatically. No manually changed flag is required.
+  No-change, budget and genuinely insufficient-candidate outcomes retain only a readback-confirmed last-good snapshot
+  (`NO_CHANGE`, `WRITE_BUDGET`, `CANDIDATE_UNAVAILABLE`); they are not new publications. An unaffordable first publication
+  without verified last-good returns `BOOTSTRAP_REQUIRED`, never an invented ranking. Bad seals, digests and clocks refuse.
+  All-object readback, immutable lazy blobs and pointer-last remain mandatory; an attempted pointer is never called retained.
+- The Worker can serve exact historical ranking facts only through verified sealed-reader custody, with the original
+  as-of and a dated historical notice on ranking/detail Text and Flex. It does not restamp old data. Historical machine
+  forecasts, fallback models and attached company reports are withheld rather than renewing approval at a replay clock.
+- `scripts/top20_rotation_provenance.py` stores candidate/source/rule digests and membership/order deltas, not full ranking
+  documents. Each v3 segment is at most 4 MiB; eight retained segments plus an HMAC-signed checkpoint authenticate the
+  retained tail, not pruned lifetime genesis. Every retained link is verified before append. Normal retained storage is
+  at most 32 MiB plus the bounded checkpoint; interrupted pruning may leave one overflow record and checkpoint temp,
+  but must complete before further growth. Legacy v2 bytes are retained, not migrated or overwritten.
+  Stable OS locks recover only an aged, confirmed-dead owner; Windows checks use query-only rights. Size/lock/signing/IO
+  failures log a sanitized cause and seal the fixed zh-TW UNVERIFIED advisory without stopping ranking or last-good serving.
+  Missing process-only `II_R2B_SHADOW_SIGNING_KEY` is UNCONFIGURED, never SIGNED. The protected host also requires an explicit
+  caller-owned `II_R2B_SHADOW_LOG`, never its immutable code tree. Failed ranking/data validation never appends.
+  An observation precedes serialization/sealing: later publication failure leaves no proof of publication, acceptance
+  or causality. Source hashes exclude invocation-only clocks/decay; actual source changes remain merely possible causes.
 - Serenity schema 4 distinguishes original/reply/quote/repost, deduplicates source identity/content across scoring and
   chronology, and records source/retrieval age and mirror status. An archive or oEmbed lookup does not authenticate
   an author's claim or create an independent source. Current source fingerprints exclude clock-derived decay; older
@@ -436,7 +455,11 @@ Source implementation only: **IMPLEMENTED_UNVERIFIED**, not deployed or independ
 - Ordinary and guidance-enabled source orchestration run ranking on each hourly refresh, without a separate three-hour skip.
   Same-owner clean-witness reuse requires a nonfuture cutoff less than one hour old; pending completion still requires readback.
   No installed task, runtime or Production service was changed; a carry-forward seal is not evidence of a new ranking.
-- Order realization groups 2Y → 1Y → 6M, sorting coverage only within the same period. Text is losslessly paginated and Flex
-  bars use per-period maxima. Missing horizons remain null/未揭露, never zero or interpolation.
-- The macro growth tile reads **申報企業樣本營收年增（非總市場）**, not total-market growth or TAM CAGR.
+- Order realization groups 2Y → 1Y → 6M, comparing only within one period. Complete three-period rows are marked
+  `6M／1Y／2Y 完整揭露`; partial rows remain visible with `部分期間揭露`. The 2026-11-08 NO-EMPTY-NUMBERS rule supersedes
+  the 2026-09-25 all-three-period filter. Text is lossless; missing horizons remain null/未揭露, never interpolation.
+- Missing/rejected growth does not fabricate 0%. A genuine industry observation above 300% uses an explicitly disclosed
+  300% input cap, a one-half discount and final −35%/+50% bounds; no defensible basis remains 未驗證. Genuine zero is valid.
+- Macro growth is `申報企業樣本營收年增（非總市場）` only for actual `% YoY` SEC XBRL-frame revenue observations.
+  Other or missing bases remain explicitly unconfirmed/unprovided, never a fabricated total-market or TAM CAGR.
 

@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 """Top20 last-known-good (LKG) bundle for the hourly sealed publisher (single-writer design, T5).
 
-The hourly publisher is the only Production writer. It re-seals the newest validated Top20 bundle byte for byte
-(``load_top20_bundle``) and never re-stamps report or row times; the report may be carried until
-``report_max_age_hours`` (config/v213-top20-report-freshness-v1.json) minus one hourly interval. A data-only
-refresh writes a candidate bundle; ``promote`` copies it into the LKG directory only after the same checks pass.
-``due`` tells the hourly script whether a refresh is needed (LKG older than ``refresh_after_hours``, or missing)
-and not suppressed by the persisted backoff after a failed refresh.
+The hourly publisher evaluates without re-sealing an unchanged ranking before the six-hour heartbeat. A confirmed
+last-good seal and its exact report/row times remain untouched during cadence or quota suppression; historical
+retention never grants fresh evidence or a new approval. A data-only refresh writes a candidate bundle; ``promote``
+copies it into the LKG directory only after the same checks and ordered-ranking cadence pass. ``due`` tells the
+hourly script whether a refresh is needed and not suppressed by the persisted backoff after a failed refresh.
 
 Commands (JSON on stdout):
   top20_carry_forward.py check   --bundle PATH
@@ -30,6 +29,110 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import v213_evidence_policy as policy  # noqa: E402
+import ranking_write_policy as write_policy  # noqa: E402
+
+CONFIRMED_NAME = ".ranking-last-good.json"
+SEALED_RANKING_KEY = "v213:bottleneck-top20:v3"
+SEALED_MANIFEST_KEY = "v213:snapshot-seal:v1"
+
+
+def plain_path(path: Path) -> Path:
+    """Reject symlinks/junctions before opening a local publication operand."""
+    path = Path(os.path.abspath(path))
+    for item in (path, *path.parents):
+        if item.is_symlink() or getattr(item, "is_junction", lambda: False)():
+            raise ValueError("UNSAFE_RANKING_PATH")
+        try:
+            if item.lstat().st_file_attributes & 0x400:
+                raise ValueError("UNSAFE_RANKING_PATH")
+        except (FileNotFoundError, AttributeError):
+            pass
+    return path
+
+
+def ranking_from_objects(objects: dict, pointer: dict) -> dict | None:
+    """Resolve the real lazy blob through its immutable seal, not an arbitrary cache."""
+    run = pointer.get("run_id")
+    if not isinstance(run, str) or not RUN_ID.fullmatch(run):
+        raise ValueError("SEALED_RANKING_RUN")
+    prefix = f"snapshot:{run}:"
+    seal_text = objects.get(prefix + SEALED_MANIFEST_KEY)
+    if seal_text is None:
+        return None  # older non-ranking sync operands remain supported
+    if hashlib.sha256(seal_text.encode("utf-8")).hexdigest() != pointer.get("seal_sha256"):
+        raise ValueError("SEALED_RANKING_DIGEST")
+    seal = json.loads(seal_text)
+    if seal.get("run_id") != run or not isinstance(seal.get("objects"), dict):
+        raise ValueError("SEALED_RANKING_MANIFEST")
+    name = SEALED_RANKING_KEY if SEALED_RANKING_KEY in seal["objects"] else "v213:top20-report:latest"
+    entry = seal["objects"].get(name)
+    if not isinstance(entry, dict):
+        return None
+    key = "blob:v1:" + str(entry.get("sha256")) if name == SEALED_RANKING_KEY else prefix + name
+    body = objects.get(key)
+    if not isinstance(body, str) or hashlib.sha256(body.encode("utf-8")).hexdigest() != entry.get("sha256") \
+            or len(body.encode("utf-8")) != entry.get("utf8_bytes"):
+        raise ValueError("SEALED_RANKING_BODY")
+    document = json.loads(body)
+    if not isinstance(document, dict):
+        raise ValueError("SEALED_RANKING_DOCUMENT")
+    rows = document.get("top", document.get("records"))
+    if document.get("schema") != "v213-bottleneck-top20-v3-sealed" and (
+            not isinstance(rows, list) or not 10 <= len(rows) <= 20):
+        return None  # an honest insufficient/legacy two-row fixture is not a Top20
+    write_policy.publication_due(None, document, datetime.fromisoformat(seal["generated_at"].replace("Z", "+00:00")))
+    # The cadence clock is the seal assembly, NEVER a rewritten source/body clock.
+    return {**document, "generated_at": seal["generated_at"]}
+
+
+def confirmed_snapshot(snapshot_root: Path) -> dict | None:
+    """Local receipt exists only after all objects AND the pointer passed readback."""
+    root = plain_path(snapshot_root)
+    receipt_path = plain_path(root / CONFIRMED_NAME)
+    if not receipt_path.exists():
+        return None
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    run = receipt.get("run_id")
+    if receipt.get("schema_version") != 1 or not isinstance(run, str) or not RUN_ID.fullmatch(run):
+        raise ValueError("LAST_GOOD_RECEIPT")
+    run_dir = plain_path(root / run)
+    object_raw = plain_path(run_dir / "objects.json").read_bytes()
+    pointer_raw = plain_path(run_dir / "pointer.raw.json").read_bytes()
+    if hashlib.sha256(object_raw).hexdigest() != receipt.get("objects_sha256") or \
+            hashlib.sha256(pointer_raw).hexdigest() != receipt.get("pointer_sha256"):
+        raise ValueError("LAST_GOOD_IMMUTABLE_BYTES")
+    pointer = json.loads(pointer_raw)
+    if pointer.get("run_id") != run:
+        raise ValueError("LAST_GOOD_POINTER")
+    document = ranking_from_objects(json.loads(object_raw), pointer)
+    if document is None:
+        return None
+    return {"run_id": run, "ranking": document, "pointer": pointer, "run_dir": run_dir}
+
+
+def confirm_snapshot(run_dir: Path) -> None:
+    """Called ONLY after actual all-object and pointer readback confirmation."""
+    run_dir = plain_path(run_dir)
+    objects = plain_path(run_dir / "objects.json").read_bytes()
+    pointer = plain_path(run_dir / "pointer.raw.json").read_bytes()
+    parsed = json.loads(pointer)
+    if ranking_from_objects(json.loads(objects), parsed) is None:
+        return
+    receipt = {"schema_version": 1, "run_id": parsed["run_id"],
+               "objects_sha256": hashlib.sha256(objects).hexdigest(),
+               "pointer_sha256": hashlib.sha256(pointer).hexdigest()}
+    target = plain_path(run_dir.parent / CONFIRMED_NAME)
+    _write_atomic(target, json.dumps(receipt, separators=(",", ":")).encode("utf-8"))
+
+
+def retained_snapshot(snapshot_root: Path, reason: str = "NO_CHANGE") -> dict:
+    previous = confirmed_snapshot(snapshot_root)
+    if previous is None:
+        raise BundleRejected("BOOTSTRAP_REQUIRED")
+    pointer = previous["pointer"]
+    return {"status": "RETAINED_LAST_GOOD", "retention_reason": reason, "pointer_state": "NOT_ATTEMPTED",
+            "run_id": previous["run_id"], "retained_run_id": previous["run_id"],
+            "public_data_as_of": pointer.get("public_data_as_of"), "promoted_at": pointer.get("promoted_at")}
 
 LKG_DIR = ROOT / "data" / "cache" / "top20-lkg"
 PUBLICATION_MODE_PATH = ROOT / "config" / "v213-r75-publication-mode-v2.json"
@@ -63,6 +166,7 @@ def _age_ok(value: Any, now: datetime, limit_seconds: float) -> bool:
 def load_top20_bundle(path: Path, now: datetime) -> dict[str, Any]:
     """Validated carry set: {"payloads": {name: exact text}, "run_id", "bundle_sha256", "report_generated_at",
     "tickers", "test_only_admission"}. Raises BundleRejected with a reason code."""
+    path = plain_path(path)
     try:
         raw = path.read_bytes()
     except OSError as error:
@@ -123,21 +227,24 @@ def load_top20_bundle(path: Path, now: datetime) -> dict[str, Any]:
 
 def newest_lkg(lkg_dir: Path = LKG_DIR) -> Path | None:
     """Newest LKG file; names are run ids, so name order is time order."""
-    files = sorted(p for p in lkg_dir.glob("*.json") if RUN_ID.fullmatch(p.stem))
+    lkg_dir = plain_path(lkg_dir)
+    files = sorted(plain_path(p) for p in lkg_dir.glob("*.json") if RUN_ID.fullmatch(p.stem))
     return files[-1] if files else None
 
 
 def _read_state(lkg_dir: Path) -> dict[str, Any]:
     try:
-        state = json.loads((lkg_dir / STATE_NAME).read_text(encoding="utf-8"))
+        state = json.loads(plain_path(lkg_dir / STATE_NAME).read_text(encoding="utf-8"))
         return state if isinstance(state, dict) else {}
     except (OSError, ValueError):
         return {}
 
 
 def _write_atomic(path: Path, data: bytes) -> None:
+    path = plain_path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     temp = path.with_name(path.name + ".tmp")
+    plain_path(temp)
     temp.write_bytes(data)
     os.replace(temp, path)
 
@@ -167,9 +274,20 @@ def promote(candidate: Path, now: datetime, lkg_dir: Path = LKG_DIR) -> dict[str
     """Copy a candidate bundle into the LKG directory (exact bytes) after it passes load_top20_bundle; keep the
     newest KEEP_LKG files. A candidate that is not newer than the newest LKG is not promoted."""
     carried = load_top20_bundle(candidate, now)
+    write_policy.publication_due(None, json.loads(carried["payloads"]["v213_top20_report_json"]), now)
     newest = newest_lkg(lkg_dir)
     if newest is not None and newest.stem >= carried["run_id"]:
         raise BundleRejected("TOP20_CANDIDATE_NOT_NEWER")
+    if newest is not None:
+        try:
+            previous = load_top20_bundle(newest, now)
+        except BundleRejected:
+            previous = None
+        if previous is not None and write_policy.publication_due(
+                json.loads(previous["payloads"]["v213_top20_report_json"]),
+                json.loads(carried["payloads"]["v213_top20_report_json"]), now) == "NO_CHANGE":
+            return {"retained": previous["run_id"], "reason": "NO_CHANGE",
+                    "report_generated_at": previous["report_generated_at"]}
     target = lkg_dir / f"{carried['run_id']}.json"
     _write_atomic(target, candidate.read_bytes())
     for old in sorted(p for p in lkg_dir.glob("*.json") if RUN_ID.fullmatch(p.stem))[:-KEEP_LKG]:
@@ -192,10 +310,12 @@ def record(result: str, now: datetime, note: str = "", lkg_dir: Path = LKG_DIR) 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("command", choices=["check", "due", "promote", "record"])
+    parser.add_argument("command", choices=["check", "due", "promote", "record", "retained"])
     parser.add_argument("--bundle", type=Path)
     parser.add_argument("--candidate", type=Path)
     parser.add_argument("--lkg-dir", type=Path, default=LKG_DIR)
+    parser.add_argument("--snapshot-root", type=Path,
+                        default=ROOT / (os.environ.get("II_SNAPSHOT_ROOT", "").strip() or "state/v213-snapshots"))
     parser.add_argument("--result", choices=["ok", "fail"])
     parser.add_argument("--note", default="")
     args = parser.parse_args(argv)
@@ -207,13 +327,19 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "due":
             out = refresh_due(now, args.lkg_dir)
         elif args.command == "promote":
-            out = {"status": "PROMOTED", **promote(args.candidate, now, args.lkg_dir)}
+            promoted = promote(args.candidate, now, args.lkg_dir)
+            out = {"status": "RETAINED_LAST_GOOD" if "retained" in promoted else "PROMOTED", **promoted}
+        elif args.command == "retained":
+            out = retained_snapshot(args.snapshot_root)
         else:
             if not args.result:
                 parser.error("record needs --result")
             out = record(args.result, now, args.note, args.lkg_dir)
     except BundleRejected as error:
         print(json.dumps({"status": "REJECTED", "reason": str(error)}))
+        return 2
+    except (OSError, ValueError, TypeError, KeyError):
+        print(json.dumps({"status": "REJECTED", "reason": "TOP20_LOCAL_STATE_UNAVAILABLE"}))
         return 2
     print(json.dumps(out, ensure_ascii=False))
     return 0

@@ -116,6 +116,19 @@ describe("R2B score-neutral research overlays and pending-deal disclosures", () 
     expect(parseBottleneckV3(wrongParty)).toBeNull();
   });
 
+  it("keeps a ranking available with a fixed unverified rotation advisory, never an approval claim", () => {
+    const notice = "本輪輪動來源鏈未驗證；排行仍依既有資料更新，請人工覆核。";
+    const raw = { ...fixture(), rotation_provenance: { status: "UNVERIFIED", notice_zh: notice } };
+    const parsed = parseBottleneckV3(raw);
+    expect(parsed?.top.map(row => row.score)).toEqual(raw.top.map(row => row.score));
+    if (!parsed) throw new Error("UNVERIFIED_ROTATION_BLOCKED_RANKING");
+    for (const style of ["text", "flex"] as const) {
+      expect(JSON.stringify(buildBottleneckTop20Messages(parsed, style))).toContain(notice);
+    }
+    expect(parseBottleneckV3({ ...raw, rotation_provenance: { status: "VERIFIED", notice_zh: notice } })).toBeNull();
+    expect(parseBottleneckV3({ ...raw, rotation_provenance: { status: "UNVERIFIED", notice_zh: "自動核准" } })).toBeNull();
+  });
+
   it("keeps official TW/KR notices metadata-only and rejects forged claim text or source authority", () => {
     for (const source_url of [
       "https://openapi.twse.com.tw/v1/opendata/t187ap04_L",

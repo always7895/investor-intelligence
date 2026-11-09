@@ -530,5 +530,54 @@ Assert-Equal $script:Store.ClosedCount 1 'case11c close attempted exactly once'
 Assert-True ($r.B2.RebuildCompleted -eq ($null -eq $script:Store.PendingRevision)) 'case11c result flag matches the provider state (pending cleared only by the real acknowledgement)'
 Assert-True ($script:HostText -notlike '*RAW_PROVIDER_TEXT*') 'case11c raw close text never surfaced'
 
-Write-Output 'B2 ORCHESTRATION: 11/11 caller case groups passed (synthetic collaborators only)'
+Write-Output 'CASE 12: source-only cadence suppression serves last-good successfully without ACK or clearing pending'
+foreach ($pendingInput in @($false, $true)) {
+    $script:Store = if ($pendingInput) { New-B2Store -ChangedThisRun $true -NewPending 'input-v2' } else { New-B2Store }
+    $script:Rec = New-Object System.Collections.Generic.List[object]
+    $r = Invoke-DailyDataRefresh -RunStep (New-FakeRunStep) -WithSecContact (New-FakeWithSecContact) `
+        -GuidanceAutoUpdateEnabled $true -GuidanceDirtyRebuildEnabled $true -GuidanceProvider (New-B2InMemoryProvider) `
+        -RunGuidanceRanking {
+            param([string]$Mode, [object]$Revision)
+            [pscustomobject]@{ ExitCode = 0; Completed = $false; Revision = $Revision
+                PublicationSuppressed = $true; ServingLastGood = $true; Reason = 'NO_CHANGE' }
+        }
+    Assert-Equal $r.ExitCode 0 'case12 last-good serving success'
+    Assert-Equal $r.B2.Disposition 'PUBLICATION_SUPPRESSED' 'case12 explicit suppression'
+    Assert-True ($r.B2.PublicationSuppressed -is [bool] -and $r.B2.PublicationSuppressed) 'case12 explicit suppression flag'
+    Assert-True ($r.B2.ServingLastGood -is [bool] -and $r.B2.ServingLastGood) 'case12 historical serving flag'
+    Assert-True ($r.B2.Completed -is [bool] -and -not $r.B2.Completed) 'case12 no fresh completion'
+    Assert-True (-not $r.B2.RebuildCompleted) 'case12 never rebuild completed'
+    Assert-Equal $script:Store.Acknowledged.Count 0 'case12 no ACK'
+    if ($pendingInput) {
+        Assert-Equal $r.B2.PendingRevision 'input-v2' 'case12 result pending retained'
+        Assert-Equal $script:Store.PendingRevision 'input-v2' 'case12 real pending retained'
+    }
+    Assert-Equal $script:Store.ClosedCount 1 'case12 normal close'
+}
+Write-Output 'CASE 13: malformed retained shape never becomes a successful skip'
+foreach ($bad in @('truthy', 'missing', 'wrong-reason', 'not-retained')) {
+    $script:BadSuppression = $bad
+    $script:Store = New-B2Store -ChangedThisRun $true -NewPending 'input-v2'
+    $script:Rec = New-Object System.Collections.Generic.List[object]
+    $r = Invoke-DailyDataRefresh -RunStep (New-FakeRunStep) -WithSecContact (New-FakeWithSecContact) `
+        -GuidanceAutoUpdateEnabled $true -GuidanceDirtyRebuildEnabled $true -GuidanceProvider (New-B2InMemoryProvider) `
+        -RunGuidanceRanking {
+            param([string]$Mode, [object]$Revision)
+            $reply = @{ ExitCode = 0; Completed = $false; Revision = $Revision
+                PublicationSuppressed = $true; ServingLastGood = $true; Reason = 'NO_CHANGE' }
+            switch ($script:BadSuppression) {
+                'truthy' { $reply.PublicationSuppressed = 'true' }
+                'missing' { $reply.Remove('ServingLastGood') }
+                'wrong-reason' { $reply.Reason = 'APPROVED' }
+                'not-retained' { $reply.ServingLastGood = $false }
+            }
+            [pscustomobject]$reply
+        }
+    Assert-Equal $r.ExitCode 1 'case13 malformed suppression fails'
+    Assert-Equal $r.B2.Reason 'FAILED_AT_REBUILD_RANKING' 'case13 fixed failure'
+    Assert-Equal $script:Store.PendingRevision 'input-v2' 'case13 pending retained'
+    Assert-Equal $script:Store.Acknowledged.Count 0 'case13 no ACK'
+}
+
+Write-Output 'B2 ORCHESTRATION: 13/13 caller case groups passed (synthetic collaborators only)'
 exit 0

@@ -53,6 +53,7 @@ import revenue_guidance_wire  # noqa: E402
 import revenue_consensus_quarterly  # noqa: E402
 import top20_carry_forward  # noqa: E402
 import official_quarterly_revenue  # noqa: E402
+import ranking_write_policy as write_policy  # noqa: E402
 
 MACRO_KEY = "v213:macro-industry:latest"
 SHARES_BASES = ("OUTSTANDING", "DILUTED_WEIGHTED_AVERAGE")  # scripts/bottleneck_top20_v3.py shares_basis
@@ -824,6 +825,11 @@ def captured_bottleneck_v3_body(raw: bytes, now: datetime, effective_inputs=None
             if guidance_machine_enabled:
                 raise machine.MachinePublicationBlocked()
             return {}
+        rotation_provenance = doc.get("rotation_provenance")
+        if rotation_provenance is not None:
+            from top20_rotation_provenance import UNVERIFIED_NOTICE_ZH
+            if rotation_provenance != {"status": "UNVERIFIED", "notice_zh": UNVERIFIED_NOTICE_ZH}:
+                raise ValueError("ROTATION_PROVENANCE_INVALID")
         # Apply corporate-action state at the ranking's evidence cutoff, never before its announcement.
         actions = (corporate_actions.load_actions_bytes(operand("corporate_actions").read_bytes(), today=generated.date())
                    if operand else corporate_actions.load_actions(today=generated.date()))
@@ -1010,6 +1016,7 @@ def captured_bottleneck_v3_body(raw: bytes, now: datetime, effective_inputs=None
                   "leopold_filing": pick(filing, ("period", "filed", "url")) if filing.get("url") else None,
                   "top": top, "industries": industries,
                   **({"excluded_actions": excluded_actions} if excluded_actions else {}),
+                  **({"rotation_provenance": rotation_provenance} if rotation_provenance is not None else {}),
                   **({"market_window": market_window} if market_window is not None else {})}
         body = (machine.compact(sealed, machine.REPORT_BYTES).decode("utf-8") if guidance_machine_enabled else
                 json.dumps(sealed, ensure_ascii=False, separators=(",", ":"), allow_nan=False))
@@ -1249,6 +1256,37 @@ def pointer_text(meta, seal_sha: str) -> str:
     return _dumps(pointer)
 
 
+def retained_publication(snapshot_root: Path, objects: dict, pointer: str, now: datetime) -> dict | None:
+    """Read-only preflight: hourly evaluation never creates an unchanged seal."""
+    candidate = top20_carry_forward.ranking_from_objects(objects, json.loads(pointer))
+    previous = top20_carry_forward.confirmed_snapshot(snapshot_root)
+    if candidate is None and previous is None:
+        return None
+    reason = ("CANDIDATE_UNAVAILABLE" if candidate is None else
+              write_policy.publication_due(previous["ranking"] if previous else None, candidate, now))
+    if previous is None:
+        return None
+    if reason not in {"NO_CHANGE", "CANDIDATE_UNAVAILABLE"}:
+        # Exactly the syncer's real content-addressed reuse plan, including every
+        # bounded retry and the serving pointer; the authoritative reserve remains
+        # inside sync immediately before its first possible PUT.
+        import sync_sealed_snapshot_kv as sync
+        ledger = sync.load_ledger()
+        reused = sum(key.startswith(LAZY_BLOB_PREFIX) and
+                     0 <= now.timestamp() - ledger.get(key[len(LAZY_BLOB_PREFIX):], 0.0) < sync.BLOB_REUSE_SECONDS
+                     for key in objects)
+        worst_case = (len(objects) - reused + 1) * sync.ATTEMPTS
+        budget = write_policy.DailyWriteBudget(sync.LEDGER.with_name("ranking-kv-write-budget.json"))
+        if budget.can_reserve(worst_case, now):
+            return None
+        reason = "WRITE_BUDGET"
+    old_pointer = previous["pointer"]
+    return {"status": "RETAINED_LAST_GOOD", "retention_reason": reason,
+            "pointer_state": "NOT_ATTEMPTED", "run_id": previous["run_id"],
+            "retained_run_id": previous["run_id"], "public_data_as_of": old_pointer.get("public_data_as_of"),
+            "promoted_at": old_pointer.get("promoted_at"), "run_dir": str(previous["run_dir"])}
+
+
 def main(argv=None) -> None:
     import argparse
     ap = argparse.ArgumentParser()
@@ -1318,12 +1356,19 @@ def main(argv=None) -> None:
         lazy.update(lazy_bottleneck_v3_body(Path(args.bottleneck_v3), LIVE_NOW or datetime.now(timezone.utc)))
     seal_text, seal_sha = build_seal(bodies, meta, lazy)
     pointer = pointer_text(meta, seal_sha)
+    args.snapshot_root = top20_carry_forward.plain_path(args.snapshot_root)
     out_dir = args.snapshot_root / meta["run_id"]
     prefix = f"snapshot:{meta['run_id']}:"
     objects = {prefix + key: bodies[key] for key in [*OBJECT_KEYS, MACRO_KEY]}
     objects[prefix + SEAL_KEY] = seal_text
     for body in lazy.values():
         objects[LAZY_BLOB_PREFIX + _sha(body)] = body
+    retained = retained_publication(args.snapshot_root, objects, pointer, LIVE_NOW or
+                                   datetime.fromisoformat(GENERATED_AT.replace("Z", "+00:00")))
+    if retained is not None:
+        print(json.dumps(retained, indent=2))
+        return
+    out_dir = top20_carry_forward.plain_path(out_dir)
     objects_path = out_dir / "objects.json"
     objects_bytes = _dumps(objects).encode("utf-8")
     pointer_path = out_dir / "pointer.raw.json"

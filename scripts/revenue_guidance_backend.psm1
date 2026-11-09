@@ -732,12 +732,21 @@ function _GuidanceLeaseOperation([hashtable]$C, [string]$Op, [object]$Expected=$
                 $result.Progress.Cursor -lt 0 -or $result.Progress.Cursor -ge $result.Progress.Slots)) {
                 _GuidanceRetain $C; throw 'GUIDANCE_ACQUISITION_RESULT_UNAVAILABLE'
             }
+            $suppressed = $result.ContainsKey('PublicationSuppressed')
+            if ($suppressed -and ($result.PublicationSuppressed -isnot [bool] -or -not $result.PublicationSuppressed -or
+                $result.Completed -or -not $result.ContainsKey('ServingLastGood') -or
+                $result.ServingLastGood -isnot [bool] -or -not $result.ServingLastGood -or
+                $result.Reason -cne 'NO_CHANGE' -or $progress)) {
+                _GuidanceRetain $C; throw 'GUIDANCE_RANKING_RESULT_UNAVAILABLE'
+            }
+            $C.PublicationSuppressed=$suppressed # Only the validated private same-owner host reply.
             if ($C.MachineEnabled -and $result.Completed) {
                 $C.LastRankingRevision=$result.Revision
                 $null=_GuidanceSend $C 'ExportPublicBundle' @{} # live witness/public readbacks BEFORE orchestration ACK/Close
             }
-            return [pscustomobject]@{ExitCode=$(if ($result.Completed) {0} else {1});Completed=$result.Completed;
-                Revision=$result.Revision;AcquisitionProgress=$progress;
+            return [pscustomobject]@{ExitCode=$(if ($result.Completed -or $suppressed) {0} else {1});Completed=$result.Completed;
+                Revision=$result.Revision;AcquisitionProgress=$progress;PublicationSuppressed=$suppressed;
+                ServingLastGood=$suppressed;Reason=$(if ($suppressed) {'NO_CHANGE'} else {$null});
                 Lines=$(if ($progress) {@('GUIDANCE_ACQUISITION_PENDING')} else {@()})}
         }
         'Close' {
@@ -853,7 +862,7 @@ using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 public static class GuidanceProcessObservation {
     public sealed class MachineCapture {
-        public readonly string ExpectedRun; public bool Seen,Invalid;
+        public readonly string ExpectedRun; public bool Seen,Invalid,Retained;
         public string Token,BodySha256,BindingSha256,ErrorReason;
         public MachineCapture(string run) { if(!Regex.IsMatch(run,"^[0-9a-f]{32}$")) throw new InvalidOperationException("MACHINE_INPUTS_UNAVAILABLE"); ExpectedRun=run; }
     }
@@ -861,7 +870,7 @@ public static class GuidanceProcessObservation {
         char[] buffer=new char[512]; StringBuilder line=new StringBuilder(256); bool dropping=false;
         while(true) {
             int got=await reader.ReadAsync(buffer,0,buffer.Length).ConfigureAwait(false);
-            if(got==0) { if(line.Length>0 && line.ToString().StartsWith("GUIDANCE_MACHINE_RESULT_V1|")) capture.Invalid=true; return; }
+            if(got==0) { if(line.Length>0 && (line.ToString().StartsWith("GUIDANCE_MACHINE_RESULT_V1|") || line.ToString().StartsWith("GUIDANCE_MACHINE_RETAINED_V1|") || line.ToString().StartsWith("GUIDANCE_MACHINE_ERROR_V1|"))) capture.Invalid=true; return; }
             for(int i=0;i<got;i++) {
                 char ch=buffer[i];
                 if(ch=='\n') {
@@ -871,6 +880,13 @@ public static class GuidanceProcessObservation {
                             var error=Regex.Match(text,"^GUIDANCE_MACHINE_ERROR_V1\\|([0-9a-f]{32})\\|(MACHINE_INPUTS_UNAVAILABLE|MACHINE_EVIDENCE_LIMIT|MACHINE_EXPORT_UNAVAILABLE|GUIDANCE_MACHINE_PROVIDER_UNAVAILABLE)$");
                             if(!error.Success || error.Groups[1].Value!=capture.ExpectedRun || capture.Seen || capture.ErrorReason!=null) capture.Invalid=true;
                             else capture.ErrorReason=error.Groups[2].Value;
+                        }
+                        if(text.StartsWith("GUIDANCE_MACHINE_RETAINED_V1|")) {
+                            if(capture.Seen || capture.ErrorReason!=null) capture.Invalid=true;
+                            capture.Seen=true;
+                            var retained=Regex.Match(text,"^GUIDANCE_MACHINE_RETAINED_V1\\|([0-9a-f]{32})\\|NO_CHANGE$");
+                            if(!retained.Success || retained.Groups[1].Value!=capture.ExpectedRun) capture.Invalid=true;
+                            else capture.Retained=true;
                         }
                         if(text.StartsWith("GUIDANCE_MACHINE_RESULT_V1|")) {
                             if(capture.Seen || capture.ErrorReason!=null) capture.Invalid=true;
@@ -886,7 +902,7 @@ public static class GuidanceProcessObservation {
                     }
                     line.Clear(); dropping=false;
                 } else if(!dropping) {
-                    if(line.Length>=512) { if(line.ToString().StartsWith("GUIDANCE_MACHINE_RESULT_V1|")) capture.Invalid=true; line.Clear(); dropping=true; }
+                    if(line.Length>=512) { if(line.ToString().StartsWith("GUIDANCE_MACHINE_RESULT_V1|") || line.ToString().StartsWith("GUIDANCE_MACHINE_RETAINED_V1|") || line.ToString().StartsWith("GUIDANCE_MACHINE_ERROR_V1|")) capture.Invalid=true; line.Clear(); dropping=true; }
                     else line.Append(ch);
                 }
             }
@@ -966,14 +982,18 @@ function Invoke-GuidanceObservedProcess {
         $context.Process.Dispose()
         $null=$script:ObservedGuidanceProcesses.Remove($context)
         $machineBundle=$null
-        if ($machineRequested -and $code -eq 0 -and $context.MachineCapture.Seen -and -not $context.MachineCapture.Invalid) {
+        $retained=$machineRequested -and $code -eq 0 -and $context.MachineCapture.Seen -and
+            $context.MachineCapture.Retained -and -not $context.MachineCapture.Invalid -and $null -eq $context.MachineCapture.ErrorReason
+        if ($machineRequested -and $code -eq 0 -and $context.MachineCapture.Seen -and
+            -not $context.MachineCapture.Retained -and -not $context.MachineCapture.Invalid) {
             $mNonce=$context.MachineCapture.Token
             $machineBundle=[pscustomobject]@{RunId=$MachineRunId
                 Token=$mNonce
                 BodySha256=$context.MachineCapture.BodySha256;BindingSha256=$context.MachineCapture.BindingSha256}
         }
         return [pscustomobject]@{ExitCode=$code;Attempted=$true;Completed=$true;Status='EXIT_OBSERVED';Lines=@();
-            MachineBundle=$machineBundle;MachineReason=$(if ($machineRequested -and $null -eq $machineBundle) {if (-not $context.MachineCapture.Invalid -and $null -ne $context.MachineCapture.ErrorReason) {$context.MachineCapture.ErrorReason} else {'MACHINE_EXPORT_UNAVAILABLE'}} else {$null})}
+            PublicationSuppressed=[bool]$retained;ServingLastGood=[bool]$retained;Reason=$(if ($retained) {'NO_CHANGE'} else {$null});
+            MachineBundle=$machineBundle;MachineReason=$(if ($machineRequested -and -not $retained -and $null -eq $machineBundle) {if (-not $context.MachineCapture.Invalid -and $null -ne $context.MachineCapture.ErrorReason) {$context.MachineCapture.ErrorReason} else {'MACHINE_EXPORT_UNAVAILABLE'}} else {$null})}
     } catch {
         if ($context.Attempted) {
             return [pscustomobject]@{ExitCode=124;Attempted=$true;Completed=$false;Status='ATTEMPTED_UNKNOWN_RETAINED';Lines=@()}
@@ -1008,7 +1028,7 @@ function New-GuidanceBackend {
           [bool]$MachineEnabled=$false, [string]$PublicRunId=$null)
     if ($MachineEnabled -and (-not $Enabled -or $PublicRunId -cnotmatch '^[0-9a-f]{32}$')) { throw 'MACHINE_INPUTS_UNAVAILABLE' }
     $context=@{Enabled=$Enabled;MachineEnabled=$MachineEnabled;PublicRunId=$PublicRunId;PublicBundle=$null;
-        MachineReady=$false;MachineFailure=$null;ExportStarted=$false;LastRankingRevision=$null;StageOwner=$null;Used=$false;Closed=$false;CloseAttempted=$false;Uncertain=$false;Retained=$false;
+        MachineReady=$false;PublicationSuppressed=$false;MachineFailure=$null;ExportStarted=$false;LastRankingRevision=$null;StageOwner=$null;Used=$false;Closed=$false;CloseAttempted=$false;Uncertain=$false;Retained=$false;
         InFlight=$false;Sequence=0;SessionRef=$null;Version=$null;Process=$null;PendingRead=$null;StderrTask=$null;
         StartAttempted=$false;OriginClosed=$false;OriginCloseAttempted=$false;ParentOriginUncertain=$false;Handles=[Collections.Generic.List[IntPtr]]::new();
         Keys=[Collections.Generic.List[object]]::new();DirectorySet=[Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase);
@@ -1022,6 +1042,15 @@ function New-GuidanceBackend {
     [pscustomobject]@{
         BackendFactory=[pscustomobject]@{OpenSession={ & $open $context }.GetNewClosure()}
         GetMachineFailure={ return $context.MachineFailure }.GetNewClosure()
+        GetRetainedResult={
+            if (-not $context.MachineEnabled -or -not $context.PublicationSuppressed -or
+                -not $context.Closed -or $context.Uncertain -or $context.Retained -or
+                $context.MachineReady -or $null -ne $context.PublicBundle -or $null -ne $context.LastRankingRevision) {
+                throw 'MACHINE_EXPORT_UNAVAILABLE'
+            }
+            return [pscustomobject]@{RunId=$context.PublicRunId;PublicationSuppressed=$true;
+                ServingLastGood=$true;Reason='NO_CHANGE'} # Real private host result + settled Close, no fresh witness.
+        }.GetNewClosure()
         GetPublicBundle={
             if (-not $context.MachineEnabled -or -not $context.MachineReady -or -not $context.Closed -or $context.Uncertain) {
                 throw 'MACHINE_EXPORT_UNAVAILABLE'

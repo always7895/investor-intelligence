@@ -4,6 +4,9 @@ Objects -> all-object readback -> pointer LAST -> pointer readback. Failures
 never manufacture success; a failed pointer call/readback leaves its state
 unconfirmed, not "untouched". CLI streams stay in memory and only fixed safe
 categories/counters are emitted. No login, credential inspection or install.
+The complete non-reused-object + pointer plan reserves every bounded PUT attempt
+before any upload against 400/day (1000 free minus 600 for other products). A quota
+stop retains a confirmed historical ranking; UTC midnight admits the next due plan.
 """
 from __future__ import annotations
 
@@ -29,6 +32,8 @@ LAST_ERROR: list[str] = []
 LAST_CALL: dict = {"attempts": 0, "exit_code": None, "error_category": "NONE"}
 LAST_CALL_DETAIL: dict = {"http_status": None, "provider_code": None}
 TOTAL_ATTEMPTS = 0
+PUT_ATTEMPTS = 0
+ACTIVE_WRITE_BUDGET = None
 BLOB_PREFIX = "blob:v1:"
 RUN_KEY_TTL_SECONDS = 14 * 86400
 BLOB_TTL_SECONDS = 30 * 86400
@@ -44,6 +49,9 @@ KV_GET_HTTP_STATUS = re.compile(r"Failed to fetch \S+ - (\d{3}):")
 # 2026-10-16/17 (KV GETs answered 401, count not kept in the evidence; 5 KV PUTs answered code 10000) came from the invocation that had just
 # refreshed the expired OAuth token, and the next invocation succeeded with the stored token. Same credential, no fallback.
 AUTH_RETRY_SECONDS = 15.0
+
+import ranking_write_policy as write_policy
+import top20_carry_forward as carry
 
 
 class CliUnavailable(RuntimeError):
@@ -182,7 +190,7 @@ def _error_summary(p: subprocess.CompletedProcess) -> str:
 
 
 def _run_with_retry(args: list[str]) -> subprocess.CompletedProcess:
-    global TOTAL_ATTEMPTS
+    global TOTAL_ATTEMPTS, PUT_ATTEMPTS
     launched = 0
     LAST_ERROR.clear()
     for attempt in range(1, ATTEMPTS + 1):
@@ -218,6 +226,10 @@ def _run_with_retry(args: list[str]) -> subprocess.CompletedProcess:
             break
         time.sleep((AUTH_RETRY_SECONDS if rejected else RETRY_SECONDS) * attempt)
     TOTAL_ATTEMPTS += launched
+    if args[:3] == ["kv", "key", "put"]:
+        PUT_ATTEMPTS += launched
+    if LAST_CALL["error_category"] == KV_DAILY_LIMIT and ACTIVE_WRITE_BUDGET is not None:
+        ACTIVE_WRITE_BUDGET.stop_until_reset(datetime.now(timezone.utc))
     return p
 
 
@@ -235,14 +247,14 @@ def client_get(key: str) -> str | None:
 
 def load_ledger(path: Path | None = None) -> dict[str, float]:
     try:
-        value = json.loads((path or LEDGER).read_text(encoding="utf-8"))
+        value = json.loads(carry.plain_path(path or LEDGER).read_text(encoding="utf-8"))
         return {str(k): float(v) for k, v in value.items()} if isinstance(value, dict) else {}
     except (OSError, ValueError, TypeError):
         return {}
 
 
 def save_ledger(ledger: dict[str, float], path: Path | None = None) -> None:
-    path = path or LEDGER
+    path = carry.plain_path(path or LEDGER)
     horizon = time.time() - BLOB_TTL_SECONDS
     kept = {k: v for k, v in ledger.items() if v >= horizon}
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -260,13 +272,16 @@ def _outcome(operation: str) -> dict:
             "phase": "INPUT", "error_category": "UNKNOWN", "pointer_state": "NOT_ATTEMPTED",
             "run_id": "", "cli_attempts_total": 0, "last_cli_attempts": 0,
             "last_cli_exit_code": None, "objects_uploaded": 0, "objects_reused": 0,
-            "objects_verified": 0, "failed_objects": []}
+            "objects_verified": 0, "failed_objects": [], "writes_reserved": 0,
+            "writes_attempted": 0, "ranking_allowance": 400,
+            "retention_reason": None, "retained_run_id": None}
 
 
 def _finish_call(record: dict, category: str | None = None) -> None:
     record.update(cli_attempts_total=TOTAL_ATTEMPTS, last_cli_attempts=LAST_CALL["attempts"],
                   last_cli_exit_code=LAST_CALL["exit_code"],
                   error_category=category or LAST_CALL["error_category"])
+    record["writes_attempted"] = PUT_ATTEMPTS
 
 
 
@@ -293,9 +308,83 @@ def _record_failed_object(record: dict, key: str) -> None:
     })
 
 
+def _retain(record: dict, previous: dict | None, reason: str) -> int:
+    if previous is None:
+        _finish_call(record, "BOOTSTRAP_REQUIRED")
+        record["retention_reason"] = reason
+        return 1
+    _finish_call(record, "NONE")
+    record.update(status="RETAINED_LAST_GOOD", phase="COMPLETE", retention_reason=reason,
+                  retained_run_id=previous["run_id"])
+    return 0
+
+
+def _discover_last_good(run_dir: Path) -> dict | None:
+    """Bootstrap a receipt from real readbacks, never merely a local sealed run."""
+    from publish_sealed_snapshot import OBJECT_KEYS, MACRO_KEY
+    raw = client_get("snapshot:current")
+    if raw is None:
+        return None
+    try:
+        pointer = json.loads(raw)
+        run = pointer["run_id"]
+        if not isinstance(run, str) or not RUN_ID.fullmatch(run):
+            return None
+        prefix = f"snapshot:{run}:"
+        seal_key = prefix + carry.SEALED_MANIFEST_KEY
+        seal_text = client_get(seal_key)
+        if seal_text is None or sha(seal_text) != pointer.get("seal_sha256"):
+            return None
+        manifest = json.loads(seal_text)
+        rows = manifest["objects"]
+        if manifest.get("run_id") != run or not isinstance(rows, dict) or not 1 <= len(rows) <= 4096:
+            return None
+        objects = {seal_key: seal_text}
+        for name, entry in rows.items():
+            if not isinstance(name, str) or not isinstance(entry, dict):
+                return None
+            digest = entry.get("sha256")
+            if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
+                return None
+            key = prefix + name if name in (*OBJECT_KEYS, MACRO_KEY) else "blob:v1:" + digest
+            body = objects.get(key)
+            if body is None:
+                body = client_get(key)
+            if body is None or sha(body) != digest or len(body.encode("utf-8")) != entry.get("utf8_bytes"):
+                return None
+            objects[key] = body
+        ranking = carry.ranking_from_objects(objects, pointer)
+        if ranking is None:
+            return None
+        # Re-read the pointer after the entire object set: a concurrent promotion
+        # cannot be mistaken for the captured serving set.
+        if client_get("snapshot:current") != raw:
+            return None
+        target = carry.plain_path(run_dir.parent / run)
+        object_raw = json.dumps(objects, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        pointer_raw = raw.encode("utf-8")
+        for name, data in (("objects.json", object_raw), ("pointer.raw.json", pointer_raw)):
+            path = carry.plain_path(target / name)
+            if path.exists():
+                existing = path.read_bytes()
+                # Objects' mapping order/spacing may differ; immutable local bytes
+                # must agree semantically and are never overwritten.
+                if (json.loads(existing) != objects if name == "objects.json" else existing != data):
+                    return None
+            else:
+                target.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(data)
+        carry.confirm_snapshot(target)
+        return carry.confirmed_snapshot(run_dir.parent)
+    except (ValueError, KeyError, TypeError):
+        return None
+
+
 def sync_run(run_dir: Path, record: dict) -> int:
-    objects = json.loads((run_dir / "objects.json").read_text(encoding="utf-8"))
-    ptr_raw = (run_dir / "pointer.raw.json").read_text(encoding="utf-8").strip()
+    global ACTIVE_WRITE_BUDGET
+    run_dir = carry.plain_path(run_dir)
+    objects = json.loads(carry.plain_path(run_dir / "objects.json").read_text(encoding="utf-8"))
+    ptr_raw = carry.plain_path(run_dir / "pointer.raw.json").read_text(encoding="utf-8").strip()
     pointer = json.loads(ptr_raw)
     if not isinstance(objects, dict) or not objects or not all(isinstance(k, str) and isinstance(v, str) for k, v in objects.items()):
         raise ValueError()
@@ -315,7 +404,31 @@ def sync_run(run_dir: Path, record: dict) -> int:
         elif not key.startswith(prefix) or key == prefix:
             raise ValueError()
     entries = sorted(objects.items())
-    staged = run_dir / ".kv-stage"
+    record["phase"] = "PREFLIGHT"
+    candidate = carry.ranking_from_objects(objects, pointer)
+    previous = carry.confirmed_snapshot(run_dir.parent)
+    budget = write_policy.DailyWriteBudget(LEDGER.with_name("ranking-kv-write-budget.json"))
+    ACTIVE_WRITE_BUDGET = budget
+    instant = datetime.now(timezone.utc)
+    if candidate is not None and previous is None:
+        previous = _discover_last_good(run_dir)
+    if candidate is None and previous is not None:
+        return _retain(record, previous, "CANDIDATE_UNAVAILABLE")
+    if candidate is not None and write_policy.publication_due(
+            previous["ranking"] if previous else None, candidate, instant) == "NO_CHANGE":
+        return _retain(record, previous, "NO_CHANGE")
+    ledger = load_ledger()
+    now = time.time()
+    reused = {key for key, _ in entries if key.startswith(BLOB_PREFIX) and
+              0 <= now - ledger.get(key[len(BLOB_PREFIX):], 0.0) < BLOB_REUSE_SECONDS}
+    # Reserve the WHOLE plan, including the pointer and all bounded PUT retries,
+    # before staging or the first remote write. GETs never consume the write quota.
+    worst_case = (len(entries) - len(reused) + 1) * ATTEMPTS
+    if not budget.reserve(worst_case, instant):
+        return _retain(record, previous, "WRITE_BUDGET")
+    record["writes_reserved"] = worst_case
+    record["objects_reused"] = len(reused)
+    staged = carry.plain_path(run_dir / ".kv-stage")
     staged.mkdir(exist_ok=True)
     staged_files = {}
     for index, (key, body) in enumerate(entries):
@@ -324,18 +437,16 @@ def sync_run(run_dir: Path, record: dict) -> int:
         staged_files[key] = fp
     ptr_fp = staged / "__pointer.bin"
     ptr_fp.write_bytes(ptr_raw.encode("utf-8"))
-    ledger = load_ledger()
-    now = time.time()
-    reused = set()
+    # ``reused`` is fixed by the preflight plan and still requires live readback.
     record["phase"] = "OBJECT_PUT"
     for key, fp in staged_files.items():
         blob = key.startswith(BLOB_PREFIX)
-        if blob and 0 <= now - ledger.get(key[len(BLOB_PREFIX):], 0.0) < BLOB_REUSE_SECONDS:
-            reused.add(key)
-            record["objects_reused"] += 1
+        if key in reused:
             continue
         if not client_put(key, fp, BLOB_TTL_SECONDS if blob else RUN_KEY_TTL_SECONDS):
             _finish_call(record)
+            if record["error_category"] == KV_DAILY_LIMIT:
+                return _retain(record, previous, KV_DAILY_LIMIT)
             _record_failed_object(record, key)
             return 1
         record["objects_uploaded"] += 1
@@ -347,6 +458,8 @@ def sync_run(run_dir: Path, record: dict) -> int:
         if live is None or sha(live) != sha(body):
             _finish_call(record, "READBACK_MISMATCH" if live is not None else None)
             _record_failed_object(record, key)
+            if record["error_category"] == KV_DAILY_LIMIT:
+                return _retain(record, previous, KV_DAILY_LIMIT)
             return 1
         record["objects_verified"] += 1
     print(f"READBACK_VERIFIED {record['objects_verified']}")
@@ -369,6 +482,7 @@ def sync_run(run_dir: Path, record: dict) -> int:
         if key.startswith(BLOB_PREFIX) and key not in reused:
             ledger[key[len(BLOB_PREFIX):]] = now
     save_ledger(ledger)
+    carry.confirm_snapshot(run_dir)
     shutil.rmtree(staged, ignore_errors=True)
     _finish_call(record, "NONE")
     record.update(status="SUCCEEDED", phase="COMPLETE")
@@ -423,8 +537,9 @@ def read_freshness(record: dict) -> int:
 
 
 def main() -> int:
-    global TOTAL_ATTEMPTS
-    TOTAL_ATTEMPTS = 0
+    global TOTAL_ATTEMPTS, PUT_ATTEMPTS, ACTIVE_WRITE_BUDGET
+    TOTAL_ATTEMPTS = PUT_ATTEMPTS = 0
+    ACTIVE_WRITE_BUDGET = None
     LAST_CALL.update(attempts=0, exit_code=None, error_category="NONE")
     LAST_CALL_DETAIL.update(http_status=None, provider_code=None)
     ap = argparse.ArgumentParser()
@@ -445,7 +560,7 @@ def main() -> int:
     code = 1  # an outcome path that could not be reserved runs nothing
     try:
         if args.outcome_path is None or stream is not None:
-            code = read_freshness(record) if args.read_freshness else sync_run(Path(args.run_dir).resolve(), record)
+            code = read_freshness(record) if args.read_freshness else sync_run(Path(args.run_dir), record)
     except (ValueError, KeyError, TypeError):
         _finish_call(record, "PARSE_FAILED" if args.read_freshness else "INPUT_INVALID")
         code = 1
@@ -456,6 +571,7 @@ def main() -> int:
         # Fail closed without serializing exception messages, CLI arguments or streams.
         _finish_call(record, "UNKNOWN")
         code = 1
+    ACTIVE_WRITE_BUDGET = None
     if stream is not None:
         try:
             with stream:

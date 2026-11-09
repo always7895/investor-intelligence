@@ -11,12 +11,15 @@
   Publication restoration requires complete, rights-qualified, independently pinned primary inputs. They remain unavailable,
   so real MOD crossing-window returns stay NULL with an explicit reason; synthetic calculation tests are not market evidence.
 - The exact eleven R3 hypotheses remain display/shadow-only, `RULES_KEPT=0`, visibly `未驗證`.
-  Complete-candidate v2 HMAC journals need a process-only signing key; the protected host also needs an explicit local log path.
-  Missing configuration is UNCONFIGURED, not SIGNED. Changed inputs are possible causes, never proof of rotation causality.
+  Bounded v3 checkpoint/tail HMAC journals need a process-only signing key and an explicit caller-owned log path.
+  Missing configuration is UNCONFIGURED, not SIGNED; journal failures remain advisory and cannot stop last-good serving.
   Source hashes exclude invocation-only clocks/decay; the signed observation time remains explicit.
-- Source orchestration rebuilds ranking at each hourly refresh; 13F polls for new publications inside its cache cadence.
-  Amendment periods and quarter-end/publication dates stay distinct; partial sources are not falsely fresh.
-  Serenity schema 4 retains original/reply/quote/repost/mirror provenance and calibrates without a schema mismatch.
+- Hourly ranking evaluation persists only changed ordered membership/order or a heartbeat at least six hours apart.
+  A UTC-reset local guard reserves 600 of the free 1,000 daily KV writes for other products and caps ranking reservations
+  at 400, including bounded retries and pointer writes. Quota suppression retains a verified nonempty last-good snapshot;
+  historical cards keep their original date and do not renew machine forecast approval. No bootstrap ranking is invented.
+- 13F polls for new publications inside its cache cadence. Amendment periods and quarter-end/publication dates stay distinct;
+  partial sources are not falsely fresh. Serenity schema 4 retains original/reply/quote/repost/mirror provenance.
 - Free SEC/TWSE/TPEx/DART discovery extends beyond fixed layers but does not admit a company. Independently reviewed
   issuer/counterparty body evidence, canonical SEC identity and every ordinary gate remain required; default approvals are empty.
   Both ranking paths use controlled registry bytes; an unregistered later cache event cannot replace a registered claim.

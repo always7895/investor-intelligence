@@ -32,6 +32,9 @@ PUBLISH_OK = (f'import sys\nprint("{{")\nprint(\'  "run_id": "{RUN_ID}",\')\npri
               'print("SyntheticWarning: noisy stderr line", file=sys.stderr)\n')
 PUBLISH_NO_RUN = 'print("{}")\n'
 PUBLISH_CRASH = 'import sys\nprint("Traceback: synthetic publish crash", file=sys.stderr)\nsys.exit(2)\n'
+PUBLISH_RETAINED = "print(" + repr(json.dumps({
+    "status": "RETAINED_LAST_GOOD", "retention_reason": "NO_CHANGE", "pointer_state": "NOT_ATTEMPTED",
+    "run_id": RUN_ID, "retained_run_id": RUN_ID})) + ")\n"
 
 # The stub sync parses the caller's argv (`--run-dir`, `--outcome-path`) and writes the outcome the real sync writes
 # (sync_sealed_snapshot_kv.py _outcome/_finish_call: create-new file, compact JSON); the defaults are a confirmed success.
@@ -168,6 +171,18 @@ class HourlyRefreshScriptTests(unittest.TestCase):
                              (2, "GENERATION_FAILED", "NOT_ATTEMPTED"))
             self.assertNotIn("SYNCED", run.log)
 
+    def test_retained_publisher_never_replays_or_syncs_or_claims_readback(self):
+        if not shells():
+            self.skipTest("PowerShell not available")
+        for shell in shells():
+            run = self.run_copy(shell, PUBLISH_RETAINED, 'raise AssertionError("sync must not start")\n')
+            self.assertEqual(run.code, 0, (shell, run.log))
+            self.assertEqual((run.outcome["retained_last_good"], run.outcome["retention_reason"],
+                              run.outcome["pointer_state"]), (True, "NO_CHANGE", "NOT_ATTEMPTED"))
+            self.assertFalse(run.outcome["publication_confirmed"])
+            self.assertFalse(run.outcome["publication_operation_succeeded"])
+            self.assertNotIn("SYNC_OUTCOME", run.log)
+
     def test_no_newest_folder_guess(self):
         text = SCRIPT.read_text(encoding="utf-8")
         self.assertNotIn("Sort-Object LastWriteTime", text)
@@ -214,6 +229,8 @@ class SyncOutcomeContractTests(unittest.TestCase):
             "wrong case": dict(overrides={"status": "succeeded"}),
             "string counter": dict(overrides={"cli_attempts_total": "3"}),
             "last attempts above total": dict(overrides={"cli_attempts_total": 1, "last_cli_attempts": 3}),
+            "retained with fake readback": dict(overrides={"status": "RETAINED_LAST_GOOD", "retention_reason": "NO_CHANGE", "retained_run_id": RUN_ID}),
+            "retained without last good": dict(overrides={"status": "RETAINED_LAST_GOOD", "pointer_state": "NOT_ATTEMPTED", "retention_reason": "WRITE_BUDGET"}),
         }
         for shell in shells():
             for name, kwargs in rejected.items():
@@ -256,6 +273,17 @@ class SyncOutcomeContractTests(unittest.TestCase):
                              (4, "SYNC_PROCESS_FAILED", "READBACK_CONFIRMED"), (shell, run.log))
             self.assertEqual((run.outcome["publication_confirmed"], run.outcome["publication_operation_succeeded"]), (True, False))
 
+    def test_retained_sync_is_successful_without_pointer_confirmation(self):
+        for shell in shells():
+            retained = {"status": "RETAINED_LAST_GOOD", "pointer_state": "NOT_ATTEMPTED",
+                        "retention_reason": "WRITE_BUDGET", "retained_run_id": RUN_ID}
+            run = self.run_copy(shell, PUBLISH_OK, sync_stub(0, retained))
+            self.assertEqual(run.code, 0, (shell, run.log))
+            self.assertTrue(run.outcome["retained_last_good"])
+            self.assertEqual(run.outcome["retention_reason"], "WRITE_BUDGET")
+            self.assertFalse(run.outcome["publication_confirmed"])
+            self.assertFalse(run.outcome["publication_operation_succeeded"])
+
 
 # Carry-forward stubs: every step appends one line to trace.txt at the stub repo root, so the tests can assert order.
 TRACE = ("import sys\nfrom pathlib import Path\nroot = Path(__file__).resolve().parents[1]\n"
@@ -270,6 +298,11 @@ CARRY_PUBLISH = TRACE + (
     "if (root / ('publish_fail_' + run)).exists():\n    print('Traceback: synthetic crash', file=sys.stderr)\n    sys.exit(2)\n"
     "ids = {'RUN_A': '20260926T010000Z-aaaaaaaaaaaa', 'RUN_B': '20260926T010000Z-bbbbbbbbbbbb',"
     " 'RUN_C': '20260926T010000Z-cccccccccccc', 'RUN_D': '20260926T010000Z-dddddddddddd'}\n"
+    "if (root / 'retain').exists():\n"
+    "    import json\n"
+    "    print(json.dumps({'status':'RETAINED_LAST_GOOD','run_id':ids[run],'retained_run_id':ids[run],"
+    "'retention_reason':'NO_CHANGE','pointer_state':'NOT_ATTEMPTED'}))\n"
+    "    sys.exit(0)\n"
     "print('{')\nprint('  \"run_id\": \"' + ids[run] + '\",')\nprint('  \"top20_state\": \"' + state + '\"')\nprint('}')\n")
 CARRY_REPLAY = TRACE + (
     "run = sys.argv[-1]\nfail = (root / ('replay_fail_' + run[-4:])).exists()\n"
@@ -356,6 +389,15 @@ class CarryForwardHourlyTests(unittest.TestCase):
             self.assertEqual((self.maintenance()["top20_status"], self.maintenance()["top20_exit"]), ("LOCAL_LKG_PROMOTED", 0))
             self.assertEqual(self.maintenance()["prune_status"], "DONE")
             self.assertRegex(log, OUTCOME_PATH)
+
+    def test_retained_carry_skips_replay_sync_and_fallback_tiers(self):
+        for shell in shells():
+            code, trace, log, _ = self.run_carry(shell, ("retain", "not_due"))
+            self.assertEqual(code, 0, (shell, log))
+            self.assertEqual(trace, [FIRST_SEAL, "ROTATION", "LKG due"])
+            self.assertTrue(self.outcome["retained_last_good"])
+            self.assertFalse(self.outcome["publication_confirmed"])
+            self.assertFalse(self.outcome["publication_operation_succeeded"])
 
     # From 52c7733 to FIX-R1 the default (guidance-off) carry-forward run built $dailyArgs as $null, Start-Process refused the
     # null element and the catch recorded data_status LOCAL_EXCEPTION, so this daily data refresh never ran.
@@ -492,6 +534,60 @@ class CarryForwardHourlyTests(unittest.TestCase):
             self.assertEqual(code, 0, (shell, log))
             self.assertEqual(trace, ["ROTATION", "PUBLISH RUN_D --live-clock", "SYNC dddd"])
             self.assertEqual((self.outcome["primary_exit"], self.outcome["local_maintenance"]), (0, None))  # no maintenance off-switch
+
+
+class MachineRetainedRunnerTests(unittest.TestCase):
+    def setUp(self):
+        if not shells():
+            self.skipTest("PowerShell not available")
+
+    def run_machine_retained(self, shell, *, carry=True, invalid=False, bootstrap=False):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            scripts = root / "scripts"
+            scripts.mkdir()
+            shutil.copy(SCRIPT, scripts / SCRIPT.name)
+            (scripts / "v213_operation_lock.ps1").write_text(LOCK_STUB, encoding="utf-8")
+            suppressed = "'true'" if invalid else "$true"
+            backend = (
+                "function Invoke-GuidanceObservedProcess { param($Label,$Executable,$Arguments,$WorkingDirectory,$RemainingMilliseconds,$MachineRunId)\n"
+                " [pscustomobject]@{Completed=$true;Attempted=$true;ExitCode=0;Status='EXIT_OBSERVED';"
+                f"PublicationSuppressed={suppressed};ServingLastGood=$true;Reason='NO_CHANGE';MachineBundle=$null;MachineReason=$null}}\n"
+                "}\nfunction Wait-GuidanceCustody { }\n"
+                "Export-ModuleMember -Function Invoke-GuidanceObservedProcess,Wait-GuidanceCustody\n")
+            (scripts / "revenue_guidance_backend.psm1").write_text(backend, encoding="utf-8")
+            for name in ("publish_sealed_snapshot.py", "stage_sealed_replay.py", "sync_sealed_snapshot_kv.py"):
+                (scripts / name).write_text('raise AssertionError("suppressed path must not publish/replay/sync")\n', encoding="utf-8")
+            helper = ('import sys\nprint(\'{"status":"REJECTED","reason":"BOOTSTRAP_REQUIRED"}\')\nsys.exit(2)\n'
+                      if bootstrap else PUBLISH_RETAINED)
+            (scripts / "top20_carry_forward.py").write_text(helper, encoding="utf-8")
+            args = [shell, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", str(scripts / SCRIPT.name),
+                    "-GuidanceAutoUpdateEnabled", "-GuidanceDirtyRebuildEnabled", "-GuidanceMachinePublicationEnabled"]
+            if carry:
+                args.append("-CarryForwardTop20")
+            done = subprocess.run(args, capture_output=True, timeout=60, env=run_env())
+            return done.returncode, parse_outcome(done.stdout.decode("utf-8", errors="replace"))
+
+    def test_authenticated_process_retention_skips_all_publication_without_ack(self):
+        for shell in shells():
+            for carry_mode in (False, True):
+                code, outcome = self.run_machine_retained(shell, carry=carry_mode)
+                self.assertEqual(code, 0, outcome)
+                self.assertTrue(outcome["retained_last_good"])
+                self.assertFalse(outcome["publication_confirmed"])
+                self.assertFalse(outcome["publication_operation_succeeded"])
+                self.assertEqual(outcome["pointer_state"], "NOT_ATTEMPTED")
+                if carry_mode:
+                    self.assertEqual(outcome["local_maintenance"]["top20_status"], "RETAINED_LAST_GOOD")
+
+    def test_missing_good_or_nonboolean_suppression_cannot_forge_retained_success(self):
+        for shell in shells():
+            for kwargs, reason in (({"bootstrap": True}, "BOOTSTRAP_REQUIRED"), ({"invalid": True}, "MACHINE_EXPORT_UNAVAILABLE")):
+                code, outcome = self.run_machine_retained(shell, carry=False, **kwargs)
+                self.assertEqual(code, 2, outcome)
+                self.assertEqual(outcome["error_category"], reason)
+                self.assertNotIn("retained_last_good", outcome)
+                self.assertFalse(outcome["publication_confirmed"])
 
 
 if __name__ == "__main__":

@@ -709,7 +709,7 @@ class _Session:
         import publish_sealed_snapshot as publisher
         outputs = overlay.B1Outputs(overlay.B1Store(self.lease))
         captured = _Capture(self)
-        self.witness = None
+        self.witness = None  # Historical bytes remain last-good; no live proof survives a new evaluation.
         self.phase = "dispatching"
         try:
             planning_day = captured.collect(outputs)
@@ -720,7 +720,6 @@ class _Session:
             ranking_doc = ranking.build(captured.dynamic_fetch, cutoff, with_news=True,
                                         captured=captured.catalog(), cision_outputs=outputs)
             captured.flush()
-            ranking_bytes = encoded(ranking_doc)
             if ranking_doc["generated_at"] != cutoff.strftime("%Y-%m-%dT%H:%M:%SZ"):
                 raise HostUnavailable("RANKING_CUTOFF_MISMATCH")
             # Symbols resolve from the actual build, within the SAME canonical
@@ -729,6 +728,33 @@ class _Session:
             snapshot = self.snapshot(cutoff)
             if revision.compute_input_revision(snapshot) != rev or any(symbol not in snapshot.symbols() for symbol in actual_symbols):
                 raise HostUnavailable("MODEL_INPUT_REVISION_MISMATCH")
+            if not 10 <= len(actual_symbols) <= 20 or len(set(actual_symbols)) != len(actual_symbols):
+                raise HostUnavailable("SEALED_OUTPUT_UNAVAILABLE")
+            ranking_bytes = encoded(ranking_doc)  # Reject invalid raw data before any journal append.
+            import ranking_write_policy
+            previous_ranking = outputs.latest_ranking()
+            due = ranking_write_policy.publication_due(previous_ranking, ranking_doc, cutoff)
+            if due == "NO_CHANGE":
+                captured.close()
+                self.remaining()
+                if self.lease.read_journal().state != state or self.input_revision() != rev:
+                    raise HostUnavailable("COMPLETION_BINDING_CHANGED")
+                # Serve the historical last-good output. A source-only evaluation
+                # is NOT model consumption, a new witness, completion or an ACK.
+                self.phase = "idle"
+                return {"Completed": False, "Revision": rev, "PublicationSuppressed": True,
+                        "ServingLastGood": True, "Reason": "NO_CHANGE"}
+            # This signed observation follows successful input validation, not
+            # publication/acceptance: a later seal failure may leave an observation.
+            # Never mutate raw/sealed bytes after their completion binding is made.
+            import top20_rotation_provenance
+            shadow_path = os.environ.get("II_R2B_SHADOW_LOG")
+            shadow_attestation = (
+                top20_rotation_provenance.append_if_configured(
+                    ranking_doc, path=Path(shadow_path), asof=ranking_doc["generated_at"])
+                if shadow_path else "UNCONFIGURED")
+            if shadow_attestation == "UNVERIFIED":
+                ranking_bytes = encoded(ranking_doc)
             consumption = publisher.ForecastConsumption(snapshot)
             machine_inputs = None
             if self.machine_enabled:
@@ -760,14 +786,7 @@ class _Session:
             self.remaining()
             if self.lease.read_journal().state != state or self.input_revision() != rev:
                 raise HostUnavailable("COMPLETION_BINDING_CHANGED")
-            # The protected code root is immutable. A process-only explicit local
-            # journal path is required here; never redirect it into the code tree.
-            import top20_rotation_provenance
-            shadow_path = os.environ.get("II_R2B_SHADOW_LOG")
-            record_doc["shadow_attestation"] = (
-                top20_rotation_provenance.append_if_configured(
-                    ranking_doc, path=Path(shadow_path), asof=ranking_doc["generated_at"])
-                if shadow_path else "UNCONFIGURED")
+            record_doc["shadow_attestation"] = shadow_attestation
             record = encoded(record_doc)
             published = outputs.publish(ranking_bytes, body, record)
             if published != {"rank": digest(ranking_bytes), "body": digest(body), "record": digest(record)}:

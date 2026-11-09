@@ -23,8 +23,8 @@
 #
 # Scheduling: Windows Task Scheduler, every 60 minutes via
 #   schtasks /Create /TN "InvestorIntelligenceSealedFreshness" /SC MINUTE /MO 60 /TR "<this file>"
-# Kept well inside the V21_TOP20_MAX_AGE_SECONDS=7200 (2h) window: two consecutive
-# failures still fit one window if the previous run was <=0h50m old.
+# Evaluation remains hourly; ordered Top20 changes or a >=6 h heartbeat admit a seal/write plan.
+# Cadence/quota suppression serves the exact dated last-good set, never a fabricated freshness confirmation.
 param(
     [switch]$CarryForwardTop20,
     [int]$RefreshTimeoutSeconds = 1800,
@@ -111,6 +111,18 @@ function Get-PrintedRunId([object]$Result) {
     return $null
 }
 
+function Read-RetainedPublisherOutcome([object]$Result) {
+    $text = $Result.Lines -join "`n"
+    if ($text -notmatch '"status":\s*"RETAINED_LAST_GOOD"') { return $null }
+    $r = $text | ConvertFrom-Json
+    if ($Result.Code -ne 0 -or $r.status -cne 'RETAINED_LAST_GOOD' -or
+        $r.retention_reason -cnotin @('NO_CHANGE','WRITE_BUDGET','CANDIDATE_UNAVAILABLE') -or
+        $r.pointer_state -cne 'NOT_ATTEMPTED' -or $r.run_id -isnot [string] -or
+        $r.run_id -cnotmatch '^\d{8}T\d{6}Z-[0-9a-f]{12}$' -or
+        $r.retained_run_id -cne $r.run_id) { throw 'RETAINED_OUTCOME_INVALID' }
+    return $r
+}
+
 function Invoke-BoundedScript([string]$Label, [string]$File, [string[]]$Arguments, [int]$TimeoutSeconds) {
     # A child powershell.exe with a hard timeout; on timeout the whole process tree is killed. Output goes to the log.
     $out = [IO.Path]::GetTempFileName()
@@ -162,6 +174,21 @@ function Invoke-MachinePresealDaily {
         '-GuidancePublicRunId',$contextRun,'-GuidanceBudgetMilliseconds',[string]$left)
     $script:presealDaily=Invoke-GuidanceObservedProcess -Label 'DATA_REFRESH' -Executable 'C:\Program Files\PowerShell\7\pwsh.exe' `
         -Arguments $dailyArgs -WorkingDirectory $repo -RemainingMilliseconds $left -MachineRunId $contextRun
+    # A context-bound protected-host suppression is NOT a completed model/export.
+    # The backend independently observed the process and its settled private
+    # retained result. Require an actual previously readback-confirmed seal too.
+    if ($script:presealDaily.Completed -is [bool] -and $script:presealDaily.Completed -and
+        $script:presealDaily.Attempted -is [bool] -and $script:presealDaily.Attempted -and
+        $script:presealDaily.ExitCode -eq 0 -and
+        $script:presealDaily.PublicationSuppressed -is [bool] -and $script:presealDaily.PublicationSuppressed -and
+        $script:presealDaily.ServingLastGood -is [bool] -and $script:presealDaily.ServingLastGood -and
+        $script:presealDaily.Reason -ceq 'NO_CHANGE' -and $null -eq $script:presealDaily.MachineBundle) {
+        $retained = Invoke-LoggedNative { & $py 'scripts\top20_carry_forward.py' retained --snapshot-root $runsRoot }
+        if ($retained.Code -ne 0) { throw 'BOOTSTRAP_REQUIRED' }
+        $script:MachineRetainedOutcome=Read-RetainedPublisherOutcome $retained
+        if ($null -eq $script:MachineRetainedOutcome) { throw 'BOOTSTRAP_REQUIRED' }
+        return
+    }
     if (-not $script:presealDaily.Completed -or $script:presealDaily.ExitCode -ne 0 -or
         $null -eq $script:presealDaily.MachineBundle -or $script:presealDaily.MachineBundle.RunId -cne $contextRun) {
         if ($script:presealDaily.PSObject.Properties['MachineReason'] -and
@@ -199,6 +226,10 @@ function Invoke-CarryForwardSeal {
             Add-Content -Path $log -Value "[$(Get-Date -Format o)] GENERATE FAILED tier=$($tier.Stage) exit=$($published.Code); trying the next tier"
             $last = [pscustomobject]@{ Code = $(if ($published.Code) { $published.Code } else { 1 }); RunId = $null; Stage = 'GENERATE' }
             continue
+        }
+        $retained = Read-RetainedPublisherOutcome $published
+        if ($null -ne $retained) {
+            return [pscustomobject]@{Code=0;RunId=$runId;Stage='RETAINED_LAST_GOOD';Retained=$retained}
         }
         $replayed = Invoke-LoggedNative { & $py "scripts\stage_sealed_replay.py" --run-dir (Join-Path $runsRoot $runId) }
         if ($replayed.Code -eq 0) { return [pscustomobject]@{ Code = 0; RunId = $runId; Stage = $tier.Stage } }
@@ -268,10 +299,10 @@ function Read-SafeSyncOutcome([string]$Path, [string]$ExpectedRun) {
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf) -or (Get-Item -LiteralPath $Path).Length -gt 8192) { throw 'SYNC_OUTCOME_UNAVAILABLE' }
     $r = Get-Content -LiteralPath $Path -Raw -Encoding utf8 | ConvertFrom-Json
     if (-not (Test-OutcomeInteger $r.schema_version 1 1) -or $r.operation -cne 'SYNC' -or $r.run_id -cne $ExpectedRun -or
-        $r.status -cnotin @('SUCCEEDED','FAILED') -or
+        $r.status -cnotin @('SUCCEEDED','FAILED','RETAINED_LAST_GOOD') -or
         $r.pointer_state -cnotin @('NOT_ATTEMPTED','ATTEMPTED_UNCONFIRMED','READBACK_CONFIRMED') -or
-        $r.error_category -cnotin @('NONE','AUTHENTICATION_ERROR','DAILY_KV_LIMIT','NETWORK_FAILURE','TRANSIENT_HTTP','TIMEOUT','UNKNOWN','CLI_UNAVAILABLE','CLI_LAUNCH_FAILED','READBACK_MISMATCH','INPUT_INVALID','LOCAL_IO_FAILURE','OUTCOME_WRITE_FAILED') -or
-        $r.phase -cnotin @('INPUT','OBJECT_PUT','OBJECT_READBACK','POINTER_PUT','POINTER_READBACK','LOCAL_LEDGER','COMPLETE') -or
+        $r.error_category -cnotin @('NONE','AUTHENTICATION_ERROR','DAILY_KV_LIMIT','NETWORK_FAILURE','TRANSIENT_HTTP','TIMEOUT','UNKNOWN','CLI_UNAVAILABLE','CLI_LAUNCH_FAILED','READBACK_MISMATCH','INPUT_INVALID','LOCAL_IO_FAILURE','OUTCOME_WRITE_FAILED','BOOTSTRAP_REQUIRED') -or
+        $r.phase -cnotin @('INPUT','PREFLIGHT','OBJECT_PUT','OBJECT_READBACK','POINTER_PUT','POINTER_READBACK','LOCAL_LEDGER','COMPLETE') -or
         -not (Test-OutcomeInteger $r.cli_attempts_total 0 2147483647) -or
         -not (Test-OutcomeInteger $r.last_cli_attempts 0 3) -or
         $r.last_cli_attempts -gt $r.cli_attempts_total -or
@@ -279,6 +310,12 @@ function Read-SafeSyncOutcome([string]$Path, [string]$ExpectedRun) {
         -not (Test-OutcomeInteger $r.objects_reused 0 2147483647) -or
         -not (Test-OutcomeInteger $r.objects_verified 0 2147483647) -or
         ($null -ne $r.last_cli_exit_code -and -not (Test-OutcomeInteger $r.last_cli_exit_code -2147483648 4294967295))) { throw 'SYNC_OUTCOME_INVALID' }
+    if ($r.status -ceq 'RETAINED_LAST_GOOD' -and
+        ($r.pointer_state -cne 'NOT_ATTEMPTED' -or $r.error_category -cne 'NONE' -or $r.phase -cne 'COMPLETE' -or
+         $r.retention_reason -cnotin @('NO_CHANGE','WRITE_BUDGET','DAILY_KV_LIMIT','CANDIDATE_UNAVAILABLE') -or
+         $r.retained_run_id -isnot [string] -or $r.retained_run_id -cnotmatch '^\d{8}T\d{6}Z-[0-9a-f]{12}$')) {
+        throw 'SYNC_OUTCOME_INVALID'
+    }
     return $r
 }
 
@@ -317,6 +354,10 @@ function Invoke-AdmittedLocalMaintenance([bool]$PublicationConfirmed) {
             }
         } catch { $m.data_status='LOCAL_EXCEPTION' }
     } else { $m.data_status='SKIPPED_BUDGET' }
+    if ($null -ne $script:MachineRetainedOutcome) {
+        $m.top20_status='RETAINED_LAST_GOOD'; $m.top20_exit=0
+        return $m # no second ranking/export/ACK after the protected host suppressed it
+    }
     # Data failure does not silently starve the separate due/backoff-admitted Top20 path.
     $elapsed = [int]((Get-Date) - $runStarted).TotalSeconds
     if ($elapsed -lt $PostSealBudgetSeconds) {
@@ -347,8 +388,10 @@ $pointerState = 'NOT_ATTEMPTED'
 $primaryCategory = 'NONE'
 $runId = ''
 $maintenance = $null
+$retainedOutcome = $null
 $presealDaily = $null
 $script:MachinePublisherArgs=@()
+$script:MachineRetainedOutcome=$null
 $maintenanceAdmitted = $true
 $py = if ($env:PROJECT_PYTHON) { $env:PROJECT_PYTHON } else { 'python' }
 try {
@@ -358,13 +401,15 @@ try {
             $primaryPhase='MACHINE_PRESEAL'
             Invoke-MachinePresealDaily # BOTH branches, before any seal: one same-owner producer/export
             $primaryPhase='GENERATE'
+            $retainedOutcome=$script:MachineRetainedOutcome
+            if ($null -ne $retainedOutcome) { $runId=$retainedOutcome.run_id }
         }
-        if ($CarryForwardTop20) {
+        if ($CarryForwardTop20 -and $null -eq $retainedOutcome) {
             Add-Content -Path $log -Value "[$stamp] CARRY_FORWARD_TOP20 seal first"
             $sealed = Invoke-CarryForwardSeal
             if ($sealed.Code -ne 0) { $primaryCode=$sealed.Code; $primaryPhase=$sealed.Stage; $primaryCategory='GENERATION_OR_REPLAY_FAILED' }
-            else { $runId=$sealed.RunId }
-        } else {
+            else { $runId=$sealed.RunId; $retainedOutcome=$sealed.Retained }
+        } elseif ($null -eq $retainedOutcome) {
             # Machine mode already observed ONE actual pre-seal daily above;
             # machine-off retains r3's original data-before-generation behavior.
             if (-not $GuidanceMachinePublicationEnabled) {
@@ -397,9 +442,13 @@ try {
             else {
                 $runId=Get-PrintedRunId $published
                 if (-not $runId) { $primaryCode=1; $primaryCategory='GENERATED_RUN_UNCONFIRMED' }
+                if ($primaryCode -eq 0) { $retainedOutcome=Read-RetainedPublisherOutcome $published }
             }
         }
-        if ($primaryCode -eq 0) {
+        if ($primaryCode -eq 0 -and $null -ne $retainedOutcome) {
+            $primaryPhase='COMPLETE' # retained is successful, but no new publication/readback is claimed
+        }
+        if ($primaryCode -eq 0 -and $null -eq $retainedOutcome) {
             $primaryPhase = 'SYNC'
             $outcomePath = Join-Path $logDir ('sealed-sync-' + [guid]::NewGuid().ToString('N') + '.json')
             $runDir = Join-Path $runsRoot $runId
@@ -413,7 +462,9 @@ try {
                 $pointerState=$outcome.pointer_state
                 $primaryCategory=$outcome.error_category
                 $primaryPhase=$outcome.phase
-                if ($primaryCode -eq 0 -and ($outcome.status -cne 'SUCCEEDED' -or $pointerState -cne 'READBACK_CONFIRMED' -or $primaryCategory -cne 'NONE')) {
+                if ($primaryCode -eq 0 -and $outcome.status -ceq 'RETAINED_LAST_GOOD') {
+                    $retainedOutcome=$outcome
+                } elseif ($primaryCode -eq 0 -and ($outcome.status -cne 'SUCCEEDED' -or $pointerState -cne 'READBACK_CONFIRMED' -or $primaryCategory -cne 'NONE')) {
                     $primaryCode=1; $primaryCategory='SYNC_SUCCESS_UNPROVEN'
                 } elseif ($primaryCode -ne 0 -and $primaryCategory -eq 'NONE') {
                     $primaryCategory='SYNC_PROCESS_FAILED'
@@ -424,7 +475,7 @@ try {
             }
         }
     } catch {
-        if ($GuidanceMachinePublicationEnabled -and $_.Exception.Message -cin @('MACHINE_INPUTS_UNAVAILABLE','MACHINE_EVIDENCE_LIMIT','MACHINE_EXPORT_UNAVAILABLE','GUIDANCE_MACHINE_PROVIDER_UNAVAILABLE')) {
+        if ($GuidanceMachinePublicationEnabled -and $_.Exception.Message -cin @('MACHINE_INPUTS_UNAVAILABLE','MACHINE_EVIDENCE_LIMIT','MACHINE_EXPORT_UNAVAILABLE','GUIDANCE_MACHINE_PROVIDER_UNAVAILABLE','BOOTSTRAP_REQUIRED')) {
             $primaryCode=2; $primaryCategory=$_.Exception.Message
         } elseif ($primaryCode -eq 0) { $primaryCode=1; if ($primaryCategory -eq 'NONE') { $primaryCategory='PRIMARY_EXCEPTION' } }
     }
@@ -435,6 +486,11 @@ try {
         catch { $maintenance=[ordered]@{data_status='UNKNOWN';top20_status='UNKNOWN';error_category='MAINTENANCE_EXCEPTION'} }
     } elseif (-not $maintenanceAdmitted) { $maintenance=[ordered]@{data_status='NOT_ADMITTED';top20_status='NOT_ADMITTED'} }
     $summary = [ordered]@{schema_version=1;primary_exit=$primaryCode;primary_phase=$primaryPhase;error_category=$primaryCategory;pointer_state=$pointerState;run_id=$runId;local_maintenance=$maintenance;secondary_log_failure=$script:OperationalLogFailed;publication_confirmed=($pointerState -eq 'READBACK_CONFIRMED');publication_operation_succeeded=($primaryCode -eq 0 -and $pointerState -eq 'READBACK_CONFIRMED')}
+    if ($null -ne $retainedOutcome) {
+        $summary['retained_last_good']=$true
+        $summary['retention_reason']=$retainedOutcome.retention_reason
+        $summary['retained_run_id']=$retainedOutcome.retained_run_id
+    }
     if ($GuidanceAutoUpdateEnabled -and $null -ne $presealDaily) {
         $summary['daily_observation']=[ordered]@{status=$presealDaily.Status;attempted=$presealDaily.Attempted;
             completed=$presealDaily.Completed;exit=$presealDaily.ExitCode}
