@@ -29,7 +29,7 @@ function rows(node: Node): number {
 }
 
 describe("full public strategy replies", () => {
-  it.each(["monthly", "weekly"] as const)("keeps every %s primary body within ten rows and all strategy details in the reply", async period => {
+  it.each(["monthly", "weekly"] as const)("keeps the %s overview compact and every tier's quote scenarios in the actual reply", async period => {
     const cycle: any = structuredClone(fixture.cases.yahoo_monthly_full);
     if (period === "weekly") {
       cycle.dte = 7;
@@ -48,14 +48,18 @@ describe("full public strategy replies", () => {
     const pages = bubblesOf(messages);
     expect(pages).toHaveLength(5);
     expect(JSON.stringify(pages.at(-1)?.header)).toContain("資料來源與說明");
+    expect(rows(pages[0]!.body as Node)).toBeLessThanOrEqual(10);
     for (const page of pages.slice(0, -1)) {
-      expect(rows(page.body as Node), JSON.stringify(page.header)).toBeLessThanOrEqual(10);
       const visible = JSON.stringify(page);
       expect(visible).toContain("非投資建議");
       expect(visible).toContain("不下單");
     }
     const full = JSON.stringify(pages);
     for (const required of ["$94.00", "$96.00", "$9400.00", "$9600.00", "$92.00", "$107.00", "$754.00", "$746.00",
-      "Bid $0.98", "Bid $0.59", "Bid $1.05", "以備妥現金計", "買進Put取Ask－四分之一價差"]) expect(full).toContain(required);
+      "Bid $0.98", "Bid $0.59", "Bid $1.05", "以備妥現金計", "LIMIT", "不高於Ask", "不低於Bid", "Call Bid－Put Ask"]) expect(full).toContain(required);
+    for (const page of pages.slice(1, -1)) {
+      const visible = JSON.stringify(page);
+      for (const required of ["LIMIT", "Bid情境", "價差占中價", "未成交"]) expect(visible).toContain(required);
+    }
   });
 });

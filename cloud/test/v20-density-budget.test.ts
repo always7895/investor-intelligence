@@ -30,7 +30,6 @@ const BEFORE: Record<string, { texts: number; chars: number; xxs: number }> = {
   "bottleneck Top20 card": { texts: 44, chars: 818, xxs: 22 },
   "bottleneck detail page 1": { texts: 75, chars: 1587, xxs: 38 },
   "bottleneck industry": { texts: 20, chars: 294, xxs: 9 },
-  "covered-call (3 tiers)": { texts: 59, chars: 955, xxs: 40 },
   "options-guidance order": { texts: 26, chars: 684, xxs: 12 },
   "options-guidance sizing": { texts: 14, chars: 566, xxs: 6 },
   "educational-options": { texts: 21, chars: 763, xxs: 5 },
@@ -47,7 +46,6 @@ const CEILING: Record<string, { texts: number; chars: number; bullets: number; s
   "bottleneck Top20 card": { texts: 16, chars: 600, bullets: 0, sections: 0, footerButtons: 2 },
   "bottleneck detail page 1": { texts: 10, chars: 409, bullets: 0, sections: 0, footerButtons: 2 },
   "bottleneck industry": { texts: 8, chars: 97, bullets: 0, sections: 0, footerButtons: 2 },
-  "covered-call (3 tiers)": { texts: 22, chars: 674, bullets: 0, sections: 1, footerButtons: 2 },
   "options-guidance order": { texts: 12, chars: 339, bullets: 0, sections: 0, footerButtons: 1 },
   "options-guidance sizing": { texts: 7, chars: 172, bullets: 0, sections: 0, footerButtons: 1 },
   "educational-options": { texts: 9, chars: 361, bullets: 0, sections: 0, footerButtons: 2 },
@@ -67,15 +65,18 @@ describe("V20 density budgets (realistic fixtures)", () => {
       const ceiling = CEILING[name]!;
       if (process.env.V20_LOG) process.stderr.write(`@@ ${name} bubbles=${metrics.length} texts=${worst(metrics, "texts")} chars=${worst(metrics, "chars")} bullets=${worst(metrics, "bullets")} sections=${worst(metrics, "sections")} xxs=${worst(metrics, "xxs")} footerButtons=${worst(metrics, "footerButtons")} long=${Math.max(...metrics.map(m => m.longPlain.length))}
 `);
-      expect(worst(metrics, "texts"), `${name} texts`).toBeLessThanOrEqual(ceiling.texts);
-      expect(worst(metrics, "chars"), `${name} chars`).toBeLessThanOrEqual(ceiling.chars);
-      expect(worst(metrics, "bullets"), `${name} bullets`).toBeLessThanOrEqual(ceiling.bullets);
-      expect(worst(metrics, "sections"), `${name} sections`).toBeLessThanOrEqual(ceiling.sections);
-      expect(worst(metrics, "footerButtons"), `${name} footer buttons`).toBeLessThanOrEqual(ceiling.footerButtons);
-      // V20 never makes a surface denser than before: fewer characters everywhere, no more texts (the navigation panel gains
-      // one dot-less disclosure line while halving its characters).
-      expect(worst(metrics, "chars"), `${name} chars vs before`).toBeLessThan(BEFORE[name]!.chars);
-      expect(worst(metrics, "texts"), `${name} texts vs before`).toBeLessThanOrEqual(BEFORE[name]!.texts + (name === "rich-menu navigation" ? 1 : 0));
+      // Stage 1C requires every recommendation tier's quote, warning and two economic scenarios on the
+      // visible strategy page. Its former tiny-character pin is superseded by semantic and LINE bounds
+      // in v21-three-strategies; all other surfaces retain their measured reduction budgets.
+      if (name !== "covered-call (3 tiers)") {
+        expect(worst(metrics, "texts"), `${name} texts`).toBeLessThanOrEqual(ceiling.texts);
+        expect(worst(metrics, "chars"), `${name} chars`).toBeLessThanOrEqual(ceiling.chars);
+        expect(worst(metrics, "bullets"), `${name} bullets`).toBeLessThanOrEqual(ceiling.bullets);
+        expect(worst(metrics, "sections"), `${name} sections`).toBeLessThanOrEqual(ceiling.sections);
+        expect(worst(metrics, "footerButtons"), `${name} footer buttons`).toBeLessThanOrEqual(ceiling.footerButtons);
+        expect(worst(metrics, "chars"), `${name} chars vs before`).toBeLessThan(BEFORE[name]!.chars);
+        expect(worst(metrics, "texts"), `${name} texts vs before`).toBeLessThanOrEqual(BEFORE[name]!.texts + (name === "rich-menu navigation" ? 1 : 0));
+      }
       for (const item of metrics) {
         for (const label of item.labels) {
           expect(Array.from(label).length, label).toBeLessThanOrEqual(BUTTON_LABEL_MAX);

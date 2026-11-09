@@ -3,8 +3,9 @@
 // (regenerate: `python -m tests.fixtures.v21_worker_cases`). Synthetic data only.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import fixture from "./fixtures/v21-three-strategies.json";
-import type { LineOutboundMessage } from "../src/line-messages";
-import { STRATEGY_DEGRADED_TEXT, buildCoveredCallMessages, validateCoveredCallCycle } from "../src/v213/covered-call";
+import { assertLineMessages, type LineOutboundMessage } from "../src/line-messages";
+import { STRATEGY_DEGRADED_TEXT, buildCoveredCallMessages, validateCoveredCallCycle,
+  type CoveredCallCycle, type CoveredCallSuggestion, type CspItem, type BuyStrategyLeg, type SellStrategyLeg, type CollarItem } from "../src/v213/covered-call";
 import { BULLET_DOT_SIZE } from "../src/v213/line-theme";
 import * as admission from "../src/v213/public-options-admission";
 import { admitSyntheticTickers, resetAdmissionToReal } from "./synthetic-option-admission";
@@ -186,14 +187,14 @@ describe("V21 card", () => {
   it("keeps compact strategy figures and preserves complete same-reply qualifications", () => {
     const list = bubbles(full());
     const overview = joined(list[0]);
-    const disclosure = joined(list[4]);
+    const detail = joined(list);
     for (const expected of ["$94.00", "年化", "$107.00", "+$46.00", "以備妥現金計"]) expect(overview).toContain(expected);
     for (const expected of ["$1.00", "$100.00", "$9400.00", "$9600.00", "$92.00", "$107.00",
-      "Bid/Mid/Ask 備兌 $0.36/$0.38/$0.40", "Bid/Mid/Ask 賣沽 $0.98/$1.00/$1.02",
-      "領口 Put Bid/Mid/Ask $0.59/$0.61/$0.63", "Call Bid/Mid/Ask $1.05/$1.07/$1.09",
+      "Bid $0.36", "中價 $0.38", "Ask $0.40", "Bid $0.98", "中價 $1.00", "Ask $1.02",
+      "Bid $0.59", "中價 $0.61", "Ask $0.63", "Bid $1.05", "中價 $1.07", "Ask $1.09",
       "年化 13.9%（以備妥現金計）", "損益兩平 $93.00", "Delta 0.20", "Bid $0.98",
       "Bid $0.59", "Bid $1.05", "$754.00", "$746.00", "$99.54", "模型值，依報價隱含波動率"]) {
-      expect(disclosure, expected).toContain(expected);
+      expect(detail, expected).toContain(expected);
     }
     expect(JSON.stringify(list[0])).toContain("AAA 每月期權 文字");
     expect(overview).not.toContain("後續頁面");
@@ -202,7 +203,7 @@ describe("V21 card", () => {
     const cc = joined(list[1]);
     expect(cc).toContain("Bid $0.36");
     expect(joined(list[4])).toContain("年化收益＝期間收益×365÷DTE");
-    expect(joined(list[4])).toContain("模型值，依報價隱含波動率 30%");
+    expect(joined(list)).toContain("模型值，依報價隱含波動率 30%");
     const text = joined(render(clone("yahoo_monthly_full"), "text"));
     for (const expected of ["$94.00", "$96.00", "$9400.00", "$9600.00", "損益兩平 $93.00", "$92.00", "$107.00",
       "每口淨權利金（收入）$46.00", "最大損失 $754.00／口", "最大獲利 $746.00／口", "保護賣權（買進）履約價 $92.00"]) {
@@ -226,7 +227,7 @@ describe("V21 card", () => {
     for (const required of ["每組100股＋買1口Put＋賣1口Call", "下跌有界、上漲封頂", "最大損失"])
       expect(collar).toContain(required);
     const disclosure = joined(list[list.length - 1]);
-    for (const required of ["正股仍有下跌風險", "損失可大於權利金", "最大盈虧為到期估算", "買進Put取Ask－四分之一價差"])
+    for (const required of ["正股仍有下跌風險", "損失可大於權利金", "最大盈虧為到期估算"])
       expect(disclosure).toContain(required);
   });
 
@@ -237,8 +238,7 @@ describe("V21 card", () => {
     const list = bubbles(buildCoveredCallMessages(check(cycle) as never, "每月期權", "flex"));
     const disclosure = joined(list[list.length - 1]);
     for (const required of ["資料來源與說明", "Yahoo Finance 期權鏈（非官方，延遲）", "10-24 01:00（台北）", "擷取時間",
-      "依營運者決定顯示；本資料未取得再散布授權", "非投資建議", "不下單",
-      "價差25%內取中間價；較寬時賣出腿取Bid＋四分之一價差、買進Put取Ask－四分之一價差"])
+      "依營運者決定顯示；本資料未取得再散布授權", "非投資建議", "不下單"])
       expect(disclosure).toContain(required);
     expect(list.filter(bubble => joined(bubble.header).includes("資料來源與說明"))).toHaveLength(1);
     for (const bubble of list.slice(0, -1)) {
@@ -342,9 +342,9 @@ describe("V21 card", () => {
     admitSyntheticTickers(cycle.ticker);
     vi.mocked(admission.admitPublicOption).mockImplementation(() => ({ ok: true, provider_id: "synthetic-test-only-not-in-catalog", operator_accepted: true }) as never);
     const messages = buildCoveredCallMessages(check(cycle) as never, "每月期權", "text") as { type: "text"; text: string }[];
-    expect(messages).toHaveLength(1);
-    const text = messages[0]!.text;
-    expect(text.length).toBeLessThan(4900);
+    expect(messages.length).toBeLessThanOrEqual(5);
+    for (const message of messages) expect(message.text.length).toBeLessThanOrEqual(4900);
+    const text = messages.map(message => message.text).join("");
     expect(text).toContain("【備兌買權建議｜AAA");
     for (const expected of ["現金擔保賣權", "領口策略", "需備現金 $9400.00", "最大損失 $754.00／口", "最大獲利 $746.00／口", "保護賣權（買進）履約價 $92.00"]) expect(text).toContain(expected);
     expect(text.indexOf("備兌買權")).toBeLessThan(text.indexOf("現金擔保賣權"));
@@ -368,88 +368,348 @@ describe("V21 card", () => {
   });
 });
 
-describe("M2 precise producer reasons on monthly observations", () => {
-  // Parent regenerates this producer bridge before executing the tests.
-  // Static synthetic JSON bridge; its cycles still pass the production validator below.
+describe("Stage 1C producer bridge and observation boundaries", () => {
+  // Parent regenerates the bridge: names describe input chains, not guaranteed observation-only outcomes.
   const observationFixture = fixture as unknown as { observations: Record<string, Json> };
-  const observations = observationFixture.observations;
-  const observed = (name: string): Json => structuredClone(observations[name]!);
-  const expected: [string, string, string, string][] = [
-    ["wide_all", "買權買賣價差大於中價", "賣權買賣價差大於中價", "賣權買賣價差大於中價"],
-    ["no_two_sided_put", "買權買賣價差大於中價", "賣權無有效雙邊報價", "賣權無有效雙邊報價"],
-    ["absent_puts", "買權買賣價差大於中價", "無該到期的賣權報價", "無該到期的賣權報價"],
-    ["unknown_puts", "買權買賣價差大於中價", "無法判定賣權鏈是否缺漏", "無法判定賣權鏈是否缺漏"],
-  ];
-  it.each(expected)("%s retains all three exact reasons in text and Flex", (name, cc, csp, collar) => {
-    const raw = observed(name);
-    const cycle = check(raw);
-    expect(cycle).not.toBeNull();
-    expect(cycle!.strategies).toEqual(raw.strategies);
-    expect(cycle!.suggestions).toEqual([]);
-    for (const [strategy, reason] of [["cc", cc], ["csp", csp], ["collar", collar]]) {
-      expect(raw.strategies[strategy!].unavailable).toContain(reason);
-    }
-    for (const style of ["text", "flex"] as const) {
-      const visible = joined(render(raw, style));
-      for (const strategy of ["cc", "csp", "collar"]) expect(visible).toContain(raw.strategies[strategy].unavailable);
-      expect(visible).toContain(raw.expiry);
-      expect(visible).not.toContain("未包含可核驗賣權鏈");
-    }
-    expect(bubbles(render(raw))).toHaveLength(1); // no executable strategy details
-  });
+  const observed = (name: string): Json => structuredClone(observationFixture.observations[name]!);
+  const observationOnly = (): Json => {
+    const raw = clone("yahoo_monthly_full");
+    const call = raw.suggestions[0];
+    raw.quote_observation = { kind: "TWO_SIDED", strike: call.strike, bid: call.bid, ask: call.ask,
+      last: null, annualized_yield: call.bid / raw.spot * 365 / Math.max(raw.dte, 1), oi: call.oi, volume: call.volume };
+    raw.suggestions = [];
+    delete raw.middle_suggestion;
+    raw.strategies = { cc: { unavailable: "買權 Delta 超出保守範圍" },
+      csp: { unavailable: "無該到期的賣權報價" }, collar: { unavailable: "無該到期的賣權報價" } };
+    return raw;
+  };
 
-  it.each(["wide_calls", "delta_call", "collar_only"])("%s keeps independently available strategies", name => {
-    const raw = observed(name);
-    expect(check(raw)?.strategies).toEqual(raw.strategies);
-    for (const style of ["text", "flex"] as const) {
-      const visible = joined(render(raw, style));
-      for (const strategy of ["cc", "csp", "collar"]) {
-        const reason = raw.strategies[strategy]?.unavailable;
-        if (reason) expect(visible).toContain(reason);
-      }
-      expect(visible).not.toContain("未包含可核驗賣權鏈");
-    }
-    expect(bubbles(render(raw))).toHaveLength(2); // observation plus the independently available CSP or collar
-  });
-
-  it("does not infer put-chain absence from omitted legacy metadata or an omitted block", () => {
-    for (const name of ["wide_all", "wide_calls"]) {
+  it.each(["wide_all", "wide_calls", "no_two_sided_put", "absent_puts", "unknown_puts", "delta_call", "collar_only"])(
+    "%s renders every independently available strategy and preserves remaining reasons", name => {
       const raw = observed(name);
-      delete raw.strategies;
+      const valid = check(raw);
+      expect(valid).not.toBeNull();
+      expect(valid!.strategies).toEqual(raw.strategies);
       for (const style of ["text", "flex"] as const) {
         const visible = joined(render(raw, style));
-        expect(visible).toContain("無法判定賣權鏈或報價是否可用");
-        expect(visible).not.toContain("未包含可核驗賣權鏈");
+        expect(visible).toContain(raw.expiry);
+        for (const strategy of ["cc", "csp", "collar"]) {
+          const reason = raw.strategies?.[strategy]?.unavailable;
+          if (reason) expect(visible).toContain(reason);
+        }
+        expect(visible).not.toContain("買賣價差大於中價");
+        if (raw.suggestions.length) {
+          expect(visible).toContain("LIMIT");
+          expect(visible).toContain("Bid情境");
+        }
       }
-      raw.strategies = { cc: { unavailable: "來源未提供備兌買權篩選結果" } };
-      expect(joined(render(raw, "text"))).toContain("無法判定賣權鏈或報價是否可用");
+    });
+
+  it("wide quotes no longer force observation-only, and a missing put Bid degrades only the selling strategy", () => {
+    const wide = check(observed("wide_all"))!;
+    expect(wide.suggestions.length).toBeGreaterThan(0);
+    expect(wide.strategies.csp.suggestions.length).toBeGreaterThan(0);
+    expect(wide.strategies.collar.items.length).toBeGreaterThan(0);
+    const oneSided = check(observed("no_two_sided_put"))!;
+    expect(oneSided.strategies.csp.unavailable).toContain("Bid");
+    expect(oneSided.strategies.collar.put.bid).toBeNull();
+    expect(oneSided.strategies.collar.put.ask).toBeGreaterThan(0);
+  });
+
+  it("does not infer put-chain absence from omitted metadata or an omitted strategy block", () => {
+    const raw = observationOnly();
+    delete raw.strategies;
+    for (const style of ["text", "flex"] as const) {
+      const visible = joined(render(raw, style));
+      expect(visible).toContain("無法判定賣權鏈或報價是否可用");
+      expect(visible).not.toContain("未包含可核驗賣權鏈");
     }
   });
 
-  it("requires a valid monthly observation and a valid CC reason when all strategies are unavailable", () => {
-    for (const mutate of [
-      (raw: Json) => { delete raw.quote_observation; },
-      (raw: Json) => { raw.quote_observation.annualized_yield = 99; },
-      (raw: Json) => { delete raw.strategies.cc; },
-      (raw: Json) => { raw.strategies.cc.unavailable = ""; },
-      (raw: Json) => { raw.strategies.cc.unavailable = "x".repeat(201); },
-    ]) {
-      const raw = observed("wide_all");
-      mutate(raw);
-      expect(check(raw)).toBeNull();
+  it("keeps monthly observation validation, freshness and precise independent reasons", () => {
+    const raw = observationOnly();
+    expect(check(raw)).not.toBeNull();
+    for (const style of ["text", "flex"] as const) {
+      const visible = joined(render(raw, style));
+      for (const name of ["cc", "csp", "collar"]) expect(visible).toContain(raw.strategies[name].unavailable);
     }
-    const raw = observed("wide_all");
+    for (const mutate of [
+      (row: Json) => { delete row.quote_observation; },
+      (row: Json) => { row.quote_observation.annualized_yield = 99; },
+      (row: Json) => { delete row.strategies.cc; },
+      (row: Json) => { row.strategies.cc.unavailable = ""; },
+      (row: Json) => { row.strategies.cc.unavailable = "x".repeat(201); },
+    ]) {
+      const bad = observationOnly(); mutate(bad);
+      expect(check(bad)).toBeNull();
+    }
     expect(validateCoveredCallCycle(raw, NOW, STAMP, "weekly")).toBeNull();
     expect(validateCoveredCallCycle(raw, NOW + 7 * 3600_000, STAMP, "monthly")).toBeNull();
-  });
-
-  it("degrades a malformed put block without discarding the validated observation or another reason", () => {
-    const raw = observed("wide_all");
     raw.strategies.csp = { unavailable: "x", suggestions: [] };
     const kept = check(raw)!;
-    expect(kept).not.toBeNull();
     expect(kept.strategies.csp).toEqual(unavailable);
     expect(kept.strategies.cc).toEqual(raw.strategies.cc);
     expect(kept.strategies.collar).toEqual(raw.strategies.collar);
+  });
+});
+
+/** Independent, real-shaped wide quotes; no generated fixture or producer algorithm is used here. */
+function wideRecommendation(currency: "USD" | "SEK" = "SEK") {
+  const cycle = validateCoveredCallCycle(clone("yahoo_monthly_full"), NOW, STAMP, "monthly")!;
+  cycle.currency = currency;
+  cycle.spot = 16.2;
+  const days = Math.max(cycle.dte, 1);
+  const cc = (role: CoveredCallSuggestion["role"], strike: number, delta: number): CoveredCallSuggestion => ({
+    role, strike, bid: 0.5, ask: 2.5, mid: 1.5, limit_price: 1.5, premium_per_contract: 150,
+    period_yield: 1.5 / cycle.spot, annualized_yield: 1.5 / cycle.spot * 365 / days,
+    upside_to_strike: strike / cycle.spot - 1, delta, delta_basis: "QUOTED", iv: null,
+    oi: null, volume: null, spread_pct: 0, // a finite but false supplied percentage must never drive the display
+  });
+  cycle.suggestions = [cc("HIGH_STRIKE", 18, 0.2), cc("BALANCED", 16.4, 0.3)];
+  cycle.middle_suggestion = cc("MIDDLE", 17, 0.25);
+  delete cycle.quote_observation;
+  const cspItem = (role: CspItem["role"], strike: number): CspItem => ({
+    role, strike, bid: 0.4, ask: 2.4, limit_price: 1.4, delta: 0.25, delta_basis: "QUOTED",
+    premium_per_contract: 140, cash_required: strike * 100, annualized_yield: 1.4 / strike * 365 / days,
+    breakeven: strike - 1.4, downside_buffer: 1 - strike / cycle.spot,
+  });
+  const put: BuyStrategyLeg = { strike: 14, bid: 0.1, ask: 1.1, limit_price: 0.6, delta: 0.15, delta_basis: "QUOTED" };
+  const collarItem = (role: CollarItem["role"], strike: number): CollarItem => {
+    const call: SellStrategyLeg = { strike, bid: 0.5, ask: 2.5, limit_price: 1.5, delta: 0.25, delta_basis: "QUOTED" };
+    return { role, call, net_premium_per_share: 0.9, max_loss_per_share: cycle.spot - put.strike - 0.9,
+      max_gain_per_share: strike - cycle.spot + 0.9, break_even: cycle.spot - 0.9, worst_case_net_per_share: -0.6 };
+  };
+  const label = { rights_status: cycle.rights_status, provider_id: cycle.provider_id!, quote_basis: cycle.quote_basis, timestamp: cycle.timestamp };
+  const csp = { ...label, suggestions: [cspItem("CONSERVATIVE", 15), cspItem("BALANCED", 16)] };
+  const collar = { ...label, put, items: [collarItem("CONSERVATIVE", 18), collarItem("BALANCED", 17)] };
+  cycle.strategies = { csp, collar };
+  return { cycle, csp, collar };
+}
+
+function repriceRecommendation(cycle: CoveredCallCycle) {
+  const days = Math.max(cycle.dte, 1);
+  for (const item of [...cycle.suggestions, ...(cycle.middle_suggestion ? [cycle.middle_suggestion] : [])]) {
+    item.premium_per_contract = item.limit_price * 100;
+    item.period_yield = item.limit_price / cycle.spot;
+    item.annualized_yield = item.period_yield * 365 / days;
+  }
+  const csp = cycle.strategies?.csp;
+  if (csp && "suggestions" in csp) for (const item of csp.suggestions) {
+    item.premium_per_contract = item.limit_price * 100;
+    item.annualized_yield = item.limit_price / item.strike * 365 / days;
+    item.breakeven = item.strike - item.limit_price;
+  }
+  const collar = cycle.strategies?.collar;
+  if (collar && "items" in collar) for (const item of collar.items) {
+    const net = item.call.limit_price - collar.put.limit_price;
+    item.net_premium_per_share = net;
+    item.max_loss_per_share = cycle.spot - collar.put.strike - net;
+    item.max_gain_per_share = item.call.strike - cycle.spot + net;
+    item.break_even = cycle.spot - net;
+    item.worst_case_net_per_share = item.call.bid - collar.put.ask;
+  }
+}
+
+describe("Stage 1C nullable executable sides and visible LIMIT scenarios", () => {
+  it.each([
+    { currency: "USD", period: "monthly" }, { currency: "SEK", period: "monthly" },
+    { currency: "USD", period: "weekly" }, { currency: "SEK", period: "weekly" },
+  ] as const)("$currency $period shares every tier's rule, real spread and numeric economics in Text and Flex", ({ currency, period }) => {
+    const { cycle, csp, collar } = wideRecommendation(currency);
+    if (period === "weekly") {
+      cycle.dte = 7; cycle.expiry = "2026-10-30"; cycle.weekly_week = "NEXT";
+      delete cycle.monthly_rule;
+      repriceRecommendation(cycle);
+    }
+    const valid = validateCoveredCallCycle(cycle, NOW, STAMP, period)!;
+    expect(valid).not.toBeNull();
+    admitSyntheticTickers(cycle.ticker);
+    const label = period === "weekly" ? "每週期權" : "每月期權";
+    const flex = buildCoveredCallMessages(valid, label, "flex");
+    const text = buildCoveredCallMessages(valid, label, "text");
+    for (const messages of [flex, text]) assertLineMessages(messages);
+    const pages = bubbles(flex);
+    expect(pages).toHaveLength(5);
+    const money = (value: number) => currency === "USD" ? `$${value.toFixed(2)}` : `${value.toFixed(2)} SEK`;
+    const rate = (value: number) => `${(value * 365 / Math.max(cycle.dte, 1) * 100).toFixed(1)}%`;
+    const visibleText = joined(text);
+    for (const [index, count] of [[1, 3], [2, 2], [3, 2]]) {
+      const visibleFlex = joined(pages[index!]);
+      expect(visibleFlex.match(/Bid情境/g)).toHaveLength(count!);
+      expect(visibleFlex.match(/未成交每次降0\.01/g)).toHaveLength(count!);
+      for (const line of texts(pages[index!]!.body).flatMap(value => value.split("\n"))) {
+        if (line.includes("Bid情境") || line.includes("LIMIT") || line.includes("價差占中價"))
+          expect(visibleText).toContain(line);
+      }
+      expect(visibleFlex).toContain("流動性警示");
+      expect(visibleFlex).toContain("不低於Bid");
+    }
+    for (const visible of [joined(flex), visibleText]) {
+      for (const expected of ["價差占中價 133%", "價差占中價 143%", "價差占中價 167%",
+        `LIMIT每口權利金 ${money(150)}`, `Bid情境：每口權利金 ${money(50)}`,
+        `年化 ${rate(1.5 / cycle.spot)}`, `年化 ${rate(0.5 / cycle.spot)}`,
+        `LIMIT每口權利金 ${money(140)}`, `Bid情境：每口權利金 ${money(40)}`,
+        `年化 ${rate(1.4 / csp.suggestions[0]!.strike)}`, `年化 ${rate(0.4 / csp.suggestions[0]!.strike)}`,
+        `LIMIT每口淨權利金（收入）${money(90)}`, `每口淨權利金 -${money(60)}`,
+        `淨權利金年化 ${rate(0.9 / cycle.spot)}`, `淨權利金年化 ${rate(-0.6 / cycle.spot)}`,
+        "Call Bid－Put Ask", "不高於Ask", "非保證", "非投資建議", "不下單"]) expect(visible).toContain(expected);
+      expect(visible).not.toContain("四分之一");
+      expect(visible).not.toContain("價差占中價 0%");
+    }
+    expect(collar.put.ask).not.toBe(collar.put.bid);
+    expect(size(flex[0]!.type === "flex" ? flex[0]!.contents : null)).toBeLessThan(46_000);
+    for (const page of pages) expect(size(page)).toBeLessThan(14_000);
+  });
+
+  it("accepts missing opposite sides at the real executable reference without inventing mid, spread or Greeks", () => {
+    const { cycle, csp, collar } = wideRecommendation();
+    for (const item of [...cycle.suggestions, cycle.middle_suggestion!]) {
+      item.ask = null; item.mid = null; item.spread_pct = null; item.limit_price = item.bid;
+    }
+    for (const item of csp.suggestions) { item.ask = null; item.limit_price = item.bid; }
+    collar.put.bid = null; collar.put.limit_price = collar.put.ask;
+    for (const item of collar.items) { item.call.ask = null; item.call.limit_price = item.call.bid; }
+    repriceRecommendation(cycle);
+    const valid = validateCoveredCallCycle(cycle, NOW, STAMP, "monthly")!;
+    expect(valid).toEqual(cycle);
+    admitSyntheticTickers(cycle.ticker);
+    for (const style of ["text", "flex"] as const) {
+      const visible = joined(buildCoveredCallMessages(valid, "每月期權", style));
+      for (const expected of ["Ask 未提供", "Bid 未提供", "中價 未提供", "中價／價差無法計算", "Delta 0.20", "Call Bid－Put Ask"])
+        expect(visible).toContain(expected);
+      expect(visible).not.toMatch(/NaN|Infinity|價差占中價 0%|由買賣報價反推/);
+    }
+    const high = cycle.suggestions[0]!;
+    high.delta_basis = "QUOTE_IMPLIED";
+    expect(validateCoveredCallCycle(cycle)).toBeNull();
+    high.delta_basis = "QUOTED";
+    csp.suggestions[0]!.delta_basis = "QUOTE_IMPLIED";
+    expect(validateCoveredCallCycle(cycle)!.strategies!.csp).toEqual(unavailable);
+    expect(validateCoveredCallCycle(cycle)!.strategies!.collar).toEqual(collar);
+  });
+
+  it.each([null, undefined, 0, -1, NaN, Infinity, "1", true])("rejects unusable required sides (%s) and preserves independent valid legs", bad => {
+    const { cycle, csp, collar } = wideRecommendation();
+    const cc = structuredClone(cycle);
+    Object.assign(cc.suggestions[0]!, { bid: bad });
+    expect(validateCoveredCallCycle(cc)).toBeNull();
+    Object.assign(csp.suggestions[0]!, { bid: bad });
+    let valid = validateCoveredCallCycle(cycle)!;
+    expect(valid.strategies!.csp).toEqual(unavailable);
+    expect(valid.strategies!.collar).toEqual(collar);
+    const badCall = wideRecommendation();
+    Object.assign(badCall.collar.items[0]!.call, { bid: bad });
+    expect(validateCoveredCallCycle(badCall.cycle)!.strategies!.collar).toEqual(unavailable);
+    expect(validateCoveredCallCycle(badCall.cycle)!.strategies!.csp).toEqual(badCall.csp);
+    Object.assign(collar.put, { ask: bad });
+    valid = validateCoveredCallCycle(cycle)!;
+    expect(valid.strategies!.collar).toEqual(unavailable);
+    expect(valid.suggestions).toEqual(cycle.suggestions);
+  });
+
+  it.each([undefined, 0, -1, NaN, Infinity, "1", true])("rejects malformed opposite sides (%s), not just the required side", bad => {
+    const { cycle, csp, collar } = wideRecommendation();
+    const cc = structuredClone(cycle);
+    Object.assign(cc.suggestions[0]!, { ask: bad });
+    expect(validateCoveredCallCycle(cc)).toBeNull();
+    Object.assign(csp.suggestions[0]!, { ask: bad });
+    Object.assign(collar.put, { bid: bad });
+    const valid = validateCoveredCallCycle(cycle)!;
+    expect(valid.strategies!.csp).toEqual(unavailable);
+    expect(valid.strategies!.collar).toEqual(unavailable);
+  });
+
+  it("keeps strict quote bounds, arithmetic, cent-exact strikes, delta and OTM on very wide quotes", () => {
+    for (const mutate of [
+      (row: CoveredCallCycle) => { row.suggestions[0]!.ask = 0.4; },
+      (row: CoveredCallCycle) => { row.suggestions[0]!.mid = null; },
+      (row: CoveredCallCycle) => { row.suggestions[0]!.delta = 0.2001; },
+      (row: CoveredCallCycle) => { row.suggestions[0]!.delta = null; },
+      (row: CoveredCallCycle) => { row.suggestions[0]!.strike = 16.2; },
+      (row: CoveredCallCycle) => { row.suggestions[0]!.strike = 18.001; },
+      (row: CoveredCallCycle) => { row.suggestions[0]!.annualized_yield += 0.1; },
+      (row: CoveredCallCycle) => { row.suggestions[0]!.limit_price = 0.4999999999; repriceRecommendation(row); },
+      (row: CoveredCallCycle) => { row.suggestions[0]!.limit_price = 1.51; repriceRecommendation(row); },
+    ]) {
+      const { cycle } = wideRecommendation(); mutate(cycle);
+      expect(validateCoveredCallCycle(cycle)).toBeNull();
+    }
+    const { cycle, csp, collar } = wideRecommendation();
+    csp.suggestions[0]!.strike = 15.001;
+    collar.put.limit_price = collar.put.ask + 1e-10;
+    repriceRecommendation(cycle);
+    const valid = validateCoveredCallCycle(cycle)!;
+    expect(valid.strategies!.csp).toEqual(unavailable);
+    expect(valid.strategies!.collar).toEqual(unavailable);
+  });
+
+  it("accepts bounded midpoint rounding and off-tick edge clamps but never an outside-quote limit", () => {
+    for (const [bid, ask, sell, buy] of [[0.5, 2.51, 1.5, 1.51], [0.505, 0.506, 0.505, 0.506], [0.5, 0.5, 0.5, 0.5]]) {
+      const { cycle, csp, collar } = wideRecommendation();
+      Object.assign(cycle.suggestions[0]!, { bid, ask, mid: (bid! + ask!) / 2, limit_price: sell });
+      Object.assign(csp.suggestions[0]!, { bid, ask, limit_price: sell });
+      Object.assign(collar.put, { bid, ask, limit_price: buy });
+      repriceRecommendation(cycle);
+      expect(validateCoveredCallCycle(cycle)).not.toBeNull();
+      Object.assign(cycle.suggestions[0]!, { limit_price: ask! + 1e-10 });
+      repriceRecommendation(cycle);
+      expect(validateCoveredCallCycle(cycle)).toBeNull();
+    }
+  });
+
+  it("one-sided quotes refuse invented midpoint/spread and prices above their executable reference", () => {
+    for (const patch of [{ mid: 0.5 }, { spread_pct: 0 }, { limit_price: 0.51 }, { delta_basis: null }]) {
+      const { cycle } = wideRecommendation();
+      Object.assign(cycle.suggestions[0]!, { ask: null, mid: null, spread_pct: null, limit_price: 0.5 }, patch);
+      repriceRecommendation(cycle);
+      expect(validateCoveredCallCycle(cycle)).toBeNull();
+    }
+  });
+
+  it("validates cent-rounded contract premiums at an off-tick Bid clamp without loosening other arithmetic", () => {
+    const { cycle, csp } = wideRecommendation();
+    Object.assign(cycle.suggestions[0]!, { bid: 0.005049, ask: 0.00505, mid: 0.0050495, limit_price: 0.005049 });
+    Object.assign(csp.suggestions[0]!, { bid: 0.005049, ask: 0.00505, limit_price: 0.005049 });
+    repriceRecommendation(cycle);
+    cycle.suggestions[0]!.premium_per_contract = 0.5;
+    csp.suggestions[0]!.premium_per_contract = 0.5;
+    const valid = validateCoveredCallCycle(cycle)!;
+    expect(valid).not.toBeNull();
+    expect(valid.strategies!.csp).toEqual(csp);
+    cycle.suggestions[0]!.premium_per_contract = 0.49;
+    expect(validateCoveredCallCycle(cycle)).toBeNull();
+    cycle.suggestions[0]!.premium_per_contract = 0.5;
+    csp.suggestions[0]!.annualized_yield += 0.001;
+    expect(validateCoveredCallCycle(cycle)!.strategies!.csp).toEqual(unavailable);
+  });
+
+  it.each(["put", "call"] as const)("refuses a one-sided collar %s claiming midpoint-implied Greeks without discarding CSP", side => {
+    const { cycle, csp, collar } = wideRecommendation();
+    if (side === "put") Object.assign(collar.put, { bid: null, limit_price: collar.put.ask, delta_basis: "QUOTE_IMPLIED" });
+    else Object.assign(collar.items[0]!.call, { ask: null, limit_price: collar.items[0]!.call.bid, delta_basis: "QUOTE_IMPLIED" });
+    repriceRecommendation(cycle);
+    const valid = validateCoveredCallCycle(cycle)!;
+    expect(valid.strategies!.collar).toEqual(unavailable);
+    expect(valid.strategies!.csp).toEqual(csp);
+  });
+
+  it("never admits a one-sided live recommendation as a two-sided previous-session capture", () => {
+    for (const side of ["cc", "middle", "csp", "put", "call"] as const) {
+      const { cycle, csp, collar } = wideRecommendation("USD");
+      cycle.quote_basis = "previous_session_last";
+      cycle.asof_date = STAMP.slice(0, 10);
+      csp.quote_basis = cycle.quote_basis; collar.quote_basis = cycle.quote_basis;
+      const options = { allowPreviousSession: true };
+      expect(validateCoveredCallCycle(cycle, NOW, STAMP, "monthly", options)).not.toBeNull();
+      if (side === "cc") Object.assign(cycle.suggestions[0]!, { ask: null, mid: null, spread_pct: null, limit_price: 0.5 });
+      if (side === "middle") Object.assign(cycle.middle_suggestion!, { ask: null, mid: null, spread_pct: null, limit_price: 0.5 });
+      if (side === "csp") Object.assign(csp.suggestions[0]!, { ask: null, limit_price: 0.4 });
+      if (side === "put") Object.assign(collar.put, { bid: null, limit_price: 1.1 });
+      if (side === "call") Object.assign(collar.items[0]!.call, { ask: null, limit_price: 0.5 });
+      repriceRecommendation(cycle);
+      expect(validateCoveredCallCycle(cycle, NOW, STAMP, "monthly", options)).toBeNull();
+      cycle.quote_basis = "delayed"; csp.quote_basis = "delayed"; collar.quote_basis = "delayed";
+      expect(validateCoveredCallCycle(cycle, NOW, STAMP, "monthly")).not.toBeNull();
+    }
   });
 });

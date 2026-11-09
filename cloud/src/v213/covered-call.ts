@@ -4,6 +4,7 @@
  * scripts/build_market_quotes_options.py from delayed public option chains and sealed in `v213:options:v2`.
  * Observation only: the bot never places an order. Mirror of validate_covered_call_cycle (Python). */
 import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
+import { splitLineText } from "../core";
 import { sourceZh } from "./source-labels";
 import { formatVisibleMoment } from "./line-formatters";
 import {
@@ -16,7 +17,7 @@ import {
 } from "./line-theme";
 
 export interface CoveredCallSuggestion {
-  role: "HIGH_STRIKE" | "MIDDLE" | "BALANCED"; strike: number; bid: number; ask: number; mid: number; limit_price: number;
+  role: "HIGH_STRIKE" | "MIDDLE" | "BALANCED"; strike: number; bid: number; ask: number | null; mid: number | null; limit_price: number;
   premium_per_contract: number; period_yield: number; annualized_yield: number; upside_to_strike: number;
   delta: number | null; iv: number | null; oi: number | null; volume: number | null; spread_pct: number | null;
   /** QUOTED: the venue's delta; QUOTED_IV: Black-Scholes from the quoted implied volatility; QUOTE_IMPLIED: Black-Scholes
@@ -33,19 +34,21 @@ export const PREVIOUS_SESSION_MAX_AGE_MS = 4 * 86_400_000;
 
 /** V21 (operator 2026-10-19): the additive `strategies` object of a cycle (scripts/validate_v213_market_products.py validate_strategies is
  * the Python mirror). One quoted option leg of the cash-secured put and the collar; delta is ABSOLUTE. */
-export interface StrategyLeg { strike: number; bid: number; ask: number; limit_price: number; delta: number; delta_basis: "QUOTED" | "QUOTED_IV" | "QUOTE_IMPLIED" }
-export interface CspItem extends StrategyLeg {
+export interface StrategyLeg { strike: number; bid: number | null; ask: number | null; limit_price: number; delta: number; delta_basis: "QUOTED" | "QUOTED_IV" | "QUOTE_IMPLIED" }
+export interface SellStrategyLeg extends StrategyLeg { bid: number }
+export interface BuyStrategyLeg extends StrategyLeg { ask: number }
+export interface CspItem extends SellStrategyLeg {
   role: "CONSERVATIVE" | "BALANCED"; premium_per_contract: number; cash_required: number; annualized_yield: number; breakeven: number; downside_buffer: number;
 }
 export interface CollarItem {
-  role: "CONSERVATIVE" | "BALANCED"; call: StrategyLeg; net_premium_per_share: number; max_loss_per_share: number; max_gain_per_share: number;
+  role: "CONSERVATIVE" | "BALANCED"; call: SellStrategyLeg; net_premium_per_share: number; max_loss_per_share: number; max_gain_per_share: number;
   break_even: number; worst_case_net_per_share: number;
 }
 /** The label every real block repeats; each value equals the cycle's own (checked). */
 export interface StrategyLabel { rights_status: string; provider_id: string; quote_basis: string; timestamp: string }
 export interface StrategyUnavailable { unavailable: string }
 export type CspBlock = ({ suggestions: CspItem[] } & StrategyLabel) | StrategyUnavailable;
-export type CollarBlock = ({ put: StrategyLeg; items: CollarItem[] } & StrategyLabel) | StrategyUnavailable;
+export type CollarBlock = ({ put: BuyStrategyLeg; items: CollarItem[] } & StrategyLabel) | StrategyUnavailable;
 export interface CycleStrategies { cc?: StrategyUnavailable; csp?: CspBlock; collar?: CollarBlock }
 
 export interface MonthlyQuoteObservation {
@@ -82,7 +85,34 @@ const finite = (value: unknown): value is number => typeof value === "number" &&
 const DELTA_BASES = new Set(["QUOTED", "QUOTED_IV", "QUOTE_IMPLIED"]);
 /** The high strike's assignment cap (scripts/build_market_quotes_options.py MAX_HIGH_STRIKE_DELTA). */
 const MAX_HIGH_STRIKE_DELTA = 0.20;
-const close = (value: number, expected: number) => Math.abs(value - expected) <= Math.max(1e-4, Math.abs(expected) * 1e-3);
+const close = (value: number, expected: number, absoluteTolerance = 1e-4) => Number.isFinite(expected)
+  && Math.abs(value - expected) <= Math.max(absoluteTolerance, Math.abs(expected) * 1e-3);
+
+/** Required executable side stays positive; optional sides are explicit null, never zero or invented.
+ * Keep the established bounded envelope for already-sealed two-sided limits. */
+function validLimitQuote(bid: unknown, ask: unknown, limit: unknown, buy: boolean): boolean {
+  if (!finite(limit) || limit <= 0) return false;
+  if (bid !== null && !(finite(bid) && bid > 0)) return false;
+  if (ask !== null && !(finite(ask) && ask > 0)) return false;
+  if (buy ? !finite(ask) : !finite(bid)) return false;
+  if (bid === null || ask === null) return limit === (buy ? ask : bid);
+  if (!finite(bid) || !finite(ask) || bid > ask || limit < bid || limit > ask) return false;
+  const mid = bid / 2 + ask / 2;
+  return buy ? limit >= mid - 1e-9 && limit <= ask : limit >= bid && limit <= mid + 1e-9;
+}
+
+/** Recommendation usability must not upgrade a one-sided capture into a two-sided prior session. */
+function hasOneSidedRecommendation(cycle: Record<string, unknown>): boolean {
+  const oneSided = (leg: unknown) => isRecord(leg) && (leg.bid === null || leg.ask === null);
+  if (Array.isArray(cycle.suggestions) && cycle.suggestions.some(oneSided)) return true;
+  if (oneSided(cycle.middle_suggestion)) return true;
+  const strategies = cycle.strategies;
+  if (!isRecord(strategies)) return false;
+  const csp = strategies.csp, collar = strategies.collar;
+  return (isRecord(csp) && Array.isArray(csp.suggestions) && csp.suggestions.some(oneSided))
+    || (isRecord(collar) && (oneSided(collar.put)
+      || (Array.isArray(collar.items) && collar.items.some(item => isRecord(item) && oneSided(item.call)))));
+}
 
 const UTC_INSTANT_RE = /^\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?Z$/;
 
@@ -150,6 +180,7 @@ export function validateCoveredCallCycle(raw: unknown, now?: number, documentGen
     || !isValidUtcIsoInstant(cycle.timestamp)
     || !Array.isArray(cycle.suggestions) || cycle.suggestions.length > 2) return null;
   if (carried && (typeof now !== "number" || !Number.isFinite(now) || cycle.currency !== "USD" || typeof cycle.asof_date !== "string")) return null;
+  if (carried && hasOneSidedRecommendation(cycle)) return null;
 
   const rowTime = Date.parse(cycle.timestamp);
   if (typeof now === "number" && Number.isFinite(now)) {
@@ -221,11 +252,16 @@ export function validateCoveredCallCycle(raw: unknown, now?: number, documentGen
   /** Per-item checks shared by the two suggestions and the optional middle tier. */
   const itemValid = (item: any): boolean => {
     if (!item || typeof item !== "object") return false;
-    if (!["strike", "bid", "ask", "mid", "limit_price", "premium_per_contract", "period_yield", "annualized_yield", "upside_to_strike"]
+    if (!["strike", "bid", "limit_price", "premium_per_contract", "period_yield", "annualized_yield", "upside_to_strike"]
       .every(key => finite(item[key]))) return false;
-    if (!(item.strike > cycle.spot) || !(item.bid > 0 && item.bid <= item.ask) || !close(item.mid, (item.bid + item.ask) / 2)
-      || item.limit_price < item.bid - 1e-9 || item.limit_price > item.mid + 1e-9) return false;
-    if (!close(item.premium_per_contract, item.limit_price * 100) || !close(item.period_yield, item.limit_price / cycle.spot)
+    if (!(item.strike > cycle.spot) || Math.round(item.strike * 100) / 100 !== item.strike
+      || !validLimitQuote(item.bid, item.ask, item.limit_price, false)) return false;
+    if (item.ask === null) {
+      if (item.mid !== null || item.spread_pct !== null || item.delta_basis === "QUOTE_IMPLIED") return false;
+      if (item.delta !== null && item.delta !== undefined && !["QUOTED", "QUOTED_IV"].includes(item.delta_basis)) return false;
+    } else if (!finite(item.mid) || !close(item.mid, item.bid / 2 + item.ask / 2)) return false;
+    // Producer rounds per-contract money to cents, including when the bounded limit clamps to an off-tick Bid.
+    if (!close(item.premium_per_contract, item.limit_price * 100, 0.005 + 1e-9) || !close(item.period_yield, item.limit_price / cycle.spot)
       || !close(item.annualized_yield, item.limit_price / cycle.spot * 365 / effectiveDays(cycle.dte))
       || !close(item.upside_to_strike, item.strike / cycle.spot - 1)) return false;
     if (item.delta !== null && item.delta !== undefined && !(finite(item.delta) && item.delta >= 0 && item.delta <= 1)) return false;
@@ -293,15 +329,15 @@ const validRoles = (items: any[]) => items.length === 1 ? items[0]?.role === "CO
 const unavailableValid = (block: unknown): block is StrategyUnavailable => isRecord(block) && hasExactKeys(block, ["unavailable"])
   && typeof block.unavailable === "string" && block.unavailable.trim().length > 0 && block.unavailable.length <= STRATEGY_UNAVAILABLE_MAX;
 
-/** One quoted leg: exact key set, strike on the right side of the spot, two-sided positive quote, limit on the right side of the mid
- * (sell: bid..mid; buy: mid..ask), absolute delta in the band, known delta basis. */
+/** One quoted leg: exact keys are checked by the caller, cent-exact OTM strike, executable quote
+ * side, bounded limit, absolute delta in the band, and a supported (never fabricated) delta basis. */
 function legValid(leg: unknown, spot: number, kind: { buy: boolean; put: boolean; band: readonly [number, number] }): boolean {
   if (!isRecord(leg) || !LEG_KEYS.every(key => Object.hasOwn(leg, key))) return false;
-  if (!["strike", "bid", "ask", "limit_price", "delta"].every(key => finite(leg[key]))) return false;
-  if (!(kind.put ? leg.strike > 0 && leg.strike < spot : leg.strike > spot && spot > 0)) return false;
-  if (!(leg.bid > 0 && leg.bid <= leg.ask)) return false;
-  const mid = (leg.bid + leg.ask) / 2;
-  if (kind.buy ? !(leg.limit_price >= mid - 1e-9 && leg.limit_price <= leg.ask + 1e-9) : !(leg.limit_price >= leg.bid - 1e-9 && leg.limit_price <= mid + 1e-9)) return false;
+  if (!["strike", "limit_price", "delta"].every(key => finite(leg[key]))) return false;
+  if (!(kind.put ? leg.strike > 0 && leg.strike < spot : leg.strike > spot && spot > 0)
+    || Math.round(leg.strike * 100) / 100 !== leg.strike) return false;
+  if (!validLimitQuote(leg.bid, leg.ask, leg.limit_price, kind.buy)) return false;
+  if ((leg.bid === null || leg.ask === null) && leg.delta_basis === "QUOTE_IMPLIED") return false;
   if (!(leg.delta > 0 && leg.delta <= 1)) return false;
   if (!(leg.delta >= kind.band[0] - DELTA_BAND_TOLERANCE && leg.delta <= kind.band[1] + DELTA_BAND_TOLERANCE)) return false;
   return typeof leg.delta_basis === "string" && DELTA_BASES.has(leg.delta_basis);
@@ -327,7 +363,7 @@ function strategyBlockValid(name: "csp" | "collar", block: unknown, cycle: Recor
     for (const item of items) {
       if (!hasExactKeys(item, CSP_KEYS) || !legValid(item, spot, { buy: false, put: true, band: CONSERVATIVE_DELTA_BAND })) return false;
       if (!["premium_per_contract", "cash_required", "annualized_yield", "breakeven", "downside_buffer"].every(key => finite(item[key]))) return false;
-      if (!close(item.premium_per_contract, item.limit_price * 100) || !close(item.cash_required, item.strike * 100)
+      if (!close(item.premium_per_contract, item.limit_price * 100, 0.005 + 1e-9) || !close(item.cash_required, item.strike * 100)
         || !close(item.annualized_yield, item.limit_price / item.strike * 365 / days) || !close(item.breakeven, item.strike - item.limit_price)
         || !close(item.downside_buffer, 1 - item.strike / spot)) return false;
     }
@@ -335,12 +371,12 @@ function strategyBlockValid(name: "csp" | "collar", block: unknown, cycle: Recor
   }
   const items = labelValid(block, cycle, "items", ["put"]);
   if (!items || !isRecord(block.put) || !hasExactKeys(block.put, LEG_KEYS) || !legValid(block.put, spot, { buy: true, put: true, band: PROTECTIVE_PUT_DELTA_BAND })) return false;
-  const put = block.put as StrategyLeg;
+  const put = block.put as BuyStrategyLeg;
   for (const item of items) {
     if (!hasExactKeys(item, COLLAR_KEYS) || !isRecord(item.call) || !hasExactKeys(item.call, LEG_KEYS)
       || !legValid(item.call, spot, { buy: false, put: false, band: CONSERVATIVE_DELTA_BAND })) return false;
     if (!["net_premium_per_share", "max_loss_per_share", "max_gain_per_share", "break_even", "worst_case_net_per_share"].every(key => finite(item[key]))) return false;
-    const call = item.call as StrategyLeg;
+    const call = item.call as SellStrategyLeg;
     const net = call.limit_price - put.limit_price;
     if (!close(item.net_premium_per_share, net) || !close(item.max_loss_per_share, spot - put.strike - net)
       || !close(item.max_gain_per_share, call.strike - spot + net) || !close(item.break_even, spot - net)
@@ -374,15 +410,16 @@ function sanitizeStrategies(cycle: Record<string, unknown>, validatedObservation
 
 const money = (value: number, currency: string) => currency === "USD" ? `$${value.toFixed(2)}` : `${value.toFixed(2)} ${currency}`;
 const pct = (value: number, digits = 1) => `${(value * 100).toFixed(digits)}%`;
-function quoteBandWithLimit(bid: number, mid: number, ask: number, limit: number, currency: string): string {
-  const midLabel = Math.abs(mid - limit) < 1e-9 ? "Mid＝限價" : `Mid ${money(mid, currency)}`;
-  return `Bid ${money(bid, currency)}｜${midLabel}｜Ask ${money(ask, currency)}`;
-}
-const legQuoteBand = (leg: StrategyLeg, currency: string) =>
-  quoteBandWithLimit(leg.bid, (leg.bid + leg.ask) / 2, leg.ask, leg.limit_price, currency);
+const quoteMoney = (value: number | null, currency: string) => value === null ? "未提供" : money(value, currency);
+const quoteMid = (bid: number | null, ask: number | null) => bid === null || ask === null ? null : bid / 2 + ask / 2;
 
-/** Spread as a share of mid, or an explicit unknown when the producer did not supply it (never NaN). */
-const spreadZh = (value: number | null | undefined) => typeof value === "number" && Number.isFinite(value) ? pct(value, 0) : "未提供";
+/** Always derive visible spread from the actual validated sides, never a supplied percentage. */
+function liquidityZh(bid: number | null, ask: number | null): string {
+  const mid = quoteMid(bid, ask);
+  if (bid === null || ask === null || mid === null) return "流動性警示：單邊報價；中價／價差無法計算";
+  const spread = (ask - bid) / mid;
+  return `價差占中價 ${pct(spread, 0)}${spread > 0.25 ? "；流動性警示：價差寬，限價可能無法成交" : ""}`;
+}
 /** Open interest / traded volume as an integer count, or an explicit unknown for absent or non-finite values (defence in
  * depth: the validator already rejects nonfinite optional fields, so this never renders NaN/Infinity). */
 const countZh = (value: number | null | undefined) => typeof value === "number" && Number.isFinite(value) ? String(value) : "未提供";
@@ -397,7 +434,7 @@ function deltaBasisZh(item: CoveredCallSuggestion): string | null {
 /** Role label and note. The visible title is numbered by display position (一／二／三) so numbering never has a gap: the middle
  * tier is shown only when it exists, and without it the two original titles are unchanged. */
 const ROLE = {
-  HIGH_STRIKE: ["高履約價（不易被賣掉）", "價外、有雙邊報價且 Delta 不高於 0.20 的最高履約價（不設年化收益下限）；股價需上漲超過右側幅度才會被指派。"],
+  HIGH_STRIKE: ["高履約價（不易被賣掉）", "價外、有有效 Bid 且 Delta 不高於 0.20 的最高履約價（不設年化收益下限）；股價需上漲超過右側幅度才會被指派。"],
   MIDDLE: ["中間型（權利金與被指派機率居中）", "履約價與權利金介於高履約價與平衡型之間；被指派機率也居中。"],
   BALANCED: ["平衡型（收較多權利金）", "履約價較低、權利金較高；被指派機率也較高。"],
 } as const;
@@ -460,7 +497,7 @@ const ccNone = (cycle: CoveredCallCycle) => cycle.strategies?.cc?.unavailable ??
 
 const BASIS_ZH = { QUOTED: "交易所提供", QUOTED_IV: "模型值，依報價隱含波動率", QUOTE_IMPLIED: "模型值，由買賣報價反推" } as const;
 const legDeltaZh = (leg: StrategyLeg) => `Delta ${leg.delta.toFixed(2)}（約 ${Math.round(leg.delta * 100)}%，${BASIS_ZH[leg.delta_basis]}）`;
-const bidAskZh = (leg: StrategyLeg, currency: string) => `Bid ${money(leg.bid, currency)}／中價 ${money((leg.bid + leg.ask) / 2, currency)}／Ask ${money(leg.ask, currency)}`;
+const bidAskZh = (leg: Pick<StrategyLeg, "bid" | "ask">, currency: string) => `Bid ${quoteMoney(leg.bid, currency)}／中價 ${quoteMoney(quoteMid(leg.bid, leg.ask), currency)}／Ask ${quoteMoney(leg.ask, currency)}`;
 const tierNameZh = (role: string) => role === "CONSERVATIVE" ? "保守型（Delta 約 0.20 起）" : "平衡型（收較多權利金）";
 const signedMoney = (value: number, currency: string) => `${value < 0 ? "-" : "+"}${money(Math.abs(value), currency)}`;
 
@@ -477,20 +514,6 @@ function cardContext(cycle: CoveredCallCycle, periodLabel: string): CardContext 
 /** Collar figures per contract (x100 of the per-share values the validator recomputed). */
 const perContract = (value: number) => value * 100;
 
-function wrapCardText(text: string, max = 40): string {
-  const chars = Array.from(text);
-  const lines: string[] = [];
-  while (chars.length > max) {
-    let end = max;
-    for (let index = max; index > 0; index -= 1) {
-      if (/[\s｜，；。／]/u.test(chars[index - 1]!)) { end = index; break; }
-    }
-    lines.push(chars.splice(0, end).join("").trimEnd());
-    while (chars[0] === " ") chars.shift();
-  }
-  if (chars.length) lines.push(chars.join(""));
-  return lines.join("\n");
-}
 
 function strategyHero(label: string, value: string) {
   return uiBox([{ type: "text", size: "3xl", weight: "bold", wrap: true, contents: [
@@ -523,28 +546,6 @@ function overviewRows(ctx: CardContext) {
   ];
 }
 
-function compactOverviewBand(bid: number, mid: number, ask: number, currency: string): string {
-  return `${money(bid, currency)}/${money(mid, currency)}/${money(ask, currency)}`;
-}
-
-function compactLegOverviewBand(leg: StrategyLeg, currency: string): string {
-  return compactOverviewBand(leg.bid, (leg.bid + leg.ask) / 2, leg.ask, currency);
-}
-
-function overviewQuoteNotes(cycle: CoveredCallCycle): string[] {
-  const quotes: string[] = [];
-  const cc = displayTiers(cycle)[0];
-  if (cc) quotes.push(`Bid/Mid/Ask 備兌 ${compactOverviewBand(cc.bid, cc.mid, cc.ask, cycle.currency)}`);
-  const csp = cspShown(cycle);
-  if (!("none" in csp)) quotes.push(`Bid/Mid/Ask 賣沽 ${compactLegOverviewBand(csp.block.suggestions[0]!, cycle.currency)}`);
-  const collar = collarShown(cycle);
-  if (!("none" in collar)) {
-    const item = collar.block.items[0]!;
-    quotes.push(`領口 Put Bid/Mid/Ask ${compactLegOverviewBand(collar.block.put, cycle.currency)}`);
-    quotes.push(`Call Bid/Mid/Ask ${compactLegOverviewBand(item.call, cycle.currency)}`);
-  }
-  return quotes;
-}
 
 
 /** Header chips shared by every bubble. */
@@ -557,10 +558,65 @@ function headerBox(ctx: CardContext, eyebrow: string) {
   ]);
 }
 
-const LIMIT_SELECTION_RULE = "價差25%內取中間價，較寬時取Bid＋四分之一價差";
-/** A bubble that shows the protective (bought) put limit states both sides: the sell rule above and the buy rule of the producer
- * (scripts/build_market_quotes_options.py _buy_limit: the mid, or the ask minus a quarter of a wide spread, never above the ask). */
-const TWO_SIDED_LIMIT_RULE = "限價：價差25%內取中間價；較寬時賣出腿取Bid＋四分之一價差、買進Put取Ask－四分之一價差";
+const LIMIT_SELECTION_RULE = "LIMIT：雙邊由中價向下取0.01起掛；未成交每次降0.01，不低於Bid；不保證成交";
+const BUY_LIMIT_RULE = "LIMIT：買進Put由中價向上取0.01起掛，不高於Ask；不保證成交";
+function limitRuleZh(leg: Pick<StrategyLeg, "bid" | "ask">, buy = false): string {
+  if (leg.bid === null || leg.ask === null) return buy
+    ? "LIMIT：缺Bid，中價／價差無法計算；以Ask作保守參考，不高於Ask；不保證成交"
+    : "LIMIT：缺Ask，中價／價差無法計算；以Bid作保守參考；未成交不再下調至Bid以下；不保證成交";
+  return buy ? BUY_LIMIT_RULE : LIMIT_SELECTION_RULE;
+}
+
+function bidCaseZh(bid: number, capital: number, cycle: CoveredCallCycle): string {
+  const period = bid / capital;
+  return `Bid情境：每口權利金 ${money(bid * 100, cycle.currency)}｜期間收益 ${pct(period, 2)}｜年化 ${pct(period * 365 / effectiveDays(cycle.dte))}（非保證）`;
+}
+
+/** These exact tier details are shown in both Text and the strategy's visible Flex bubble. */
+function ccTierLines(cycle: CoveredCallCycle, item: CoveredCallSuggestion, index: number): string[] {
+  return [
+    tierTitle(item, index),
+    `履約價 ${money(item.strike, cycle.currency)}（距現價 +${pct(item.upside_to_strike)}）｜建議賣出限價 ${money(item.limit_price, cycle.currency)}（${bidAskZh(item, cycle.currency)}）`,
+    limitRuleZh(item),
+    `LIMIT每口權利金 ${money(item.premium_per_contract, cycle.currency)}｜期間收益 ${pct(item.period_yield, 2)}｜年化 ${pct(item.annualized_yield)}｜Delta ${item.delta === null || item.delta === undefined ? "未提供" : `${item.delta.toFixed(2)}${deltaBasisZh(item) ? `（${deltaBasisZh(item)}）` : ""}`}`,
+    bidCaseZh(item.bid, cycle.spot, cycle),
+    `流動性：OI ${countZh(item.oi)}｜成交量 ${countZh(item.volume)}｜${liquidityZh(item.bid, item.ask)}`,
+  ];
+}
+
+function cspTierLines(cycle: CoveredCallCycle, item: CspItem, index: number): string[] {
+  const cur = cycle.currency;
+  return [
+    `建議${ORDINAL_ZH[index] ?? String(index + 1)}：${tierNameZh(item.role)}`,
+    `履約價 ${money(item.strike, cur)}（低於現價 ${pct(item.downside_buffer)}）｜建議賣出限價 ${money(item.limit_price, cur)}（${bidAskZh(item, cur)}）`,
+    limitRuleZh(item), liquidityZh(item.bid, item.ask),
+    `LIMIT每口權利金 ${money(item.premium_per_contract, cur)}｜需備現金 ${money(item.cash_required, cur)}｜期間收益 ${pct(item.limit_price / item.strike, 2)}｜年化 ${pct(item.annualized_yield)}（以備妥現金計）｜損益兩平 ${money(item.breakeven, cur)}`,
+    bidCaseZh(item.bid, item.strike, cycle),
+    `被指派機率參考：${legDeltaZh(item)}`,
+  ];
+}
+
+function collarPutLines(cycle: CoveredCallCycle, put: BuyStrategyLeg): string[] {
+  return [
+    `保護賣權（買進）履約價 ${money(put.strike, cycle.currency)}｜建議買入限價 ${money(put.limit_price, cycle.currency)}（${bidAskZh(put, cycle.currency)}）｜${legDeltaZh(put)}`,
+    limitRuleZh(put, true), liquidityZh(put.bid, put.ask),
+  ];
+}
+
+function collarTierLines(cycle: CoveredCallCycle, put: BuyStrategyLeg, item: CollarItem, index: number): string[] {
+  const cur = cycle.currency;
+  const net = perContract(item.net_premium_per_share);
+  const conservative = item.call.bid - put.ask;
+  const annualize = 365 / effectiveDays(cycle.dte) / cycle.spot;
+  return [
+    `建議${ORDINAL_ZH[index] ?? String(index + 1)}：${tierNameZh(item.role)}`,
+    `賣出買權履約價 ${money(item.call.strike, cur)}｜建議賣出限價 ${money(item.call.limit_price, cur)}（${bidAskZh(item.call, cur)}）｜${legDeltaZh(item.call)}`,
+    limitRuleZh(item.call), liquidityZh(item.call.bid, item.call.ask),
+    `LIMIT每口淨權利金（${net >= 0 ? "收入" : "支出"}）${money(Math.abs(net), cur)}｜淨權利金年化 ${pct(item.net_premium_per_share * annualize)}`,
+    `Bid情境（Call Bid－Put Ask）：每口淨權利金 ${signedMoney(perContract(conservative), cur)}｜淨權利金年化 ${pct(conservative * annualize)}（非保證，非總報酬）`,
+    `最大損失 ${money(perContract(item.max_loss_per_share), cur)}／口｜最大獲利 ${money(perContract(item.max_gain_per_share), cur)}／口｜損益兩平 ${money(item.break_even, cur)}`,
+  ];
+}
 
 /** Keep immediate warnings on each card; complete qualifications are in the final bubble. */
 function footerBox(risk: string, buttons: unknown[] = []) {
@@ -584,7 +640,7 @@ function overviewBubble(ctx: CardContext) {
   return {
     type: "bubble", size: "mega", header: headerBox(ctx, "三種保守期權策略"),
     body: uiBox([uiBox([strategyHero("可用策略", `${available} / 3`), accentHeading("策略對照")]),
-      uiBox(overviewRows(ctx)), uiText("賣權年化以備妥現金計；完整報價與缺漏原因見末頁", "xxs", T.subtle)],
+      uiBox(overviewRows(ctx)), uiText("賣權年化以備妥現金計；各檔報價見策略頁，出處與缺漏原因見末頁", "xxs", T.subtle)],
       { paddingAll: "lg", spacing: "sm" }),
     footer: footerBox(risk, detailButtons(ctx)),
   };
@@ -592,8 +648,6 @@ function overviewBubble(ctx: CardContext) {
 function ccDetailBubble(ctx: CardContext) {
   const { cycle } = ctx;
   const tiers = displayTiers(cycle);
-  // Basis details and yield formulas are collected in the final disclosure bubble.
-  const deltaBases = [...new Set(tiers.map(deltaBasisZh).filter((basis): basis is string => basis !== null))];
   const rows = tiers.map((item, index) => uiBox([
     uiText(`${["①", "②", "③"][index] ?? ""}${money(item.strike, cycle.currency)}`, "xs", T.ink, { flex: 1, weight: "bold" }),
     uiText(money(item.premium_per_contract, cycle.currency), "xs", T.ink, { flex: 1, align: "end", weight: "bold" }),
@@ -608,13 +662,10 @@ function ccDetailBubble(ctx: CardContext) {
         { type: "span", text: "首檔年化權利金\n", size: "xs", color: T.subtle, weight: "regular" },
         { type: "span", text: pct(tiers[0]!.annualized_yield), size: "3xl", color: T.ink, weight: "bold" },
       ] }], { backgroundColor: T.accentTint, cornerRadius: "md", paddingAll: "sm" })] : []),
-      accentHeading("履約價｜權利金／口｜年化"),
+      accentHeading("履約價｜LIMIT權利金／口｜年化"),
       ], { spacing: "sm" }),
       uiBox(rows.length ? rows : [chip("無符合檔位")], { spacing: "xs" }),
-      ...(tiers.length ? [uiBox([
-        uiText(tiers.map((item, index) => `${index === 0 ? tierTitle(item, index) : `${index === 1 ? "\n" : " "}${["①", "②", "③"][index] ?? ""}${ROLE[item.role][0].split("（")[0]}`}${item.delta === null || item.delta === undefined ? " Delta未提供" : ""}`).join(""), "xxs", T.subtle),
-        uiText(wrapCardText(`首檔限價 ${money(tiers[0]!.limit_price, cycle.currency)}｜${quoteBandWithLimit(tiers[0]!.bid, tiers[0]!.mid, tiers[0]!.ask, tiers[0]!.limit_price, cycle.currency)}｜Delta ${tiers[0]!.delta === null || tiers[0]!.delta === undefined ? "未提供" : `${tiers[0]!.delta.toFixed(2)}${deltaBases.length > 1 ? `（${deltaBasisZh(tiers[0]!)}）` : ""}`}`), "xxs", T.subtle),
-      ], { spacing: "xs" })] : []),
+      ...tiers.map((item, index) => uiText(ccTierLines(cycle, item, index).join("\n"), "xs", T.ink)),
     ], { paddingAll: "lg", spacing: "md" }),
     footer: footerBox("正股仍有下跌風險；可能被指派、漲幅封頂", detailButtons(ctx)),
   };
@@ -628,9 +679,8 @@ function cspDetailBubble(ctx: CardContext, block: CspData) {
   return {
     type: "bubble", size: "mega", header: headerBox(ctx, "現金擔保賣權"),
     body: uiBox([uiBox([strategyHero("首檔年化（以備妥現金計）", pct(block.suggestions[0]!.annualized_yield)),
-      accentHeading("履約價｜權利金／口｜年化")]), uiBox(rows),
-      uiBox([uiText(block.suggestions.map((item, index) => `${index === 0 ? "①" : "②"}${tierNameZh(item.role)}`).join("｜"), "xxs", T.subtle),
-        uiText(`首檔需備現金 ${money(block.suggestions[0]!.cash_required, cycle.currency)}（100股）`, "xxs", T.subtle)]),
+      accentHeading("履約價｜LIMIT權利金／口｜年化")]), uiBox(rows),
+      ...block.suggestions.map((item, index) => uiText(cspTierLines(cycle, item, index).join("\n"), "xs", T.ink)),
     ], { paddingAll: "lg", spacing: "sm" }),
     footer: footerBox("可能被指派買股；損失可超過權利金", detailButtons(ctx)),
   };
@@ -647,15 +697,15 @@ function collarDetailBubble(ctx: CardContext, block: CollarData) {
     type: "bubble", size: "mega", header: headerBox(ctx, "領口策略"),
     body: uiBox([uiBox([strategyHero("首檔淨權利金／口（買賣相抵）", signedMoney(perContract(first.net_premium_per_share), cycle.currency)),
       accentHeading("Call履約｜淨權利金／口｜最大損失／口")]), uiBox(rows),
-      uiBox([uiText(`保護賣權 ${money(block.put.strike, cycle.currency)}｜限價 ${money(block.put.limit_price, cycle.currency)}`, "xs", T.ink),
-        uiText(block.items.map((item, index) => `${index === 0 ? "①" : "②"}${tierNameZh(item.role)}`).join("｜"), "xxs", T.subtle),
-        uiText("每組100股＋買1口Put＋賣1口Call", "xxs", T.subtle)]),
+      uiText(collarPutLines(cycle, block.put).join("\n"), "xs", T.ink),
+      ...block.items.map((item, index) => uiText(collarTierLines(cycle, block.put, item, index).join("\n"), "xs", T.ink)),
+      uiText("每組100股＋買1口Put＋賣1口Call", "xxs", T.subtle),
     ], { paddingAll: "lg", spacing: "sm" }),
     footer: footerBox("保護需付費；下跌有界、上漲封頂", detailButtons(ctx)),
   };
 }
 
-/** The complete, conditional disclosures formerly repeated in the card footers, plus every CC tier's quote. */
+/** Shared source, rights, formulas and risk disclosures; tier details stay on their strategy bubbles. */
 function disclosureBubble(ctx: CardContext) {
   const { cycle } = ctx;
   const tiers = displayTiers(cycle);
@@ -667,23 +717,17 @@ function disclosureBubble(ctx: CardContext) {
     ...(ctx.operatorNotice ? [ctx.operatorNotice] : []),
     ...(ctx.carriedLabel ? [ctx.carriedLabel] : []),
     "公開延遲；非投資建議；年化非保證；不下單",
-    ...("block" in collar ? [TWO_SIDED_LIMIT_RULE] : []),
-    ...(tiers.length || "block" in csp || "block" in collar ? [`限價：${LIMIT_SELECTION_RULE}`] : []),
     ...(tiers.length ? [
       ...(deltaBases.length === 1 ? [`Delta ${deltaBases[0]}，僅供指派機率參考`] : deltaBases.length > 1 ? ["Delta 僅供指派機率參考"] : []),
       "期間收益＝限價÷現價；年化收益＝期間收益×365÷DTE",
-      "最高履約價為價外、Delta 不高於 0.20 且有雙邊報價者，不設年化收益下限；超履約可能被指派、上漲收益封頂；正股仍有下跌風險",
-      ...tiers.map((item, index) => [
-        tierTitle(item, index),
-        `履約價 ${money(item.strike, cycle.currency)}（距現價 +${pct(item.upside_to_strike)}）｜建議賣出限價 ${money(item.limit_price, cycle.currency)}（Bid ${money(item.bid, cycle.currency)}／中價 ${money(item.mid, cycle.currency)}／Ask ${money(item.ask, cycle.currency)}）`,
-        `每口權利金 ${money(item.premium_per_contract, cycle.currency)}｜期間收益 ${pct(item.period_yield, 2)}｜年化 ${pct(item.annualized_yield)}｜Delta ${item.delta === null || item.delta === undefined ? "未提供" : `${item.delta.toFixed(2)}${deltaBasisZh(item) ? `（${deltaBasisZh(item)}）` : ""}`}`,
-        `流動性：OI ${countZh(item.oi)}｜成交量 ${countZh(item.volume)}｜價差占中價 ${spreadZh(item.spread_pct)}`,
-      ].join("\n")),
+      "最高履約價為價外、Delta 不高於 0.20 且有有效 Bid 者，不設年化收益下限；超履約可能被指派、上漲收益封頂；正股仍有下跌風險",
     ] : []),
     ...("block" in csp ? ["跌破履約價可能被指派；被指派時需以履約價買進正股（100股），損失可大於權利金"] : []),
     ...("block" in collar ? ["保護賣權需付權利金；下跌有界，上漲於Call履約價封頂；最大盈虧為到期估算"] : []),
-    ...overviewQuoteNotes(cycle),
-    ...textStrategyLines(cycle),
+    ...(cycle.suggestions.length === 0 ? [`【備兌買權】無資料：${ccNone(cycle)}`] : []),
+    ...("none" in csp ? [`【${CSP_TITLE}】無資料：${csp.none}`] : []),
+    ...("none" in collar ? [`【${COLLAR_TITLE}】無資料：${collar.none}`] : []),
+    "Bid情境是報價側保守比較，非保證成交或總報酬；領口淨權利金年化＝淨額÷現價×365÷至少1日",
     ...(cycle.dte <= SHORT_DTE_NOTICE_MAX ? ["短期年化至少按1日換算；數字放大，僅供比較"] : []),
   ];
   return {
@@ -695,34 +739,21 @@ function disclosureBubble(ctx: CardContext) {
 
 /** The strategies in text form (the text edition and the full detail behind the details button). */
 function textStrategyLines(cycle: CoveredCallCycle): string[] {
-  const cur = cycle.currency;
   const lines: string[] = [];
   if (cycle.suggestions.length === 0) lines.push(`【備兌買權】無資料：${ccNone(cycle)}`);
   const csp = cspShown(cycle);
   if ("none" in csp) lines.push(`【${CSP_TITLE}】無資料：${csp.none}`);
   else {
     lines.push(`【${CSP_TITLE}】前提：賣出 1 口賣權並備足履約價 × 100 的現金；股價跌破履約價可能被指派；被指派時需以履約價買進正股（100股）。`);
-    csp.block.suggestions.forEach((item, index) => lines.push([
-      `建議${ORDINAL_ZH[index] ?? String(index + 1)}：${tierNameZh(item.role)}`,
-      `履約價 ${money(item.strike, cur)}（低於現價 ${pct(item.downside_buffer)}）｜建議賣出限價 ${money(item.limit_price, cur)}（${bidAskZh(item, cur)}）`,
-      `每口權利金 ${money(item.premium_per_contract, cur)}｜需備現金 ${money(item.cash_required, cur)}｜年化 ${pct(item.annualized_yield)}（以備妥現金計）｜損益兩平 ${money(item.breakeven, cur)}`,
-      `被指派機率參考：${legDeltaZh(item)}`,
-    ].join("\n")));
+    csp.block.suggestions.forEach((item, index) => lines.push(cspTierLines(cycle, item, index).join("\n")));
   }
   const collar = collarShown(cycle);
   if ("none" in collar) lines.push(`【${COLLAR_TITLE}】無資料：${collar.none}`);
   else {
     const { put } = collar.block;
-    lines.push([`【${COLLAR_TITLE}】前提：持有 100 股，買進 1 口賣權並賣出 1 口買權；保護賣權需付權利金，下跌損失以保護賣權為界，上漲收益封頂。`,
-      `保護賣權（買進）履約價 ${money(put.strike, cur)}｜建議買入限價 ${money(put.limit_price, cur)}（${bidAskZh(put, cur)}）｜${legDeltaZh(put)}`].join("\n"));
-    collar.block.items.forEach((item, index) => {
-      const net = perContract(item.net_premium_per_share);
-      lines.push([
-        `建議${ORDINAL_ZH[index] ?? String(index + 1)}：${tierNameZh(item.role)}`,
-        `賣出買權履約價 ${money(item.call.strike, cur)}｜建議賣出限價 ${money(item.call.limit_price, cur)}（${bidAskZh(item.call, cur)}）｜${legDeltaZh(item.call)}`,
-        `每口淨權利金（${net >= 0 ? "收入" : "支出"}）${money(Math.abs(net), cur)}｜最大損失 ${money(perContract(item.max_loss_per_share), cur)}／口｜最大獲利 ${money(perContract(item.max_gain_per_share), cur)}／口｜損益兩平 ${money(item.break_even, cur)}`,
-      ].join("\n"));
-    });
+    lines.push(`【${COLLAR_TITLE}】前提：持有 100 股，買進 1 口賣權並賣出 1 口買權；保護賣權需付權利金，下跌損失以保護賣權為界，上漲收益封頂。`,
+      collarPutLines(cycle, put).join("\n"));
+    collar.block.items.forEach((item, index) => lines.push(collarTierLines(cycle, put, item, index).join("\n")));
   }
   return lines;
 }
@@ -748,7 +779,7 @@ function monthlyObservationMessages(cycle:CoveredCallCycle,style:"flex"|"text",o
     "延遲來源觀察，非可執行報價；不自動下單。"
   ].concat(textStrategyLines(cycle),operatorAccepted?[OPERATOR_ACCEPTED_NOTICE_ZH]:[]);
   if(style==="text"){
-    const messages:LineOutboundMessage[]=[{type:"text",text:txt.join("\n")}];
+    const messages: LineOutboundMessage[] = splitLineText(txt.join("\n")).map(text => ({ type: "text", text }));
     assertLineMessages(messages);
     return messages;
   }
@@ -797,20 +828,14 @@ export function buildCoveredCallMessages(cycle: CoveredCallCycle, periodLabel: s
       ...(carriedLabel ? [carriedLabel] : []),
       ...(weekNoteZh(cycle) ? [`${weekNoteZh(cycle)}${cycle.asof_date ? `（以交易所當地日期 ${cycle.asof_date} 判斷）` : ""}`] : []),
       ...(shortDteNoticeZh(cycle.dte) ? [shortDteNoticeZh(cycle.dte)!] : []),
-      ...("block" in collarShown(cycle) ? [TWO_SIDED_LIMIT_RULE] : []),
-      ...(cycle.suggestions.length > 0 ? [`【${CC_TITLE}】前提：持有 100 股、賣出 1 口買權；股價超過履約價時可能被指派，上漲收益封頂於履約價。`, `限價選取：${LIMIT_SELECTION_RULE}`, "期間收益＝限價÷現價；年化收益＝期間收益×365÷DTE"] : []),
-      ...displayTiers(cycle).map((item, index) => [
-        tierTitle(item, index),
-        `履約價 ${money(item.strike, cycle.currency)}（距現價 +${pct(item.upside_to_strike)}）｜建議賣出限價 ${money(item.limit_price, cycle.currency)}（Bid ${money(item.bid, cycle.currency)}／中價 ${money(item.mid, cycle.currency)}／Ask ${money(item.ask, cycle.currency)}）`,
-        `每口權利金 ${money(item.premium_per_contract, cycle.currency)}｜期間收益 ${pct(item.period_yield, 2)}｜年化 ${pct(item.annualized_yield)}｜Delta ${item.delta === null || item.delta === undefined ? "未提供" : `${item.delta.toFixed(2)}${deltaBasisZh(item) ? `（${deltaBasisZh(item)}）` : ""}`}`,
-        `流動性：OI ${countZh(item.oi)}｜成交量 ${countZh(item.volume)}｜價差占中價 ${spreadZh(item.spread_pct)}`,
-      ].join("\n")),
+      ...(cycle.suggestions.length > 0 ? [`【${CC_TITLE}】前提：持有 100 股、賣出 1 口買權；股價超過履約價時可能被指派，上漲收益封頂於履約價。`, "期間收益＝限價÷現價；年化收益＝期間收益×365÷DTE"] : []),
+      ...displayTiers(cycle).map((item, index) => ccTierLines(cycle, item, index).join("\n")),
       ...textStrategyLines(cycle),
       `來源：${sourceZh(cycle.source)}（延遲報價，${carried ? "前一交易時段擷取時間" : "擷取時間"} ${formatVisibleMoment(cycle.timestamp)}；來源報價時間未提供）${cycle.provenance}`,
       ...(operatorNotice ? [operatorNotice] : []),
       "公開行情觀察，非個人化投資建議；延遲／非即時可執行；年化收益非保證報酬；正股仍承擔下跌風險；賣出賣權可能被指派買進正股；本服務不下單。",
     ];
-    const messages: LineOutboundMessage[] = [{ type: "text", text: lines.join("\n").slice(0, 4900) }];
+    const messages: LineOutboundMessage[] = splitLineText(lines.join("\n")).map(text => ({ type: "text", text }));
     assertLineMessages(messages);
     return messages;
   }

@@ -249,7 +249,7 @@ function render(cycle: any, style: "flex" | "text" = "flex"): string {
   const valid = validateCoveredCallCycle(cycle)!;
   expect(valid).not.toBeNull();
   const messages = buildCoveredCallMessages(valid, "每週期權", style);
-  return style === "text" ? (messages[0] as { text: string }).text : JSON.stringify(messages);
+  return style === "text" ? messages.map(message => message.type === "text" ? message.text : "").join("\n") : JSON.stringify(messages);
 }
 
 describe("LINE card: three tiers, week marker, tiny-DTE notice", () => {
@@ -272,13 +272,17 @@ describe("LINE card: three tiers, week marker, tiny-DTE notice", () => {
     const only = tierCycle({ middle: false }); only.suggestions = only.suggestions.slice(0, 1);
     expect(render(only)).not.toContain("建議二");
   });
-  it("text lists the tiers in order and a 3-tier text with maximal-length fields keeps the disclaimers within 4900", () => {
+  it("text lists every tier in order and splits long provenance without truncating disclosures", () => {
     const text = render(tierCycle(), "text");
     expect(text.indexOf("建議一")).toBeLessThan(text.indexOf("建議二：中間型"));
     expect(text.indexOf("建議二：中間型")).toBeLessThan(text.indexOf("建議三：平衡型"));
     const maximal = tierCycle({}, { provenance: `https://finance.yahoo.com/quote/NVDA/options?${"a".repeat(3000)}` });
-    const long = render(maximal, "text");
-    expect(long.length).toBeLessThanOrEqual(4900);
+    admitSyntheticTickers("NVDA");
+    const messages = buildCoveredCallMessages(validateCoveredCallCycle(maximal)!, "每週期權", "text");
+    expect(messages.length).toBeLessThanOrEqual(5);
+    for (const message of messages) if (message.type === "text") expect(message.text.length).toBeLessThanOrEqual(4900);
+    const long = messages.map(message => message.type === "text" ? message.text : "").join("");
+    expect(long).toContain(maximal.provenance);
     expect(long).toContain("本服務不下單");
   });
   it("marks which calendar week the expiry is in, only for rows that carry the marker", () => {
