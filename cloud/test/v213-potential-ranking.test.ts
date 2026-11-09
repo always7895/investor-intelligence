@@ -137,8 +137,14 @@ describe("data-driven potential ranking", () => {
     expect(text.indexOf("SYNC")).toBeGreaterThan(text.indexOf("SYNA"));
     expect(text).not.toContain("SYND");
     expect(text).toContain("2Y 206%");
+    expect(text.match(/6M／1Y／2Y 完整揭露/g)).toHaveLength(2);
+    expect(text.match(/部分期間揭露/g)).toHaveLength(1);
     const plain = JSON.parse(await actualReply("訂單實現榜 文字", await sealedEnv(ranking)));
     expect(plain.every((m: any) => m.type === "text")).toBe(true);
+    const plainText = visibleText(plain);
+    expect(plainText).toContain("SYNB Synthetic SYNB Corp.｜6M／1Y／2Y 完整揭露｜");
+    expect(plainText).toContain("SYNA Synthetic SYNA Corp.｜6M／1Y／2Y 完整揭露｜");
+    expect(plainText).toContain("SYNC Synthetic SYNC Corp.｜部分期間揭露｜");
     const none = { ...RANKING, records: [{ ...row(1, "SYNA"), orders: orders(40, 80, null) }] };
     const partial = visibleText(JSON.parse(await actualReply("訂單實現榜", await sealedEnv(none))));
     expect(partial).toContain("SYNA");

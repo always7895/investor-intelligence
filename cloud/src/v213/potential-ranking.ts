@@ -144,7 +144,8 @@ function orderHorizonIndex(row: PotentialRecord): number {
   return -1;
 }
 
-/** Partial coverage: rank only inside the same disclosed period, grouping 2Y, 1Y, 6M.
+/** The strict all-three-horizons rule of 2026-09-25 is superseded by NO-EMPTY-NUMBERS 2026-11-08.
+ * Rank partial coverage only within the same disclosed period, grouping 2Y, 1Y, 6M.
  * Missing periods never turn into zero, an interpolated number, or an order forecast. */
 export function orderRealizationBasis(row: PotentialRecord): { key: Horizon; label: string; value: number } | null {
   const index = orderHorizonIndex(row);
@@ -160,6 +161,12 @@ export function orderRealizationRanking(ranking: PotentialRanking): PotentialRec
       return y - x || b.orders!.coverage_pct[HORIZONS[y]![0]]! - a.orders!.coverage_pct[HORIZONS[x]![0]]!
         || a.rank - b.rank;
     });
+}
+
+function orderDisclosureLabel(row: PotentialRecord): string {
+  const coverage = row.orders!.coverage_pct;
+  return coverage.m6 !== null && coverage.m12 !== null && coverage.m24 !== null
+    ? "6M／1Y／2Y 完整揭露" : "部分期間揭露";
 }
 
 export function buildOrderRealizationFlex(ranking: PotentialRanking): LineOutboundMessage[] | string {
@@ -186,6 +193,7 @@ export function buildOrderRealizationFlex(ranking: PotentialRanking): LineOutbou
         uiBox([
           uiBox([uiText(row.ticker, "md", T.ink, { weight: "bold", flex: 0 }), uiText(row.name, "xxs", T.subtle, { gravity: "center" })],
             { layout: "horizontal", spacing: "sm" }),
+          uiText(orderDisclosureLabel(row), "xxs", T.subtle),
           uiBox([meter(basis.value, groupMax[orderHorizonIndex(row)]!, T.ink, true), uiText(`${basis.label} ${coverageText(basis.value)}`, "xs", T.ink, { weight: "bold", flex: 0 })],
             { layout: "horizontal", spacing: "sm", alignItems: "center" }),
           uiText(HORIZONS.map(([key, label]) => `${label} ${coverageText(o.coverage_pct[key])}（${floorText(o.coverage_pct[key], o.floor_growth_pct[key])}）`).join("｜"),
@@ -210,7 +218,7 @@ export function buildOrderRealizationText(ranking: PotentialRanking): LineOutbou
   const rows = orderRealizationRanking(ranking);
   if (rows.length === 0) return noCompleteOrders(ranking);
   const lines = ["【訂單實現排序】部分期間准入；依最長已揭露期間（2Y／1Y／6M）分組，各組內按已簽約覆蓋率排序；不同期間不能直接比較",
-    ...rows.map((row, index) => `${index + 1}. ${row.ticker} ${row.name}｜` + HORIZONS.map(([key, label]) =>
+    ...rows.map((row, index) => `${index + 1}. ${row.ticker} ${row.name}｜${orderDisclosureLabel(row)}｜` + HORIZONS.map(([key, label]) =>
       `${label} ${coverageText(row.orders!.coverage_pct[key])}（${floorText(row.orders!.coverage_pct[key], row.orders!.floor_growth_pct[key])}）`).join("｜")),
     ...(withheldOrdersNotice(ranking) ? [withheldOrdersNotice(ranking)!] : []),
     "覆蓋＝已簽約訂單在期間內認列的營收 ÷（最近一季營收 × 期間季數）；超過 100% 才有成長下限（利潤率、股數、本益比不變，未計新接訂單）。非預測、非投資建議。"];
