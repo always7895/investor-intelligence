@@ -523,7 +523,7 @@ class NasdaqFreshnessAndTransportTests(unittest.TestCase):
         for cycle in builder.CYCLES:
             self.assertEqual(set(out[cycle]), {"unavailable"})
         self.assertEqual(requests, source_requests)
-        self.assertEqual(len(requests), 3)  # broad chain plus the two standard-monthly targets, never retries
+        self.assertEqual(len(requests), 2)  # one broad chain and one nearest-standard lookup; no successor or retries
 
     def test_a_read_yahoo_refusal_survives_a_stale_fallback_for_the_other_cycle(self) -> None:
         spec = nonus.us(cases.NASDAQ_TICKER, {cases.WEEKLY_DTE: [(101.0, 4.0, 4.2)]}, nasdaq_rows=cases.nasdaq_rows())

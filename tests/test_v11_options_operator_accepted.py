@@ -208,10 +208,10 @@ class SealerCallerTests(unittest.TestCase):
         now = datetime(2026, 10, 13, 15, 5, tzinfo=timezone.utc)  # 11:05 New York, inside the regular session
         stamp = "2026-10-13T15:00:00Z"
         rows = [row(115, 0.9, 1.0, 0.1), row(105, 2.4, 2.5, 0.35)]
-        live = builder.cycle_result("T00", "2026-11-13", 31, 100.0, rows, currency="USD", source="Yahoo Finance option chain (unofficial, delayed)",
-                                    provenance="https://finance.yahoo.com/quote/T00/options?date=2026-11-13", rights=builder.YAHOO_RIGHTS_LABEL,
+        live = builder.cycle_result("T00", "2026-10-16", 3, 100.0, rows, currency="USD", source="Yahoo Finance option chain (unofficial, delayed)",
+                                    provenance="https://finance.yahoo.com/quote/T00/options?date=2026-10-16", rights=builder.YAHOO_RIGHTS_LABEL,
                                     stamp=stamp, asof="2026-10-13", identity=builder.YAHOO_OPTION_IDENTITY)
-        unclaimed = builder.cycle_result("T01", "2026-11-13", 31, 100.0, rows, currency="USD", source="Nasdaq US option chain (fallback)",
+        unclaimed = builder.cycle_result("T01", "2026-10-16", 3, 100.0, rows, currency="USD", source="Nasdaq US option chain (fallback)",
                                          provenance="https://www.nasdaq.com/market-activity/stocks/t01/option-chain", rights="candidate_local_review",
                                          stamp=stamp, asof="2026-10-13")
         self.assertEqual({key: live[key] for key in support.IDENTITY}, support.IDENTITY)

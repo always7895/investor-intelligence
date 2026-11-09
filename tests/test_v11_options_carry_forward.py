@@ -90,12 +90,12 @@ class CarryThroughTheProducerTests(Harness):
         self.assertEqual(code, 0, status)
         self.assertEqual(status["carry_forward"]["carried"], 20)  # T00..T09, weekly and monthly
         for symbol in (f"T{index:02d}" for index in range(10)):
-            for period, expiry in (("weekly", WEEKLY), ("monthly", MONTHLY)):
+            for period in ("weekly", "monthly"):
                 carried = off["options"][symbol][period]
                 original = live["options"][symbol][period]
                 self.assertEqual(carried["quote_basis"], "previous_session_last", (symbol, period))
                 self.assertEqual((carried["expiry"], carried["timestamp"], carried["spot"], carried["dte"], carried["asof_date"]),
-                                 (expiry, STAMP_IN, 100.0, original["dte"], "2026-10-13"))
+                                 (WEEKLY, STAMP_IN, 100.0, original["dte"], "2026-10-13"))
                 self.assertEqual({key: value for key, value in carried.items() if key != "quote_basis"},
                                  {key: value for key, value in original.items() if key != "quote_basis"})  # nothing recomputed or modelled
                 validate_covered_call_cycle(carried, evaluated_at=OFF_SESSION, document_at=off["generated_at"], period=period, allow_previous_session=True)
@@ -134,7 +134,7 @@ class CarryThroughTheProducerTests(Harness):
         weekly = document["options"]["T00"]["weekly"]
         self.assertIn("unavailable", weekly)  # its Friday has expired, new week cannot use the old contract
         monthly = document["options"]["T00"]["monthly"]
-        self.assertEqual(monthly.get("quote_basis"), "previous_session_last")  # SAME November expiry still listed; exactly 4 days old
+        self.assertNotEqual(monthly.get("quote_basis"), "previous_session_last")  # the October standard capture has expired
         self.assertEqual(monthly.get("expiry"), MONTHLY)
         # Six hours later: age over four days => no carry, but live last-price observation remains labeled as such.
         _, _, document = self.run_main(saturday + timedelta(hours=6), chains(ZERO_ROWS, GOOD0=ITM_ROWS, GOOD1=ITM_ROWS))
