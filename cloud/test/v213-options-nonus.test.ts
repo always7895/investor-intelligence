@@ -226,22 +226,29 @@ describe("OPTIONS-NONUS-02 bridge: exact Python-emitted bodies through the Worke
     }
   });
 
-  it("shows the real weekly VOLVB source shape as a listed out-of-window contract and Yahoo read chains without a usable quote truthfully", async () => {
+  it("distinguishes unpriced contracts from bid-only recommendations without inventing the missing Ask", async () => {
     const sive = await sealedEnv("retained_sive_sept30");
     const weekly = textOf(await reply(sive, "VOLV-B.ST 每週期權"));
     // V13: the blank contract currency follows the confirmed SEK underlying; the retained row has no two-sided quote.
     expect(weekly).toContain("2026-10-02（2天）");
-    expect(weekly).toContain("無有效雙邊報價");
     expect(weekly).not.toContain("合約單位或幣別來源未確認");
     expect(weekly).not.toContain("無法解析");
     const us = await sealedEnv("dte_us_matrix");
-    expect(textOf(await reply(us, "UYZERO 每週期權"))).toContain("所選到期無有效雙邊報價");
     admitSyntheticTickers("UYZERO", "UYONESIDED");
-    for (const command of ["UYZERO 每月期權", "UYONESIDED 每月期權"]) {
-      const text = textOf(await reply(us, command));
-      expect(text, command).toContain("2026-10-16");
-      expect(text, command).toContain("無雙邊報價");
-      expect(text, command).not.toContain("建議賣出限價");
+    for (const presentation of [false, true]) {
+      const observed = textOf(await reply(us, "UYZERO 每月期權", presentation));
+      expect(observed).toContain("2026-10-16");
+      expect(observed).toContain("無雙邊報價");
+      expect(observed).not.toContain("建議賣出限價");
+      for (const period of ["每週期權", "每月期權"]) {
+        const recommended = textOf(await reply(us, `UYONESIDED ${period}`, presentation));
+        expect(recommended).toContain("建議賣出限價 $0.50");
+        expect(recommended).toContain("Bid $0.50");
+        expect(recommended).toContain("中價 未提供");
+        expect(recommended).toContain("Ask 未提供");
+        expect(recommended).toContain("流動性警示：單邊報價");
+        expect(recommended).not.toContain("Ask $0.00");
+      }
     }
   });
 

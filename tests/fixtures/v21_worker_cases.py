@@ -26,6 +26,7 @@ def generate_fixture_document() -> dict:
         ccless = builder.us_options("AAA", chains.SPOT, chains.TODAY, chains.STAMP)["monthly"]
     with mock.patch.object(builder, "http_json", lambda url: {"data": {"instrumentListing": {"rows": chains.nordic_rows()}}}):
         nordic = builder.nordic_options("SIVE.ST", "SIVE", chains.SPOT, chains.TODAY, chains.STAMP, "TX1", spot_currency="SEK")["monthly"]
+    # Retained scenario grouping; wide/one-sided cases may now contain qualified recommendations, not just observations.
     observations = {}
     wide_calls = [(k, 0.01, 0.50) for k, _, _ in chains.CALLS]
     wide_puts = [(k, 0.01, 0.50) for k, _, _ in chains.PUTS]

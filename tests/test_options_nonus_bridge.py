@@ -151,14 +151,20 @@ class BridgeFixtureTests(unittest.TestCase):
 
     def test_yahoo_read_chains_without_a_usable_quote_are_truthful_and_never_retried(self):
         options = self.options("dte_us_matrix")
-        for key in ("UYZERO", "UYONESIDED"):
-            self.assertEqual(set(options[key]["weekly"]), {"unavailable"})
-            monthly = options[key]["monthly"]
-            self.assertEqual(monthly["suggestions"], [])
-            observation = monthly["quote_observation"]
-            self.assertEqual(observation["kind"], "NO_TWO_SIDED")
-            self.assertEqual((observation["bid"], observation["ask"], observation["last"], observation["annualized_yield"]),
-                             (None, None, None, None))
+        self.assertEqual(set(options["UYZERO"]["weekly"]), {"unavailable"})
+        monthly = options["UYZERO"]["monthly"]
+        self.assertEqual(monthly["suggestions"], [])
+        observation = monthly["quote_observation"]
+        self.assertEqual(observation["kind"], "NO_TWO_SIDED")
+        self.assertEqual((observation["bid"], observation["ask"], observation["last"], observation["annualized_yield"]),
+                         (None, None, None, None))
+        for period in ("weekly", "monthly"):
+            usable = options["UYONESIDED"][period]
+            item = usable["suggestions"][0]
+            self.assertEqual((item["bid"], item["ask"], item["mid"], item["limit_price"], item["delta_basis"]),
+                             (0.5, None, None, 0.5, "QUOTED_IV"))
+            self.assertLessEqual(item["delta"], 0.20)
+            self.assertNotIn("quote_observation", usable)
         admitted = self.options("us_1_of_10_admitted")
         self.assertEqual(admitted["DEPUS03"]["monthly"]["suggestions"], [])
         self.assertEqual(admitted["DEPUS03"]["monthly"]["quote_observation"]["kind"], "NO_TWO_SIDED")

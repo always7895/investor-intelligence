@@ -666,9 +666,14 @@ def case_dte_us_matrix() -> tuple[str, str, list[dict[str, Any]], Any]:
         nasdaq = [u for u in result.requests if "/api/quote/" in u]
         assert not any("/api/quote/uymiss/" in u for u in nasdaq), "a successfully read strategy miss must not trigger a Nasdaq retry"
         assert sum(1 for u in nasdaq if "/api/quote/uyempty/" in u) == 2, "one Nasdaq fallback plus one bounded nearest-month fetch"
+        expect_unavailable(case, bodies, "UYZERO", "weekly")
+        expect_observation(case, bodies, "UYZERO", currency="USD", dte=16, strike=120.0)
+        for period in ("weekly", "monthly"):
+            expect_available(case, bodies, "UYONESIDED", period, currency="USD")
+            item = cycle_of(bodies, "UYONESIDED", period)["suggestions"][0]
+            assert (item["bid"], item["ask"], item["mid"], item["limit_price"]) == (0.5, None, None, 0.5)
+            assert item["delta_basis"] == "QUOTED_IV" and item["delta"] <= 0.20
         for symbol in ("UYZERO", "UYONESIDED"):
-            expect_unavailable(case, bodies, symbol, "weekly")
-            expect_observation(case, bodies, symbol, currency="USD", dte=16, strike=120.0)
             assert not any(f"/api/quote/{symbol.lower()}/" in u for u in nasdaq), f"{symbol}: a read chain is never retried"
     return ("dte_us_matrix", "SYNTHETIC: Yahoo and Nasdaq-fallback selector boundaries, retry preserved for unread chains and not for read strategy misses", specs, check)
 

@@ -31,7 +31,7 @@
   "publication_scope": "public_line_quote",
   "strategies": {
     "cc": {
-      "unavailable": "2026-11-20 到期通過價差篩選的價外買權中，沒有 Delta 不超過 0.20 的履約價"
+      "unavailable": "2026-11-20 到期的價外買權中，沒有 Delta 不超過 0.20 的履約價"
     },
     "csp": {
       "suggestions": [

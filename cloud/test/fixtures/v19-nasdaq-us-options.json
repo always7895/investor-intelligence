@@ -45,7 +45,8 @@
           "instrument_kind": "equity_option",
           "publication_scope": "public_line_quote",
           "asof_date": "2026-10-19",
-          "weekly_week": "CURRENT"
+          "weekly_week": "CURRENT",
+          "source_quote_date": "2026-10-19"
         },
         "monthly": {
           "ticker": "SYNTHNQ00",
@@ -86,7 +87,8 @@
           "instrument_kind": "equity_option",
           "publication_scope": "public_line_quote",
           "asof_date": "2026-10-19",
-          "monthly_rule": "THIRD_FRIDAY"
+          "monthly_rule": "THIRD_FRIDAY",
+          "source_quote_date": "2026-10-19"
         }
       },
       "SYNTHUS00": {
