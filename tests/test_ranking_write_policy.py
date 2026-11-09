@@ -119,6 +119,7 @@ class CadencePolicy(unittest.TestCase):
         with patch.object(host, "_Capture", return_value=captured), patch.object(host, "now", return_value=moment), patch.object(
                 host.overlay, "B1Store"), patch.object(host.overlay, "B1Outputs", return_value=outputs), patch.object(
                 host.revision, "compute_input_revision", return_value=rev), patch.object(ranking, "build", return_value=evaluated), patch.object(
+                host, "_confirmed_ranking", return_value=candidate()), patch.object(
                 publisher, "ForecastConsumption") as consume, patch.object(rotation, "append_if_configured") as append:
             result = host._Session.rank(session, {"Mode": "Dirty", "Revision": rev})
         self.assertFalse(result["Completed"])
@@ -130,6 +131,7 @@ class CadencePolicy(unittest.TestCase):
         consume.assert_not_called()
         append.assert_not_called()
         outputs.publish.assert_not_called()
+        outputs.latest_ranking.assert_not_called()
 
 
 class QuotaPolicy(unittest.TestCase):

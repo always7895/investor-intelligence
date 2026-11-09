@@ -4,6 +4,12 @@ Only bootstrap's protected -I -S -B entry may dispatch serve(). Std handles are
 invocation-local inherited pipes, never TCP/public named endpoints. Wire intents
 are NOT authority. Real lease/version/snapshot/consumption/witness stay here.
 Cadence reuse requires a same-owner consumption cutoff in the preceding hour.
+
+Publication cadence reads only top20_carry_forward.confirmed_snapshot(root)'s
+ranking through the runner-resolved absolute II_SNAPSHOT_ROOT. Its local receipt
+is written after remote pointer/all-object readback, not B1 model completion.
+Absent, ambiguous or invalid proof means unpublished; no remote client or private
+protocol field is involved. This does not mint a consumption witness or ACK.
 """
 from __future__ import annotations
 
@@ -73,6 +79,20 @@ def encoded(value):
 def digest(raw):
     return hashlib.sha256(raw).hexdigest()
 
+
+
+def _confirmed_ranking():
+    """Read-only cadence evidence; never substitute local B1 completion bytes."""
+    import top20_carry_forward
+    root = os.environ.get("II_SNAPSHOT_ROOT")
+    if not root or not Path(root).is_absolute():
+        return None
+    try:
+        confirmed = top20_carry_forward.confirmed_snapshot(Path(root))
+        return None if confirmed is None else confirmed["ranking"]
+    except (OSError, ValueError, TypeError, AttributeError, KeyError):
+        # An unreadable/corrupt receipt is not permission to suppress a retry.
+        return None
 
 def strict_json(raw, cap=MAX_FRAME, *, max_nodes=65536):
     if type(raw) is not bytes or not raw or len(raw) > cap:
@@ -732,7 +752,7 @@ class _Session:
                 raise HostUnavailable("SEALED_OUTPUT_UNAVAILABLE")
             ranking_bytes = encoded(ranking_doc)  # Reject invalid raw data before any journal append.
             import ranking_write_policy
-            previous_ranking = outputs.latest_ranking()
+            previous_ranking = _confirmed_ranking()
             due = ranking_write_policy.publication_due(previous_ranking, ranking_doc, cutoff)
             if due == "NO_CHANGE":
                 captured.close()
