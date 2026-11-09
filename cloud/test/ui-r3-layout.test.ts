@@ -6,7 +6,8 @@ vi.mock("../src/v213/public-options-admission", async importOriginal => {
   return { ...real, admitPublicOption: vi.fn(real.admitPublicOption) };
 });
 import { assertLineMessages } from "../src/line-messages";
-import { v25FlexMessages, v25Surfaces, bubblesOf, REPORT, top20Report } from "./flex-density-fixtures";
+import { v25FlexMessages, v25Surfaces, v3D1Surfaces, bubblesOf, REPORT, top20Report } from "./flex-density-fixtures";
+import { localizeLineMessages } from "../src/v213/status-labels";
 import { doc, HOUR } from "./bottleneck-v3-fixture";
 import { buildBottleneckDetail, buildBottleneckTop20Messages, buildIndustryExplosionMessages, parseBottleneckV3 } from "../src/v213/bottleneck-v3";
 import { buildV213Top20Messages } from "../src/v213/top20-presentation";
@@ -22,6 +23,20 @@ const renderedText = (messages: readonly any[]): string => messages.filter(x => 
 const tokens = (bubble: any) => nodes(bubble).filter(n => n.type === "text")
   .map(n => typeof n.text === "string" ? n.text : (n.contents ?? []).map((s: any) => s.text ?? "").join("")).join("\n");
 const bytes = (value: unknown) => new TextEncoder().encode(JSON.stringify(value)).length;
+
+// Inspect rendered display fields, never opaque postback/raw payloads or source strings.
+function displayCodeLeaks(value: unknown, path = "$"): string[] {
+  if (Array.isArray(value)) return value.flatMap((item, index) => displayCodeLeaks(item, `${path}[${index}]`));
+  if (value === null || typeof value !== "object") return [];
+  return Object.entries(value).flatMap(([key, item]) => {
+    if (key === "data" || key === "postback") return [];
+    const field = `${path}.${key}`;
+    if (["text", "altText", "label", "title", "displayText"].includes(key) && typeof item === "string") {
+      return [...item.matchAll(/[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+/g)].map(match => `${field}: ${match[0]}`);
+    }
+    return displayCodeLeaks(item, field);
+  });
+}
 
 describe("UI-R3 LINE mobile layout with synthetic largest fixtures", () => {
   it("keeps every Flex message within LINE limits, named/date alt text, six-character action labels and <=3 footer actions", async () => {
@@ -95,6 +110,32 @@ describe("UI-R3 LINE mobile layout with synthetic largest fixtures", () => {
     expect(renderedText(noQuote)).not.toContain("CHAIN_PROVIDER_ERROR");
     expect(renderedText(noQuote)).toContain("資料來源暫時無法取得");
   });
+  it("rejects any unmapped UPPER_SNAKE_CASE in every shared rendered product fixture", async () => {
+    for (const [name, build] of Object.entries(v25Surfaces)) {
+      const rendered = await build();
+      expect(displayCodeLeaks(localizeLineMessages(rendered)), name).toEqual([]);
+    }
+    for (const [name, rendered] of Object.entries(v3D1Surfaces())) {
+      expect(displayCodeLeaks(localizeLineMessages(rendered)), name).toEqual([]);
+    }
+    // Full messages retain altText and all pages/disclosures omitted by density slices.
+    const messages = await v25FlexMessages();
+    expect(displayCodeLeaks(localizeLineMessages(messages))).toEqual([]);
+    const parsed = parseBottleneckV3(doc(REPORT-HOUR), REPORT)!;
+    for (const mode of ["text", "flex"] as const) {
+      const complete = [
+        ...buildBottleneckTop20Messages(parsed, mode),
+        ...buildIndustryExplosionMessages(parsed, mode),
+      ];
+      expect(displayCodeLeaks(localizeLineMessages(complete)), mode).toEqual([]);
+      for (const entry of parsed.top) {
+        const detail = buildBottleneckDetail(parsed, entry.symbol, mode);
+        const rendered = typeof detail === "string" ? [{ type: "text", text: detail }] : detail;
+        expect(displayCodeLeaks(localizeLineMessages(rendered)), `${mode}/${entry.symbol}`).toEqual([]);
+      }
+    }
+  });
+
   it("old seven-field summary preserves all seven fields in their original order", () => {
     const report = parseV213Top20Report(top20Report() as never)!;
     const flex = buildV213Top20Messages(report);
