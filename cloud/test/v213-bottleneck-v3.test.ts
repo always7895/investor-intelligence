@@ -40,6 +40,22 @@ describe("bottleneck-explosion Top20 v3", () => {
     expect(parseBottleneckV3(doc(now - HOUR, { schema: "other" }))).toBeNull();
   });
 
+  it.each([
+    { currency: "USD", shown: "508.11" },
+    { currency: "JPY", shown: "508" },
+  ])("formats the Top20 cross-check price in $currency without changing the source value", ({ currency, shown }) => {
+    const parsed = parseBottleneckV3(doc(REPORT), REPORT + HOUR)!;
+    const check = parsed.top[0]!.market.cross_check!;
+    check.price = 508.105;
+    check.currency = currency;
+    for (const style of ["text", "flex"] as const) {
+      const rendered = JSON.stringify(buildBottleneckTop20Messages(parsed, style));
+      expect(noWhitespace(rendered), style).toContain(`${shown}${currency}`);
+      expect(rendered, style).not.toContain("508.105");
+    }
+    expect(check.price).toBe(508.105);
+  });
+
   it("renders LINE carousels within limits, a sourced detail and the industry ranking", () => {
     // The fixed report clock: the sealed order forecasts (tests/fixtures/v213-order-forecast-sealed.json) date from 2026-09.
     const parsed = parseBottleneckV3(doc(REPORT), REPORT + HOUR)!;

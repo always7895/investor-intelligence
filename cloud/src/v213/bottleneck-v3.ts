@@ -14,7 +14,7 @@ import { unwrapTransportV1 } from "./revenue-guidance-wire";
 import { GUIDANCE_BINDING_KEY, MACHINE_SCHEMA, resolveSealedMachineBindings, type MachineBindings } from "./revenue-guidance-machine";
 import { sourceZh } from "./source-labels";
 import { statusLabelZh } from "./status-labels";
-import { formatTaipeiTimestamp, formatVisibleMoment } from "./line-formatters";
+import { formatQuotePrice, formatTaipeiTimestamp, formatVisibleMoment } from "./line-formatters";
 import { PRICE_SOURCE_LABEL } from "./market-observations";
 import { buildCompanyDataReportFlex, buildCompanyDataReportMessages, validateCompanyDataReport } from "./deep-analysis";
 import {
@@ -709,7 +709,7 @@ function scenarioBlocks(outlook: Outlook | null | undefined, compact: boolean): 
 /** "交易所收盤交叉比對：<exchange> <price> <currency>（<date>），與 Yahoo 差 <diff>" beside the card's Yahoo price line. */
 function exchangeCheck(check: NonNullable<Market["cross_check"]>): string {
   const diff = check.diff === undefined ? "（未取得可比較差異）" : check.diff === null ? "（幣別單位不同，不比較）" : `，與 Yahoo 差 ${check.diff >= 0 ? "+" : ""}${(check.diff * 100).toFixed(2)}%`;
-  return `交易所收盤交叉比對：${PRICE_SOURCE_LABEL[check.source_id] ?? check.source_id} ${check.price} ${check.currency}（${check.asof ?? "日期未載明"}）${diff}`;
+  return `交易所收盤交叉比對：${PRICE_SOURCE_LABEL[check.source_id] ?? check.source_id} ${formatQuotePrice(check.price, check.currency)} ${check.currency}（${check.asof ?? "日期未載明"}）${diff}`;
 }
 
 const OFFICIAL_SOURCE_LABEL: Record<string, string> = { ...ZH_SOURCE_LABEL, CISION: "Cision（發行公司法規公告）", COMPANY_IR_KR: "公司 IR 財報" };
