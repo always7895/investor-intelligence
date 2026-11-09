@@ -1,6 +1,6 @@
 # Current state / 目前狀態
 
-**As of 2026-11-08 (Asia/Taipei).** Release **`v3.3.0`** is the dual-accepted source snapshot **`8ff4b0722f71f983716b2accc1fadeb301e848e4`** (`feat/v33-options-trend`), merged to `main`. The commit that adds this page is documentation-only on top of that snapshot. The release is a source release; it is **not** the installed Worker version. This page records the project, not a task log.
+**As of 2026-11-09 (Asia/Taipei).** Branch **`integ/r2`** is the isolated Stage 1 integration candidate based on **`65e8f5b`**, not an accepted release or deployment. Its status is **IMPLEMENTED_UNVERIFIED** pending master re-review of the fixed snapshot and evidence. Release **`v3.3.0`** remains the earlier dual-accepted source snapshot **`8ff4b0722f71f983716b2accc1fadeb301e848e4`**, not the installed Worker version.
 
 ## Production and rollout
 
@@ -16,6 +16,15 @@
 - **Official-guides documentation:** README, AGENTS/CLAUDE, GitHub community files, SKILL and topic documents follow the official guides; every Markdown file is linked from `docs/README.md`.
 - The public-data/IBKR separation, paid-fallback refusal, rights/admission gates, sealed-object digest, snapshot freshness and rollback requirements remain mandatory. Source acceptance is not Production acceptance: `publication_eligible` stays false until a new rollout produces its own live evidence.
 
+## Stage 1 integration boundary
+
+- Monthly selection uses the nearest standard expiry without a minimum DTE, through exchange-local expiry-day close. Missing nearest chains require bounded lookup and dated refusal, not a later-month or weekly substitution.
+- Covered-call and cash-secured-put selection have no annualized-yield floor; conservative strike, delta and quote requirements remain. Low yield is a displayed fact, not a reason to suppress an otherwise eligible strategy.
+- LINE push localization precedes admission sizing, digesting and serialization; visible machine-code checks cover shared rendered fixtures. Mixed date-only and precise same-day observations preserve listing priority.
+- Catalog bytes are bound to the Worker pin with LF checkout protection. Original source refusal reasons remain visible rather than being rewritten into invented refreshed-meta explanations.
+- The lane's `REPORT-STAGE1.txt` records commits, committed-tree gates, identical-input route scans and separately recorded producer-function replay. Historical samples, synthetic fixtures, new raw recordings and regenerated metadata are distinct evidence populations.
+- No Stage 2/R2B artifact, push, release, Production change or rollout is included. Local gates do not replace independent acceptance or fresh source evidence.
+
 ## Release acceptance (v3.3.0)
 
 - **Writer:** complete H5 gate `rel1-g2` on `8ff4b07`: 346 modules, 326 PASS, 20 BLOCKED as ruled before launch (host-bound modules), 0 FAIL; verdict PASS_AS_RULED.
@@ -23,7 +32,8 @@
 
 ## Next actions
 
-1. Propose a **new rollout plan** for the combined product. Do not activate any deployment, schedule or `all_friends` access without the **master's GO and the operator's current-session approval**.
+1. Review the Stage 1 fixed snapshot using its per-finding evidence report. Unproved source-data cases remain open; do not infer acceptance from a successful test command.
+2. Any later combined rollout requires a new plan, **master GO** and **explicit current-session operator authorization**; do not activate deployments, schedules or `all_friends` access.
 
 ## Open follow-ups
 
