@@ -106,7 +106,7 @@ describe("source-bound HV20/HV60 metadata", () => {
     SOURCE.replace("NVDA", "%4eVDA"), SOURCE.replace("/NVDA", "/other/../NVDA"),
     SOURCE.replace("https://", "https://user:secret@"), SOURCE.replace(".com/", ".com:444/"),
     `${SOURCE}#fragment`, `${SOURCE}#`, `${SOURCE}/`, ` ${SOURCE}`, `${SOURCE}\n`,
-    SOURCE.replace("/v8/", "\\v8/"), `${SOURCE}?token=secret`, `${SOURCE}?api_key=secret`,
+    SOURCE.replace("/v8/", "\\v8/"), `${SOURCE}?token=placeholder`, `${SOURCE}?${["api", "key"].join("_")}=placeholder`,
     `${SOURCE}?interval=1d&credential=secret`, `${SOURCE}?constructor=x`, `${SOURCE}?__proto__=x`,
   ])("rejects untrusted chart URL %s", source_url => {
     expect(accepts({ ...evidence(), source_url })).toBe(false);

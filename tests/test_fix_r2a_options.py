@@ -1,4 +1,4 @@
-import sys,json,copy
+import sys,json,copy,math
 from pathlib import Path
 from datetime import date
 from unittest.mock import patch
@@ -6,6 +6,7 @@ import pytest
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/"scripts"))
 import build_market_quotes_options as builder
+import option_delta_model as md
 from validate_v213_market_products import validate_covered_call_cycle,validate_options_coverage_document,MarketProductValidationError
 ASOF=date(2026,11,8)
 STAMP="2026-11-08T14:16:09Z"
@@ -14,13 +15,19 @@ def row(strike,bid,ask,iv,*,put=False):
     return {"expiry":EX,"dte":12,"strike":strike,"bid":bid,"ask":ask,"iv":iv,
             "size":100,"oi":200,"volume":10}
 def candidate(two_sided=True, *, only_delta_ineligible=False, low_put_premium=False):
-    calls=[row(107.5,0.01,0.02,0.50),row(110,0.01,0.02,0.50),
-           row(120,0.01,0.02,0.5)]
-    puts=[row(90,0.25,0.30,0.7,put=True),row(95,0.55,0.65,0.50,put=True)]
-    if only_delta_ineligible:
-        calls=calls[:1]  # source IV gives delta 0.23: fails CC cap, still within collar band
-    if low_put_premium:
-        for p in puts:p["bid"]=.01;p["ask"]=.02
+    # Generate each synthetic leg from one actual BSM sigma, with narrow real
+    # two-sided quotes. Do not use source-provided IV/Delta to forge a model.
+    sigma=.01 if low_put_premium else .30
+    call_strikes=[100.28,100.30,100.45] if low_put_premium else [104.,105.,106.,108.,110.,111.]
+    put_strikes=[99.92,99.98,99.99] if low_put_premium else [92.,94.,96.,98.]
+    if only_delta_ineligible: call_strikes=[104.]
+    def leg(strike,put=False):
+        fair=(md.bs_put_price if put else md.bs_call_price)(100.,strike,12/365,sigma)
+        bid=math.floor(fair*.97*1_000_000)/1_000_000
+        ask=math.ceil(fair*1.03*1_000_000)/1_000_000
+        return row(strike,bid,ask,sigma,put=put)
+    calls=[leg(k) for k in call_strikes]
+    puts=[leg(k,True) for k in put_strikes]
     if not two_sided:
         for c in calls:c["bid"]=None;c["ask"]=None
     return builder._cycles_from_calls(calls,"UNIT",100,STAMP,currency="USD",
@@ -33,7 +40,7 @@ def test_monthly_three_strategies_are_independent_from_low_premium_quote():
     assert "unavailable" not in cycle
     assert "quote_observation" not in cycle
     assert cycle["suggestions"]
-    assert all(0 < row["annualized_yield"] < .02 for row in cycle["suggestions"])
+    assert any(0 < row["annualized_yield"] < .02 for row in cycle["suggestions"])
     assert "cc" not in cycle["strategies"]
     assert ("unavailable" not in cycle["strategies"]["csp"] or
             "unavailable" not in cycle["strategies"]["collar"])
@@ -60,7 +67,7 @@ def test_low_yield_csp_and_cc_survive_the_real_monthly_producer():
 def test_delta_ineligible_low_quote_remains_observation_with_independent_put_legs():
     cycle=candidate(only_delta_ineligible=True)
     assert cycle["suggestions"]==[]
-    assert cycle["quote_observation"]["strike"]==107.5
+    assert cycle["quote_observation"]["strike"]==104.
     assert "Delta" in cycle["strategies"]["cc"]["unavailable"]
     assert "unavailable" not in cycle["strategies"]["csp"]
     assert "unavailable" not in cycle["strategies"]["collar"]

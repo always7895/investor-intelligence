@@ -2,8 +2,10 @@ import sys
 from datetime import date, timedelta
 from pathlib import Path
 import pytest
+import math
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import build_market_quotes_options as product
+import option_delta_model as md
 from validate_v213_market_products import validate_covered_call_cycle, MarketProductValidationError
 
 TODAY=date(2026,11,8)
@@ -27,7 +29,12 @@ def check(cycle):
     validate_covered_call_cycle(cycle,evaluated_at=STAMP,document_at=STAMP,period="monthly")
 
 def test_nearest_standard_monthly_low_yield_is_still_a_strategy():
-    got=run_monthly([row(FIRST,12,17.0,.01,.02),row(SECOND,40,18.0,2.0,2.1)])
+    # Quotes must themselves support a coherent common IV. The original 0.01/0.02
+    # pair was a 66% spread, which correctly becomes history-missing observation.
+    fair=md.bs_call_price(SPOT,17.5,12/365,.30)
+    bid=math.floor(fair*.97*1_000_000)/1_000_000
+    ask=math.ceil(fair*1.03*1_000_000)/1_000_000
+    got=run_monthly([row(FIRST,12,17.5,bid,ask),row(SECOND,40,18.0,2.0,2.1)])
     assert "unavailable" not in got
     assert "quote_observation" not in got
     assert got["expiry"]==FIRST
@@ -77,14 +84,15 @@ def test_short_standard_monthly_keeps_source_evidence_and_finite_annualization(d
         missing="no listed monthly",today=today,venue="STOCKHOLM",
         identity=product.NORDIC_OPTION_IDENTITY)["monthly"]
     assert cycle["expiry"]==FIRST
+    # A 0.01/0.04 spread is not tight. Without verified HV20/HV60 it remains a
+    # quote observation for every short standard expiry; never an executable LIMIT.
+    observation=cycle["quote_observation"]
+    assert cycle["suggestions"] == []
     if bid is not None:
-        assert "quote_observation" not in cycle
-        assert cycle["suggestions"][0]["strike"] == 17.0
-        assert cycle["suggestions"][0]["limit_price"] == .02
-        assert cycle["suggestions"][0]["premium_per_contract"] == 2.0
-        assert cycle["suggestions"][0]["annualized_yield"] == pytest.approx(.02/SPOT*365/max(dte,1),abs=.000005)
+        assert observation["kind"]=="TWO_SIDED"
+        assert observation["bid"]==bid and observation["ask"]==ask
+        assert observation["annualized_yield"] == round(bid/SPOT*365/max(dte,1),6)
     else:
-        observation=cycle["quote_observation"]
         assert observation["annualized_yield"] == (None if last is None else round(last/SPOT*365/max(dte,1),6))
     validate_covered_call_cycle(cycle,evaluated_at=stamp,document_at=stamp,period="monthly")
 
