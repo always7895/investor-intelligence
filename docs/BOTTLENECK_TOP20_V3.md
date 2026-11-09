@@ -420,10 +420,10 @@ Source implementation only: **IMPLEMENTED_UNVERIFIED**, not deployed or independ
 - Pending ALL_STOCK/CASH/MIXED merger targets are withheld with a zh-TW reason; an acquirer keeps an independently
   calculated score. LITE/MRVL remains pending, 4.5 MRVL shares per LITE, not a completed conversion.
 - M3 display metadata comes from the controlled registry through `corporate_actions.public_notes`: pending merger notes
-  carry `status=PENDING` for both target and acquirer; completed distribution notes carry `status=CLOSED` for both MOD
-  and THRM. Producer company and excluded rows retain the note, and the publisher independently reprojects it from
-  the same captured registry. A LITE notice never admits the pending target. THRM displays “MOD 每股配發 0.44619 股 THRM”
-  without inheriting MOD shareholder-return suppression, entitlement proofs, or adjusted returns.
+  apply to both parties and completed distributions apply to MOD and THRM. Producer company and excluded rows keep the
+  note. The publisher independently seals bounded `excluded_actions` for pending targets and distribution-withheld parents,
+  with controlled terms and fixed zh-TW reasons, never their scores or returns. Text, the Flex disclosure bubble, and
+  `瓶頸詳情 LITE` / `瓶頸詳情 MOD` expose those exclusions without admitting them. THRM retains only its own returns and proofs.
   Wire status enums remain validated metadata, never raw LINE text; each notice renders one zh-TW heading without duplication.
 - `scripts/distribution_adjusted_returns.py` owns MOD suppression and the Decimal shareholder-entitlement calculator.
   MOD distributed 0.44619 THRM on October 1; due bills run September 28–October 1 and the reviewed ex-spin boundary is

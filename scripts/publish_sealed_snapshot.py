@@ -863,6 +863,19 @@ def captured_bottleneck_v3_body(raw: bytes, now: datetime, effective_inputs=None
                 raise machine.MachinePublicationBlocked("DEAL_PENDING_TARGET")
             return {}  # do not seal an obsolete pre-deal target ranking into a newer report
         action_notes = corporate_actions.public_notes(actions, asof=generated.date())
+        ranked_symbols = {entry["symbol"] for entry in doc["top"]}
+        excluded_actions = [
+            {"symbol": entry["target_symbol"], "reason_zh": "併購待完成，暫不納入排行",
+             "corporate_action": action_notes[entry["target_symbol"]]}
+            for entry in active if entry["target_symbol"] not in ranked_symbols]
+        excluded_symbols = {entry.get("symbol") for entry in doc.get("excluded", [])
+                            if isinstance(entry, dict)}
+        for symbol in sorted(excluded_symbols & distributions.keys() - ranked_symbols):
+            note = action_notes.get(symbol)
+            if note and note["kind"] == "DISTRIBUTION" and note["target_symbol"] == symbol:
+                excluded_actions.append({
+                    "symbol": symbol, "reason_zh": entitlement.UNAVAILABLE_REASON_ZH,
+                    "corporate_action": note})
         pick = lambda row, keys: {key: row.get(key) for key in keys}  # noqa: E731
         top = []
         zh = build_zh_names.names_for([entry["symbol"] for entry in doc["top"]],
@@ -996,9 +1009,7 @@ def captured_bottleneck_v3_body(raw: bytes, now: datetime, effective_inputs=None
                   "serenity_source": {"url": serenity.get("url"), "latest_post_at": serenity.get("latest_post_at")} if serenity.get("url") else None,
                   "leopold_filing": pick(filing, ("period", "filed", "url")) if filing.get("url") else None,
                   "top": top, "industries": industries,
-                  **({"excluded_pending": [{"symbol": a["target_symbol"], "acquirer": a["acquirer_symbol"],
-                                           "reason_zh": "併購待完成，暫不納入排行", "source_url": a["source_url"]}
-                                          for a in active]} if active else {}),
+                  **({"excluded_actions": excluded_actions} if excluded_actions else {}),
                   **({"market_window": market_window} if market_window is not None else {})}
         body = (machine.compact(sealed, machine.REPORT_BYTES).decode("utf-8") if guidance_machine_enabled else
                 json.dumps(sealed, ensure_ascii=False, separators=(",", ":"), allow_nan=False))

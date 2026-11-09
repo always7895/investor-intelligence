@@ -30,9 +30,16 @@ function fixture() {
       published_on: DAY, headline_zh: "公開公司公告待驗證後續里程碑" },
   };
   const top: [typeof first, ...typeof value.top] = [first, ...value.top.slice(1)];
-  return { ...value, top, excluded_pending: [{
-    symbol: "LITE", acquirer: "MRVL",
-    reason_zh: "併購待完成，暫不納入排行", source_url: SEC,
+  return { ...value, top, excluded_actions: [{
+    symbol: "LITE", reason_zh: "併購待完成，暫不納入排行",
+    corporate_action: { target_symbol: "LITE", acquirer_symbol: "MRVL", kind: "ALL_STOCK", status: "PENDING",
+      exchange_ratio: 4.5, cash_per_share: null, currency: null,
+      expected_close: "first half of calendar year 2028", source_url: SEC },
+  }, {
+    symbol: "MOD", reason_zh: "尚缺可核對的一手歷史收盤價、完整配息與拆股紀錄及衍生報酬公開使用權；零股另須實際淨現金證明，跨配發權益日報酬暫不顯示。",
+    corporate_action: { target_market: "US", target_symbol: "MOD", kind: "DISTRIBUTION", status: "CLOSED",
+      distribution_date: "2026-10-01", related_market: "US", related_symbol: "THRM", shares_per_share: 0.44619,
+      source_url: SEC, source_date: "2026-10-01", review_by: null },
   }] };
 }
 
@@ -51,7 +58,19 @@ describe("R2B score-neutral research overlays and pending-deal disclosures", () 
     expect(JSON.stringify(text)).toContain("LITE：併購待完成，暫不納入排行");
     const excluded = buildBottleneckDetail(parsed!, "LITE");
     expect(typeof excluded).toBe("string");
-    expect(excluded).toContain("收購方 MRVL");
+    expect(excluded).toContain("4.500 股 MRVL");
+    expect(excluded).toContain("2028 年上半年");
+    for (const payload of [raw, JSON.stringify(text)]) {
+      expect(payload).toContain("LITE");
+      expect(payload).toContain("4.500 股 MRVL");
+      expect(payload).toContain("2028 年上半年");
+      expect(payload).toContain("MOD");
+      expect(payload).toContain("零股另須實際淨現金證明");
+      expect(payload).not.toMatch(/\b(?:PENDING|CLOSED)\b/);
+    }
+    expect(buildBottleneckDetail(parsed!, "MOD")).toContain("0.44619 股 THRM");
+    expect(buildBottleneckDetail(parsed!, "MOD")).toContain("跨配發權益日報酬暫不顯示");
+    expect(parsed!.top.some(row => row.symbol === "LITE" || row.symbol === "MOD")).toBe(false);
     expect(JSON.stringify(text)).not.toContain("未驗證條件已確認");
   });
 
@@ -78,8 +97,23 @@ describe("R2B score-neutral research overlays and pending-deal disclosures", () 
     d.top[0].latest_event.published_on = "2099-11-02";
     expect(parseBottleneckV3(d)).toBeNull();
     const e = fixture();
-    e.excluded_pending[0]!.symbol = e.top[0].symbol;
+    e.excluded_actions[0]!.symbol = e.top[0].symbol;
     expect(parseBottleneckV3(e)).toBeNull();
+  });
+
+  it("rejects missing, conflicting and forged excluded-action disclosures", () => {
+    const missing = fixture();
+    Object.assign(missing.excluded_actions[0]!, { corporate_action: undefined });
+    expect(parseBottleneckV3(missing)).toBeNull();
+    const duplicate = fixture();
+    duplicate.excluded_actions.push(structuredClone(duplicate.excluded_actions[0]!));
+    expect(parseBottleneckV3(duplicate)).toBeNull();
+    const reason = fixture();
+    reason.excluded_actions[1]!.reason_zh = "已完成核准，可顯示零報酬";
+    expect(parseBottleneckV3(reason)).toBeNull();
+    const wrongParty = fixture();
+    wrongParty.excluded_actions[1]!.symbol = "THRM";
+    expect(parseBottleneckV3(wrongParty)).toBeNull();
   });
 
   it("keeps official TW/KR notices metadata-only and rejects forged claim text or source authority", () => {
