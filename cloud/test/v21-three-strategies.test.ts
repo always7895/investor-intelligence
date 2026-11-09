@@ -657,6 +657,29 @@ describe("Stage 1C nullable executable sides and visible LIMIT scenarios", () =>
     }
   });
 
+  it("does not round visible subcent quotes or limits outside their actual executable boundaries", () => {
+    const { cycle, csp, collar } = wideRecommendation("USD");
+    const bid = 0.005049, ask = 0.00505;
+    for (const item of [...cycle.suggestions, cycle.middle_suggestion!])
+      Object.assign(item, { bid, ask, mid: (bid + ask) / 2, limit_price: bid });
+    for (const item of csp.suggestions) Object.assign(item, { bid, ask, limit_price: bid });
+    for (const item of collar.items) Object.assign(item.call, { bid, ask, limit_price: bid });
+    Object.assign(collar.put, { bid, ask, limit_price: ask });
+    repriceRecommendation(cycle);
+    const valid = validateCoveredCallCycle(cycle, NOW, STAMP, "monthly")!;
+    expect(valid).not.toBeNull();
+    admitSyntheticTickers(cycle.ticker);
+    for (const style of ["text", "flex"] as const) {
+      const messages = buildCoveredCallMessages(valid, "每月期權", style);
+      assertLineMessages(messages);
+      const visible = joined(messages);
+      for (const expected of ["Bid $0.005049", "Ask $0.00505", "中價 $0.0050495",
+        "建議賣出限價 $0.005049", "建議買入限價 $0.00505"]) expect(visible).toContain(expected);
+      expect(visible).not.toContain("建議賣出限價 $0.01");
+      expect(visible).not.toContain("建議買入限價 $0.01");
+    }
+  });
+
   it("one-sided quotes refuse invented midpoint/spread and prices above their executable reference", () => {
     for (const patch of [{ mid: 0.5 }, { spread_pct: 0 }, { limit_price: 0.51 }, { delta_basis: null }]) {
       const { cycle } = wideRecommendation();

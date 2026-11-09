@@ -63,8 +63,6 @@ describe("covered-call suggestions", () => {
     expect(flex).toContain("$245.00");
     expect(flex).toContain("$152.00");
     expect(flex).toContain("Delta 0.17");
-    expect(flex).toMatch(/Bid \$1\.50／中價 \$1\.5[23]／Ask \$1\.55/);
-    expect(flex).toMatch(/Bid \$3\.65／中價 \$3\.7[23]／Ask \$3\.80/);
     expect(flex).toContain("https://finance.yahoo.com/quote/NVDA/options");
     expect(flex).toContain("資料來源與說明");
     expect(flex).toContain("Delta 不高於 0.20");

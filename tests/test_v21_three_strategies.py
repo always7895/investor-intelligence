@@ -483,7 +483,8 @@ class OneSidedRecommendationTests(unittest.TestCase):
                                              puts=[(k, None, a) for k, _, a in chains.PUTS]))
         validate(good)
         for field, value in (("bid", None), ("ask", 0), ("ask", -1), ("ask", float("nan")),
-                             ("mid", 1), ("spread_pct", 0), ("limit_price", 99), ("delta_basis", "QUOTE_IMPLIED")):
+                             ("mid", 1), ("spread_pct", 0), ("limit_price", 99),
+                             ("delta_basis", "QUOTE_IMPLIED"), ("delta_basis", None)):
             bad = copy.deepcopy(good)
             bad["suggestions"][0][field] = value
             with self.assertRaises(MarketProductValidationError, msg=field):

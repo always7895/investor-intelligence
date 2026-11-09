@@ -410,7 +410,13 @@ function sanitizeStrategies(cycle: Record<string, unknown>, validatedObservation
 
 const money = (value: number, currency: string) => currency === "USD" ? `$${value.toFixed(2)}` : `${value.toFixed(2)} ${currency}`;
 const pct = (value: number, digits = 1) => `${(value * 100).toFixed(digits)}%`;
-const quoteMoney = (value: number | null, currency: string) => value === null ? "未提供" : money(value, currency);
+function quoteMoney(value: number | null, currency: string, calculated = false): string {
+  if (value === null) return "未提供";
+  // Quote boundaries and executable limits must not move when displayed. Only a calculated midpoint sheds binary arithmetic noise.
+  const shown = calculated ? Number(value.toPrecision(15)) : value;
+  const amount = Math.round(shown * 100) / 100 === shown ? shown.toFixed(2) : String(shown);
+  return currency === "USD" ? `$${amount}` : `${amount} ${currency}`;
+}
 const quoteMid = (bid: number | null, ask: number | null) => bid === null || ask === null ? null : bid / 2 + ask / 2;
 
 /** Always derive visible spread from the actual validated sides, never a supplied percentage. */
@@ -497,7 +503,7 @@ const ccNone = (cycle: CoveredCallCycle) => cycle.strategies?.cc?.unavailable ??
 
 const BASIS_ZH = { QUOTED: "交易所提供", QUOTED_IV: "模型值，依報價隱含波動率", QUOTE_IMPLIED: "模型值，由買賣報價反推" } as const;
 const legDeltaZh = (leg: StrategyLeg) => `Delta ${leg.delta.toFixed(2)}（約 ${Math.round(leg.delta * 100)}%，${BASIS_ZH[leg.delta_basis]}）`;
-const bidAskZh = (leg: Pick<StrategyLeg, "bid" | "ask">, currency: string) => `Bid ${quoteMoney(leg.bid, currency)}／中價 ${quoteMoney(quoteMid(leg.bid, leg.ask), currency)}／Ask ${quoteMoney(leg.ask, currency)}`;
+const bidAskZh = (leg: Pick<StrategyLeg, "bid" | "ask">, currency: string) => `Bid ${quoteMoney(leg.bid, currency)}／中價 ${quoteMoney(quoteMid(leg.bid, leg.ask), currency, true)}／Ask ${quoteMoney(leg.ask, currency)}`;
 const tierNameZh = (role: string) => role === "CONSERVATIVE" ? "保守型（Delta 約 0.20 起）" : "平衡型（收較多權利金）";
 const signedMoney = (value: number, currency: string) => `${value < 0 ? "-" : "+"}${money(Math.abs(value), currency)}`;
 
@@ -574,11 +580,12 @@ function bidCaseZh(bid: number, capital: number, cycle: CoveredCallCycle): strin
 
 /** These exact tier details are shown in both Text and the strategy's visible Flex bubble. */
 function ccTierLines(cycle: CoveredCallCycle, item: CoveredCallSuggestion, index: number): string[] {
+  const basis = deltaBasisZh(item);
   return [
     tierTitle(item, index),
-    `履約價 ${money(item.strike, cycle.currency)}（距現價 +${pct(item.upside_to_strike)}）｜建議賣出限價 ${money(item.limit_price, cycle.currency)}（${bidAskZh(item, cycle.currency)}）`,
+    `履約價 ${money(item.strike, cycle.currency)}（距現價 +${pct(item.upside_to_strike)}）｜建議賣出限價 ${quoteMoney(item.limit_price, cycle.currency)}（${bidAskZh(item, cycle.currency)}）`,
     limitRuleZh(item),
-    `LIMIT每口權利金 ${money(item.premium_per_contract, cycle.currency)}｜期間收益 ${pct(item.period_yield, 2)}｜年化 ${pct(item.annualized_yield)}｜Delta ${item.delta === null || item.delta === undefined ? "未提供" : `${item.delta.toFixed(2)}${deltaBasisZh(item) ? `（${deltaBasisZh(item)}）` : ""}`}`,
+    `LIMIT每口權利金 ${money(item.premium_per_contract, cycle.currency)}｜期間收益 ${pct(item.period_yield, 2)}｜年化 ${pct(item.annualized_yield)}｜Delta ${item.delta === null || item.delta === undefined ? "未提供" : `${item.delta.toFixed(2)}${basis ? `（${basis}）` : ""}`}`,
     bidCaseZh(item.bid, cycle.spot, cycle),
     `流動性：OI ${countZh(item.oi)}｜成交量 ${countZh(item.volume)}｜${liquidityZh(item.bid, item.ask)}`,
   ];
@@ -588,7 +595,7 @@ function cspTierLines(cycle: CoveredCallCycle, item: CspItem, index: number): st
   const cur = cycle.currency;
   return [
     `建議${ORDINAL_ZH[index] ?? String(index + 1)}：${tierNameZh(item.role)}`,
-    `履約價 ${money(item.strike, cur)}（低於現價 ${pct(item.downside_buffer)}）｜建議賣出限價 ${money(item.limit_price, cur)}（${bidAskZh(item, cur)}）`,
+    `履約價 ${money(item.strike, cur)}（低於現價 ${pct(item.downside_buffer)}）｜建議賣出限價 ${quoteMoney(item.limit_price, cur)}（${bidAskZh(item, cur)}）`,
     limitRuleZh(item), liquidityZh(item.bid, item.ask),
     `LIMIT每口權利金 ${money(item.premium_per_contract, cur)}｜需備現金 ${money(item.cash_required, cur)}｜期間收益 ${pct(item.limit_price / item.strike, 2)}｜年化 ${pct(item.annualized_yield)}（以備妥現金計）｜損益兩平 ${money(item.breakeven, cur)}`,
     bidCaseZh(item.bid, item.strike, cycle),
@@ -598,7 +605,7 @@ function cspTierLines(cycle: CoveredCallCycle, item: CspItem, index: number): st
 
 function collarPutLines(cycle: CoveredCallCycle, put: BuyStrategyLeg): string[] {
   return [
-    `保護賣權（買進）履約價 ${money(put.strike, cycle.currency)}｜建議買入限價 ${money(put.limit_price, cycle.currency)}（${bidAskZh(put, cycle.currency)}）｜${legDeltaZh(put)}`,
+    `保護賣權（買進）履約價 ${money(put.strike, cycle.currency)}｜建議買入限價 ${quoteMoney(put.limit_price, cycle.currency)}（${bidAskZh(put, cycle.currency)}）｜${legDeltaZh(put)}`,
     limitRuleZh(put, true), liquidityZh(put.bid, put.ask),
   ];
 }
@@ -610,7 +617,7 @@ function collarTierLines(cycle: CoveredCallCycle, put: BuyStrategyLeg, item: Col
   const annualize = 365 / effectiveDays(cycle.dte) / cycle.spot;
   return [
     `建議${ORDINAL_ZH[index] ?? String(index + 1)}：${tierNameZh(item.role)}`,
-    `賣出買權履約價 ${money(item.call.strike, cur)}｜建議賣出限價 ${money(item.call.limit_price, cur)}（${bidAskZh(item.call, cur)}）｜${legDeltaZh(item.call)}`,
+    `賣出買權履約價 ${money(item.call.strike, cur)}｜建議賣出限價 ${quoteMoney(item.call.limit_price, cur)}（${bidAskZh(item.call, cur)}）｜${legDeltaZh(item.call)}`,
     limitRuleZh(item.call), liquidityZh(item.call.bid, item.call.ask),
     `LIMIT每口淨權利金（${net >= 0 ? "收入" : "支出"}）${money(Math.abs(net), cur)}｜淨權利金年化 ${pct(item.net_premium_per_share * annualize)}`,
     `Bid情境（Call Bid－Put Ask）：每口淨權利金 ${signedMoney(perContract(conservative), cur)}｜淨權利金年化 ${pct(conservative * annualize)}（非保證，非總報酬）`,
