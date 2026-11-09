@@ -311,6 +311,7 @@ describe("OPTIONS-NONUS-02 bridge: exact Python-emitted bodies through the Worke
   });
 
   it("renders boundary-admitted standard observations without inventing missing quotes or strategies", async () => {
+    admitSyntheticTickers("DEPUS03", "DEPST03.ST");
     for (const [caseId, key] of [["us_1_of_10_admitted", "DEPUS03"], ["stockholm_1_of_10_admitted", "DEPST03.ST"]] as const) {
       expect(bridge.cases[caseId].kind).toBe("ADMITTED");
       const cycle = optionsOf(caseId)[key]!.monthly!;
