@@ -12,5 +12,6 @@ export type GuidanceMachineProbe = "ADMITTED" | "REFUSED" | "ABSENT";
 export async function probeGuidanceMachine(view: PublicSnapshotView): Promise<GuidanceMachineProbe> {
   if (view.integrity !== "sealed" || view.kind !== "snapshot" || !view.hasSealedObject?.(GUIDANCE_BINDING_KEY)) return "ABSENT";
   if (!view.hasSealedObject?.(BOTTLENECK_V3_KEY)) return "REFUSED";
-  return (await loadBottleneckV3(view, { guidanceMachineEnabled: true })) === null ? "REFUSED" : "ADMITTED";
+  const doc = await loadBottleneckV3(view, { guidanceMachineEnabled: true });
+  return doc === null || doc.historical_forecasts_unavailable === true ? "REFUSED" : "ADMITTED";
 }

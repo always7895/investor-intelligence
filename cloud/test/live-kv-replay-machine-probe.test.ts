@@ -55,10 +55,10 @@ const producerBinding = JSON.parse(auto.binding) as { report_sha256: string };
 const REPLAYED_BINDING = auto.binding.replace(`"report_sha256":"${producerBinding.report_sha256}"`,
   `"report_sha256":"${producerBinding.report_sha256.slice(0, -1)}${producerBinding.report_sha256.endsWith("0") ? "1" : "0"}"`);
 
-async function probeAt(edit?: (values: Map<string, string>) => void): Promise<{ probe: GuidanceMachineProbe; privateReads: number }> {
+async function probeAt(edit?: (values: Map<string, string>) => void, now = NOW): Promise<{ probe: GuidanceMachineProbe; privateReads: number }> {
   const { env, privateKv, securityKv } = makeOfflineEnv(stagedKv(edit));
   const realNow = Date.now;
-  Date.now = () => NOW;
+  Date.now = () => now;
   try {
     const probe = await probeGuidanceMachine(await pinPublicSnapshot(env));
     return { probe, privateReads: privateKv.reads + securityKv.reads };
@@ -79,6 +79,10 @@ describe("F06 pre-KV replay: guidance_machine_probe over the staged F06 run", ()
     ["pointer-missing", values => { values.delete("snapshot:current"); }, "ABSENT"],
   ])("reports %s as the expected non-admitted state", async (_name, edit, expected) => {
     expect((await probeAt(edit)).probe).toBe(expected);
+  });
+
+  it("never reports retained historical ranking facts as current machine admission", async () => {
+    expect((await probeAt(undefined, NOW + 48 * 3600_000)).probe).toBe("REFUSED");
   });
 
   it("reports a sealed run without the machine binding as ABSENT (non-machine tiers unchanged)", async () => {

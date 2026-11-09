@@ -748,6 +748,9 @@ export async function loadBottleneckV3(view: PublicSnapshotView, options: Bottle
     const [report, binding] = await Promise.all([view.text([BOTTLENECK_V3_KEY]), view.text([GUIDANCE_BINDING_KEY])]);
     if (report === null) return null;
     const selected = binding === null ? null : resolveSealedMachineBindings(report, binding);
+    // A declared but missing/corrupt/replayed binding is broken custody, not
+    // permission to downgrade that machine snapshot to historical facts.
+    if (view.hasSealedObject?.(GUIDANCE_BINDING_KEY) && (binding === null || selected === null)) return null;
     machineUnavailable = selected === null;
     // A caller's bindings cannot repair missing custody or authorize an old forecast.
     effectiveOptions = { ...options, machineBindings: selected ?? undefined };
