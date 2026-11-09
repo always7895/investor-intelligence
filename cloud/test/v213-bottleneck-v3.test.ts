@@ -43,16 +43,22 @@ describe("bottleneck-explosion Top20 v3", () => {
   it.each([
     { currency: "USD", shown: "508.11" },
     { currency: "JPY", shown: "508" },
-  ])("formats the Top20 cross-check price in $currency without changing the source value", ({ currency, shown }) => {
+  ])("formats the Top20/detail cross-check price in $currency without changing the source value", ({ currency, shown }) => {
     const parsed = parseBottleneckV3(doc(REPORT), REPORT + HOUR)!;
     const check = parsed.top[0]!.market.cross_check!;
     check.price = 508.105;
     check.currency = currency;
     for (const style of ["text", "flex"] as const) {
-      const rendered = JSON.stringify(buildBottleneckTop20Messages(parsed, style));
+      const messages = buildBottleneckDetail(parsed, parsed.top[0]!.symbol, style);
+      if (typeof messages === "string") throw new Error("EXPECTED_DETAIL_MESSAGES");
+      assertLineMessages(messages);
+      const rendered = JSON.stringify(messages);
       expect(noWhitespace(rendered), style).toContain(`${shown}${currency}`);
       expect(rendered, style).not.toContain("508.105");
     }
+    const top20Flex = JSON.stringify(buildBottleneckTop20Messages(parsed, "flex"));
+    expect(noWhitespace(top20Flex)).toContain(`${shown}${currency}`);
+    expect(top20Flex).not.toContain("508.105");
     expect(check.price).toBe(508.105);
   });
 
