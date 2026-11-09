@@ -594,6 +594,7 @@ function validEntry(raw: any, generatedAt: string): raw is BottleneckEntry {
     && (raw.archetype === "EXPLOSION" || raw.archetype === "COMPOUNDER") && num(raw.score) && str(raw.role, 200)
     && optStr(raw.role_zh, 200) && validOutlook(raw.outlook, generatedAt)
     && validCorporateAction(raw.corporate_action, raw.symbol, generatedAt)
+    && (raw.corporate_action?.kind === "DISTRIBUTION" || raw.corporate_action?.target_symbol !== raw.symbol)
     && validScreenConditions(raw.screen_conditions)
     && validLatestEvent(raw.latest_event, generatedAt)
     && raw.role_source && https(raw.role_source.url) && str(raw.role_source.date, 20)

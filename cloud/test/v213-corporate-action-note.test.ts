@@ -16,22 +16,24 @@ function specimen(symbol: string, note: unknown) {
 }
 
 describe("Controlled corporate-action card terms", () => {
-  it("renders pending target and acquirer terms without changing their numeric score", () => {
-    for (const symbol of ["LITE", "MRVL"]) {
-      const generated = specimen(symbol, action("MRVL"));
-      const parsed = parseBottleneckV3(generated, AT);
-      expect(parsed).not.toBeNull();
-      if (!parsed) throw new Error("VALID_PENDING_NOTE_REJECTED");
-      expect(parsed.top[0]!.score).toBe(generated.top[0]!.score);
-      for (const mode of ["text", "flex"] as const) {
-        const messages = buildBottleneckTop20Messages(parsed, mode);
-        assertLineMessages(messages);
-        const rendered = JSON.stringify(messages);
-        expect(rendered).toContain("4.500 股 MRVL");
-        expect(rendered).not.toMatch(/\b(?:PENDING|CLOSED)\b/);
-        expect(rendered.match(/併購進行中/g)).toHaveLength(1);
-      }
+  it("renders pending acquirer terms without changing its independent numeric score", () => {
+    const generated = specimen("MRVL", action("MRVL"));
+    const parsed = parseBottleneckV3(generated, AT);
+    expect(parsed).not.toBeNull();
+    if (!parsed) throw new Error("VALID_PENDING_ACQUIRER_NOTE_REJECTED");
+    expect(parsed.top[0]!.score).toBe(generated.top[0]!.score);
+    for (const mode of ["text", "flex"] as const) {
+      const messages = buildBottleneckTop20Messages(parsed, mode);
+      assertLineMessages(messages);
+      const rendered = JSON.stringify(messages);
+      expect(rendered).toContain("4.500 股 MRVL");
+      expect(rendered).not.toMatch(/\b(?:PENDING|CLOSED)\b/);
+      expect(rendered.match(/併購進行中/g)).toHaveLength(1);
     }
+  });
+
+  it("rejects a pending target even when its merger terms are structurally valid", () => {
+    expect(parseBottleneckV3(specimen("LITE", action("MRVL")), AT)).toBeNull();
   });
 
   it("rejects unbounded terms, wrong parties and a nonpending status", () => {
@@ -39,7 +41,7 @@ describe("Controlled corporate-action card terms", () => {
       { ...action("MRVL"), expected_close: "A".repeat(20000) },
       { ...action("MRVL"), status: "CLOSED" },
       { ...action("MRVL"), acquirer_symbol: "LITE" },
-    ]) expect(parseBottleneckV3(specimen("LITE", note), AT)).toBeNull();
+    ]) expect(parseBottleneckV3(specimen("MRVL", note), AT)).toBeNull();
     expect(parseBottleneckV3(specimen("OTHER", action("MRVL")), AT)).toBeNull();
   });
 
