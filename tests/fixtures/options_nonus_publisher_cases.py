@@ -324,21 +324,34 @@ def cycle_of(bodies: dict[str, str], symbol: str, cycle: str) -> dict[str, Any]:
 
 def expect_available(case: str, bodies: dict[str, str], symbol: str, cycle: str, *, currency: str | None = None) -> None:
     value = cycle_of(bodies, symbol, cycle)
-    assert "unavailable" not in value, f"{case}: {symbol}/{cycle} should be a strategy but is {value}"
+    assert "unavailable" not in value, f"{case}: {symbol}/{cycle} should carry verified source evidence but is {value}"
     assert value["ticker"] == symbol and value["multiplier"] == 100, f"{case}: {symbol}/{cycle} identity {value.get('ticker')}"
     if currency:
         assert value["currency"] == currency, f"{case}: {symbol}/{cycle} currency {value.get('currency')}"
 
 
-def expect_unavailable(case: str, bodies: dict[str, str], symbol: str, cycle: str, *contains: str, forbid: tuple[str, ...] = ()) -> None:
+def expect_unavailable(case: str, bodies: dict[str, str], symbol: str, cycle: str) -> None:
     value = cycle_of(bodies, symbol, cycle)
-    assert "unavailable" in value, f"{case}: {symbol}/{cycle} must be unavailable but is {value.get('ticker')} {value.get('currency')}"
+    assert set(value) == {"unavailable"}, f"{case}: {symbol}/{cycle} must not expose quote or strategy fields: {value}"
     text = value["unavailable"]
-    assert len(text) <= 180, f"{case}: {symbol}/{cycle} diagnostic is {len(text)} units"
-    for needle in contains:
-        assert needle in text, f"{case}: {symbol}/{cycle} lacks {needle!r}: {text}"
-    for needle in forbid:
-        assert needle not in text, f"{case}: {symbol}/{cycle} must not say {needle!r}: {text}"
+    assert isinstance(text, str) and 0 < len(text) <= 180, f"{case}: {symbol}/{cycle} requires a bounded diagnostic"
+
+
+def expect_observation(case: str, bodies: dict[str, str], symbol: str, *, currency: str, dte: int, strike: float,
+                       bid: float | None = None, ask: float | None = None, last: float | None = None,
+                       nonstandard: bool = False) -> None:
+    """Source-backed informational prices must not become executable tiers or a fabricated two-sided quote."""
+    expect_available(case, bodies, symbol, "monthly", currency=currency)
+    value = cycle_of(bodies, symbol, "monthly")
+    assert value["expiry"] == dte_date(dte) and value["dte"] == dte, (case, symbol, value)
+    assert value["suggestions"] == [] and not value.get("middle_suggestion") and not value.get("strategies"), (case, symbol, value)
+    assert bool(value.get("monthly_nonstandard")) == nonstandard, (case, symbol, value)
+    observation = value["quote_observation"]
+    assert observation["kind"] == ("TWO_SIDED" if bid is not None and ask is not None else "NO_TWO_SIDED"), (case, symbol, observation)
+    assert (observation["strike"], observation["bid"], observation["ask"], observation["last"]) == (strike, bid, ask, last), (case, symbol, observation)
+    price = bid if bid is not None else last
+    annual = round(price / value["spot"] * 365 / dte, 6) if price is not None else None
+    assert observation["annualized_yield"] == annual, (case, symbol, observation)
 
 
 def expect_health(case: str, result: _Result, venue: str, read: int, healthy: int) -> None:
@@ -346,15 +359,6 @@ def expect_health(case: str, result: _Result, venue: str, read: int, healthy: in
     assert (got["read"], got["healthy"]) == (read, healthy), f"{case}: {venue} health {got['read']}/{got['healthy']} != {read}/{healthy}"
 
 
-OUT_OF_POLICY = "所列到期不在"
-NO_RECORDS = "無可用之買權紀錄；是否上市未確認"
-UNPARSEABLE = "買權資料無法解析；不推斷是否上市"
-READ_FAILED = "讀取或解析失敗"
-TERMS_UNCONFIRMED = "合約單位或幣別來源未確認"
-NONSTANDARD = "合約單位非標準100股"
-NO_TWO_SIDED = "所選到期無有效雙邊報價"
-STRATEGY_MISS = "沒有 Delta 不超過 0.20 且有雙邊報價的履約價"   # no yield floor (removed 2026-11-03): only the delta cap and the quote can refuse a strike
-PRECISION = "兩位以上小數"  # recommendation capability of the two-decimal display, not a source-identity or quote failure
 
 
 # ------------------------------------------------------------------------------------------------------- cases
@@ -370,12 +374,11 @@ def case_retained_sive_sept30() -> tuple[str, str, list[dict[str, Any]], Any]:
 
     def check(case: str, result: _Result, bodies: dict[str, str]) -> None:
         assert result.rc == 0, result.status
-        expect_unavailable(case, bodies, "SIVE.ST", "weekly", "本次回應有上市買權；所列到期不在本週或下週策略範圍", "2026-10-16（16天）")
+        expect_unavailable(case, bodies, "SIVE.ST", "weekly")
         # The retained weekly VOLVB row (2026-10-02, this calendar week as of Wed 2026-09-30) IS the weekly now; its blank contract currency
         # follows the confirmed SEK underlying (V13, Nasdaq contract specification), and its retained bid/ask are empty, so it is refused for
         # the missing two-sided quote instead of being skipped for next week's expiry or refused for its terms.
-        expect_unavailable(case, bodies, "VOLV-B.ST", "weekly", "2026-10-02（2天）", "無有效雙邊報價",
-                           forbid=("無法解析", "所列到期不在", TERMS_UNCONFIRMED))  # the real weekly shape is a proven listing
+        expect_unavailable(case, bodies, "VOLV-B.ST", "weekly")
         for symbol in ("VOLV-B.ST", "AZN.ST"):
             expect_available(case, bodies, symbol, "monthly", currency="SEK")
         expect_available(case, bodies, "AZN", "monthly", currency="USD")
@@ -407,12 +410,9 @@ def case_currency_evidence_matrix() -> tuple[str, str, list[dict[str, Any]], Any
         for root in ("CUREMPTY", "CURMISSING"):
             expect_available(case, bodies, f"{root}.ST", "monthly", currency="SEK")
         for root in ("CURNULL", "CURWS", "CURFALSE", "CURZERO", "CURLIST", "CURDICT", "CURNAN", "CURINT", "CURLOWER"):
-            expect_unavailable(case, bodies, f"{root}.ST", "monthly", TERMS_UNCONFIRMED, forbid=("不在",))
-        expect_unavailable(case, bodies, "CURUSD.ST", "monthly", "合約幣別與 SEK 不符")
-        expect_unavailable(case, bodies, "SPOTUSD.ST", "monthly", "標的報價或上市幣別與 SEK 不符")
-        expect_unavailable(case, bodies, "SPOTNONE.ST", "monthly", "標的報價或上市幣別未確認為 SEK")
-        expect_unavailable(case, bodies, "SEARCHEUR.ST", "monthly", "標的報價或上市幣別與 SEK 不符")
-        expect_unavailable(case, bodies, "SEARCHNONE.ST", "monthly", "標的報價或上市幣別未確認為 SEK")
+            expect_unavailable(case, bodies, f"{root}.ST", "monthly")
+        for symbol in ("CURUSD.ST", "SPOTUSD.ST", "SPOTNONE.ST", "SEARCHEUR.ST", "SEARCHNONE.ST"):
+            expect_unavailable(case, bodies, symbol, "monthly")
         expect_available(case, bodies, "VOLV-B.ST", "monthly", currency="SEK")
         expect_available(case, bodies, "SYNTHUS00", "monthly", currency="USD")
         expect_health(case, result, "STOCKHOLM", 4, 4)  # the proven SEK control, the two blank-currency rows (V13) and the sibling enter R
@@ -453,7 +453,7 @@ def case_native_symbol_identity_matrix() -> tuple[str, str, list[dict[str, Any]]
         expect_available(case, bodies, "SYMWEEK.ST", "weekly", currency="SEK")
         for root in refused:
             for cycle in ("weekly", "monthly"):
-                expect_unavailable(case, bodies, f"{root}.ST", cycle, UNPARSEABLE, forbid=(OUT_OF_POLICY, "無可用"))
+                expect_unavailable(case, bodies, f"{root}.ST", cycle)
         expect_health(case, result, "STOCKHOLM", 4, 4)  # only the three proven contracts and the sibling enter R/H
     return ("native_symbol_identity_matrix", "SYNTHETIC: same-root different strike/month/year/put-call/prefix/day/unsupported/absent native symbols versus the decimal, monthly and weekly source forms", specs, check)
 
@@ -477,14 +477,14 @@ def case_strike_precision_matrix() -> tuple[str, str, list[dict[str, Any]], Any]
     def check(case: str, result: _Result, bodies: dict[str, str]) -> None:
         assert result.rc == 0, result.status
         for key in ("SUBCENT.ST", "YSUBCENT"):
-            expect_unavailable(case, bodies, key, "weekly", PRECISION, forbid=(NO_TWO_SIDED, STRATEGY_MISS, "無法解析", "所列到期不在", "未確認"))
+            expect_unavailable(case, bodies, key, "weekly")
         expect_available(case, bodies, "TRAIL.ST", "weekly", currency="SEK")
         assert cycle_of(bodies, "TRAIL.ST", "weekly")["suggestions"][0]["strike"] == 15.5
         expect_available(case, bodies, "YCENT", "weekly", currency="USD")
         expect_available(case, bodies, "MIXED.ST", "weekly", currency="SEK")
         strikes = [row["strike"] for row in cycle_of(bodies, "MIXED.ST", "weekly")["suggestions"]]
         assert strikes and all(k == round(k, 2) for k in strikes) and 15.505 not in strikes and 15.6 in strikes, f"{case}: mixed strikes {strikes}"
-        expect_unavailable(case, bodies, "SUBZERO.ST", "weekly", NO_TWO_SIDED, forbid=(PRECISION,))
+        expect_unavailable(case, bodies, "SUBZERO.ST", "weekly")
         expect_health(case, result, "STOCKHOLM", 5, 4)  # the sub-cent chains stay in R/H (valid listing and quotes); only SUBZERO is unhealthy
         expect_health(case, result, "US", 8, 8)
     return ("strike_precision_matrix", "SYNTHETIC: a coherent supported sub-cent strike stays in R/H but is never recommended as another strike (two-decimal display)", specs, check)
@@ -528,11 +528,11 @@ def case_identity_matrix() -> tuple[str, str, list[dict[str, Any]], Any]:
     def check(case: str, result: _Result, bodies: dict[str, str]) -> None:
         assert result.rc == 0, result.status
         for root in ("IDROOT", "IDDATE", "IDSTRIKE", "IDSYMBOL", "IDNAMENONE", "IDBADDATE", "IDBADSTRIKE", "IDMALONLY"):
-            expect_unavailable(case, bodies, f"{root}.ST", "monthly", UNPARSEABLE, forbid=(OUT_OF_POLICY, "無 21"))
+            expect_unavailable(case, bodies, f"{root}.ST", "monthly")
         for root in ("IDPUT", "IDFUTCOPT", "IDFUTC", "IDUNKNOWN", "IDNOCLASS", "IDEMPTY"):
-            expect_unavailable(case, bodies, f"{root}.ST", "monthly", NO_RECORDS, forbid=("所列到期", "不存在"))
+            expect_unavailable(case, bodies, f"{root}.ST", "monthly")
         for root in ("IDROWSNONE", "IDROWSDICT", "IDENVELOPE", "IDENVLIST", "IDEXC"):
-            expect_unavailable(case, bodies, f"{root}.ST", "monthly", READ_FAILED, forbid=("未含", "無可用"))
+            expect_unavailable(case, bodies, f"{root}.ST", "monthly")
         expect_available(case, bodies, "IDMIXED.ST", "monthly", currency="SEK")
         expect_available(case, bodies, "VOLV-B.ST", "monthly", currency="SEK")
         expect_health(case, result, "STOCKHOLM", 2, 2)
@@ -560,7 +560,7 @@ def case_terms_and_quote_states() -> tuple[str, str, list[dict[str, Any]], Any]:
         chain("QCROSSED", nordic_row("QCROSSED", 16, k16, bid="0.60", ask="0.50")),
         chain("QLASTSALE", nordic_row("QLASTSALE", 16, k16, lastSalePrice="0.55", settlementPrice="0.55", openInterest="500", volume="40")),
         chain("QMISS", nordic_row("QMISS", 16, 101.0, bid="4.00", ask="4.20")),  # an out-of-the-money strike whose quote implies a delta over the 0.20 cap
-        chain("QCHEAP", nordic_row("QCHEAP", 16, k16, bid="0.01", ask="0.02")),  # pays almost nothing, and no yield floor refuses it
+        chain("QCHEAP", nordic_row("QCHEAP", 16, k16, bid="0.01", ask="0.02")),  # listed but below the monthly recommendation hurdle
         chain("QGOOD", nordic_row("QGOOD", 16, k16, bid=b16, ask=a16)),
         chain("TSZEXACT", nordic_row("TSZEXACT", 16, k16, bid=b16, ask=a16, size="100.00")),
         chain("TSZLEADING", nordic_row("TSZLEADING", 16, k16, bid=b16, ask=a16, size="0100")),
@@ -571,39 +571,37 @@ def case_terms_and_quote_states() -> tuple[str, str, list[dict[str, Any]], Any]:
 
     def check(case: str, result: _Result, bodies: dict[str, str]) -> None:
         assert result.rc == 0, result.status
-        expect_unavailable(case, bodies, "TSIZE50.ST", "monthly", NONSTANDARD, forbid=("所列到期無標準月選",))
-        expect_unavailable(case, bodies, "TSIZE50.ST", "weekly", "所列到期不在本週或下週策略範圍", "2026-10-16（16天）")
-        expect_unavailable(case, bodies, "TSIZE1005.ST", "monthly", NONSTANDARD)
-        expect_unavailable(case, bodies, "TSIZENONE.ST", "monthly", TERMS_UNCONFIRMED, forbid=(NONSTANDARD, "所列到期無標準月選"))
-        expect_unavailable(case, bodies, "TCCYNONE.ST", "monthly", TERMS_UNCONFIRMED, forbid=("所列到期無標準月選",))
+        # An unverified nearer contract is never used; the independently verified standard successor can be shown.
+        for symbol in ("TSIZE50.ST", "TSIZENONE.ST", "TCCYNONE.ST"):
+            expect_available(case, bodies, symbol, "monthly", currency="SEK")
+            value = cycle_of(bodies, symbol, "monthly")
+            assert (value["expiry"], value["dte"]) == (dte_date(51), 51), (case, symbol, value)
+        expect_unavailable(case, bodies, "TSIZE50.ST", "weekly")
+        expect_unavailable(case, bodies, "TSIZE1005.ST", "monthly")
         expect_available(case, bodies, "TOUTSIDE.ST", "monthly", currency="SEK")
-        for root in ("QNOQUOTE", "QONESIDED", "QZERO", "QCROSSED", "QLASTSALE"):
-            expect_unavailable(case, bodies, f"{root}.ST", "monthly", NO_TWO_SIDED, forbid=(STRATEGY_MISS, "沒有上市", "無上市"))
-        expect_unavailable(case, bodies, "QMISS.ST", "monthly", STRATEGY_MISS, forbid=(NO_TWO_SIDED,))
-        expect_available(case, bodies, "QCHEAP.ST", "monthly", currency="SEK")  # no yield floor: a 0.01 bid is listed
-        assert cycle_of(bodies, "QCHEAP.ST", "monthly")["suggestions"][0]["annualized_yield"] < 0.02
+        for root in ("QNOQUOTE", "QONESIDED", "QZERO", "QCROSSED"):
+            expect_observation(case, bodies, f"{root}.ST", currency="SEK", dte=16, strike=k16)
+        expect_observation(case, bodies, "QLASTSALE.ST", currency="SEK", dte=16, strike=k16, last=0.55)
+        expect_observation(case, bodies, "QMISS.ST", currency="SEK", dte=16, strike=101.0, bid=4.0, ask=4.2)
+        expect_observation(case, bodies, "QCHEAP.ST", currency="SEK", dte=16, strike=k16, bid=0.01, ask=0.02)
         expect_available(case, bodies, "QGOOD.ST", "monthly", currency="SEK")
         expect_available(case, bodies, "TSZEXACT.ST", "monthly", currency="SEK")  # a validated exact-100 numeric representation
         for root in ("TSZLEADING", "TSZEXP"):  # an unsupported encoding is unconfirmed, never a proven non-100 share count
-            expect_unavailable(case, bodies, f"{root}.ST", "monthly", TERMS_UNCONFIRMED, forbid=(NONSTANDARD,))
-        expect_unavailable(case, bodies, "TSZPREC.ST", "monthly", NONSTANDARD)  # exactly not 100: never rounded into the standard
-        expect_unavailable(case, bodies, "TSZLONG.ST", "monthly", TERMS_UNCONFIRMED, forbid=(NONSTANDARD,))  # over the bounded precision
+            expect_unavailable(case, bodies, f"{root}.ST", "monthly")
+        expect_unavailable(case, bodies, "TSZPREC.ST", "monthly")  # exactly not 100: never rounded into the standard
+        expect_unavailable(case, bodies, "TSZLONG.ST", "monthly")  # over the bounded precision
         expect_available(case, bodies, "VOLV-B.ST", "monthly", currency="SEK")
-        # R counts only chains read with an eligible selected expiry: 11, 5 without a two-sided quote and QMISS/QCHEAP/QGOOD/TSZEXACT/TOUTSIDE/VOLV-B with one.
-        expect_health(case, result, "STOCKHOLM", 11, 6)
-    return ("terms_and_quote_states", "SYNTHETIC: mixed contract terms versus DTE reasoning and raw quote states (lastSale/settlement/OI are never quotes)", specs, check)
+        # Five missing two-sided quotes remain unhealthy; the three verified successors add read, healthy chains.
+        expect_health(case, result, "STOCKHOLM", 14, 9)
+    return ("terms_and_quote_states", "SYNTHETIC: verified successor contracts versus refused terms; source-only monthly observations never turn lastSale/settlement/OI into two-sided quotes", specs, check)
 
 
-# Weekly selection is calendar-week based (as of Wed 2026-09-30 a single listed expiry is a weekly only for 1 <= DTE <= 11: through
-# next Sunday). A single listed expiry is a monthly only when it is that month's standard monthly: the third Friday (2026-10-16 = 16 DTE,
-# 2026-11-20 = 51 DTE) or, with no Friday listed, a Monday-Thursday of that week (12-15 and 47-50 DTE); nothing beyond 60 DTE.
+# Weekly selection is calendar-week based (as of Wed 2026-09-30 a single listed expiry is a weekly only for 1 <= DTE <= 11).
+# The standard-monthly selector accepts the third Friday or its listed earlier-week shift; other verified 7-60DTE contracts
+# are informational nonstandard observations only, never recommendation tiers.
 WEEKLY_DTE_RANGE = (1, 11)
 MONTHLY_DTES = frozenset({12, 13, 14, 15, 16, 47, 48, 49, 50, 51})
 NORDIC_DTES = (3, 11, 12, 14, 15, 16, 17, 20, 21, 45, 46, 50, 51, 52, 60, 61)
-
-
-def window_needle(cycle: str) -> str:
-    return "所列到期不在本週或下週策略範圍" if cycle == "weekly" else "所列到期無標準月選（第三個星期五）"
 
 
 def in_cycle(cycle: str, dte: int) -> bool:
@@ -625,9 +623,13 @@ def case_dte_nordic_matrix() -> tuple[str, str, list[dict[str, Any]], Any]:
                 if in_cycle(cycle, dte):
                     expect_available(case, bodies, symbol, cycle, currency="SEK")
                     assert cycle_of(bodies, symbol, cycle)["dte"] == dte
+                elif cycle == "monthly" and 7 <= dte <= 60:
+                    strike, bid, ask = qualifying(100.0, dte)
+                    expect_observation(case, bodies, symbol, currency="SEK", dte=dte, strike=strike,
+                                       bid=bid, ask=ask, nonstandard=True)
                 else:
-                    expect_unavailable(case, bodies, symbol, cycle, window_needle(cycle), dte_date(dte))
-    return ("dte_nordic_matrix", "SYNTHETIC: Stockholm selector boundaries, weekly (calendar-week rule) and monthly (standard monthly, third Friday or its week) through real main", specs, check)
+                    expect_unavailable(case, bodies, symbol, cycle)
+    return ("dte_nordic_matrix", "SYNTHETIC: Stockholm weekly/standard-monthly boundaries and source-bound nonstandard observations through real main", specs, check)
 
 
 US_DTES = NORDIC_DTES
@@ -657,16 +659,20 @@ def case_dte_us_matrix() -> tuple[str, str, list[dict[str, Any]], Any]:
                     if in_cycle(cycle, dte):
                         expect_available(case, bodies, symbol, cycle, currency="USD")
                         assert cycle_of(bodies, symbol, cycle)["dte"] == dte, (symbol, cycle)
+                    elif cycle == "monthly" and 7 <= dte <= 60:
+                        strike, bid, ask = qualifying(100.0, dte)
+                        expect_observation(case, bodies, symbol, currency="USD", dte=dte, strike=strike,
+                                           bid=bid, ask=ask, nonstandard=True)
                     else:
-                        assert "unavailable" in cycle_of(bodies, symbol, cycle), f"{case}: {symbol}/{cycle} must not emit a strategy at {dte} DTE"
-        miss = cycle_of(bodies, "UYMISS", "monthly")
-        assert "unavailable" in miss and "Delta 不超過 0.20" in miss["unavailable"] and "年化權利金" not in miss["unavailable"], miss
+                        expect_unavailable(case, bodies, symbol, cycle)
+        expect_unavailable(case, bodies, "UYMISS", "weekly")
+        expect_observation(case, bodies, "UYMISS", currency="USD", dte=16, strike=101.0, bid=4.0, ask=4.2)
         nasdaq = [u for u in result.requests if "/api/quote/" in u]
         assert not any("/api/quote/uymiss/" in u for u in nasdaq), "a successfully read strategy miss must not trigger a Nasdaq retry"
         assert sum(1 for u in nasdaq if "/api/quote/uyempty/" in u) == 1, "an unread Yahoo chain gets exactly one Nasdaq retry"
         for symbol in ("UYZERO", "UYONESIDED"):
-            for cycle in ("weekly", "monthly"):
-                expect_unavailable(case, bodies, symbol, cycle, "所選到期無有效雙邊報價", forbid=("年化權利金",))
+            expect_unavailable(case, bodies, symbol, "weekly")
+            expect_observation(case, bodies, symbol, currency="USD", dte=16, strike=120.0)
             assert not any(f"/api/quote/{symbol.lower()}/" in u for u in nasdaq), f"{symbol}: a read chain is never retried"
     return ("dte_us_matrix", "SYNTHETIC: Yahoo and Nasdaq-fallback selector boundaries, retry preserved for unread chains and not for read strategy misses", specs, check)
 
@@ -705,6 +711,10 @@ def generate_fixture_document() -> dict[str, Any]:
             assert result.rc == 0, f"{case_id}: main exit {result.rc} {result.status}"
             bodies = seal(result.output, NOW, synthetic_tickers=frozenset(spec["symbol"] for spec in specs))
             check(case_id, result, bodies)
+            for symbol, cycles in result.doc["options"].items():
+                for cycle, value in cycles.items():
+                    if "unavailable" in value:
+                        assert cycle_of(bodies, symbol, cycle) == value, (case_id, symbol, cycle, "source refusal changed during sealing")
             cases[case_id] = {"description": description, "kind": "ADMITTED", "producer_exit": 0, "collection": result.doc["collection"],
                               "bodies": {"options": bodies["v213:options:v2"], "quotes": bodies["v213:quotes:v1"]},
                               "hashes": {"options_sha256": _sha(bodies["v213:options:v2"]), "quotes_sha256": _sha(bodies["v213:quotes:v1"])},

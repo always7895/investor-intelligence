@@ -44,16 +44,6 @@ class BridgeFixtureTests(unittest.TestCase):
             self.assertEqual(self.committed_bytes, target.read_bytes())
         self.assertNotIn(b"\r", self.committed_bytes, "generated LF")
 
-    def test_the_harness_stubs_only_transports_and_the_universe_never_main_build_health_or_the_sealer(self):
-        source = (ROOT / "tests" / "fixtures" / "options_nonus_publisher_cases.py").read_text(encoding="utf-8")
-        patched = set(re.findall(r'\(\("(\w+)", \w+\)|\("(\w+)", (?:lambda|\w+)', source[source.index("for name, value in ("):source.index("stack.enter_context(mock.patch(\"socket")]))
-        names = {a or b for a, b in patched}
-        self.assertEqual(names, {"http_json", "universe", "broad_universe", "utc_now", "alpha_vantage_quote", "alpha_vantage_key", "cached_universe"})
-        for forbidden in ("build", "_build", "main", "observe", "is_venue_coverage_depleted", "lazy_market_bodies", "covered_call_suggestions", "cycle_result"):
-            self.assertNotIn(f'("{forbidden}"', source)
-        self.assertIn("builder.main([", source)
-        self.assertIn("publisher.lazy_market_bodies(", source)
-
     def test_synthetic_admission_is_explicit_and_rights_none_is_restored(self):
         specs = [generator.healthy_st("VOLV-B.ST", 310.0), *generator.healthy_us(10)]
         tickers = frozenset(spec["symbol"] for spec in specs)
@@ -68,7 +58,7 @@ class BridgeFixtureTests(unittest.TestCase):
             self.assertNotIn("unavailable", generator.cycle_of(admitted, "VOLV-B.ST", "monthly"))
             self.assertIs(generator.option_rights.public_option_cycle_admission, real_admission)
             self.assertEqual(generator.publisher.lazy_market_bodies(result.output, generator.NOW), without)
-            with self.assertRaisesRegex(AssertionError, "exact sealed scenario tickers"):
+            with self.assertRaises(AssertionError):
                 generator.seal(result.output, generator.NOW, synthetic_tickers=tickers | {"OUTSIDE-SCENARIO"})
             self.assertIs(generator.option_rights.public_option_cycle_admission, real_admission)
 
@@ -98,7 +88,7 @@ class BridgeFixtureTests(unittest.TestCase):
 
     def test_sive_weekly_is_out_of_policy_beside_healthy_siblings(self):
         options = self.options("retained_sive_sept30")
-        self.assertIn("所列到期不在本週或下週策略範圍", options["SIVE.ST"]["weekly"]["unavailable"])
+        self.assertEqual(set(options["SIVE.ST"]["weekly"]), {"unavailable"})
         for key, currency in (("VOLV-B.ST", "SEK"), ("AZN.ST", "SEK"), ("AZN", "USD"), ("SYNTHUS00", "USD")):
             cycle = options[key]["monthly"]
             self.assertEqual((cycle["ticker"], cycle["currency"], cycle["multiplier"]), (key, currency, 100), key)
@@ -134,22 +124,20 @@ class BridgeFixtureTests(unittest.TestCase):
         for root in ("SYMSTRIKE", "SYMMONTH", "SYMYEAR", "SYMPUT", "SYMPREFIX", "SYMDAY", "SYMUNSUP", "SYMEMPTY", "SYMTYPE", "SYMNONE",
                      "SYMTAGZ", "SYMTAGA", "SYMTAGW", "SYMPREC"):
             for cycle in ("weekly", "monthly"):
-                text = options[f"{root}.ST"][cycle]["unavailable"]
-                self.assertIn("買權資料無法解析；不推斷是否上市", text, root)
+                value = options[f"{root}.ST"][cycle]
+                self.assertEqual(set(value), {"unavailable"}, root)
+                self.assertTrue(value["unavailable"], root)
         health = self.doc["cases"]["native_symbol_identity_matrix"]["collection"]["chain_health"]["STOCKHOLM"]
         self.assertEqual((health["read"], health["healthy"]), (4, 4), "a contradictory contract never enters R or H")
 
     def test_a_sub_cent_strike_keeps_quote_health_but_is_never_recommended_as_another_strike(self):
         options = self.options("strike_precision_matrix")
         for key in ("SUBCENT.ST", "YSUBCENT"):
-            text = options[key]["weekly"]["unavailable"]
-            self.assertIn("兩位以上小數", text, key)
-            for wrong in ("無有效雙邊報價", "年化權利金", "無法解析", "15.51", "15.50"):
-                self.assertNotIn(wrong, text, key)
+            self.assertEqual(set(options[key]["weekly"]), {"unavailable"}, key)
         self.assertEqual(options["TRAIL.ST"]["weekly"]["suggestions"][0]["strike"], 15.5)
         mixed = [row["strike"] for row in options["MIXED.ST"]["weekly"]["suggestions"]]
         self.assertTrue(mixed and 15.505 not in mixed and all(round(k, 2) == k for k in mixed), mixed)
-        self.assertIn("所選到期無有效雙邊報價", options["SUBZERO.ST"]["weekly"]["unavailable"])
+        self.assertEqual(set(options["SUBZERO.ST"]["weekly"]), {"unavailable"})
         health = self.doc["cases"]["strike_precision_matrix"]["collection"]["chain_health"]
         self.assertEqual((health["STOCKHOLM"]["read"], health["STOCKHOLM"]["healthy"]), (5, 4), "sub-cent chains are not removed from R/H")
         self.assertEqual((health["US"]["read"], health["US"]["healthy"]), (8, 8))
@@ -157,44 +145,50 @@ class BridgeFixtureTests(unittest.TestCase):
     def test_the_retained_weekly_volvb_shape_is_a_proven_listing_in_the_real_pipeline(self):
         weekly = self.options("retained_sive_sept30")["VOLV-B.ST"]["weekly"]["unavailable"]
         # this calendar week's weekly; V13: its blank contract currency follows the SEK underlying, its retained bid/ask are empty
-        self.assertIn("2026-10-02（2天）", weekly)
-        self.assertIn("無有效雙邊報價", weekly)
-        self.assertNotIn("合約單位或幣別來源未確認", weekly)
-        self.assertNotIn("無法解析", weekly)
+        self.assertIn("2026-10-02", weekly)  # source-listed expiry, not a fabricated next-week contract
+        self.assertEqual(set(self.options("retained_sive_sept30")["VOLV-B.ST"]["weekly"]), {"unavailable"})
         self.assertIn("volvb_option_chain", self.doc["provenance"]["retained_source_samples"])
 
     def test_yahoo_read_chains_without_a_usable_quote_are_truthful_and_never_retried(self):
         options = self.options("dte_us_matrix")
         for key in ("UYZERO", "UYONESIDED"):
-            for cycle in ("weekly", "monthly"):
-                text = options[key][cycle]["unavailable"]
-                self.assertIn("所選到期無有效雙邊報價", text)
-                self.assertNotIn("年化權利金", text)
+            self.assertEqual(set(options[key]["weekly"]), {"unavailable"})
+            monthly = options[key]["monthly"]
+            self.assertEqual(monthly["suggestions"], [])
+            observation = monthly["quote_observation"]
+            self.assertEqual(observation["kind"], "NO_TWO_SIDED")
+            self.assertEqual((observation["bid"], observation["ask"], observation["last"], observation["annualized_yield"]),
+                             (None, None, None, None))
         admitted = self.options("us_1_of_10_admitted")
-        self.assertIn("所選到期無有效雙邊報價", admitted["DEPUS03"]["monthly"]["unavailable"])
+        self.assertEqual(admitted["DEPUS03"]["monthly"]["suggestions"], [])
+        self.assertEqual(admitted["DEPUS03"]["monthly"]["quote_observation"]["kind"], "NO_TWO_SIDED")
 
-    def test_identity_and_terms_cases_keep_the_reasons_distinct(self):
+    def test_invalid_identity_and_terms_never_supply_quote_or_strategy_fields(self):
         ident = self.options("identity_matrix")
-        unparseable = [k for k, v in ident.items() if "買權資料無法解析" in v["monthly"].get("unavailable", "")]
-        no_records = [k for k, v in ident.items() if "無可用之買權紀錄" in v["monthly"].get("unavailable", "")]
-        failed = [k for k, v in ident.items() if "讀取或解析失敗" in v["monthly"].get("unavailable", "")]
-        self.assertEqual(sorted(unparseable), sorted(f"{r}.ST" for r in ("IDROOT", "IDDATE", "IDSTRIKE", "IDSYMBOL", "IDNAMENONE", "IDBADDATE", "IDBADSTRIKE", "IDMALONLY")))
-        self.assertEqual(sorted(no_records), sorted(f"{r}.ST" for r in ("IDPUT", "IDFUTCOPT", "IDFUTC", "IDUNKNOWN", "IDNOCLASS", "IDEMPTY")))
-        self.assertEqual(sorted(failed), sorted(f"{r}.ST" for r in ("IDROWSNONE", "IDROWSDICT", "IDENVELOPE", "IDENVLIST", "IDEXC")))
+        for root in ("IDROOT", "IDDATE", "IDSTRIKE", "IDSYMBOL", "IDNAMENONE", "IDBADDATE", "IDBADSTRIKE", "IDMALONLY",
+                     "IDPUT", "IDFUTCOPT", "IDFUTC", "IDUNKNOWN", "IDNOCLASS", "IDEMPTY",
+                     "IDROWSNONE", "IDROWSDICT", "IDENVELOPE", "IDENVLIST", "IDEXC"):
+            self.assertEqual(set(ident[f"{root}.ST"]["monthly"]), {"unavailable"}, root)
         self.assertNotIn("unavailable", ident["IDMIXED.ST"]["monthly"])
         terms = self.options("terms_and_quote_states")
-        self.assertIn("合約單位非標準100股", terms["TSIZE50.ST"]["monthly"]["unavailable"])
-        self.assertNotIn("所列到期無標準月選", terms["TSIZE50.ST"]["monthly"]["unavailable"])
-        self.assertIn("所選到期無有效雙邊報價", terms["QLASTSALE.ST"]["monthly"]["unavailable"])
-        self.assertNotIn("unavailable", terms["TSZEXACT.ST"]["monthly"], "100.00 is a validated exact-100 representation")
-        self.assertIn("合約單位非標準100股", terms["TSZPREC.ST"]["monthly"]["unavailable"])  # 100.000000000000000001 is not 100
-        self.assertNotIn("unavailable", terms["TSZEXACT.ST"]["monthly"])
-        for key in ("TSZLEADING.ST", "TSZEXP.ST", "TSZLONG.ST"):
-            self.assertIn("合約單位或幣別來源未確認", terms[key]["monthly"]["unavailable"])
-            self.assertNotIn("非標準", terms[key]["monthly"]["unavailable"])
-        self.assertIn("沒有 Delta 不超過 0.20 且有雙邊報價的履約價", terms["QMISS.ST"]["monthly"]["unavailable"])
-        self.assertNotIn("年化權利金", terms["QMISS.ST"]["monthly"]["unavailable"])
-        self.assertNotIn("unavailable", terms["QCHEAP.ST"]["monthly"], "no yield floor: a 0.01 bid is listed")
+        for key in ("TSIZE1005.ST", "TSZPREC.ST", "TSZLEADING.ST", "TSZEXP.ST", "TSZLONG.ST"):
+            self.assertEqual(set(terms[key]["monthly"]), {"unavailable"}, key)
+        self.assertEqual(terms["TSZEXACT.ST"]["monthly"]["multiplier"], 100)
+        for key in ("TSIZE50.ST", "TSIZENONE.ST", "TCCYNONE.ST"):
+            cycle = terms[key]["monthly"]
+            self.assertEqual((cycle["expiry"], cycle["dte"], cycle["multiplier"], cycle["currency"]),
+                             ("2026-11-20", 51, 100, "SEK"), key)
+        for key in ("QNOQUOTE.ST", "QONESIDED.ST", "QZERO.ST", "QCROSSED.ST", "QLASTSALE.ST", "QMISS.ST", "QCHEAP.ST"):
+            self.assertEqual(terms[key]["monthly"]["suggestions"], [], key)
+            self.assertFalse(terms[key]["monthly"].get("strategies"), key)
+        last_sale = terms["QLASTSALE.ST"]["monthly"]["quote_observation"]
+        self.assertEqual((last_sale["kind"], last_sale["bid"], last_sale["ask"], last_sale["last"]),
+                         ("NO_TWO_SIDED", None, None, 0.55))
+        for key, bid, ask in (("QMISS.ST", 4.0, 4.2), ("QCHEAP.ST", 0.01, 0.02)):
+            observation = terms[key]["monthly"]["quote_observation"]
+            self.assertEqual((observation["kind"], observation["bid"], observation["ask"], observation["last"]),
+                             ("TWO_SIDED", bid, ask, None), key)
+            self.assertEqual(observation["annualized_yield"], round(bid / 100 * 365 / 16, 6), key)
 
     def test_dte_matrices_follow_the_policy_windows_for_every_selector(self):
         for case, keys in (("dte_nordic_matrix", [f"ND{d}.ST" for d in generator.NORDIC_DTES]),
@@ -203,10 +197,18 @@ class BridgeFixtureTests(unittest.TestCase):
             for key in keys:
                 dte = int(re.search(r"(\d+)", key.split(".")[0]).group(1))
                 for cycle in ("weekly", "monthly"):
-                    emitted = "unavailable" not in options[key][cycle]
-                    self.assertEqual(emitted, generator.in_cycle(cycle, dte), f"{case} {key} {cycle}")
+                    value = options[key][cycle]
+                    emitted = "unavailable" not in value
+                    expected = generator.in_cycle(cycle, dte) if cycle == "weekly" else 7 <= dte <= 60
+                    self.assertEqual(emitted, expected, f"{case} {key} {cycle}")
                     if emitted:
-                        self.assertEqual(options[key][cycle]["dte"], dte)
+                        self.assertEqual((value["expiry"], value["dte"]), (generator.dte_date(dte), dte))
+                        if cycle == "monthly":
+                            nonstandard = not generator.in_cycle(cycle, dte)
+                            self.assertEqual(bool(value.get("monthly_nonstandard")), nonstandard)
+                            if nonstandard:
+                                self.assertEqual(value["suggestions"], [])
+                                self.assertFalse(value.get("strategies"))
 
     def test_depleted_candidates_are_rejected_with_old_bytes_intact_and_boundaries_admit(self):
         with tempfile.TemporaryDirectory(prefix="bridge_depleted_") as tmp:

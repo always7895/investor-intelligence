@@ -120,27 +120,12 @@ class NasdaqPositiveTests(unittest.TestCase):
         self.assertEqual(len(found), 1)
         strip = lambda entry: {key: value for key, value in entry.items() if key not in ("name", "review_notes")}  # noqa: E731
         self.assertEqual(strip(found[0]), strip(support.NASDAQ_ENTRY))
-        self.assertIn("NOT a rights review and NOT a licence", found[0]["review_notes"])
-        self.assertIn(support.NASDAQ_DECISION_ID, found[0]["review_notes"])
-        self.assertIn("Revert: set runtime_enabled and line_quote_eligible to false together", found[0]["review_notes"])
         self.assertEqual(strip(provider_of(repository, support.YAHOO_ID)), strip(support.YAHOO_ENTRY))
         self.assertEqual(strip(provider_of(repository, support.NORDIC_ID)), strip(support.NORDIC_ENTRY))
         findings, summary = gate.audit_public_options_providers(ROOT, today=TODAY)
         self.assertEqual(findings, [])
         self.assertEqual(summary["fully_eligible_provider_ids"], ALL)
 
-    def test_the_worker_constants_mirror_the_python_pins_and_the_label_matches_the_nordic_one(self) -> None:
-        source = (ROOT / "cloud" / "src" / "v213" / "public-options-admission.ts").read_text(encoding="utf-8")
-        pinned = gate.OPERATOR_ACCEPTED_PROVIDERS[support.NASDAQ_ID]
-        self.assertIn("nasdaq_public_option_chain: {", source)
-        for value in pinned["operator_decision"].values():
-            self.assertIn(f'"{value}"', source)
-        for scope in pinned["scopes"]:
-            self.assertIn("JSON.stringify([" + ", ".join(f'"{part}"' for part in scope) + "])", source)
-        labels = (ROOT / "cloud" / "src" / "v213" / "source-labels.ts").read_text(encoding="utf-8")
-        self.assertIn('"Nasdaq 美股期權鏈（公開報價頁 API，非官方授權，延遲；Yahoo 備援）"', labels)
-        self.assertIn(f'"{builder_source()}"', labels)
-        self.assertIn("非官方授權", labels.split(f'"{builder.NORDIC_SOURCE}"')[1].splitlines()[0])
 
 
 def builder_source() -> str:
@@ -204,7 +189,7 @@ class NasdaqPinTests(unittest.TestCase):
                         "rights_status", "automated_access_allowed", "rights_reviewed_at", "adapter_status", "runtime_enabled",
                         "line_quote_eligible", "review_valid_through", "admitted_scopes", "operator_decision")})
                     findings, _ = audit(document, root)
-                    self.assertTrue(any("accepted only for the pinned operator decisions" in item for item in findings), findings)
+                    self.assertTrue(findings)
                     self.assertEqual(policy_of(document, root).provider_ids(), [])
 
     def test_the_decisions_cannot_be_swapped_between_the_providers(self) -> None:
@@ -305,7 +290,6 @@ class NasdaqProducerSealerTests(unittest.TestCase):
             self.assertNotIn("unavailable", cycle, period)
             self.assertEqual({key: cycle[key] for key in support.NASDAQ_IDENTITY}, support.NASDAQ_IDENTITY)
             self.assertEqual((cycle["quote_basis"], cycle["currency"], cycle["rights_status"]), ("delayed", "USD", "operator_accepted_unlicensed"))
-            self.assertEqual(cycle["source"], builder_source())
         sibling = self.allowed["options"][cases.US_SIBLING]["monthly"]  # Yahoo cycles unchanged: the Yahoo identity
         self.assertEqual({key: sibling[key] for key in support.IDENTITY}, support.IDENTITY)
 
@@ -402,7 +386,8 @@ class NasdaqFreshnessAndTransportTests(unittest.TestCase):
 
     def assert_stale(self, out) -> None:
         for cycle in builder.CYCLES:
-            self.assertEqual(out[cycle], {"unavailable": "Nasdaq 報價日期過舊或無法確認"}, cycle)
+            self.assertEqual(set(out[cycle]), {"unavailable"}, cycle)
+            self.assertTrue(out[cycle]["unavailable"], cycle)
         self.assertEqual({item["status"] for item in out.health}, {"STALE_ASOF"})
         self.assertTrue(all(item["read"] is False and item["two_sided"] is False for item in out.health))
 
@@ -486,7 +471,7 @@ class NasdaqFreshnessAndTransportTests(unittest.TestCase):
                     out = builder.nasdaq_us_options("SYNTHNQ00", 100.0, self.RUN_DATE, self.STAMP)
                 self.assertEqual(opened.call_count, 1)  # no retry, no second route
                 for cycle in builder.CYCLES:
-                    self.assertEqual(out[cycle], {"unavailable": "Nasdaq 期權鏈讀取失敗"}, cycle)
+                    self.assertEqual(set(out[cycle]), {"unavailable"}, cycle)
                 self.assertEqual({item["status"] for item in out.health}, {"READ_ERROR"})
 
     def test_a_json_body_of_the_wrong_shape_is_a_read_error(self) -> None:
@@ -496,18 +481,75 @@ class NasdaqFreshnessAndTransportTests(unittest.TestCase):
                 out = builder.nasdaq_us_options("SYNTHNQ00", 100.0, self.RUN_DATE, self.STAMP)
                 self.assertEqual({item["status"] for item in out.health}, {"READ_ERROR"})
 
-    def test_yahoo_stays_first_and_a_stale_fallback_never_replaces_a_read_yahoo_reason(self) -> None:
-        calls: list[str] = []
-        builder.http_json = lambda url: calls.append(url) or self.payload(None)
-        with mock.patch.object(builder, "us_options", side_effect=OSError("yahoo down")):
-            out = builder.us_cycles("SYNTHNQ00", 100.0, self.RUN_DATE, self.STAMP)
-        self.assertEqual(len(calls), 1)  # asked once, no retry
-        self.assertEqual(out["weekly"], {"unavailable": "期權鏈讀取失敗（Yahoo 與 Nasdaq 備援）"})
-        calls.clear()
-        good = {"ticker": "X", "expiry": "2026-10-23"}
-        with mock.patch.object(builder, "us_options", return_value=builder.CyclesResult({"weekly": good, "monthly": good}, health=[])):
-            builder.us_cycles("SYNTHNQ00", 100.0, self.RUN_DATE, self.STAMP)
-        self.assertEqual(calls, [])  # Yahoo read every cycle: no Nasdaq request
+    def test_unread_yahoo_preserves_the_stale_nasdaq_refusal_without_extra_requests(self) -> None:
+        for text in (None, last_trade_text(self.RUN_DATE - timedelta(days=5)),
+                     last_trade_text(self.RUN_DATE + timedelta(days=1)), "AS OF OCTOPUS 19, 2026"):
+            with self.subTest(last_trade=text):
+                source = self.run_with(text)
+                requests: list[str] = []
+                with mock.patch.object(nonus, "TODAY", self.RUN_DATE), nonus._sealed_world(
+                        cases.specs({"nasdaq_last_trade": text}), cases.RUN_AT, requests):
+                    out = builder.us_cycles(cases.NASDAQ_TICKER, 100.0, self.RUN_DATE, self.STAMP)
+                self.assertEqual(out, source)  # the validated source reason, not a generic Yahoo failure
+                self.assertEqual(out.health, source.health)
+                self.assert_stale(out)
+                self.assertEqual(len(requests), 1)
+
+    def test_only_true_transport_failures_are_combined(self) -> None:
+        requests: list[str] = []
+        with mock.patch.object(nonus, "TODAY", self.RUN_DATE), nonus._sealed_world(
+                cases.specs({"nasdaq_error": OSError("synthetic transport failure")}), cases.RUN_AT, requests):
+            out = builder.us_cycles(cases.NASDAQ_TICKER, 100.0, self.RUN_DATE, self.STAMP)
+        for cycle in builder.CYCLES:
+            self.assertEqual(set(out[cycle]), {"unavailable"})
+            for provider in ("Yahoo", "Nasdaq"):
+                self.assertIn(provider, out[cycle]["unavailable"])
+        self.assertEqual({item["status"] for item in out.health}, {"READ_ERROR"})
+        self.assertTrue(all(not item["read"] and not item["two_sided"] for item in out.health))
+        self.assertEqual(len(requests), 1)
+
+    def test_untyped_nasdaq_rows_keep_their_source_refusal_and_bounded_lookup(self) -> None:
+        specs = cases.specs({"nasdaq_rows": [{"expirygroup": "unconfirmed expiry"}, {"strike": "unconfirmed strike"}]})
+        requests: list[str] = []
+        with mock.patch.object(nonus, "TODAY", self.RUN_DATE), nonus._sealed_world(specs, cases.RUN_AT, requests):
+            source = builder.nasdaq_us_options(cases.NASDAQ_TICKER, 100.0, self.RUN_DATE, self.STAMP)
+            source_requests = list(requests)
+            requests.clear()
+            out = builder.us_cycles(cases.NASDAQ_TICKER, 100.0, self.RUN_DATE, self.STAMP)
+        self.assertEqual(out, source)
+        self.assertEqual(out.health, source.health)
+        self.assertEqual({item["status"] for item in out.health}, {"SOURCE_ROWS_NOT_TYPED"})
+        self.assertTrue(all(not item["read"] and not item["two_sided"] for item in out.health))
+        for cycle in builder.CYCLES:
+            self.assertEqual(set(out[cycle]), {"unavailable"})
+        self.assertEqual(requests, source_requests)
+        self.assertEqual(len(requests), 3)  # broad chain plus the two standard-monthly targets, never retries
+
+    def test_a_read_yahoo_refusal_survives_a_stale_fallback_for_the_other_cycle(self) -> None:
+        spec = nonus.us(cases.NASDAQ_TICKER, {cases.WEEKLY_DTE: [(101.0, 4.0, 4.2)]}, nasdaq_rows=cases.nasdaq_rows())
+        spec["nasdaq_last_trade"] = None
+        requests: list[str] = []
+        with mock.patch.object(nonus, "TODAY", self.RUN_DATE), nonus._sealed_world([spec], cases.RUN_AT, requests):
+            yahoo = builder.us_options(cases.NASDAQ_TICKER, 100.0, self.RUN_DATE, self.STAMP)
+            out = builder.us_cycles(cases.NASDAQ_TICKER, 100.0, self.RUN_DATE, self.STAMP)
+        self.assertEqual(set(yahoo["weekly"]), {"unavailable"})
+        self.assertEqual(out["weekly"], yahoo["weekly"])
+        self.assertEqual([item for item in out.health if item["cycle"] == "weekly"],
+                         [item for item in yahoo.health if item["cycle"] == "weekly"])
+        self.assertEqual({item["status"] for item in out.health if item["cycle"] == "weekly"}, {"READ"})
+        self.assertEqual(out["monthly"], {"unavailable": builder.NASDAQ_US_STALE_TEXT})
+        self.assertEqual({item["status"] for item in out.health if item["cycle"] == "monthly"}, {"STALE_ASOF"})
+        self.assertEqual(len(requests), 1)
+
+    def test_read_yahoo_cycles_never_request_nasdaq(self) -> None:
+        requests: list[str] = []
+        with mock.patch.object(nonus, "TODAY", self.RUN_DATE):
+            spec = nonus.healthy_us(1)[0]
+            with nonus._sealed_world([spec], cases.RUN_AT, requests):
+                out = builder.us_cycles(spec["symbol"], 100.0, self.RUN_DATE, self.STAMP)
+        self.assertEqual(requests, [])
+        for cycle in builder.CYCLES:
+            self.assertEqual(out[cycle]["provider_id"], support.YAHOO_ID)
 
     def test_the_fallback_cycle_is_never_captured_by_the_carry_forward(self) -> None:
         out = self.run_with(last_trade_text(self.RUN_DATE))

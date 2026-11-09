@@ -627,6 +627,15 @@ def strategy_blocks(calls: list[dict[str, Any]], puts: list[dict[str, Any]], spo
             "collar": {**collar, **label} if collar else {"unavailable": _diag(collar_reason or "")}}
 
 
+def _covered_call_unavailable(rows: list[dict[str, Any]], spot: float, dte: int, expiry: str) -> str:
+    """Explain a refused call using its actual quote and strategy evidence."""
+    if not any(_is_two_sided(row.get("bid"), row.get("ask")) for row in rows):
+        return _diag(f"本次回應有 {expiry}（{dte}天）買權，但{carry_forward.NO_TWO_SIDED_REASON}（買賣價須為正且不倒掛）")
+    if covered_call_suggestions(rows, spot, dte, cent_exact_only=False):
+        return _diag(f"本次回應有 {expiry}（{dte}天）有效雙邊報價，但符合條件之履約價含兩位以上小數，顯示無法如實呈現；不提供建議")
+    return f"{expiry} 到期的價外買權中，沒有 Delta 不超過 {MAX_HIGH_STRIKE_DELTA:.2f} 且有雙邊報價的履約價"
+
+
 def cycle_result(ticker: str, expiry: str, dte: int, spot: float, rows: list[dict[str, Any]], *, currency: str, source: str,
                  provenance: str, rights: str, stamp: str, asof: str | None = None, week: str | None = None,
                  identity: dict[str, str] | None = None, puts: list[dict[str, Any]] | None = None,
@@ -639,12 +648,7 @@ def cycle_result(ticker: str, expiry: str, dte: int, spot: float, rows: list[dic
         strategies = strategy_blocks(rows, puts, spot, dte, label)
     cc_reason = ""
     if not suggestions:
-        if not any(_is_two_sided(row.get("bid"), row.get("ask")) for row in rows):
-            cc_reason = _diag(f"本次回應有 {expiry}（{dte}天）買權，但{carry_forward.NO_TWO_SIDED_REASON}（買賣價須為正且不倒掛）")
-        elif covered_call_suggestions(rows, spot, dte, cent_exact_only=False):  # the unchanged filters accept it; only the display precision cannot
-            cc_reason = _diag(f"本次回應有 {expiry}（{dte}天）有效雙邊報價，但符合條件之履約價含兩位以上小數，顯示無法如實呈現；不提供建議")
-        else:
-            cc_reason = f"{expiry} 到期的價外買權中，沒有 Delta 不超過 {MAX_HIGH_STRIKE_DELTA:.2f} 且有雙邊報價的履約價"
+        cc_reason = _covered_call_unavailable(rows, spot, dte, expiry)
         if strategies is None or all("unavailable" in block for block in strategies.values()):
             return {"unavailable": cc_reason}
     result = {"ticker": ticker, "strategy": "COVERED_CALL", "expiry": expiry, "dte": dte, "spot": spot, "currency": currency,
@@ -743,7 +747,7 @@ def _monthly_candidates(expiries: Iterable[str], today: date | None, stamp: str,
 def _monthly_quote_observation(ticker: str, spot: float, choices: list["rules.MonthlyChoice"],
                                calls: list[dict[str, Any]], stamp: str, today: date, *,
                                currency: str, source: str, provenance: str, rights: str,
-                               identity: dict[str, str] | None,
+                               identity: dict[str, str] | None, cc_reason: str,
                                puts: list[dict[str, Any]] | None = None) -> dict[str, Any] | None:
     """Observation-only quote when the 6%+ strategy cannot be shown.
     The two-sided bid (not mid) defines annualized collectible premium; without it,
@@ -783,9 +787,9 @@ def _monthly_quote_observation(ticker: str, spot: float, choices: list["rules.Mo
               "monthly_rule": choice.rule}
     if identity is not None:
         result.update(identity)
-    # A low-premium call is an observation, not an eligible sell tier. Nevertheless
-    # the same expiry can have a valid cash-secured put or a protective collar.
-    # Keep these separately validated rather than discarding the put-side chain.
+    # A call observation is not an eligible sell tier: preserve whether the cause
+    # was missing quotes, strike eligibility, or low premium. Independently valid
+    # put strategies from the same expiry retain their own source-backed evidence.
     same_calls = [r for r in calls if r.get("expiry") == best["expiry"]]
     same_puts = [r for r in (puts or []) if r.get("expiry") == best["expiry"] and r.get("size") == 100]
     if identity is not None and puts is not None:
@@ -793,7 +797,7 @@ def _monthly_quote_observation(ticker: str, spot: float, choices: list["rules.Mo
                  "quote_basis":"delayed","timestamp":stamp}
         blocks = strategy_blocks(same_calls,same_puts,spot,dte,label)
         if any("unavailable" not in blocks.get(name, {"unavailable":""}) for name in ("csp","collar")):
-            result["strategies"] = {"cc":{"unavailable":"低於6%門檻，買權僅作報價觀察；不構成備兌買權建議"},**blocks}
+            result["strategies"] = {"cc": {"unavailable": cc_reason}, **blocks}
     return result
 
 
@@ -926,9 +930,11 @@ def _cycles_from_calls(calls: list[dict[str, Any]], ticker: str, spot: float, st
                 monthly_rule = monthly.rule
                 tiers, _ = covered_call_tiers(window, spot, window[0]["dte"]) if window else ([],None)
                 if not tiers or not any(tier["annualized_yield"] >= MONTHLY_ANNUAL_HURDLE for tier in tiers):
+                    cc_reason = ("低於6%門檻，買權僅作報價觀察；不構成備兌買權建議" if tiers else
+                                 _covered_call_unavailable(window, spot, (monthly.expiry - today).days, monthly.expiry.isoformat()))
                     observation = _monthly_quote_observation(
                         ticker, spot, [monthly], calls, stamp, today, currency=currency, source=source,
-                        provenance=provenance, rights=rights, identity=identity, puts=puts)
+                        provenance=provenance, rights=rights, identity=identity, cc_reason=cc_reason, puts=puts)
                     if observation is not None:
                         health_records.append({"venue": venue, "underlying": und,
                            "expiry": observation["expiry"], "cycle": "monthly", "status": "READ",
@@ -1129,8 +1135,9 @@ def _yahoo_unread(value: dict[str, Any] | None) -> bool:
 
 
 def us_cycles(symbol: str, spot: float, today: date, stamp: str) -> CyclesResult:
-    """Yahoo first; only the cycles Yahoo could not read (no expiry list, a failed chain) try the Nasdaq chain once.
-    A cycle Yahoo read without a qualifying strike keeps that reason."""
+    """Yahoo first; only unread cycles use Nasdaq's bounded source-specific lookup.
+    Preserve the fallback's validated refusal (including stale/unconfirmed as-of);
+    combine transport failures only when both providers actually failed to read."""
     try:
         out = us_options(symbol, spot, today, stamp)
     except Exception:
@@ -1149,7 +1156,8 @@ def us_cycles(symbol: str, spot: float, today: date, stamp: str) -> CyclesResult
         value = fallback.get(cycle) or {"unavailable": ""}
         if "unavailable" not in value:
             out[cycle] = value
-        elif "讀取失敗" in str((out.get(cycle) or {}).get("unavailable", "讀取失敗")):
+        elif (any(h.get("cycle") == cycle and h.get("status") in ("READ_ERROR", "EXPIRY_LIST_ERROR") for h in yahoo_health)
+              and any(h.get("cycle") == cycle and h.get("status") == "READ_ERROR" for h in fallback_health)):
             out[cycle] = {"unavailable": "期權鏈讀取失敗（Yahoo 與 Nasdaq 備援）"}
         else:
             out[cycle] = {"unavailable": str(value["unavailable"])}
