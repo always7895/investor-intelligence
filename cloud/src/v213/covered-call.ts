@@ -58,6 +58,8 @@ export interface MonthlyQuoteObservation {
 }
 
 export interface CoveredCallCycle {
+  /** Validated nonstandard expiry: DISPLAY-ONLY, never a monthly sell recommendation. */
+  monthly_nonstandard?: true;
   ticker: string; strategy: "COVERED_CALL"; expiry: string; dte: number; spot: number; currency: "USD" | "SEK";
   multiplier: 100; quote_basis: "delayed" | typeof PREVIOUS_SESSION_BASIS; timestamp: string; source: string; provenance: string; rights_status: string;
   /** Producer-CLAIMED join identity for public admission (never authority; absent on local candidates). */
@@ -208,6 +210,23 @@ export function validateCoveredCallCycle(raw: unknown, now?: number, documentGen
   if (cycle.monthly_rule !== undefined && cycle.monthly_rule !== null
     && (period === "weekly" || typeof cycle.monthly_rule !== "string" || !monthlyRuleConsistent(cycle.expiry, cycle.monthly_rule))) return null;
 
+  // Current chains must choose a STANDARD >=7DTE monthly. Previous sealed snapshots
+  // sometimes contain only a verified, non-standard monthly-LIKE expiry: keep an
+  // observation-only line, never silently call it the standard or an order suggestion.
+  let nonstandardMonth = false;
+  if (cycle.monthly_nonstandard !== undefined
+    && (period !== "monthly" || cycle.monthly_nonstandard !== true)) return null;
+  if (period === "monthly") {
+    const standard = monthlyRuleConsistent(cycle.expiry, "THIRD_FRIDAY")
+      || (typeof cycle.monthly_rule === "string" && monthlyRuleConsistent(cycle.expiry,cycle.monthly_rule));
+    nonstandardMonth = !standard && cycle.dte >= 7 && cycle.quote_basis === "delayed"
+      && (cycle.monthly_rule === undefined || cycle.monthly_rule === null);
+    if (cycle.dte < 7 || (!standard && !nonstandardMonth)
+      || (cycle.monthly_nonstandard === true && !nonstandardMonth)) return null;
+  }
+  const typed = (row:CoveredCallCycle):CoveredCallCycle=>
+    nonstandardMonth ? {...row,monthly_nonstandard:true} : row;
+
   const roles = cycle.suggestions.map((item: any) => item?.role).join(",");
   if (roles !== "" && roles !== "HIGH_STRIKE" && roles !== "HIGH_STRIKE,BALANCED") return null;
   /** Per-item checks shared by the two suggestions and the optional middle tier. */
@@ -242,21 +261,29 @@ export function validateCoveredCallCycle(raw: unknown, now?: number, documentGen
     if (cycle.suggestions.length !== 2 || middle.role !== "MIDDLE" || !itemValid(middle)
       || !(cycle.suggestions[0].strike > middle.strike && middle.strike > cycle.suggestions[1].strike)) return null;
   }
+  if(nonstandardMonth && cycle.monthly_nonstandard===true && cycle.quote_observation===undefined
+     && cycle.suggestions.length===0) {
+    if(cycle.strategies!==undefined || cycle.middle_suggestion!==undefined) return null;
+    return typed(cycle as CoveredCallCycle);
+  }
   if(cycle.quote_observation!==undefined){
-    // The general reader may not claim an observation to be a qualified weekly sell strategy.
-    if(period!=="monthly" || cycle.suggestions.length!==0 || cycle.strategies!==undefined ||
+    // The observed call is never an executable sell tier; the put-side strategies,
+    // when present, retain their independent strict validator and source binding.
+    if(period!=="monthly" || cycle.suggestions.length!==0 ||
       cycle.middle_suggestion!==undefined || !validMonthlyQuoteObservation(cycle.quote_observation,cycle)) return null;
-    return cycle as CoveredCallCycle;
+    if(cycle.strategies===undefined) return typed(cycle as CoveredCallCycle);
+    const kept=sanitizeStrategies(cycle);
+    return kept===null || kept===undefined ? null : typed({...cycle,strategies:kept} as CoveredCallCycle);
   }
   const strategies = sanitizeStrategies(cycle);
   if (strategies === null) return null;
   if (strategies === undefined) {
     if (cycle.suggestions.length === 0) return null;  // no covered call and no strategies: nothing to show
-    if (cycle.strategies === undefined) return cycle as CoveredCallCycle;
+    if (cycle.strategies === undefined) return typed(cycle as CoveredCallCycle);
     const { strategies: _dropped, ...rest } = cycle;  // a malformed strategies value never reaches the card
-    return rest as CoveredCallCycle;
+    return typed(rest as CoveredCallCycle);
   }
-  return { ...cycle, strategies } as CoveredCallCycle;
+  return typed({ ...cycle, strategies } as CoveredCallCycle);
 }
 
 // ---- V21 strategies: strict mirror of validate_strategy_block / validate_strategies / degrade_bad_strategy_blocks (Python) ----
@@ -423,8 +450,8 @@ export const OPERATOR_ACCEPTED_NOTICE_ZH = "依營運者決定顯示；本資料
 // ---- V21 (operator 2026-10-19): three conservative strategies on one card -----------------------------------------------------------------
 // Overview, then the available strategy details and a single final disclosure. A strategy without data keeps its overview row
 // ("無資料") and has no detail bubble. Everything shown is a quote or a figure recomputed by the validator; nothing is advice.
-const NO_STRATEGIES_REASON = "此筆為舊版資料，未含此策略報價";
-const NO_SOURCE_PUT_REASON = "本輪來源未提供此策略報價";
+const NO_STRATEGIES_REASON = "封存的此到期日資料未包含可核驗賣權鏈；無法計算，並不代表未上市";
+const NO_SOURCE_PUT_REASON = "本輪來源沒有可驗證的賣權雙邊報價或契約條件；不可推算權利金";
 const CSP_TITLE = "現金擔保賣權（備足現金賣出賣權）";
 const COLLAR_TITLE = "領口策略（持股＋買保護賣權＋賣買權）";
 const CC_TITLE = "備兌買權（持股賣出買權）";
@@ -716,8 +743,40 @@ function textStrategyLines(cycle: CoveredCallCycle): string[] {
   return lines;
 }
 
+/** Non-standard expiry is an honest source observation, never a monthly order/strategy.
+ * The displayed expiry is from the validated sealed record; no imaginary price or rights bypass. */
+function nonstandardMonthlyMessages(cycle:CoveredCallCycle,style:"flex"|"text",operatorAccepted:boolean):LineOutboundMessage[] {
+  const suggestion=cycle.suggestions[0];
+  const observed=cycle.quote_observation;
+  const strike=suggestion?.strike ?? observed?.strike;
+  const twoSided=suggestion ? {bid:suggestion.bid,ask:suggestion.ask} :
+    observed?.kind==="TWO_SIDED" ? {bid:observed.bid!,ask:observed.ask!} : null;
+  const price=strike===undefined ? "買權履約價未提供" :
+    "參考履約價 "+money(strike,cycle.currency);
+  const quote=twoSided ? "來源Bid "+money(twoSided.bid,cycle.currency)+"／Ask "+money(twoSided.ask,cycle.currency)
+    : observed?.last!==null && observed?.last!==undefined ? "來源Last "+money(observed.last,cycle.currency)+"（無雙邊報價）"
+    : "未取得有效買權雙邊報價";
+  const notice="非標準月到期 "+cycle.expiry+"（DTE "+cycle.dte+"）";
+  const disclaimer="本次快取未提供可驗證的標準月選鏈；此日期是來源最近可用的非標準月類到期，"
+    +"只作延遲行情觀察，並非標準月選；不提供備兌買權、現金擔保賣權或領口下單建議。";
+  const lines=["【每月期權｜非標準月到期・僅觀察】"+cycle.ticker,notice,
+    price+"｜"+quote,"來源擷取："+formatVisibleMoment(cycle.timestamp),disclaimer,
+    "本服務不下單；不存在的 Bid、Ask、Delta 與權利金均不補造。",
+    ...(operatorAccepted?[OPERATOR_ACCEPTED_NOTICE_ZH]:[])];
+  const messages:LineOutboundMessage[]=style==="text"
+    ? [{type:"text",text:lines.join("\n")}]
+    : [{type:"flex",altText:altSummary({topic:cycle.ticker+" 每月期權",status:notice,next:"查看標準月選資訊"}),
+      contents:{type:"carousel",contents:[{type:"bubble",size:"mega",
+        header:productHeader("每月期權・非標準月到期","來源觀察（不可下單）"),
+        body:uiBox(lines.slice(1).map(line=>uiText(line,"sm",T.ink)),{paddingAll:"lg",spacing:"sm"}),
+        footer:footerBox("非標準月選・非交易建議・不可執行")}]}}];
+  assertLineMessages(messages);
+  return messages;
+}
+
 function monthlyObservationMessages(cycle:CoveredCallCycle,style:"flex"|"text",operatorAccepted:boolean):LineOutboundMessage[] {
   const o=cycle.quote_observation!;
+  const csp=cspShown(cycle), collar=collarShown(cycle);
   const hasBid=o.kind==="TWO_SIDED";
   const rate=o.annualized_yield===null?"無可用權利金價，年化不計":pct(o.annualized_yield);
   const hurdle=o.annualized_yield===null?"無雙邊報價，非策略":
@@ -732,7 +791,7 @@ function monthlyObservationMessages(cycle:CoveredCallCycle,style:"flex"|"text",o
     "OI "+countZh(o.oi)+"｜成交量 "+countZh(o.volume),
     "來源 "+sourceZh(cycle.source)+"｜擷取 "+formatVisibleMoment(cycle.timestamp),
     "延遲來源觀察，非可執行報價；不自動下單。"
-  ].concat(operatorAccepted?[OPERATOR_ACCEPTED_NOTICE_ZH]:[]);
+  ].concat(textStrategyLines(cycle),operatorAccepted?[OPERATOR_ACCEPTED_NOTICE_ZH]:[]);
   if(style==="text"){
     const messages:LineOutboundMessage[]=[{type:"text",text:txt.join("\n")}];
     assertLineMessages(messages);
@@ -748,12 +807,18 @@ function monthlyObservationMessages(cycle:CoveredCallCycle,style:"flex"|"text",o
       uiText("期限 "+cycle.expiry+"｜"+premium,"xs",T.muted),
       uiText("OI "+countZh(o.oi)+"｜成交量 "+countZh(o.volume),"xs",T.subtle),
       uiText("擷取 "+formatVisibleMoment(cycle.timestamp)+"｜"+sourceZh(cycle.source),"xxs",T.subtle),
+      uiText("現金擔保賣權："+("none" in csp ? csp.none : "已核驗獨立策略報價"),"xs",T.subtle),
+      uiText("領口策略："+("none" in collar ? collar.none : "已核驗獨立策略報價"),"xs",T.subtle),
       ...(operatorAccepted?[uiText(OPERATOR_ACCEPTED_NOTICE_ZH,"xxs",T.subtle)]:[])
     ],{paddingAll:"lg",spacing:"sm"}),
     footer:footerBox("報價非可執行，流動性與指派風險；非投資建議、不下單")};
   const messages:LineOutboundMessage[]=[{type:"flex",
     altText:altSummary({topic:cycle.ticker+" 月期權報價觀察",status:hurdle,next:"查看文字來源"}),
-    contents:{type:"carousel",contents:[bubble]}}];
+    contents:{type:"carousel",contents:[
+      bubble,
+      ...("block" in csp ? [cspDetailBubble(cardContext(cycle,"每月期權"), csp.block)] : []),
+      ...("block" in collar ? [collarDetailBubble(cardContext(cycle,"每月期權"), collar.block)] : []),
+    ]}}];
   assertLineMessages(messages);
   return messages;
 }
@@ -765,6 +830,7 @@ export function buildCoveredCallMessages(cycle: CoveredCallCycle, periodLabel: s
   // (the only one a public caller converts to an unavailable report) denies instead of rendering.
   const admission = admitPublicOption(cycle);
   if (!admission.ok) throw new OptionRightsNotAdmittedError();
+  if(cycle.monthly_nonstandard) return nonstandardMonthlyMessages(cycle,style,admission.operator_accepted===true);
   if(cycle.quote_observation) return monthlyObservationMessages(cycle,style,admission.operator_accepted===true);
   const ctx = cardContext(cycle, periodLabel);
   ctx.operatorNotice = admission.operator_accepted === true ? OPERATOR_ACCEPTED_NOTICE_ZH : null;

@@ -142,7 +142,7 @@
           "quote_basis": "delayed",
           "timestamp": "2026-10-19T08:00:00Z",
           "source": "Yahoo Finance option chain (unofficial, delayed)",
-          "provenance": "https://finance.yahoo.com/quote/SYNTHUS00/options?date=2026-11-20; delta=Black-Scholes(quoted IV)",
+          "provenance": "https://finance.yahoo.com/quote/SYNTHUS00/options",
           "rights_status": "operator_accepted_unlicensed",
           "suggestions": [
             {

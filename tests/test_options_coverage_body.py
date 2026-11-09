@@ -90,7 +90,8 @@ class CatalogDerivedSectionsTests(unittest.TestCase):
 
     def test_declared_sections_equal_an_independent_derivation_from_the_canonical_catalog(self):
         document = self.document
-        self.assertEqual(document["schema"], "v213-options-coverage-v1")
+        self.assertEqual(document["schema"], "v213-options-coverage-v2")
+        self.assertEqual(document["catalog_version"], "sha256:" + hashlib.sha256(CATALOG_PATH.read_bytes()).hexdigest())
         self.assertEqual(document["purpose"], "SOURCE_COVERAGE_METADATA_ONLY")
         self.assertEqual(document["generated_at"], "2026-09-30T17:00:00Z")
         self.assertEqual(document["data_completeness"], "NOT_REAUDITED")

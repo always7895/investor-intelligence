@@ -240,7 +240,7 @@ describe("Worker validator: current-week weekly and tiny DTE", () => {
   it("the week marker is weekly-only and two-valued", () => {
     expect(check(tierCycle({ asof: null, week: "LATER" }))).toBeNull();
     expect(check(tierCycle({ dte: 30, expiry: "2026-11-06", asof: null, week: "CURRENT" }), "monthly")).toBeNull();
-    expect(check(tierCycle({ dte: 30, expiry: "2026-11-06", week: null }), "monthly")).not.toBeNull();
+    expect(check(tierCycle({ dte: 44, expiry: "2026-11-20", week: null }), "monthly")).not.toBeNull(); // real third Friday, >=7 days
   });
 });
 

@@ -138,13 +138,25 @@ function pair(row: Row): Row[] {
 }
 function iso(ms: number): string { return new Date(ms).toISOString().replace(/\.000Z$/, "Z"); }
 function cycle(ticker: string, currency = "USD", now = NOW) {
+  // Synthetic monthly must be a REAL standard third Friday at least seven days ahead.
+  const day = new Date(now);
+  const target = (year:number,month:number)=>{
+    const weekday=new Date(Date.UTC(year,month,1)).getUTCDay();
+    const firstFriday=1+(5-weekday+7)%7;
+    return Date.UTC(year,month,firstFriday+14);
+  };
+  const y=day.getUTCFullYear(),m=day.getUTCMonth();
+  const today=Date.UTC(y,m,day.getUTCDate());
+  const first=target(y,m);
+  const expiryMs=first-today>=7*86400_000?first:target(y,m+1);
+  const dte=Math.round((expiryMs-today)/86400_000);
   return {
-    ticker, currency, strategy: "COVERED_CALL", expiry: iso(now + 21 * 86400_000).slice(0, 10),
-    dte: 21, spot: 300, multiplier: 100, quote_basis: "delayed", timestamp: iso(now - 30 * 60_000),
+    ticker, currency, strategy: "COVERED_CALL", expiry: iso(expiryMs).slice(0, 10),
+    dte, spot: 300, multiplier: 100, quote_basis: "delayed", timestamp: iso(now - 30 * 60_000),
     source: "Synthetic delayed observation", provenance: "https://synthetic.invalid/options",
     rights_status: "unadmitted_third_party", suggestions: [{
       role: "HIGH_STRIKE", strike: 330, bid: 2, ask: 2.1, mid: 2.05, limit_price: 2.05,
-      premium_per_contract: 205, period_yield: 2.05 / 300, annualized_yield: 2.05 / 300 * 365 / 21,
+      premium_per_contract: 205, period_yield: 2.05 / 300, annualized_yield: 2.05 / 300 * 365 / dte,
       upside_to_strike: 330 / 300 - 1, delta: 0.18, delta_basis: "QUOTED_IV", iv: 0.4,
       oi: 900, volume: 50, spread_pct: 0.0488,
     }],

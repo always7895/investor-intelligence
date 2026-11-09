@@ -214,8 +214,20 @@ class CarryForward:
             ticker, period = item["underlying"], item["cycle"]
             per_period = options.get(ticker)
             live = per_period.get(period) if isinstance(per_period, dict) else None
-            if not (isinstance(live, dict) and set(live) == {"unavailable"} and NO_TWO_SIDED_REASON in str(live["unavailable"])):
-                continue  # a live valid cycle, or a different reason, always wins
+            if not isinstance(live,dict):
+                continue
+            ordinary_absence = set(live) == {"unavailable"} and NO_TWO_SIDED_REASON in str(live["unavailable"])
+            # G02 observation-only quote with no valid two-sided bid/ask: a genuinely
+            # captured, same-expiry prior-session cycle is still preferable; otherwise
+            # keep the honest live observation intact (never fabricate a recommendation).
+            observational_absence = (period == "monthly"
+                and live.get("quote_basis") == "delayed"
+                and isinstance(live.get("quote_observation"),dict)
+                and live["quote_observation"].get("kind") == "NO_TWO_SIDED"
+                and live.get("suggestions") == []
+                and not live.get("strategies"))
+            if not (ordinary_absence or observational_absence):
+                continue  # live valid two-sided quote or verified put strategy always wins
             replacement = self._carried(ticker, period, item["expiry"], now)
             if replacement is not None:
                 per_period[period] = replacement

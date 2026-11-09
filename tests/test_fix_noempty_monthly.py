@@ -26,11 +26,11 @@ def run_monthly(rows):
 def check(cycle):
     validate_covered_call_cycle(cycle,evaluated_at=STAMP,document_at=STAMP,period="monthly")
 
-def test_next_standard_monthly_below_hurdle_is_visible_not_unavailable():
+def test_nearest_standard_monthly_below_hurdle_is_visible_not_unavailable():
     got=run_monthly([row(FIRST,12,17.0,.01,.02),row(SECOND,40,18.0,.07,.08)])
     assert "unavailable" not in got
     assert got["quote_observation"]["kind"]=="TWO_SIDED"
-    assert got["expiry"]==SECOND
+    assert got["expiry"]==FIRST
     assert got["suggestions"]==[]
     assert 0<got["quote_observation"]["annualized_yield"]<.06
     check(got)

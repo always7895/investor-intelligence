@@ -565,13 +565,37 @@ def validate_covered_call_cycle(cycle: dict, evaluated_at: str | datetime | None
         if (not (on_friday or shifted) or (monthly_rule == rules.MONTHLY_RULE_THIRD_FRIDAY and not on_friday)
                 or (monthly_rule == rules.MONTHLY_RULE_HOLIDAY_SHIFT and not shifted)):
             raise MarketProductValidationError("MONTHLY_RULE_INCONSISTENT")
+    # A former sealed weekly-like expiry may still contain genuine, validated delayed quotes.
+    # Keep that line ONLY as a labeled NONSTANDARD observation, never as a standard monthly recommendation.
+    # Any claimed monthly_rule on a non-standard date remains a hard error (checked above).
+    if cycle.get("monthly_nonstandard") is not None and cycle.get("monthly_nonstandard") is not True:
+        raise MarketProductValidationError("MONTHLY_NONSTANDARD_MARKER_INVALID")
+    if period != "monthly" and cycle.get("monthly_nonstandard") is True:
+        raise MarketProductValidationError("MONTHLY_NONSTANDARD_MARKER_INVALID")
+    if period == "monthly":
+        friday = rules.third_friday(expiry.year, expiry.month)
+        rule = cycle.get("monthly_rule")
+        standard = expiry.date() == friday or (
+            rule in (rules.MONTHLY_RULE_HOLIDAY_SHIFT,rules.MONTHLY_RULE_LATER_LISTED)
+            and friday - timedelta(days=4) <= expiry.date() < friday)
+        fallback = dte >= 7 and not standard and rule is None and cycle.get("quote_basis") == "delayed"
+        if dte < 7 or not (standard or fallback):
+            raise MarketProductValidationError("MONTHLY_UNPROVEN_EXPIRY")
+        if cycle.get("monthly_nonstandard") is True and not fallback:
+            raise MarketProductValidationError("MONTHLY_NONSTANDARD_MARKER_INVALID")
     spot = finite(cycle.get("spot"), "spot")
     annual_days = rules.effective_days(dte)  # annualized over at least one day: a DTE-0 contract never divides by zero
     # Optional observation-only month: explicitly not a covered-call strategy, with its own
     # strict, independently checked evidence. No missing bid/ask can become executable.
     observed = cycle.get("quote_observation", None)
+    # If a listed non-standard contract has no source quote, it still has an exact
+    # expiry and explicit observation-only status. No premiums/strategies are generated.
+    if cycle.get("monthly_nonstandard") is True and observed is None:
+        if cycle.get("suggestions") != [] or "strategies" in cycle or "middle_suggestion" in cycle:
+            raise MarketProductValidationError("MONTHLY_NONSTANDARD_NOT_AN_ORDER")
+        return
     if observed is not None:
-        if period != "monthly" or cycle.get("suggestions") != [] or "strategies" in cycle or "middle_suggestion" in cycle:
+        if period != "monthly" or cycle.get("suggestions") != [] or "middle_suggestion" in cycle:
             raise MarketProductValidationError("MONTHLY_OBSERVATION_NOT_A_STRATEGY")
         keys = {"kind", "strike", "bid", "ask", "last", "annualized_yield", "oi", "volume"}
         if not isinstance(observed, dict) or set(observed) != keys or observed["kind"] not in ("TWO_SIDED", "NO_TWO_SIDED"):
@@ -602,6 +626,8 @@ def validate_covered_call_cycle(cycle: dict, evaluated_at: str | datetime | None
             expected = price/spot*365/dte
             if abs(annual-expected) > max(1e-4,abs(expected)*1e-3):
                 raise MarketProductValidationError("MONTHLY_OBSERVATION_ANNUALIZED")
+        if "strategies" in cycle:
+            validate_strategies(cycle)  # must have cc unavailable and a real validated put/collar
         return
     suggestions = cycle.get("suggestions")
     # V21: no covered call (an empty list) is allowed only beside a `strategies` object that validates and holds a real csp or collar block.
@@ -721,11 +747,17 @@ def validate_options_coverage_document(doc: dict) -> None:
     def instant(value):
         return coverage_instant(value)
 
-    exact(doc, ("schema", "generated_at", "purpose", "options_link", "catalog_summary", "providers", "jurisdictions", "local_capabilities",
-                "observed", "data_completeness", "notes"), "COVERAGE_SCHEMA_INVALID")
-    if (doc["schema"] != COVERAGE_SCHEMA or doc["purpose"] != COVERAGE_PURPOSE or doc["data_completeness"] != "NOT_REAUDITED"
+    base_keys = ("schema", "generated_at", "purpose", "options_link", "catalog_summary", "providers", "jurisdictions",
+                 "local_capabilities", "observed", "data_completeness", "notes")
+    versioned = doc.get("schema") == "v213-options-coverage-v2" if isinstance(doc,dict) else False
+    exact(doc, (*base_keys,"catalog_version") if versioned else base_keys, "COVERAGE_SCHEMA_INVALID")
+    if (doc["schema"] not in (COVERAGE_SCHEMA,"v213-options-coverage-v2")
+            or doc["purpose"] != COVERAGE_PURPOSE or doc["data_completeness"] != "NOT_REAUDITED"
             or not instant(doc["generated_at"])):
         fail("COVERAGE_HEADER_INVALID")
+    if versioned and (not isinstance(doc["catalog_version"],str)
+            or re.fullmatch(r"sha256:[0-9a-f]{64}",doc["catalog_version"]) is None):
+        fail("COVERAGE_CATALOG_VERSION_INVALID")
     link = doc["options_link"]
     if link is not None:
         exact(link, ("key", "sha256", "utf8_bytes"), "COVERAGE_LINK_INVALID")

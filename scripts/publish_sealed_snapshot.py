@@ -1148,7 +1148,11 @@ def lazy_options_coverage_body(options_body: "str | None", now: datetime) -> "di
         findings, _summary = option_rights.audit_public_options_providers(ROOT, today=day)
         if findings:
             return {}
-        catalog = option_rights._object(ROOT / "config" / "public-options-provider-candidates.json")
+        catalog_file = ROOT / "config" / "public-options-provider-candidates.json"
+        catalog = option_rights._object(catalog_file)
+        # Version is the SHA-256 of the exact audited catalog BYTES used for this seal.
+        # An earlier sealed body with a different projection may not be silently relabelled.
+        catalog_version = "sha256:" + hashlib.sha256(catalog_file.read_bytes()).hexdigest()
         policy = option_rights.load_public_option_policy(ROOT, today=day)
         admitted = set(policy.provider_ids())
         providers: list = []
@@ -1169,7 +1173,8 @@ def lazy_options_coverage_body(options_body: "str | None", now: datetime) -> "di
                  for market in sorted(routing["covered_markets"])]
         observed, link = _coverage_observed(options_body, policy, now)
         document = {
-            "schema": "v213-options-coverage-v1", "generated_at": now.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "schema": "v213-options-coverage-v2", "catalog_version": catalog_version,
+            "generated_at": now.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "purpose": "SOURCE_COVERAGE_METADATA_ONLY", "options_link": link,
             "catalog_summary": {"catalog_provider_count": len(providers), "public_admitted_provider_count": len(admitted),
                                 "production_provider_selected": catalog["production_quote_provider_selected"]},

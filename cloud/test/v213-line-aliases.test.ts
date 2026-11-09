@@ -1,5 +1,6 @@
 // Natural LINE phrasings reach the current products: bottleneck Top20 v3, its detail, the industry ranking and the
 // covered-call observations. Sealed synthetic snapshot through the real public routes; synthetic values only.
+import {standardMonthlyFixture} from "./helpers/r2a-standard-monthly";
 import { describe, expect, it, beforeEach, vi } from "vitest";
 import { parseQuery } from "../src/core";
 import { handleGlobalEquityLookup } from "../src/v213/global-equity-lookup";
@@ -24,18 +25,18 @@ beforeEach(() => { resetAdmissionToReal(); });
 const RUN = "20260926T040000Z-abcdefabcde1";
 const now = Date.now();
 const stamp = new Date(now - 30 * 60_000).toISOString().replace(/\.\d{3}Z$/, "Z");
-const expiry = new Date(now + 21 * 86400_000).toISOString().slice(0, 10);
+const {expiry,dte} = standardMonthlyFixture(now);
 
 async function sha(text: string): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
   return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join("");
 }
 
-const SIVE_MONTHLY = { ticker: "SIVE.ST", strategy: "COVERED_CALL", expiry, dte: 21, spot: 32.78, currency: "SEK", multiplier: 100,
+const SIVE_MONTHLY = { ticker: "SIVE.ST", strategy: "COVERED_CALL", expiry, dte, spot: 32.78, currency: "SEK", multiplier: 100,
   quote_basis: "delayed", timestamp: stamp, source: "Nasdaq Nordic option chain (exchange public web API, delayed)",
   provenance: "https://api.nasdaq.com/api/nordic/instruments/TX2540138/option-chain", rights_status: "candidate_local_review",
   suggestions: [{ role: "HIGH_STRIKE", strike: 62, bid: 0.2, ask: 0.35, mid: 0.275, limit_price: 0.23, premium_per_contract: 23,
-    period_yield: 0.23 / 32.78, annualized_yield: 0.23 / 32.78 * 365 / 21, upside_to_strike: 62 / 32.78 - 1,
+    period_yield: 0.23 / 32.78, annualized_yield: 0.23 / 32.78 * 365 / dte, upside_to_strike: 62 / 32.78 - 1,
     delta: 0.061, delta_basis: "QUOTE_IMPLIED", iv: 1.5658, oi: 12, volume: null, spread_pct: 0.5455 }] };
 
 async function sealedEnv(v3 = doc(now - HOUR)) {

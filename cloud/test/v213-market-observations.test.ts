@@ -1,3 +1,4 @@
+import {standardMonthlyFixture} from "./helpers/r2a-standard-monthly";
 // Sealed delayed quotes and listed-option observations through the real LINE routes. Synthetic values only.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { parseQuery } from "../src/core";
@@ -48,7 +49,7 @@ async function sealedEnv(options: {
 } = {}) {
   const currentNow = options.nowMs ?? FIXED_NOW;
   const stamp = new Date(currentNow - 30 * 60_000).toISOString().replace(/\.\d{3}Z$/, "Z");
-  const expiry = new Date(currentNow + 21 * 86400_000).toISOString().slice(0, 10);
+  const {expiry,dte} = standardMonthlyFixture(currentNow);
   const feed = [{ id: "nasdaq-stockholm-main", url: "https://api.nasdaq.com/api/nordic/screener/shares?category=MAIN_MARKET&tableonly=false&market=STO",
     retrieved_at: stamp, sha256: "c".repeat(64), rows: 1 }];
   const kv = options.kv ?? new MemoryKv();
@@ -77,15 +78,15 @@ async function sealedEnv(options: {
       "AZN.ST": { weekly: { unavailable: "合成：斯德哥爾摩 AZN 週期權" } },
       SIVE: {  // the older unsuffixed Stockholm key still answers a bare SIVE
       weekly: { unavailable: "Nasdaq Stockholm 無本週或下週到期的上市期權" },
-      monthly: { ticker: "SIVE", strategy: "COVERED_CALL", expiry, dte: 21, spot: 32.78, currency: "SEK", multiplier: 100,
+      monthly: { ticker: "SIVE", strategy: "COVERED_CALL", expiry, dte, spot: 32.78, currency: "SEK", multiplier: 100,
         quote_basis: "delayed", timestamp: obsStamp, source: "Nasdaq Nordic option chain (exchange public web API, delayed)",
         provenance: "https://api.nasdaq.com/api/nordic/instruments/TX2540138/option-chain", rights_status: "candidate_local_review",
         suggestions: [
           { role: "HIGH_STRIKE", strike: 62, bid: 0.2, ask: 0.35, mid: 0.275, limit_price: 0.23, premium_per_contract: 23,
-            period_yield: 0.23 / 32.78, annualized_yield: 0.23 / 32.78 * 365 / 21, upside_to_strike: 62 / 32.78 - 1,
+            period_yield: 0.23 / 32.78, annualized_yield: 0.23 / 32.78 * 365 / dte, upside_to_strike: 62 / 32.78 - 1,
             delta: 0.061, delta_basis: "QUOTE_IMPLIED", iv: 1.5658, oi: 12, volume: null, spread_pct: 0.5455 },
           { role: "BALANCED", strike: 34, bid: 1.5, ask: 4.5, mid: 3, limit_price: 2.25, premium_per_contract: 225,
-            period_yield: 2.25 / 32.78, annualized_yield: 2.25 / 32.78 * 365 / 21, upside_to_strike: 34 / 32.78 - 1,
+            period_yield: 2.25 / 32.78, annualized_yield: 2.25 / 32.78 * 365 / dte, upside_to_strike: 34 / 32.78 - 1,
             delta: null, iv: null, oi: 16, volume: null, spread_pct: 1 },
         ] },
     } } };

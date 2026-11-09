@@ -1,0 +1,91 @@
+{
+  "ticker": "UNIT",
+  "strategy": "COVERED_CALL",
+  "expiry": "2026-11-20",
+  "dte": 12,
+  "spot": 100,
+  "currency": "USD",
+  "multiplier": 100,
+  "quote_basis": "delayed",
+  "timestamp": "2026-11-08T14:16:09Z",
+  "source": "synthetic test observations",
+  "provenance": "https://example.org/typed-public-chain",
+  "rights_status": "operator_accepted_unlicensed",
+  "suggestions": [],
+  "quote_observation": {
+    "kind": "TWO_SIDED",
+    "strike": 107.5,
+    "bid": 0.01,
+    "ask": 0.02,
+    "last": null,
+    "annualized_yield": 0.003042,
+    "oi": 200,
+    "volume": 10
+  },
+  "asof_date": "2026-11-08",
+  "monthly_rule": "THIRD_FRIDAY",
+  "provider_id": "yahoo_finance_option_chain",
+  "jurisdiction": "US",
+  "venue": "US_LISTED_OPTIONS",
+  "instrument_kind": "equity_option",
+  "publication_scope": "public_line_quote",
+  "strategies": {
+    "cc": {
+      "unavailable": "低於6%門檻，買權僅作報價觀察；不構成備兌買權建議"
+    },
+    "csp": {
+      "suggestions": [
+        {
+          "role": "CONSERVATIVE",
+          "strike": 95,
+          "bid": 0.55,
+          "ask": 0.65,
+          "limit_price": 0.6,
+          "delta": 0.266,
+          "delta_basis": "QUOTED_IV",
+          "premium_per_contract": 60.0,
+          "cash_required": 9500,
+          "annualized_yield": 0.192105,
+          "breakeven": 94.4,
+          "downside_buffer": 0.05
+        }
+      ],
+      "rights_status": "operator_accepted_unlicensed",
+      "provider_id": "yahoo_finance_option_chain",
+      "quote_basis": "delayed",
+      "timestamp": "2026-11-08T14:16:09Z"
+    },
+    "collar": {
+      "put": {
+        "strike": 90,
+        "bid": 0.25,
+        "ask": 0.3,
+        "limit_price": 0.28,
+        "delta": 0.183,
+        "delta_basis": "QUOTED_IV"
+      },
+      "items": [
+        {
+          "role": "CONSERVATIVE",
+          "call": {
+            "strike": 107.5,
+            "bid": 0.01,
+            "ask": 0.02,
+            "limit_price": 0.01,
+            "delta": 0.23,
+            "delta_basis": "QUOTED_IV"
+          },
+          "net_premium_per_share": -0.27,
+          "max_loss_per_share": 10.27,
+          "max_gain_per_share": 7.23,
+          "break_even": 100.27,
+          "worst_case_net_per_share": -0.29
+        }
+      ],
+      "rights_status": "operator_accepted_unlicensed",
+      "provider_id": "yahoo_finance_option_chain",
+      "quote_basis": "delayed",
+      "timestamp": "2026-11-08T14:16:09Z"
+    }
+  }
+}

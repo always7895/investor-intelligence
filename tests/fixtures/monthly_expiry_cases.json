@@ -26,8 +26,8 @@
       "2026-11-20",
       "2026-12-18"
     ],
-    "expected": "2026-11-20",
-    "rule": "THIRD_FRIDAY"
+    "expected": "2026-12-18",
+    "rule": "LATER_LISTED"
   },
   {
     "name": "expiry-day-before-close",
@@ -36,8 +36,8 @@
       "2026-11-20",
       "2026-12-18"
     ],
-    "expected": "2026-11-20",
-    "rule": "THIRD_FRIDAY"
+    "expected": "2026-12-18",
+    "rule": "LATER_LISTED"
   },
   {
     "name": "expiry-day-after-close",
@@ -98,8 +98,8 @@
       "2026-06-18",
       "2026-07-17"
     ],
-    "expected": "2026-06-18",
-    "rule": "HOLIDAY_SHIFT"
+    "expected": "2026-07-17",
+    "rule": "LATER_LISTED"
   },
   {
     "name": "holiday-shift-day-after-close",

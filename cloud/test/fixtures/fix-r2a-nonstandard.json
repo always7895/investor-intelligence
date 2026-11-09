@@ -1,0 +1,32 @@
+{
+  "ticker": "UNIT",
+  "strategy": "COVERED_CALL",
+  "expiry": "2026-12-11",
+  "dte": 33,
+  "spot": 100,
+  "currency": "USD",
+  "multiplier": 100,
+  "quote_basis": "delayed",
+  "timestamp": "2026-11-08T14:16:09Z",
+  "source": "Synthetic typed delayed quote",
+  "provenance": "https://example.org/typed",
+  "rights_status": "operator_accepted_unlicensed",
+  "asof_date": "2026-11-08",
+  "suggestions": [],
+  "monthly_nonstandard": true,
+  "provider_id": "yahoo_finance_option_chain",
+  "jurisdiction": "US",
+  "venue": "US_LISTED_OPTIONS",
+  "instrument_kind": "equity_option",
+  "publication_scope": "public_line_quote",
+  "quote_observation": {
+    "kind": "TWO_SIDED",
+    "strike": 110.0,
+    "bid": 0.3,
+    "ask": 0.32,
+    "last": null,
+    "annualized_yield": 0.033182,
+    "oi": 50,
+    "volume": 3
+  }
+}

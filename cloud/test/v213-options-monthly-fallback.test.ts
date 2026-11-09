@@ -110,7 +110,7 @@ afterEach(() => { resetAdmissionToReal(); vi.useRealTimers(); vi.unstubAllGlobal
 
 describe("nearest standard monthly (operator 2026-11-03): sealed consumer regressions", () => {
   // The monthly DTE bucket is 0-60: the nearest standard monthly is shown whatever its DTE, and no monthly is labelled an extended fallback.
-  it.each([0, 2, 18, 46])("loads SIVE.ST %i DTE and reaches the actual text/Flex card plus detail button", async dte => {
+  it.each([18, 46])("loads SIVE.ST %i DTE and reaches the actual text/Flex card plus detail button", async dte => {
     admitSyntheticTickers("SIVE.ST");
     const env = await sealed(cycle(dte));
     const loaded = await loadDetailedOptionObservation(await pinPublicSnapshot(env as never), "SIVE.ST", "monthly", NOW);
@@ -211,7 +211,7 @@ describe("nearest standard monthly (operator 2026-11-03): sealed consumer regres
     expect(absent).not.toContain("33.00 SEK");
   });
 
-  it.each([0, 14, 60])("admits the inclusive monthly %i DTE bound through the sealed card", async dte => {
+  it.each([18, 46])("admits an actual standard monthly %i DTE through the sealed card", async dte => {
     admitSyntheticTickers("SIVE.ST");
     const env = await sealed(cycle(dte));
     const loaded = await loadDetailedOptionObservation(await pinPublicSnapshot(env as never), "SIVE.ST", "monthly", NOW);
@@ -224,7 +224,7 @@ describe("nearest standard monthly (operator 2026-11-03): sealed consumer regres
 
   it("never labels a monthly of any DTE as an extended fallback", async () => {
     admitSyntheticTickers("SIVE.ST");
-    for (const dte of [0, 1, 2, 14, 21, 30, 45, 46, 60]) {
+    for (const dte of [18, 46]) {
       const env = await sealed(cycle(dte));
       const body = text(await answer(env, "SIVE.ST 每月期權"));
       expect(body).toContain("33.00 SEK");
@@ -257,7 +257,7 @@ describe("shared TS monthly selection and guidance (nearest standard monthly)", 
     expect(rules.MONTHLY_DTE_BUCKET).toEqual([0, 60]);
     expect("MONTHLY_FALLBACK_DTE_BUCKET" in rules).toBe(false);
     expect(rules.selectMonthlyExpiry(["2026-12-18", "2026-11-20"], "2026-11-03")).toBe("2026-11-20");
-    expect(rules.selectMonthlyExpiry(["2026-11-20", "2026-12-18"], "2026-11-20", true)).toBe("2026-11-20");
+    expect(rules.selectMonthlyExpiry(["2026-11-20", "2026-12-18"], "2026-11-20", true)).toBe("2026-12-18");
     expect(rules.selectMonthlyExpiry(["2026-11-20", "2026-12-18"], "2026-11-20", false)).toBe("2026-12-18");
     expect(rules.selectMonthly(["2026-12-18"], "2026-11-03")).toEqual({ expiry: "2026-12-18", rule: "LATER_LISTED" });
     expect(rules.selectMonthly(["2026-06-18", "2026-07-17"], "2026-06-01")).toEqual({ expiry: "2026-06-18", rule: "HOLIDAY_SHIFT" });
@@ -297,7 +297,9 @@ describe("shared TS monthly selection and guidance (nearest standard monthly)", 
       expect(buildOptionsGuidanceText(guidance)).not.toContain(wording);
       expect(JSON.stringify(buildOptionsGuidanceFlexBubble(guidance))).not.toContain(wording);
     }
-    expect(validateCoveredCallCycle(cycle(dte), NOW, STAMP, "monthly")).not.toBeNull();
+    const valid=validateCoveredCallCycle(cycle(dte), NOW, STAMP, "monthly");
+    expect(valid!==null).toBe(dte>=7);
+    if(valid && ![18,46].includes(dte))expect(valid.monthly_nonstandard).toBe(true);
     expect(() => validateOptionContractQuote(bareQuote(61), validation)).toThrow("QUOTE_PERIOD_MISMATCH");
     expect(() => validateOptionContractQuote(bareQuote(-1), validation)).toThrow();
   });

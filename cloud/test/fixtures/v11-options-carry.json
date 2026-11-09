@@ -86,15 +86,15 @@
         "monthly": {
           "ticker": "T00",
           "strategy": "COVERED_CALL",
-          "expiry": "2026-10-16",
-          "dte": 3,
+          "expiry": "2026-11-20",
+          "dte": 38,
           "spot": 100.0,
           "currency": "USD",
           "multiplier": 100,
           "quote_basis": "delayed",
           "timestamp": "2026-10-13T15:00:00Z",
           "source": "Yahoo Finance option chain (unofficial, delayed)",
-          "provenance": "https://finance.yahoo.com/quote/T00/options?date=2026-10-16; delta=Black-Scholes(quoted IV)",
+          "provenance": "https://finance.yahoo.com/quote/T00/options",
           "rights_status": "operator_accepted_unlicensed",
           "suggestions": [
             {
@@ -106,9 +106,9 @@
               "limit_price": 0.95,
               "premium_per_contract": 95.0,
               "period_yield": 0.0095,
-              "annualized_yield": 1.155833,
+              "annualized_yield": 0.09125,
               "upside_to_strike": 0.15,
-              "delta": 0.0,
+              "delta": 0.126,
               "delta_basis": "QUOTED_IV",
               "iv": 0.35,
               "oi": 120,
@@ -124,9 +124,9 @@
               "limit_price": 2.45,
               "premium_per_contract": 245.0,
               "period_yield": 0.0245,
-              "annualized_yield": 2.980833,
+              "annualized_yield": 0.235329,
               "upside_to_strike": 0.05,
-              "delta": 0.065,
+              "delta": 0.367,
               "delta_basis": "QUOTED_IV",
               "iv": 0.35,
               "oi": 300,
@@ -148,9 +148,9 @@
             "limit_price": 1.45,
             "premium_per_contract": 145.0,
             "period_yield": 0.0145,
-            "annualized_yield": 1.764167,
+            "annualized_yield": 0.139276,
             "upside_to_strike": 0.1,
-            "delta": 0.001,
+            "delta": 0.226,
             "delta_basis": "QUOTED_IV",
             "iv": 0.35,
             "oi": 200,
@@ -158,7 +158,7 @@
             "spread_pct": 0.069
           },
           "asof_date": "2026-10-13",
-          "monthly_rule": "THIRD_FRIDAY"
+          "monthly_rule": "LATER_LISTED"
         }
       },
       "T01": {
@@ -242,15 +242,15 @@
         "monthly": {
           "ticker": "T01",
           "strategy": "COVERED_CALL",
-          "expiry": "2026-10-16",
-          "dte": 3,
+          "expiry": "2026-11-20",
+          "dte": 38,
           "spot": 100.0,
           "currency": "USD",
           "multiplier": 100,
           "quote_basis": "delayed",
           "timestamp": "2026-10-13T15:00:00Z",
           "source": "Yahoo Finance option chain (unofficial, delayed)",
-          "provenance": "https://finance.yahoo.com/quote/T01/options?date=2026-10-16; delta=Black-Scholes(quoted IV)",
+          "provenance": "https://finance.yahoo.com/quote/T01/options",
           "rights_status": "operator_accepted_unlicensed",
           "suggestions": [
             {
@@ -262,9 +262,9 @@
               "limit_price": 0.95,
               "premium_per_contract": 95.0,
               "period_yield": 0.0095,
-              "annualized_yield": 1.155833,
+              "annualized_yield": 0.09125,
               "upside_to_strike": 0.15,
-              "delta": 0.0,
+              "delta": 0.126,
               "delta_basis": "QUOTED_IV",
               "iv": 0.35,
               "oi": 120,
@@ -280,9 +280,9 @@
               "limit_price": 2.45,
               "premium_per_contract": 245.0,
               "period_yield": 0.0245,
-              "annualized_yield": 2.980833,
+              "annualized_yield": 0.235329,
               "upside_to_strike": 0.05,
-              "delta": 0.065,
+              "delta": 0.367,
               "delta_basis": "QUOTED_IV",
               "iv": 0.35,
               "oi": 300,
@@ -304,9 +304,9 @@
             "limit_price": 1.45,
             "premium_per_contract": 145.0,
             "period_yield": 0.0145,
-            "annualized_yield": 1.764167,
+            "annualized_yield": 0.139276,
             "upside_to_strike": 0.1,
-            "delta": 0.001,
+            "delta": 0.226,
             "delta_basis": "QUOTED_IV",
             "iv": 0.35,
             "oi": 200,
@@ -314,7 +314,7 @@
             "spread_pct": 0.069
           },
           "asof_date": "2026-10-13",
-          "monthly_rule": "THIRD_FRIDAY"
+          "monthly_rule": "LATER_LISTED"
         }
       },
       "GOOD0": {
@@ -398,15 +398,15 @@
         "monthly": {
           "ticker": "GOOD0",
           "strategy": "COVERED_CALL",
-          "expiry": "2026-10-16",
-          "dte": 3,
+          "expiry": "2026-11-20",
+          "dte": 38,
           "spot": 100.0,
           "currency": "USD",
           "multiplier": 100,
           "quote_basis": "delayed",
           "timestamp": "2026-10-13T15:00:00Z",
           "source": "Yahoo Finance option chain (unofficial, delayed)",
-          "provenance": "https://finance.yahoo.com/quote/GOOD0/options?date=2026-10-16; delta=Black-Scholes(quoted IV)",
+          "provenance": "https://finance.yahoo.com/quote/GOOD0/options",
           "rights_status": "operator_accepted_unlicensed",
           "suggestions": [
             {
@@ -418,9 +418,9 @@
               "limit_price": 0.95,
               "premium_per_contract": 95.0,
               "period_yield": 0.0095,
-              "annualized_yield": 1.155833,
+              "annualized_yield": 0.09125,
               "upside_to_strike": 0.15,
-              "delta": 0.0,
+              "delta": 0.126,
               "delta_basis": "QUOTED_IV",
               "iv": 0.35,
               "oi": 120,
@@ -436,9 +436,9 @@
               "limit_price": 2.45,
               "premium_per_contract": 245.0,
               "period_yield": 0.0245,
-              "annualized_yield": 2.980833,
+              "annualized_yield": 0.235329,
               "upside_to_strike": 0.05,
-              "delta": 0.065,
+              "delta": 0.367,
               "delta_basis": "QUOTED_IV",
               "iv": 0.35,
               "oi": 300,
@@ -460,9 +460,9 @@
             "limit_price": 1.45,
             "premium_per_contract": 145.0,
             "period_yield": 0.0145,
-            "annualized_yield": 1.764167,
+            "annualized_yield": 0.139276,
             "upside_to_strike": 0.1,
-            "delta": 0.001,
+            "delta": 0.226,
             "delta_basis": "QUOTED_IV",
             "iv": 0.35,
             "oi": 200,
@@ -470,7 +470,7 @@
             "spread_pct": 0.069
           },
           "asof_date": "2026-10-13",
-          "monthly_rule": "THIRD_FRIDAY"
+          "monthly_rule": "LATER_LISTED"
         }
       }
     }
@@ -559,15 +559,15 @@
         "monthly": {
           "ticker": "T00",
           "strategy": "COVERED_CALL",
-          "expiry": "2026-10-16",
-          "dte": 3,
+          "expiry": "2026-11-20",
+          "dte": 38,
           "spot": 100.0,
           "currency": "USD",
           "multiplier": 100,
           "quote_basis": "previous_session_last",
           "timestamp": "2026-10-13T15:00:00Z",
           "source": "Yahoo Finance option chain (unofficial, delayed)",
-          "provenance": "https://finance.yahoo.com/quote/T00/options?date=2026-10-16; delta=Black-Scholes(quoted IV)",
+          "provenance": "https://finance.yahoo.com/quote/T00/options",
           "rights_status": "operator_accepted_unlicensed",
           "suggestions": [
             {
@@ -579,9 +579,9 @@
               "limit_price": 0.95,
               "premium_per_contract": 95.0,
               "period_yield": 0.0095,
-              "annualized_yield": 1.155833,
+              "annualized_yield": 0.09125,
               "upside_to_strike": 0.15,
-              "delta": 0.0,
+              "delta": 0.126,
               "delta_basis": "QUOTED_IV",
               "iv": 0.35,
               "oi": 120,
@@ -597,9 +597,9 @@
               "limit_price": 2.45,
               "premium_per_contract": 245.0,
               "period_yield": 0.0245,
-              "annualized_yield": 2.980833,
+              "annualized_yield": 0.235329,
               "upside_to_strike": 0.05,
-              "delta": 0.065,
+              "delta": 0.367,
               "delta_basis": "QUOTED_IV",
               "iv": 0.35,
               "oi": 300,
@@ -621,9 +621,9 @@
             "limit_price": 1.45,
             "premium_per_contract": 145.0,
             "period_yield": 0.0145,
-            "annualized_yield": 1.764167,
+            "annualized_yield": 0.139276,
             "upside_to_strike": 0.1,
-            "delta": 0.001,
+            "delta": 0.226,
             "delta_basis": "QUOTED_IV",
             "iv": 0.35,
             "oi": 200,
@@ -631,7 +631,7 @@
             "spread_pct": 0.069
           },
           "asof_date": "2026-10-13",
-          "monthly_rule": "THIRD_FRIDAY"
+          "monthly_rule": "LATER_LISTED"
         }
       },
       "T01": {
@@ -715,15 +715,15 @@
         "monthly": {
           "ticker": "T01",
           "strategy": "COVERED_CALL",
-          "expiry": "2026-10-16",
-          "dte": 3,
+          "expiry": "2026-11-20",
+          "dte": 38,
           "spot": 100.0,
           "currency": "USD",
           "multiplier": 100,
           "quote_basis": "previous_session_last",
           "timestamp": "2026-10-13T15:00:00Z",
           "source": "Yahoo Finance option chain (unofficial, delayed)",
-          "provenance": "https://finance.yahoo.com/quote/T01/options?date=2026-10-16; delta=Black-Scholes(quoted IV)",
+          "provenance": "https://finance.yahoo.com/quote/T01/options",
           "rights_status": "operator_accepted_unlicensed",
           "suggestions": [
             {
@@ -735,9 +735,9 @@
               "limit_price": 0.95,
               "premium_per_contract": 95.0,
               "period_yield": 0.0095,
-              "annualized_yield": 1.155833,
+              "annualized_yield": 0.09125,
               "upside_to_strike": 0.15,
-              "delta": 0.0,
+              "delta": 0.126,
               "delta_basis": "QUOTED_IV",
               "iv": 0.35,
               "oi": 120,
@@ -753,9 +753,9 @@
               "limit_price": 2.45,
               "premium_per_contract": 245.0,
               "period_yield": 0.0245,
-              "annualized_yield": 2.980833,
+              "annualized_yield": 0.235329,
               "upside_to_strike": 0.05,
-              "delta": 0.065,
+              "delta": 0.367,
               "delta_basis": "QUOTED_IV",
               "iv": 0.35,
               "oi": 300,
@@ -777,9 +777,9 @@
             "limit_price": 1.45,
             "premium_per_contract": 145.0,
             "period_yield": 0.0145,
-            "annualized_yield": 1.764167,
+            "annualized_yield": 0.139276,
             "upside_to_strike": 0.1,
-            "delta": 0.001,
+            "delta": 0.226,
             "delta_basis": "QUOTED_IV",
             "iv": 0.35,
             "oi": 200,
@@ -787,7 +787,7 @@
             "spread_pct": 0.069
           },
           "asof_date": "2026-10-13",
-          "monthly_rule": "THIRD_FRIDAY"
+          "monthly_rule": "LATER_LISTED"
         }
       },
       "GOOD0": {
@@ -795,7 +795,7 @@
           "unavailable": "2026-10-16 到期的價外買權中，沒有 Delta 不超過 0.20 且有雙邊報價的履約價"
         },
         "monthly": {
-          "unavailable": "2026-10-16 到期的價外買權中，沒有 Delta 不超過 0.20 且有雙邊報價的履約價"
+          "unavailable": "2026-11-20 到期的價外買權中，沒有 Delta 不超過 0.20 且有雙邊報價的履約價"
         }
       }
     }

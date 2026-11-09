@@ -11,14 +11,17 @@ WEEKLY (calendar week, exchange local, Monday-Sunday):
   EARLIEST listed expiry of the NEXT calendar week (Monday..Sunday after). Nothing beyond the next week is ever a weekly.
 - Expiry day (DTE 0) counts only while the venue's regular session has not closed (EXPIRY_DAY_CLOSE_LOCAL_MINUTES).
 
-MONTHLY (operator 2026-11-03: list the nearest monthly, no minimum DTE, no yield floor): the NEAREST standard monthly expiry on or
-after the as-of date. A standard monthly is, per calendar month, the listed expiry on that month's third Friday; when the chain
-lists none on that day (an exchange holiday), the LATEST listed expiry of that Monday-Friday week before the Friday. As-of
-2026-11-03 therefore selects 2026-11-20 (DTE 17), and a viewer on 2026-11-20 before the close gets DTE 0. The as-of day counts only
-while its regular session is open (the weekly's expiry-day rule); afterwards, and when the current month has no listed monthly, the
-earliest later standard monthly is taken (rule LATER_LISTED). Only monthlies within MONTHLY_DTE_BUCKET (0-60 DTE) are considered
-(the validators' outer bound). No other expiry (a weekly, or any date that is not that month's standard monthly) is ever a monthly,
-and no minimum DTE is required.
+MONTHLY (FIX-R2A owner decision, 2026-11-09): choose the nearest actually
+listed STANDARD monthly whose exchange-local expiry is at least 7 calendar days
+after observation, then its successor if the nearest source chain cannot be
+read/verified. A standard month is the third Friday or a verified venue-specific
+standard shift. A weekly is never silently labelled a standard month. When the
+provider cannot supply either standard series, a source-verified 7-60DTE
+contract may appear only as explicitly labelled 非標準月到期, informational
+and not an actionable covered-call/CSP/collar recommendation. The
+MONTHLY_DTE_BUCKET=(0,60) remains an outer calendar/validator bound;
+the strategy selection floor is STANDARD_MONTHLY_MIN_DTE=7. There is no
+generic 21-45-day selection window.
 
 ANNUALIZATION for tiny DTE: days = max(dte, 1) (MIN_ANNUALIZATION_DAYS). A same-day or next-day expiry therefore never
 divides by zero and is never annualized over less than one day; a cycle with dte <= SHORT_DTE_NOTICE_MAX is labelled on the
@@ -39,6 +42,8 @@ from typing import Any, Iterable, Sequence
 
 WEEKLY_DTE_BUCKET = (0, 14)      # outer validator tolerance; the exact rule is the calendar-week rule above
 MONTHLY_DTE_BUCKET = (0, 60)     # outer bound only (validators, fetch windows); the exact rule is the standard-monthly rule above
+STANDARD_MONTHLY_MIN_DTE = 7   # G01: enforce standard month >= 7 days ahead
+STANDARD_MONTHLY_MIN_DTE = 7   # G01: enforce standard month >= 7 days ahead
 MONTHLY_TARGET_DTE = 30          # identifies the monthly period in a policy file; no longer a selection target
 # Which branch of the monthly rule produced the expiry (recorded in the cycle as monthly_rule; additive, old readers ignore it).
 MONTHLY_RULE_THIRD_FRIDAY = "THIRD_FRIDAY"      # the listed expiry on the third Friday of the nearest eligible month
@@ -179,7 +184,8 @@ def select_monthly(expiries: Iterable[date], as_of: date, *, expiry_day_open_now
     """The nearest standard monthly on or after as_of (see MONTHLY above). The expiry day (as_of itself) counts only while
     expiry_day_open_now. None when no standard monthly within MONTHLY_DTE_BUCKET is listed."""
     listed = {day for day in expiries if isinstance(day, date) and not isinstance(day, datetime)}
-    expected: tuple[int, int] | None = None  # the first month whose nominal third Friday is still ahead
+    earliest = as_of + timedelta(days=STANDARD_MONTHLY_MIN_DTE)
+    expected: tuple[int, int] | None = None  # first month still ahead; skipped sub-7DTE month yields LATER_LISTED
     for offset in range(4):  # as_of plus 60 days spans at most four calendar months
         month_index = as_of.year * 12 + as_of.month - 1 + offset
         year, month = divmod(month_index, 12)
@@ -191,7 +197,7 @@ def select_monthly(expiries: Iterable[date], as_of: date, *, expiry_day_open_now
         if found is None:
             continue
         day, rule = found
-        if day < as_of or (day == as_of and not expiry_day_open_now):
+        if day < earliest:
             continue
         if not MONTHLY_DTE_BUCKET[0] <= (day - as_of).days <= MONTHLY_DTE_BUCKET[1]:
             return None

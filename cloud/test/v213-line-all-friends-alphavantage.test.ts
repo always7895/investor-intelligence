@@ -2,6 +2,7 @@
 // Real caller: the signed webhook through the production Worker (processLineEvent / the friend lane), a sealed snapshot with an
 // Alpha Vantage sourced spot row and Yahoo sourced rows. Synthetic values only, no network.
 /// <reference types="node" />
+import {standardMonthlyFixture} from "./helpers/r2a-standard-monthly";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { QUOTES_KEY, OPTIONS_KEY } from "../src/v213/market-observations";
 import { ALPHA_VANTAGE_SOURCE_LABEL, isAlphaVantageProvenance, withAlphaVantageOwnerOnly } from "../src/v213/alpha-vantage-viewer";
@@ -38,7 +39,7 @@ afterEach(() => {
 const RUN = "20261011T040000Z-abcdefabcde2";
 const now = Date.now();
 const stamp = new Date(now - 30 * 60_000).toISOString().replace(/\.\d{3}Z$/, "Z");
-const expiry = new Date(now + 21 * 86400_000).toISOString().slice(0, 10);
+const {expiry,dte} = standardMonthlyFixture(now);
 const FEEDS = [
   { id: "twse-listed", url: "https://openapi.twse.com.tw/v1/opendata/t187ap03_L", retrieved_at: stamp, sha256: "c".repeat(64), rows: 1 },
   { id: "lse-aim", url: "https://api.londonstockexchange.com/api/v1/components/refresh", retrieved_at: stamp, sha256: "d".repeat(64), rows: 1 },
@@ -61,11 +62,11 @@ async function sha(text: string): Promise<string> {
 
 function cycle(ticker: string) {
   return {
-    ticker, strategy: "COVERED_CALL", expiry, dte: 21, spot: 300, currency: "USD", multiplier: 100, quote_basis: "delayed",
+    ticker, strategy: "COVERED_CALL", expiry, dte, spot: 300, currency: "USD", multiplier: 100, quote_basis: "delayed",
     timestamp: stamp, source: "Yahoo Finance option chain (unofficial, delayed)", provenance: `https://finance.yahoo.com/quote/${ticker}/options`,
     rights_status: "unadmitted_third_party",
     suggestions: [{ role: "HIGH_STRIKE", strike: 330, bid: 2.0, ask: 2.1, mid: 2.05, limit_price: 2.05, premium_per_contract: 205,
-      period_yield: 2.05 / 300, annualized_yield: 2.05 / 300 * 365 / 21, upside_to_strike: 330 / 300 - 1, delta: 0.18, delta_basis: "QUOTED_IV",
+      period_yield: 2.05 / 300, annualized_yield: 2.05 / 300 * 365 / dte, upside_to_strike: 330 / 300 - 1, delta: 0.18, delta_basis: "QUOTED_IV",
       iv: 0.4, oi: 900, volume: 50, spread_pct: 0.0488 }],
   };
 }

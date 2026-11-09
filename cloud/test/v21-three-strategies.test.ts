@@ -306,12 +306,12 @@ describe("V21 card", () => {
     const overview = joined(list[0]);
     expect(overview.match(/無資料/g)).toHaveLength(2);
     const disclosure = joined(list.at(-1));
-    expect(disclosure).toContain("現金擔保賣權（備足現金賣出賣權）】無資料：此筆為舊版資料，未含此策略報價");
-    expect(disclosure).toContain("領口策略（持股＋買保護賣權＋賣買權）】無資料：此筆為舊版資料，未含此策略報價");
+    expect(disclosure).toContain("現金擔保賣權（備足現金賣出賣權）】無資料：封存的此到期日資料未包含可核驗賣權鏈；無法計算，並不代表未上市");
+    expect(disclosure).toContain("領口策略（持股＋買保護賣權＋賣買權）】無資料：封存的此到期日資料未包含可核驗賣權鏈；無法計算，並不代表未上市");
     expect(overview).toContain("備兌買權");
     expect(joined(list[1])).toContain("建議一：高履約價（不易被賣掉）");
     const text = joined(render(old, "text"));
-    expect(text.match(/無資料：此筆為舊版資料，未含此策略報價/g)).toHaveLength(2);
+    expect(text.match(/無資料：封存的此到期日資料未包含可核驗賣權鏈；無法計算，並不代表未上市/g)).toHaveLength(2);
     expect(text).toContain("備兌買權（持股賣出買權）");
   });
 

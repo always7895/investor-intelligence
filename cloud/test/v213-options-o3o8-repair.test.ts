@@ -55,11 +55,11 @@ async function answer(f: Awaited<ReturnType<typeof environment>>, query: string)
 }
 function diagnosticCycle(ticker = "SIVE.ST", currency: "USD" | "SEK" = "USD", jurisdiction?: string): CoveredCallCycle {
   return { ticker, currency, ...(jurisdiction === undefined ? {} : { jurisdiction }), strategy: "COVERED_CALL",
-    expiry: "2026-10-06", dte: 21, spot: 300, multiplier: 100, quote_basis: "delayed",
+    expiry: "2026-10-16", dte: 31, spot: 300, multiplier: 100, quote_basis: "delayed",
     timestamp: fixture.stamp, source: "Synthetic delayed observation", provenance: "https://synthetic.invalid/options",
     rights_status: "unadmitted_third_party", suggestions: [{
       role: "HIGH_STRIKE", strike: 330, bid: 2, ask: 2.1, mid: 2.05, limit_price: 2.05,
-      premium_per_contract: 205, period_yield: 2.05 / 300, annualized_yield: 2.05 / 300 * 365 / 21,
+      premium_per_contract: 205, period_yield: 2.05 / 300, annualized_yield: 2.05 / 300 * 365 / 31,
       upside_to_strike: 330 / 300 - 1, delta: 0.18, delta_basis: "QUOTED_IV", iv: 0.4,
       oi: 900, volume: 50, spread_pct: 0.0488,
     }] };

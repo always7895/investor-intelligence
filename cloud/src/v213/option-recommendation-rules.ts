@@ -138,6 +138,8 @@ export function monthlyRuleConsistent(expiry: string, rule: string): boolean {
   return rule === "THIRD_FRIDAY" ? onFriday : rule === "HOLIDAY_SHIFT" ? shifted : onFriday || shifted;
 }
 
+export const STANDARD_MONTHLY_MIN_DTE = 7;
+
 /** The listed standard monthly of a calendar month: the third Friday, else the latest listed expiry of that week's Monday-Thursday. */
 function standardMonthly(listed: ReadonlySet<string>, year: number, month: number): { expiry: string; rule: MonthlyRule } | null {
   const friday = thirdFridayMs(year, month);
@@ -150,14 +152,17 @@ function standardMonthly(listed: ReadonlySet<string>, year: number, month: numbe
   return latest === null ? null : { expiry: latest, rule: "HOLIDAY_SHIFT" };
 }
 
-/** The monthly rule on listed expiry dates: the nearest standard monthly on or after asOf. The expiry day (asOf itself) counts only
- * while expiryDayOpenNow. Null when no standard monthly within MONTHLY_DTE_BUCKET is listed. Twin of select_monthly in Python. */
+/** Nearest source-listed standard monthly at least seven exchange-local days ahead.
+ * An expiry 0-6 DTE is not a monthly recommendation. If no standard listing
+ * exists, the producer/Worker preserves source-backed, explicitly NONSTANDARD
+ * observations separately; this selector never returns a weekly as standard. */
 export function selectMonthly(expiries: readonly string[], asOf: string, expiryDayOpenNow = true): { expiry: string; rule: MonthlyRule } | null {
   const a = dayMs(asOf);
   if (a === null) return null;
   const listed = new Set(expiries.filter(day => dayMs(day) !== null));
   const start = new Date(a);
-  let expected: string | null = null;  // the first month whose nominal third Friday is still ahead
+  const earliest = a + STANDARD_MONTHLY_MIN_DTE * DAY_MS;
+  let expected: string | null = null;  // skipped sub-7DTE month is LATER_LISTED
   for (let offset = 0; offset < 4; offset++) {  // asOf plus 60 days spans at most four calendar months
     const monthIndex = start.getUTCFullYear() * 12 + start.getUTCMonth() + offset;
     const year = Math.floor(monthIndex / 12), month = (monthIndex % 12) + 1;
@@ -166,7 +171,7 @@ export function selectMonthly(expiries: readonly string[], asOf: string, expiryD
     const found = standardMonthly(listed, year, month);
     if (found === null) continue;
     const e = dayMs(found.expiry)!;
-    if (e < a || (e === a && !expiryDayOpenNow)) continue;
+    if (e < earliest) continue;
     const dte = (e - a) / DAY_MS;
     if (dte < MONTHLY_DTE_BUCKET[0] || dte > MONTHLY_DTE_BUCKET[1]) return null;
     return { expiry: found.expiry, rule: expected === `${year}-${month}` ? found.rule : "LATER_LISTED" };

@@ -10,7 +10,7 @@ const cases = JSON.parse(readFileSync(new URL("../../tests/fixtures/monthly_expi
 interface WindowCase { dte: number; period: "weekly" | "monthly"; expected: boolean }
 interface WindowObservation {
   producer_available: boolean; validator_available: boolean; produced_validated: boolean | null;
-  produced: unknown; produced_at: string; probe: unknown;
+  produced: unknown; produced_at: string; probe: unknown; probe_at: string;
 }
 const windowCases = JSON.parse(readFileSync(new URL("../../tests/fixtures/options_window_cases.json", import.meta.url), "utf8")) as WindowCase[];
 let pythonWindows: WindowObservation[];
@@ -91,7 +91,7 @@ describe("producer / Python validator / Worker window admission parity", () => {
     if (observed === undefined) throw new Error(`Missing Python observation for ${row.period} at ${row.dte} DTE`);
     expect(observed.producer_available).toBe(row.expected);
     expect(observed.validator_available).toBe(row.expected);
-    expect(validateCoveredCallCycle(observed.probe, Date.parse(capturedAt), capturedAt, row.period) !== null).toBe(row.expected);
+    expect(validateCoveredCallCycle(observed.probe, Date.parse(observed.probe_at), observed.probe_at, row.period) !== null).toBe(row.expected);
     if (row.expected) {
       expect(observed.produced_validated).toBe(true);
       expect(validateCoveredCallCycle(observed.produced, Date.parse(observed.produced_at), observed.produced_at, row.period)).not.toBeNull();

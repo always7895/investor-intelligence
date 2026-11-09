@@ -44,7 +44,7 @@ function admitSyntheticTickers(...tickers: string[]): void {
 const RUN = "20260927T040000Z-abcdefabcde2";
 const FIXED_NOW = new Date("2026-09-30T12:00:00.000Z").getTime();
 const stamp = new Date(FIXED_NOW - 30 * 60_000).toISOString().replace(/\.\d{3}Z$/, "Z");
-const expiry = new Date(FIXED_NOW + 21 * 86400_000).toISOString().slice(0, 10);
+const expiry = new Date(FIXED_NOW + 16 * 86400_000).toISOString().slice(0, 10); // Fri 2026-10-16, standard monthly
 const FEEDS = [
   { id: "twse-listed", url: "https://openapi.twse.com.tw/v1/opendata/t187ap03_L", retrieved_at: stamp, sha256: "c".repeat(64), rows: 1 },
   { id: "lse-aim", url: "https://api.londonstockexchange.com/api/v1/components/refresh", retrieved_at: stamp, sha256: "d".repeat(64), rows: 1 },
@@ -67,11 +67,11 @@ async function sha(text: string): Promise<string> {
 }
 
 const TSM_MONTHLY = {
-  ticker: "TSM", strategy: "COVERED_CALL", expiry, dte: 21, spot: 300, currency: "USD", multiplier: 100, quote_basis: "delayed",
+  ticker: "TSM", strategy: "COVERED_CALL", expiry, dte: 16, spot: 300, currency: "USD", multiplier: 100, quote_basis: "delayed",
   timestamp: stamp, source: "Yahoo Finance option chain (unofficial, delayed)", provenance: "https://finance.yahoo.com/quote/TSM/options",
   rights_status: "unadmitted_third_party", suggestions: [{
     role: "HIGH_STRIKE", strike: 330, bid: 2.0, ask: 2.1, mid: 2.05, limit_price: 2.05,
-    premium_per_contract: 205, period_yield: 2.05 / 300, annualized_yield: 2.05 / 300 * 365 / 21, upside_to_strike: 330 / 300 - 1,
+    premium_per_contract: 205, period_yield: 2.05 / 300, annualized_yield: 2.05 / 300 * 365 / 16, upside_to_strike: 330 / 300 - 1,
     delta: 0.18, delta_basis: "QUOTED_IV", iv: 0.4, oi: 900, volume: 50, spread_pct: 0.0488,
   }],
 };

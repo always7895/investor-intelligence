@@ -72,11 +72,11 @@ def _cycle(ticker: str, dte: int, expiry: str, timestamp: str = BASE_ROW_STAMP) 
 
 
 def _base_tsm() -> dict:
-    return _cycle("TSM", 21, _expiry(21))
+    return _cycle("TSM", 16, _expiry(16))  # third Friday 2026-10-16
 
 
 def _good(timestamp: str = BASE_ROW_STAMP) -> dict:
-    return _cycle("GOOD", 21, _expiry(21), timestamp=timestamp)
+    return _cycle("GOOD", 16, _expiry(16), timestamp=timestamp)
 
 
 @contextmanager

@@ -28,6 +28,16 @@ def row(strike, bid, ask, delta=None):
     return {"strike": strike, "bid": bid, "ask": ask, "delta": delta, "iv": None, "oi": 10, "volume": 1}
 
 
+def fixture_standard_monthly(as_of: date) -> tuple[str,int]:
+    # Synthetic test date only, no network, matching the producer's standard-monthly rule.
+    months=[(as_of.year*12+as_of.month-1+i) for i in range(4)]
+    expiries=[builder.rules.third_friday(m//12,(m%12)+1) for m in months]
+    chosen=builder.rules.select_monthly(expiries,as_of)
+    if chosen is None:
+        raise AssertionError("FIXTURE_NO_STANDARD_MONTHLY")
+    return chosen.expiry.isoformat(),(chosen.expiry-as_of).days
+
+
 def last_trade(day) -> str:
     """The Nasdaq US chain's data.lastTrade text for an as-of day (V19 freshness guard)."""
     return f"LAST TRADE: $100.00 (AS OF {day.strftime('%b').upper()} {day.day}, {day.year})"
@@ -559,8 +569,8 @@ class FallbackTests(unittest.TestCase):
 
 class SealingTests(unittest.TestCase):
     def cycle(self, now):
-        expiry = (now + timedelta(days=27)).date().isoformat()
-        return builder.cycle_result("NVDA", expiry, 27, 225.0, [row(245, 1.5, 1.55, 0.17), row(235, 3.65, 3.8, 0.33)], currency="USD",
+        expiry, dte = fixture_standard_monthly(now.date())
+        return builder.cycle_result("NVDA", expiry, dte, 225.0, [row(245, 1.5, 1.55, 0.17), row(235, 3.65, 3.8, 0.33)], currency="USD",
                                     source="Yahoo", provenance="https://finance.yahoo.com/x", rights="unadmitted_third_party",
                                     stamp=now.strftime("%Y-%m-%dT%H:%M:%SZ"))
 
@@ -729,21 +739,21 @@ class OptionPresessionAcceptanceTests(unittest.TestCase):
             base_t = datetime.strptime(generated_at, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
         except ValueError:
             base_t = datetime(2026, 9, 28, 5, 0, tzinfo=timezone.utc)
-        expiry = (base_t + timedelta(days=25)).date().isoformat()
+        expiry, dte = fixture_standard_monthly(base_t.date())
         quote_asof = asof or generated_at
         if status_unavailable:
             opt_entry = {"monthly": {"unavailable": "prior unavailable"}}
         else:
             opt_entry = {
                 "monthly": {
-                    "ticker": "PRIOR", "strategy": "COVERED_CALL", "expiry": expiry, "dte": 25,
+                     "ticker": "PRIOR", "strategy": "COVERED_CALL", "expiry": expiry, "dte": dte,
                     "spot": price, "currency": "USD", "multiplier": 100, "quote_basis": "delayed",
                     "timestamp": generated_at, "source": "Yahoo", "provenance": "https://example.com/prior",
                     "rights_status": "unadmitted_third_party",
                     "suggestions": [{
                         "role": "HIGH_STRIKE", "strike": 140.0, "bid": 2.0, "ask": 2.1, "mid": 2.05,
                         "limit_price": 2.05, "premium_per_contract": 205.0, "period_yield": 2.05 / price,
-                        "annualized_yield": 2.05 / price * 365 / 25, "upside_to_strike": 140.0 / price - 1,
+                         "annualized_yield": 2.05 / price * 365 / dte, "upside_to_strike": 140.0 / price - 1,
                         "delta": 0.15, "delta_basis": "QUOTE_IMPLIED", "iv": 0.45, "oi": 50, "volume": 20, "spread_pct": 0.0488
                     }]
                 }
@@ -815,7 +825,7 @@ class OptionPresessionAcceptanceTests(unittest.TestCase):
             self.assertEqual(data["venues"]["STOCKHOLM"], {"read": 1, "healthy": 1})
             self.assertEqual(data["affected_venues"], ["US"])
             self.assertEqual(data["quotes"], 12)
-            self.assertEqual(data["available_cycles"], 2)  # 1 from US_0 monthly, 1 from SIVE.ST monthly
+            self.assertEqual(data["available_cycles"], 12)  # 11 public observations (10 marked no two-sided) + one Nordic, not executable strategies
             self.assertTrue(data["previous_file_present"])
 
             # Verify target file is byte-for-byte and mtime identical
@@ -958,7 +968,8 @@ class OptionPresessionAcceptanceTests(unittest.TestCase):
         sys.modules["yfinance"] = FakeYFinanceModule({"TEST_SYM": no_floor})
         listed = builder.us_options("TEST_SYM", spot, self.TODAY, self.STAMP)["monthly"]
         self.assertNotIn("unavailable", listed)
-        self.assertLess(listed["suggestions"][0]["annualized_yield"], 0.02)
+        self.assertLess(listed["quote_observation"]["annualized_yield"], 0.02)
+        self.assertEqual(listed["suggestions"], [])  # the low bid is an observation, not a sell recommendation
         for test_row in [row_itm, row_high_delta, row_wide_spread]:
             ticker = FakeTicker("TEST_SYM", price=spot, options=[expiry_date], chains={expiry_date: [test_row]})
             sys.modules["yfinance"] = FakeYFinanceModule({"TEST_SYM": ticker})
@@ -966,7 +977,9 @@ class OptionPresessionAcceptanceTests(unittest.TestCase):
             read_h = [x for x in res.health if x["read"]]
             self.assertEqual(len(read_h), 1)
             self.assertTrue(read_h[0]["two_sided"])  # Strategy-independent: quote is two-sided!
-            self.assertIn("unavailable", res["monthly"])
+            # Quoted OTM calls may be displayed for transparency, but none qualifies as a strategy.
+            self.assertTrue("unavailable" in res["monthly"] or res["monthly"].get("quote_observation"))
+            self.assertFalse(res["monthly"].get("suggestions"))
 
         # Integrated check: 12 symbols with two-sided quotes failing strategy produce status OK, not failure
         with tempfile.TemporaryDirectory() as tmp:
@@ -998,7 +1011,7 @@ class OptionPresessionAcceptanceTests(unittest.TestCase):
             self.assertEqual(h["status"], "EXPIRY_LIST_ERROR")
             self.assertFalse(h["read"])
             self.assertIsNone(h["expiry"])
-            self.assertIn("Yahoo Finance 期權到期日清單", res_exp_err[h["cycle"]]["unavailable"])
+            self.assertIn("到期日清單讀取失敗", res_exp_err[h["cycle"]]["unavailable"])
 
         # 2. Yahoo successfully decoded empty expiry response: ticker.options == []
         yf_mod = FakeYFinanceModule({"EMPTY_EXP": FakeTicker("EMPTY_EXP", options=[])})
@@ -1034,7 +1047,7 @@ class OptionPresessionAcceptanceTests(unittest.TestCase):
         sys.modules["yfinance"] = yf_mod
         res_empty_ch = builder.us_options("EMPTY_CH", 100.0, self.TODAY, self.STAMP)
         h_m2 = next(x for x in res_empty_ch.health if x["cycle"] == "monthly")
-        self.assertEqual(h_m2["status"], "EMPTY")
+        self.assertEqual(h_m2["status"], "EMPTY_RESPONSE")  # source returned no contract rows at all
         self.assertFalse(h_m2["read"])
         self.assertEqual(h_m2["expiry"], "2026-10-16")
 
@@ -1842,7 +1855,7 @@ class NonUsTypedEvidenceTests(unittest.TestCase):
         futures_only = self.nordic([self.call(16, fullName="SIVE 16OCT26 FUTC", strikePrice="0.00", assetClass="FUTURES_FORWARDS")])
         self.assertIn("無可用之買權紀錄；是否上市未確認", futures_only["monthly"]["unavailable"])
         only_malformed = self.nordic([None, 5, "x", [], {"assetClass": "OPTIONS", "fullName": None}])
-        self.assertIn("買權資料無法解析；不推斷是否上市", only_malformed["monthly"]["unavailable"])
+        self.assertIn("未能同時核驗", only_malformed["monthly"]["unavailable"])
         self.assertNotIn("未確認", only_malformed["monthly"]["unavailable"])
         mixed = self.nordic([None, "x", self.call(16)])
         self.assertNotIn("unavailable", mixed["monthly"], "a valid chain survives malformed siblings")
@@ -1867,9 +1880,11 @@ class NonUsTypedEvidenceTests(unittest.TestCase):
         self.assertEqual({h["status"] for h in mixed_terms.health if h["cycle"] == "monthly"}, {"TERMS_REFUSED"})
         standard_beside_bad = self.nordic([self.call(16), self.call(51, contractSize="50")])
         self.assertNotIn("unavailable", standard_beside_bad["monthly"])
-        no_monthly = self.nordic([self.call(23), self.call(30)])  # 2026-10-23 and 2026-10-30 are not standard monthlies
-        self.assertIn("所列到期無標準月選（第三個星期五）", no_monthly["monthly"]["unavailable"])
-        self.assertEqual({h["status"] for h in no_monthly.health if h["cycle"] == "monthly"}, {"NO_EXPIRY"})
+        no_monthly = self.nordic([self.call(23), self.call(30)])  # only non-standard expiry dates
+        self.assertEqual(no_monthly["monthly"]["expiry"], "2026-10-23")
+        self.assertIs(no_monthly["monthly"]["monthly_nonstandard"], True)
+        self.assertEqual(no_monthly["monthly"]["suggestions"], [])
+        self.assertEqual({h["status"] for h in no_monthly.health if h["cycle"] == "monthly"}, {"READ"})
 
     def test_out_of_window_diagnostics_list_at_most_two_distinct_nearest_expiries(self):
         result = self.nordic([self.call(day) for day in (80, 62, 61, 63, 61)])
@@ -1910,7 +1925,12 @@ class NonUsTypedEvidenceTests(unittest.TestCase):
             self.assertEqual(weekly, 1 <= dte <= 11, f"weekly {dte}")
             # a single listed expiry is a monthly only when it is a standard monthly: 2026-10-16 (16 DTE) and 2026-11-20 (51 DTE), or, when the
             # third Friday itself is not listed, the Monday-Thursday of its week (2026-10-12..10-15, 12-15 DTE)
-            self.assertEqual(monthly, dte in (12, 13, 14, 15, 16, 51), f"monthly {dte}")
+            # Any source-backed 7-60DTE expiry retains a dated monthly LINE;
+            # only the standard monthly itself may become an actionable strategy.
+            self.assertEqual(monthly, 7 <= dte <= 60, f"monthly {dte}")
+            if monthly and dte not in (12, 13, 14, 15, 16, 51):
+                self.assertIs(out["monthly"]["monthly_nonstandard"], True)
+                self.assertEqual(out["monthly"]["suggestions"], [])
             for cycle in ("weekly", "monthly"):
                 if "unavailable" not in out[cycle]:
                     self.assertEqual(out[cycle]["ticker"], "SIVE.ST")
@@ -1982,7 +2002,7 @@ class NonUsTypedEvidenceTests(unittest.TestCase):
                 out = builder.nordic_options("VOLV-B.ST", "VOLV-B", 260.0, date(2026, 9, 28), self.STAMP, "TX100", spot_currency="SEK")
             finally:
                 builder.http_json = saved
-            self.assertIn("買權資料無法解析；不推斷是否上市", out["weekly"]["unavailable"], tag)
+            self.assertIn("未能同時核驗", out["weekly"]["unavailable"], tag)
             self.assertFalse(any(h["read"] for h in out.health), tag)
 
     def test_strike_and_symbol_decimals_are_compared_exactly_not_within_a_float_tolerance(self):
@@ -2013,7 +2033,7 @@ class NonUsTypedEvidenceTests(unittest.TestCase):
             if symbol is None:
                 del row["symbol"]
             out = self.nordic([row])
-            self.assertIn("買權資料無法解析；不推斷是否上市", out["monthly"]["unavailable"], label)
+            self.assertIn("未能同時核驗", out["monthly"]["unavailable"], label)
             self.assertFalse(any(h["read"] for h in out.health), label)
 
     def test_the_retained_weekly_volvb_shape_is_a_proven_listing_and_an_eligible_weekly_chain(self):
@@ -2043,16 +2063,19 @@ class NonUsTypedEvidenceTests(unittest.TestCase):
             ticker = types.SimpleNamespace(options=[expiry], option_chain=lambda e, rows=rows: chain(rows))
             with mock.patch.dict(sys.modules, {"yfinance": types.SimpleNamespace(Ticker=lambda s: ticker)}):
                 out = builder.us_options("AAA", 100.0, self.TODAY, self.STAMP)
-            text = out["monthly"]["unavailable"]
-            self.assertIn("所選到期無有效雙邊報價", text, label)
-            self.assertNotIn("年化權利金", text, label)
+            observation = out["monthly"]["quote_observation"]
+            self.assertEqual(observation["kind"], "NO_TWO_SIDED", label)
+            self.assertIsNone(observation["bid"], label)
+            self.assertIsNone(observation["ask"], label)
+            self.assertIsNone(observation["annualized_yield"], label)
             self.assertFalse(builder._yahoo_unread(out["monthly"]), label)  # a read chain is never retried through Nasdaq
             monthly = [h for h in out.health if h["cycle"] == "monthly"][0]
             self.assertEqual((monthly["status"], monthly["read"], monthly["two_sided"]), ("READ", True, False), label)
         ticker = types.SimpleNamespace(options=[expiry], option_chain=lambda e: chain([(120.0, 0.01, 0.02)]))
         with mock.patch.dict(sys.modules, {"yfinance": types.SimpleNamespace(Ticker=lambda s: ticker)}):
             miss = builder.us_options("AAA", 100.0, self.TODAY, self.STAMP)
-        self.assertNotIn("unavailable", miss["monthly"])  # no yield floor: the 0.01 strike is listed
+        self.assertNotIn("unavailable", miss["monthly"])
+        self.assertEqual(miss["monthly"]["quote_observation"]["kind"], "TWO_SIDED")  # positive bid, but below strategy hurdle
         self.assertEqual([(h["read"], h["two_sided"]) for h in miss.health if h["cycle"] == "monthly"], [(True, True)])
 
     def test_only_strikes_the_two_decimal_display_represents_exactly_are_recommended(self):

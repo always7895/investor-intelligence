@@ -32,7 +32,7 @@ from validate_v213_market_products import MarketProductValidationError, validate
 
 UTC = timezone.utc
 STAMP_IN = "2026-10-13T15:00:00Z"
-WEEKLY, MONTHLY = "2026-10-16", "2026-10-16"  # as of Tue 2026-10-13 the weekly and the nearest standard monthly (third Friday) are the same expiry
+WEEKLY, MONTHLY = "2026-10-16", "2026-11-20"  # 2026-10-16 is <7DTE, so monthly moves to November third Friday
 
 
 class Harness(unittest.TestCase):
@@ -131,13 +131,20 @@ class CarryThroughTheProducerTests(Harness):
         # to 2026-11-20 (the October monthly has passed), so the capture (another expiry) is carried for neither.
         saturday = datetime(2026, 10, 17, 15, 0, tzinfo=UTC)
         _, _, document = self.run_main(saturday, chains(ZERO_ROWS, GOOD0=ITM_ROWS, GOOD1=ITM_ROWS))
-        for period in ("weekly", "monthly"):
-            self.assertIn("unavailable", document["options"]["T00"][period])
-            self.assertNotEqual(document["options"]["T00"][period].get("expiry"), WEEKLY)
-        # Six hours later the capture is older than four days: nothing is carried.
+        weekly = document["options"]["T00"]["weekly"]
+        self.assertIn("unavailable", weekly)  # its Friday has expired, new week cannot use the old contract
+        monthly = document["options"]["T00"]["monthly"]
+        self.assertEqual(monthly.get("quote_basis"), "previous_session_last")  # SAME November expiry still listed; exactly 4 days old
+        self.assertEqual(monthly.get("expiry"), MONTHLY)
+        # Six hours later: age over four days => no carry, but live last-price observation remains labeled as such.
         _, _, document = self.run_main(saturday + timedelta(hours=6), chains(ZERO_ROWS, GOOD0=ITM_ROWS, GOOD1=ITM_ROWS))
-        for period in ("weekly", "monthly"):
-            self.assertIn("unavailable", document["options"]["T00"][period])
+        self.assertIn("unavailable", document["options"]["T00"]["weekly"])
+        old_month = document["options"]["T00"]["monthly"]
+        self.assertNotEqual(old_month.get("quote_basis"), "previous_session_last")
+        if "quote_observation" in old_month:
+            self.assertEqual(old_month["quote_observation"]["kind"], "NO_TWO_SIDED")
+        else:
+            self.assertIn("unavailable", old_month)
 
     def test_a_malformed_or_foreign_state_file_carries_nothing(self) -> None:
         self.in_session_run()

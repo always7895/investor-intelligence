@@ -22,6 +22,7 @@
 import adrMap from "../../../config/option-adr-map-v1.json";
 import catalog from "../../../config/public-options-provider-candidates.json";
 import predecessorCatalog from "./options-provider-catalog-4065fbe.json";
+import { CURRENT_OPTIONS_CATALOG_VERSION } from "./options-provider-catalog-version";
 import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
 import { statusLabelZh } from "./status-labels";
 import { formatTaipeiTimestamp, formatVisibleMoment } from "./line-formatters";
@@ -138,13 +139,19 @@ interface ValidatedBody {
   link: { key: string; sha256: string; utf8_bytes: number } | null;
   provider_count: number; production_selected: boolean;
   providers: CoverageProvider[]; jurisdictions: CoverageJurisdiction[]; local_markets: string[]; observed: CoverageObserved[];
+  catalogVersion: string | null;
 }
 
 /** Strict bounded shape of the sealed body. Mirrors validate_options_coverage_document in validate_v213_market_products.py. */
 export function validateOptionsCoverage(raw: unknown): ValidatedBody | null {
-  if (!isRecord(raw) || !exactKeys(raw, ["schema", "generated_at", "purpose", "options_link", "catalog_summary", "providers", "jurisdictions",
-    "local_capabilities", "observed", "data_completeness", "notes"])) return null;
-  if (raw.schema !== "v213-options-coverage-v1" || raw.purpose !== "SOURCE_COVERAGE_METADATA_ONLY" || raw.data_completeness !== "NOT_REAUDITED"
+  if (!isRecord(raw)) return null;
+  const versioned = raw.schema === "v213-options-coverage-v2";
+  const baseKeys = ["schema", "generated_at", "purpose", "options_link", "catalog_summary", "providers", "jurisdictions",
+    "local_capabilities", "observed", "data_completeness", "notes"];
+  if (!exactKeys(raw, versioned ? [...baseKeys, "catalog_version"] : baseKeys)) return null;
+  if (raw.schema !== "v213-options-coverage-v1" && !versioned) return null;
+  if (versioned && (typeof raw.catalog_version !== "string" || !/^sha256:[0-9a-f]{64}$/.test(raw.catalog_version))) return null;
+  if (raw.purpose !== "SOURCE_COVERAGE_METADATA_ONLY" || raw.data_completeness !== "NOT_REAUDITED"
     || !validInstant(raw.generated_at)) return null;
   let link: ValidatedBody["link"] = null;
   if (raw.options_link !== null) {
@@ -207,7 +214,8 @@ export function validateOptionsCoverage(raw: unknown): ValidatedBody | null {
       ticker_key_count: item.ticker_key_count as number, quote_as_of_max: item.quote_as_of_max });
   }
   return { generated_at: raw.generated_at, link, provider_count: summary.catalog_provider_count as number,
-    production_selected: summary.production_provider_selected, providers, jurisdictions, local_markets: localMarkets, observed };
+    production_selected: summary.production_provider_selected, providers, jurisdictions, local_markets: localMarkets, observed,
+    catalogVersion: versioned ? raw.catalog_version as string : null };
 }
 
 interface Derived {
@@ -336,10 +344,12 @@ export async function loadOptionsCoverage(view: PublicSnapshotView, now: number 
   const valid = validateOptionsCoverage(raw);
   const current = deriveFromCatalog(catalog);
   if (!valid || !current) return plain("COVERAGE_SCHEMA_INVALID");
-  // Rollout is new Worker first, then catalog sync and sealed publication. Old Worker + new catalog is unsupported.
-  // Accept exactly one whole projection, never a mixture; observed quote admission still uses the current policy.
+  // V2 binds the sealed projection to the exact release catalog BYTES, not merely provider count.
+  // V1 remains a strict predecessor-only path: never trust a mismatched former body (14) as current (18).
   const currentMatches = matchesDerived(valid, current);
-  const predecessor = currentMatches ? null : deriveFromCatalog(predecessorCatalog);
+  if (valid.catalogVersion !== null && valid.catalogVersion !== CURRENT_OPTIONS_CATALOG_VERSION)
+    return plain("COVERAGE_SCHEMA_INVALID");
+  const predecessor = valid.catalogVersion === null && !currentMatches ? deriveFromCatalog(predecessorCatalog) : null;
   const derived = currentMatches ? current : predecessor && matchesDerived(valid, predecessor) ? predecessor : null;
   if (!derived) return plain("COVERAGE_SCHEMA_INVALID");
   const generated = Date.parse(valid.generated_at);
