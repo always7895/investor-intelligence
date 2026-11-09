@@ -1015,6 +1015,8 @@ def nasdaq_us_options(symbol: str, spot: float, today: date, stamp: str) -> Cycl
         rows = payload["data"]["table"]["rows"]
         if rows is None:
             rows = []
+        if not isinstance(rows, list):
+            raise ValueError("UNREADABLE_OPTION_ROWS")
     except Exception:
         err_health = [{"venue": "US", "underlying": symbol, "expiry": None, "cycle": c,
                        "status": "READ_ERROR", "read": False, "two_sided": False} for c in CYCLES]
@@ -1027,6 +1029,7 @@ def nasdaq_us_options(symbol: str, spot: float, today: date, stamp: str) -> Cycl
     calls: list[dict[str, Any]] = []
     puts: list[dict[str, Any]] = []
     saw_put_side = False
+    saw_source_rows = bool(rows)
 
     def decode_rows(source_rows: list, expected_expiry: str | None = None) -> None:
         nonlocal saw_put_side
@@ -1067,8 +1070,10 @@ def nasdaq_us_options(symbol: str, spot: float, today: date, stamp: str) -> Cycl
                 response = http_json(targeted)
                 source_rows = response["data"]["table"]["rows"]
                 source_asof = _nasdaq_us_asof(response)
-                if (not isinstance(source_rows,list) or source_asof is None
-                        or not 0 <= (today-source_asof).days <= NASDAQ_US_MAX_ASOF_AGE_DAYS):
+                if not isinstance(source_rows, list):
+                    continue
+                saw_source_rows = saw_source_rows or bool(source_rows)
+                if source_asof is None or not 0 <= (today-source_asof).days <= NASDAQ_US_MAX_ASOF_AGE_DAYS:
                     continue
                 decode_rows(source_rows,expected_expiry=standard_day)
             except (ValueError,TypeError,KeyError,AttributeError,OSError):
@@ -1077,11 +1082,12 @@ def nasdaq_us_options(symbol: str, spot: float, today: date, stamp: str) -> Cycl
                 break
     if not calls and not puts:
         health = [{"venue":"US","underlying":symbol,"expiry":None,"cycle":c,
-                  "status":"SOURCE_ROWS_NOT_TYPED" if rows else "EMPTY_RESPONSE","read":False,"two_sided":False} for c in CYCLES]
-        msg = "Nasdaq US 已回應鏈資料，但到期日／履約價／買賣欄位無法解析為經核驗標準契約（非證明未上市）"
+                  "status":"SOURCE_ROWS_NOT_TYPED" if saw_source_rows else "EMPTY_RESPONSE","read":False,"two_sided":False} for c in CYCLES]
+        msg = ("Nasdaq US 已回應鏈資料，但到期日／履約價／買賣欄位無法解析為經核驗標準契約（非證明未上市）"
+               if saw_source_rows else "Nasdaq US 本次回應無期權鏈資料；是否上市未確認")
         return CyclesResult({c:{"unavailable":
             _diag(f"{_missing_monthly_date(today, stamp, 'US')}；{msg}") if c == "monthly"
-            else msg if rows else _missing_text("Nasdaq 無 {low}-{high} 天到期的上市期權", c, *CYCLES[c])
+            else msg
             } for c in CYCLES},health=health)
     return _cycles_from_calls(calls, symbol, spot, stamp, currency="USD",
                               source="Nasdaq US option chain (public quote page API, delayed; Yahoo fallback)",
@@ -1585,9 +1591,17 @@ def nordic_options(symbol: str, base: str, spot: float, today: date, stamp: str,
                          if item.get("assetClass") == "SHARES" and item.get("symbol", "").upper() == native.upper())
             orderbook = share["orderbookId"]
             share_currency = share.get("currency")
-        rows = http_json(NORDIC_CHAIN.format(orderbook=orderbook))["data"]["instrumentListing"]["rows"]
+        response = http_json(NORDIC_CHAIN.format(orderbook=orderbook))
+        rows = response["data"]["instrumentListing"]["rows"]
+    except StopIteration:
+        return _nordic_unavailable(symbol, "UNDERLYING_NOT_FOUND", "Nasdaq Nordic 回應未找到可核驗標的股票商品；是否上市未確認")
     except Exception:
         return _nordic_unavailable(symbol, "READ_ERROR", "Nasdaq Nordic 期權鏈讀取或解析失敗")
+    message = response.get("messages")
+    if isinstance(message, dict) and message.get("code") == "NO_INST_FOUND":
+        if rows is None or rows == []:
+            return _nordic_unavailable(symbol, "NO_INST_FOUND", "Nasdaq Nordic 回應查無此標的期權商品；是否上市未確認")
+        return _nordic_unavailable(symbol, "READ_ERROR", "Nasdaq Nordic 回應狀態與期權鏈內容矛盾，無法核驗")
     if not isinstance(rows, list):
         return _nordic_unavailable(symbol, "READ_ERROR", "Nasdaq Nordic 期權鏈回應格式無效（讀取或解析失敗）")
     states = [_typed_currency(spot_currency)] + ([] if share_currency is _NO_SEARCH else [_typed_currency(share_currency)])

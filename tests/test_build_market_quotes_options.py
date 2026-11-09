@@ -1085,6 +1085,40 @@ class OptionPresessionAcceptanceTests(unittest.TestCase):
             self.assertEqual(written["collection"]["chain_health"]["US"]["healthy"], 12)
             self.assertIn("unavailable", written["options"]["US_0"]["monthly"])
 
+    def test_nasdaq_monthly_empty_rows_are_not_reported_as_untyped_contracts(self):
+        with mock.patch.object(builder, "http_json", return_value={"data": {"table": {"rows": []}}}):
+            result = builder.nasdaq_us_options("AAPL", 100.0, self.TODAY, self.STAMP)
+        self.assertEqual({item["status"] for item in result.health}, {"EMPTY_RESPONSE"})
+        self.assertIn("本次回應無期權鏈資料", result["monthly"]["unavailable"])
+        self.assertIn("是否上市未確認", result["monthly"]["unavailable"])
+        self.assertNotIn("已回應鏈資料", result["monthly"]["unavailable"])
+
+    def test_nasdaq_monthly_untyped_rows_keep_the_contract_verification_cause(self):
+        response = {"data": {"lastTrade": last_trade(self.TODAY), "table": {"rows": [
+            {"expirationDate": "2026-10-16", "strike": "unverified", "c_Bid": "1.0", "c_Ask": "1.1"}]}}}
+        with mock.patch.object(builder, "http_json", return_value=response):
+            result = builder.nasdaq_us_options("AAPL", 100.0, self.TODAY, self.STAMP)
+        self.assertEqual({item["status"] for item in result.health}, {"SOURCE_ROWS_NOT_TYPED"})
+        self.assertIn("無法解析為經核驗標準契約", result["monthly"]["unavailable"])
+        self.assertNotIn("本次回應無期權鏈資料", result["monthly"]["unavailable"])
+
+    def test_nasdaq_untyped_targeted_rows_are_not_hidden_by_an_empty_broad_response(self):
+        empty = {"data": {"table": {"rows": []}}}
+        untyped = {"data": {"lastTrade": last_trade(self.TODAY), "table": {"rows": [
+            {"expirationDate": "2026-10-16", "strike": "unverified", "c_Bid": "1.0", "c_Ask": "1.1"}]}}}
+        with mock.patch.object(builder, "http_json", side_effect=[empty, untyped]):
+            result = builder.nasdaq_us_options("AAPL", 100.0, self.TODAY, self.STAMP)
+        self.assertEqual({item["status"] for item in result.health}, {"SOURCE_ROWS_NOT_TYPED"})
+        self.assertIn("無法解析為經核驗標準契約", result["monthly"]["unavailable"])
+
+    def test_nasdaq_unreadable_rows_are_not_treated_as_an_empty_chain(self):
+        for rows in ({}, "unreadable", False):
+            with self.subTest(rows=rows), mock.patch.object(builder, "http_json",
+                    return_value={"data": {"table": {"rows": rows}}}):
+                result = builder.nasdaq_us_options("AAPL", 100.0, self.TODAY, self.STAMP)
+            self.assertEqual({item["status"] for item in result.health}, {"READ_ERROR"})
+            self.assertIn("讀取失敗", result["monthly"]["unavailable"])
+
     def test_05a_factual_state_distinctions(self):
         """Matrix Item 5a: factual EMPTY / NO_EXPIRY / READ_ERROR / EXPIRY_LIST_ERROR / EMPTY_RESPONSE
         distinctions across Yahoo, Nasdaq US fallback and Nordic adapters. None enters R."""
@@ -1924,6 +1958,28 @@ class NonUsTypedEvidenceTests(unittest.TestCase):
         finally:
             builder.http_json = saved
         self.assertIn("未確認為 SEK", default["monthly"]["unavailable"])
+
+    def test_source_no_instrument_code_is_distinct_from_an_unreadable_chain(self):
+        for rows in (None, []):
+            response = {"raw": {"data": {"instrumentListing": {"rows": rows}},
+                                "messages": {"code": "NO_INST_FOUND", "message": "No instruments found"}}}
+            result = self.nordic(response)
+            self.assertEqual({item["status"] for item in result.health}, {"NO_INST_FOUND"})
+            for period in ("weekly", "monthly"):
+                self.assertEqual(result[period]["unavailable"], "Nasdaq Nordic 回應查無此標的期權商品；是否上市未確認")
+
+    def test_a_readable_search_without_the_underlying_is_not_a_read_error(self):
+        result = self.nordic([], orderbook=None, search={"assetClass": "SHARES", "symbol": "OTHER",
+                                                        "orderbookId": "TX1", "currency": "SEK"})
+        self.assertEqual({item["status"] for item in result.health}, {"UNDERLYING_NOT_FOUND"})
+        self.assertIn("是否上市未確認", result["monthly"]["unavailable"])
+
+    def test_no_instrument_code_cannot_authorize_contradictory_nonempty_contracts(self):
+        response = {"raw": {"data": {"instrumentListing": {"rows": [self.call(16)]}},
+                            "messages": {"code": "NO_INST_FOUND"}}}
+        result = self.nordic(response)
+        self.assertEqual({item["status"] for item in result.health}, {"READ_ERROR"})
+        self.assertIn("內容矛盾", result["monthly"]["unavailable"])
 
     def test_malformed_envelopes_rows_and_successful_empty_are_distinct_states(self):
         failed = {"rows None": {"raw": {"data": {"instrumentListing": {"rows": None}}}}, "rows dict": {"raw": {"data": {"instrumentListing": {"rows": {}}}}},
