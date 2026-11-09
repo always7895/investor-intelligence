@@ -178,7 +178,8 @@ class PublicBundleByteBoundTests(unittest.TestCase):
     """Exact public report/binding byte caps on the frozen genuine AUTO bundle."""
     @classmethod
     def setUpClass(cls):
-        fixture = json.loads(auto.FIXTURE.read_text(encoding="utf-8"))
+        fixture_path = ROOT / "tests" / "fixtures" / "revenue-guidance-machine-auto-functional.json"
+        fixture = json.loads(fixture_path.read_text(encoding="utf-8"))
         cls.report, cls.binding = fixture["report"].encode("utf-8"), fixture["binding"].encode("utf-8")
 
     def validate(self, report, binding):
