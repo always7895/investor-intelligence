@@ -6,7 +6,7 @@ import {optionsUnavailableReport} from "../src/v213/options-product";
 import {loadOptionsCoverage,buildOptionsCoverageMessages,validateOptionsCoverage,OPTIONS_COVERAGE_KEY} from "../src/v213/options-coverage";
 import {OPTIONS_KEY} from "../src/v213/market-observations";
 
-const root=resolve(process.cwd(),"../..");
+const root=resolve(process.env.R2A_ARTIFACT_ROOT || resolve(process.cwd(),"../.."));
 const read=(s:string)=>readFileSync(resolve(root,"data",s),"utf8");
 const hasRealCopy=existsSync(resolve(root,"data","real_coverage_body.json"))
   && existsSync(resolve(root,"data","real_options_body.json"));
