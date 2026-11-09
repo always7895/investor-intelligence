@@ -15,6 +15,8 @@ from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
 from typing import Any, Callable
+from types import SimpleNamespace
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -41,6 +43,85 @@ def fixture_standard_monthly(as_of: date) -> tuple[str,int]:
 def last_trade(day) -> str:
     """The Nasdaq US chain's data.lastTrade text for an as-of day (V19 freshness guard)."""
     return f"LAST TRADE: $100.00 (AS OF {day.strftime('%b').upper()} {day.day}, {day.year})"
+
+
+class QuoteClockTests(unittest.TestCase):
+    NOW = datetime(2026, 11, 8, 15, 18, 12, tzinfo=timezone.utc)
+    STAMP = "2026-11-08T15:00:00Z"
+    MARKET_TIME = datetime(2026, 11, 6, 21, 0, tzinfo=timezone.utc)
+
+    def observe(self, metadata):
+        def history_metadata():
+            if isinstance(metadata, Exception):
+                raise metadata
+            return metadata
+
+        ticker = SimpleNamespace(
+            fast_info={"lastPrice": 186.64, "previousClose": 182.29, "currency": "USD"},
+            get_history_metadata=history_metadata)
+        with patch.dict(sys.modules, {"yfinance": SimpleNamespace(Ticker=lambda symbol: ticker)}), \
+                patch.object(builder, "utc_now", return_value=self.NOW), \
+                patch.object(builder, "us_cycles", return_value={}):
+            return builder.observe("NVDA", self.NOW.date(), self.STAMP)[0]
+
+    def test_nvda_friday_regular_market_clock_survives_sunday_fetch_and_sealing(self):
+        metadata = {"regularMarketPrice": 186.64, "regularMarketTime": self.MARKET_TIME.timestamp(), "currency": "USD"}
+        before = dict(metadata)
+        quote = self.observe(metadata)
+        self.assertEqual(quote["price"], 186.64)
+        self.assertEqual(quote["asof"], "2026-11-06T21:00:00Z")
+        self.assertEqual(quote["fetched_at"], "2026-11-08T15:18:12Z")
+        self.assertNotEqual(quote["fetched_at"], self.STAMP)  # per-quote acquisition, not the run's start
+        self.assertEqual(metadata, before)
+        document = {"schema": "v213-market-observations-v2", "generated_at": self.STAMP,
+                    "quotes": {"NVDA": quote}, "options": {}}
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "observations.json"
+            raw = json.dumps(document)
+            path.write_text(raw, encoding="utf-8")
+            bodies = publisher.lazy_market_bodies(path, self.NOW)
+            sealed = json.loads(bodies["v213:quotes:v1"])
+            self.assertEqual(sealed["quotes"]["NVDA"], quote)
+            self.assertEqual(sealed["generated_at"], self.STAMP)
+            self.assertEqual(path.read_text(encoding="utf-8"), raw)
+
+    def test_regular_market_clock_is_paired_with_its_own_price(self):
+        quote = self.observe({"regularMarketPrice": 185.5, "regularMarketTime": self.MARKET_TIME.timestamp()})
+        self.assertEqual((quote["price"], quote["asof"]), (185.5, "2026-11-06T21:00:00Z"))
+
+    def test_missing_or_invalid_provider_clock_never_becomes_fetch_or_session_schedule(self):
+        for metadata in ({}, OSError("metadata unavailable"),
+                         {"regularMarketTime": self.MARKET_TIME.timestamp()},
+                         {"regularMarketPrice": 186.64, "currentTradingPeriod": {"regular": {"end": self.MARKET_TIME.timestamp()}}},
+                         *({"regularMarketPrice": 186.64, "regularMarketTime": value}
+                           for value in (None, 0, True, "not-a-time", float("nan"), float("inf"), 10**20))):
+            with self.subTest(metadata=metadata):
+                quote = self.observe(metadata)
+                self.assertEqual(quote["price"], 186.64)
+                self.assertIsNone(quote["asof"])
+                self.assertEqual(quote["fetched_at"], "2026-11-08T15:18:12Z")
+
+    def test_alpha_fallback_keeps_genuine_session_date_and_separate_acquisition(self):
+        provider = {"Global Quote": {"05. price": "186.64", "08. previous close": "182.29",
+                                     "07. latest trading day": "2026-11-06"}}
+        original = json.dumps(provider)
+        with patch.object(builder, "alpha_vantage_key", return_value="SYNTHETIC_TEST_ONLY"), \
+                patch.object(builder, "_alpha_vantage_budget", return_value=True), \
+                patch.object(builder, "http_json", return_value=provider), \
+                patch.object(builder, "utc_now", return_value=self.NOW):
+            quote = builder.alpha_vantage_quote("NVDA", self.STAMP)
+        self.assertEqual((quote["price"], quote["asof"], quote["fetched_at"]),
+                         (186.64, "2026-11-06", "2026-11-08T15:18:12Z"))
+        self.assertEqual(json.dumps(provider), original)
+
+    def test_alpha_missing_or_invalid_session_date_stays_refused(self):
+        for day in (None, "", "2026-11-31", "2026-11-06T00:00:00Z"):
+            with self.subTest(day=day), \
+                    patch.object(builder, "alpha_vantage_key", return_value="SYNTHETIC_TEST_ONLY"), \
+                    patch.object(builder, "_alpha_vantage_budget", return_value=True), \
+                    patch.object(builder, "http_json", return_value={
+                        "Global Quote": {"05. price": "186.64", "07. latest trading day": day}}):
+                self.assertIsNone(builder.alpha_vantage_quote("NVDA", self.STAMP))
 
 
 class SuggestionTests(unittest.TestCase):

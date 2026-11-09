@@ -74,7 +74,7 @@ describe.skipIf(!dir || !out)("live public KV reader replay (operator gate only)
       identityProbe[probe] = resolution.status === "RESOLVED" ? `RESOLVED:${resolution.record.venue}:${resolution.record.symbol}` : resolution.status;
       if (resolution.status === "RESOLVED") {
         const price = await loadListingPrice(view, resolution.record);
-        priceProbe[probe] = price ? `${price.price} ${price.currency} @${price.asof.slice(0, 10)}` : "NO_PRICE";
+        priceProbe[probe] = price ? `${price.price} ${price.currency} @${price.asof?.slice(0, 10) ?? "UNKNOWN_OBSERVATION_TIME"}` : "NO_PRICE";
       }
     }
     // Product probes (rollout evidence, not gate conditions): what users would see for the lanes of this release.

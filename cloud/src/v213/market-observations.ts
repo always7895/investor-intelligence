@@ -14,7 +14,11 @@ const MAX_AGE_MS = 6 * 3600_000;
 
 export interface DelayedQuote {
   symbol: string; price: number; previous_close: number | null; change_pct: number | null; currency: string | null;
-  asof: string; source: string; source_url: string;
+  /** Provider observation clock only; null when absent or a legacy ingestion-clock collision. */
+  asof: string | null;
+  /** Acquisition clock, independent of observation freshness; null when not recorded. */
+  fetched_at: string | null;
+  source: string; source_url: string;
 }
 
 function fresh(generated: unknown, now: number): boolean {
@@ -35,6 +39,16 @@ export function observationSymbol(record: Pick<GlobalIdentityRecord, "symbol" | 
   return base;
 }
 
+function quoteClock(value: unknown): string | null {
+  return typeof value === "string" && Number.isFinite(Date.parse(value)) ? value : null;
+}
+
+/** Legacy producers wrote generated_at into asof. Equivalent ISO spellings are the same ingestion instant. */
+function observationClock(asof: unknown, generated: unknown): string | null {
+  const clock = quoteClock(asof);
+  return clock !== null && Date.parse(clock) !== Date.parse(String(generated)) ? clock : null;
+}
+
 export async function loadDelayedQuote(view: PublicSnapshotView, symbol: string, now = Date.now()): Promise<DelayedQuote | null> {
   if (view.integrity !== "sealed") return null;
   const doc = await view.json<{ schema?: unknown; generated_at?: unknown; quotes?: Record<string, DelayedQuote> }>([QUOTES_KEY]);
@@ -42,7 +56,8 @@ export async function loadDelayedQuote(view: PublicSnapshotView, symbol: string,
   const quote = Object.hasOwn(doc.quotes, symbol) ? doc.quotes[symbol] : undefined;
   if (!quote || typeof quote.price !== "number" || !Number.isFinite(quote.price) || quote.price <= 0
     || typeof quote.source_url !== "string" || !quote.source_url.startsWith("https://")) return null;
-  return quote;
+  const asof = observationClock(quote.asof, doc.generated_at);
+  return { ...quote, asof, fetched_at: quoteClock(quote.fetched_at) ?? (asof === null ? quoteClock(quote.asof) : null) };
 }
 
 export const priceShardKey = (market: string) => `v213:prices:v1:${market}`;
@@ -68,12 +83,13 @@ export async function loadListingPrice(view: PublicSnapshotView, record: Pick<Gl
   const row = Object.hasOwn(doc.rows, key) ? doc.rows[key] : undefined;
   if (!Array.isArray(row) || row.length !== 5) return null;
   const [price, changePct, asof, currency, sourceIndex] = row;
-  const source = Number.isInteger(sourceIndex) ? (doc.sources as { id?: unknown; url?: unknown }[])[sourceIndex as number] : undefined;
+  const source = Number.isInteger(sourceIndex) ? (doc.sources as { id?: unknown; url?: unknown; retrieved_at?: unknown }[])[sourceIndex as number] : undefined;
   if (typeof price !== "number" || !Number.isFinite(price) || price <= 0 || !(changePct === null || (typeof changePct === "number" && Number.isFinite(changePct)))
     || !(asof === null || (typeof asof === "string" && /^\d{4}-\d{2}-\d{2}$/.test(asof))) || typeof currency !== "string" || currency.length > 8
     || !source || typeof source.url !== "string" || !source.url.startsWith("https://") || typeof source.id !== "string") return null;
   return { symbol: record.symbol, price, previous_close: null, change_pct: changePct === null ? null : (changePct as number) / 100, currency,
-    asof: asof ?? `${String(doc.generated_at)}（擷取時間；來源未載明成交日）`, source: PRICE_SOURCE_LABEL[source.id] ?? source.id, source_url: source.url };
+    asof: observationClock(asof, doc.generated_at), fetched_at: quoteClock(source.retrieved_at) ?? quoteClock(doc.generated_at),
+    source: PRICE_SOURCE_LABEL[source.id] ?? source.id, source_url: source.url };
 }
 
 /** The options keys to try for a typed or looked-up ticker, in order (scripts/build_market_quotes_options.py keys US

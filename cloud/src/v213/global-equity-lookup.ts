@@ -167,10 +167,11 @@ export interface EquityLookupResult {
   quoteStatus: "AVAILABLE" | "UNAVAILABLE" | "AMBIGUOUS";
   price?: number;
   changePct?: number;
-  asOf?: string;
+  asOf?: string | null;
+  fetchedAt?: string | null;
   /** Where the shown price comes from (Chinese label) and a second, independent observation of the same listing. */
   priceSource?: string;
-  crossCheck?: { price: number; source: string; asOf: string; diffPct: number | null; officialReference?: boolean };
+  crossCheck?: { price: number; source: string; asOf: string | null; fetchedAt?: string | null; diffPct: number | null; officialReference?: boolean };
   source: string;
   disclaimer: string;
   resolution?: GlobalIdentityResolution;
@@ -272,7 +273,7 @@ function trustedCandidateRoutes(result: EquityLookupResult): readonly CandidateQ
   return consistent ? routes : null;
 }
 
-type ObservedQuote = { price: number; change_pct: number | null; currency: string | null; asof: string; source: string; source_url: string };
+type ObservedQuote = { price: number; change_pct: number | null; currency: string | null; asof: string | null; fetched_at?: string | null; source: string; source_url: string };
 
 /** The two display labels of the SAME Yahoo Finance provider on the quote paths: the daily-close price shard that serves the
  * Japan and Korea listings (market-observations.PRICE_SOURCE_LABEL["yahoo-daily-close"], returned by loadListingPrice) and the
@@ -285,15 +286,18 @@ const YAHOO_QUOTE_LABELS: ReadonlySet<string> = new Set([PRICE_SOURCE_LABEL["yah
  * with a comparison only when currency units agree. Equal provider labels and the known Yahoo
  * daily/hourly aliases are not independent confirmation. Ingestion and seal time do not rank prices. */
 export function combineQuotes(official: ObservedQuote | null, observed: ObservedQuote | null):
-  { primary: ObservedQuote | null; crossCheck?: { price: number; source: string; asOf: string; diffPct: number | null; officialReference?: boolean } } {
+  { primary: ObservedQuote | null; crossCheck?: EquityLookupResult["crossCheck"] } {
   if (!official || !observed) return { primary: official ?? observed };
   // Date-only observations describe a whole source calendar day, not UTC midnight.
   // Overlapping precision retains listing priority; precise clocks still compare instants.
-  const listingAt = Date.parse(official.asof);
-  const delayedAt = Date.parse(observed.asof);
-  const coarse = /^\d{4}-\d{2}-\d{2}$/.test(official.asof) || /^\d{4}-\d{2}-\d{2}$/.test(observed.asof);
+  const listingClock = official.asof ?? "";
+  const delayedClock = observed.asof ?? "";
+  const listingAt = Date.parse(listingClock);
+  const delayedAt = Date.parse(delayedClock);
+  const coarse = /^\d{4}-\d{2}-\d{2}$/.test(listingClock) || /^\d{4}-\d{2}-\d{2}$/.test(delayedClock);
+  // Unknown/fetch-only clocks never outrank a known observation, however late the acquisition.
   const observedNewer = Number.isFinite(delayedAt) && (!Number.isFinite(listingAt)
-    || (coarse ? observed.asof.slice(0, 10) > official.asof.slice(0, 10) : delayedAt > listingAt));
+    || (coarse ? delayedClock.slice(0, 10) > listingClock.slice(0, 10) : delayedAt > listingAt));
   const primary = observedNewer ? observed : official;
   const secondary = observedNewer ? official : observed;
   const officialLabel = sourceZh(official.source);
@@ -302,7 +306,8 @@ export function combineQuotes(official: ObservedQuote | null, observed: Observed
   if (officialLabel === observedLabel || (YAHOO_QUOTE_LABELS.has(officialLabel) && YAHOO_QUOTE_LABELS.has(observedLabel))) return { primary };
   const sameCurrency = (primary.currency ?? "").toUpperCase() === (secondary.currency ?? "").toUpperCase() && !!primary.currency;
   const diffPct = sameCurrency && primary.price > 0 ? secondary.price / primary.price - 1 : null;
-  return { primary, crossCheck: { price: secondary.price, source: secondary.source, asOf: secondary.asof, diffPct, officialReference: observedNewer } };
+  return { primary, crossCheck: { price: secondary.price, source: secondary.source, asOf: secondary.asof,
+    fetchedAt: secondary.fetched_at, diffPct, officialReference: observedNewer } };
 }
 
 /**
@@ -387,6 +392,11 @@ export function parseGlobalEquityQuery(text: string): ResolvedEquityIdentity | n
   return null;
 }
 
+function quoteTimeText(asOf?: string | null, fetchedAt?: string | null): string {
+  const observation = asOf ? `觀察時間 ${formatVisibleMoment(asOf)}` : "觀察時間未揭露";
+  return `${observation}${fetchedAt ? `；擷取時間 ${formatVisibleMoment(fetchedAt)}` : ""}`;
+}
+
 export function buildGlobalEquityLookupMessages(
   result: EquityLookupResult,
   presentation: "flex" | "text" = "flex",
@@ -396,6 +406,7 @@ export function buildGlobalEquityLookupMessages(
   const secFallback = isSecCacheFallback(resolution);
   const secQuote = secFallback && quoteStatus === "AVAILABLE" && typeof result.price === "number";
   const disclaimerShown = secFallback ? (secQuote ? SEC_FALLBACK_QUOTE_DISCLAIMER : SEC_FALLBACK_NO_QUOTE_DISCLAIMER) : result.disclaimer;
+  const priceTitle = result.asOf ? "最新觀察價" : "封存報價（觀察時間未揭露）";
   // ISEL1: the candidate lines of an ambiguous card. Consistent routes add the exact query or an honest display-only reason;
   // without them (a direct or legacy result) the candidates are display-only. Non-ambiguous results never enter this path.
   const shownCandidates = identity.isAmbiguous && identity.ambiguityCandidates && identity.ambiguityCandidates.length > 0
@@ -413,9 +424,9 @@ export function buildGlobalEquityLookupMessages(
       const change = typeof result.changePct === "number" ? `（${result.changePct >= 0 ? "+" : ""}${(result.changePct * 100).toFixed(2)}%）` : "";
       statusTitle = secFallback ? "備援身分（SEC 快取） · 延遲報價" : "已准入證券身分 · 延遲報價";
       const check = result.crossCheck;
-      const cross = check ? `；${check.officialReference ? "掛牌來源參考" : "交叉比對"}：${sourceZh(check.source)} ${formatQuotePrice(check.price, identity.currency)} ${identity.currency}，觀察時間 ${formatVisibleMoment(check.asOf)}${check.diffPct === null ? "（幣別或單位不同，不比較）"
+      const cross = check ? `；${check.officialReference ? "掛牌來源參考" : "交叉比對"}：${sourceZh(check.source)} ${formatQuotePrice(check.price, identity.currency)} ${identity.currency}，${quoteTimeText(check.asOf, check.fetchedAt)}${check.diffPct === null ? "（幣別或單位不同，不比較）"
         : `（與主價差 ${check.diffPct >= 0 ? "+" : ""}${(check.diffPct * 100).toFixed(2)}%${Math.abs(check.diffPct) > 0.05 ? "；差異超過 5%，請核對來源時間與交易所參考" : ""}）`}` : "";
-      statusSub = `最新觀察價 ${formatQuotePrice(result.price, identity.currency)} ${identity.currency}${change}${result.priceSource ? `，來源 ${sourceZh(result.priceSource)}` : ""}，觀察時間 ${result.asOf ? formatVisibleMoment(result.asOf) : "未揭露"}${cross}；延遲公開報價，非即時可成交價。`;
+      statusSub = `${priceTitle} ${formatQuotePrice(result.price, identity.currency)} ${identity.currency}${change}${result.priceSource ? `，來源 ${sourceZh(result.priceSource)}` : ""}，${quoteTimeText(result.asOf, result.fetchedAt)}${cross}；延遲公開報價，非即時可成交價。`;
     } else if (resolution.status === "RESOLVED") {
       statusTitle = secFallback ? "備援身分（SEC 快取） · 報價未開放" : "已准入證券身分 · 報價未開放";
       statusSub = secFallback ? SEC_FALLBACK_UNAVAILABLE_SUB
@@ -528,7 +539,7 @@ export function buildGlobalEquityLookupMessages(
     ], { ...headerStyle }),
     body: menuBox([
       ...(quoteStatus === "AVAILABLE" && typeof result.price === "number"
-        ? [heroStat("最新觀察價", `${formatQuotePrice(result.price, identity.currency)} ${identity.currency}`,
+        ? [heroStat(priceTitle, `${formatQuotePrice(result.price, identity.currency)} ${identity.currency}`,
           typeof result.changePct === "number" ? formatPercent(result.changePct, true) : "漲跌未揭露")]
         : [heroStat("最近報價", "未取得")]),
       noticeBanner(resolution?.status === "UNAVAILABLE" ? "negative" : "info", statusTitle, statusSub),
@@ -638,8 +649,8 @@ export async function handleGlobalEquityLookup(
 
   if (resolution.status === "RESOLVED") {
     const rec = resolution.record;
-    // The listing's market price shard leads (exchange feeds; the Japan and Korea shards are Yahoo daily closes); the hourly
-    // watch-universe quote is shown as a cross-check only when it comes from a different provider (combineQuotes).
+    // The latest known observation leads; unknown clocks and same-day date-only ties retain listing priority.
+    // Independent providers remain cross-checks, each with its own observation and acquisition clocks.
     const { primary: quote, crossCheck } = combineQuotes(await loadListingPrice(view, rec), await loadDelayedQuote(view, observationSymbol(rec)));
     const result: EquityLookupResult = {
       identity: {
@@ -659,7 +670,8 @@ export async function handleGlobalEquityLookup(
       admittedInSealedSnapshot: true,
       nameUnverified: !rec.name_zh,
       quoteStatus: quote ? "AVAILABLE" : "UNAVAILABLE",
-      ...(quote ? { price: quote.price, changePct: quote.change_pct ?? undefined, asOf: quote.asof, priceSource: sourceZh(quote.source) } : {}),
+      ...(quote ? { price: quote.price, changePct: quote.change_pct ?? undefined, asOf: quote.asof,
+        fetchedAt: quote.fetched_at, priceSource: sourceZh(quote.source) } : {}),
       ...(crossCheck ? { crossCheck } : {}),
       source: quote ? `sealed_snapshot:${rec.source_feed}；報價：${sourceZh(quote.source)} ${quote.source_url}${crossCheck ? `；交叉比對：${sourceZh(crossCheck.source)}` : ""}`
         : `sealed_snapshot:${rec.source_feed}`,

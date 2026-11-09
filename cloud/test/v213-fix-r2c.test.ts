@@ -13,7 +13,7 @@ const watch = (price: number, asof: string, source = "Yahoo Finance (unofficial,
 describe("FIX-R2C quote observation precedence", () => {
   it("shows newer watch quote and keeps older listing source with its own timestamp and correct signed gap", () => {
     const official = shard(182.29, "2026-11-05");
-    const delayed = watch(186.63999938964844, "2026-11-08T14:18:00Z");
+    const delayed = { ...watch(186.63999938964844, "2026-11-06"), fetched_at: "2026-11-08T14:18:00Z" };
     const result = combineQuotes(official, delayed);
     expect(result.primary).toBe(delayed);
     expect(result.crossCheck?.officialReference).toBe(true);

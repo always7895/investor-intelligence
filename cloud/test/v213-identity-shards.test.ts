@@ -134,7 +134,8 @@ describe("sealed identity shards", () => {
     expect(tw[0]!.text).toContain("最新觀察價 1,000.00 TWD（-0.50%），來源 臺灣證交所每日收盤，觀察時間 2026-09-24");
     expect(tw[0]!.text).toContain("臺灣證交所每日收盤 https://openapi.twse.com.tw/");
     const se = await handleGlobalEquityLookup(env as never, parseQuery("SIVE")) as { text: string }[];
-    expect(se[0]!.text).toContain("擷取時間；來源未載明成交日");
+    expect(se[0]!.text).toContain("封存報價（觀察時間未揭露） 32.78 SEK");
+    expect(se[0]!.text).toContain("觀察時間未揭露；擷取時間 ");
     const us = await handleGlobalEquityLookup(env as never, parseQuery("NVDA")) as { text: string }[];
     expect(us[0]!.text).toContain("報價未開放");  // no US shard sealed: stays honest
   });

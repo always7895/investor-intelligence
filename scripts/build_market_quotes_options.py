@@ -5,7 +5,9 @@ Universe: the bottleneck Top20 v3 (top and watch), the carried seven-field Top20
 2026-09-26: more US names and Swedish large caps) the US_LARGEST largest US listings by market cap in the Nasdaq stock
 screener and every Nasdaq Stockholm Large Cap share in SEK with listed exchange options. The broad list is rebuilt daily
 (data/cache/options_universe.json); a failed rebuild keeps the previous list for up to BROAD_MAX_STALE_DAYS.
-- Quotes: Yahoo Finance last price, previous close and currency (unofficial, delayed; labelled). A US listing Yahoo cannot
+- Quotes: Yahoo Finance regular-market price/time (or a price with an explicitly unknown observation clock),
+  previous close and currency (unofficial, delayed; labelled). `asof` is the provider observation clock or null;
+  `fetched_at` is acquisition time, never a substitute observation. A US listing Yahoo cannot
   quote falls back to Alpha Vantage GLOBAL_QUOTE (operator 2026-09-26) with the free key from the user's DPAPI file,
   at most ALPHA_VANTAGE_DAILY_BUDGET calls a day (the free key allows 25); without a key there is no fallback call.
 - US-listed options: Yahoo Finance option chains (unofficial, delayed); a cycle Yahoo cannot read falls back to the
@@ -1120,11 +1122,18 @@ def alpha_vantage_quote(symbol: str, stamp: str) -> dict[str, Any] | None:
         return None
     row = document.get("Global Quote") or {}
     price, previous = _float(row.get("05. price")), _float(row.get("08. previous close"))
-    day = str(row.get("07. latest trading day") or "")
-    if not price or price <= 0 or len(day) != 10:
+    day = row.get("07. latest trading day")
+    try:
+        if not isinstance(day, str) or re.fullmatch(r"\d{4}-\d{2}-\d{2}", day) is None:
+            return None
+        date.fromisoformat(day)
+    except ValueError:
+        return None
+    if not price or price <= 0:
         return None
     return {"symbol": symbol, "display": symbol, "price": price, "previous_close": previous,
             "change_pct": (price / previous - 1) if previous else None, "currency": "USD", "asof": day,
+            "fetched_at": iso(utc_now()),
             "source": "Alpha Vantage GLOBAL_QUOTE（免費金鑰，最近交易日；Yahoo 備援）", "source_url": public_url}
 
 
@@ -1616,22 +1625,47 @@ def nordic_options(symbol: str, base: str, spot: float, today: date, stamp: str,
                               puts=usable_puts if saw_put_side else None)
 
 
+def _yahoo_regular_market_time(value: Any) -> str | None:
+    """Yahoo's regularMarketTime is epoch seconds, not a fetch time or a scheduled session boundary."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
+        return None
+    try:
+        return iso(datetime.fromtimestamp(value, timezone.utc))
+    except (ValueError, OverflowError, OSError):
+        return None
+
+
 def observe(symbol: str, today: date, stamp: str, orderbook: str | None = None) -> Observation | None:
     """One underlying: the delayed quote and, for US and Stockholm listings, its covered-call cycles. Options keys never
     collide across markets: US listings by their Yahoo symbol (class shares use "-": BRK-B; dotted symbols are other
     markets such as 2330.TW), Stockholm listings with the suffix (SIVE.ST, VOLV-B.ST, AZN.ST next to the US AZN)."""
     import yfinance as yf
+    price = previous = None
+    currency = asof = None
     try:
-        info = yf.Ticker(symbol).fast_info
+        ticker = yf.Ticker(symbol)
+        info = ticker.fast_info
         price, previous = _float(info.get("lastPrice")), _float(info.get("previousClose"))
         currency = info.get("currency")
+        try:
+            # fast_info has no observation clock. Its history metadata carries the regular-market
+            # price/time pair; never attach that clock to a different fast_info lastPrice.
+            metadata = ticker.get_history_metadata()
+            regular_price = _float(metadata.get("regularMarketPrice"))
+            if regular_price and regular_price > 0:
+                price = regular_price
+                currency = metadata.get("currency") or currency
+                asof = _yahoo_regular_market_time(metadata.get("regularMarketTime"))
+        except Exception:
+            pass  # A usable fast_info price survives with an explicitly unknown observation time.
     except Exception:
         price = None
     base = symbol.split(".")[0] if symbol.endswith(".ST") else symbol
     if price:
         quote = {"symbol": symbol, "display": base, "price": price, "previous_close": previous,
                  "change_pct": (price / previous - 1) if previous else None, "currency": currency,
-                 "asof": stamp, "source": "Yahoo Finance (unofficial, delayed)", "source_url": f"https://finance.yahoo.com/quote/{symbol}"}
+                 "asof": asof, "fetched_at": iso(utc_now()), "source": "Yahoo Finance (unofficial, delayed)",
+                 "source_url": f"https://finance.yahoo.com/quote/{symbol}"}
     else:
         fallback = alpha_vantage_quote(symbol, stamp) if "." not in symbol else None  # US listings only
         if not fallback:
