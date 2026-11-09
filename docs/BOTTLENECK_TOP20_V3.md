@@ -419,6 +419,11 @@ Source implementation only: **IMPLEMENTED_UNVERIFIED**, not deployed or independ
   Ordinary and protected ranking read the controlled candidate registry; feed `admitted_candidates` is never authority.
 - Pending ALL_STOCK/CASH/MIXED merger targets are withheld with a zh-TW reason; an acquirer keeps an independently
   calculated score. LITE/MRVL remains pending, 4.5 MRVL shares per LITE, not a completed conversion.
+- M3 display metadata comes from the controlled registry through `corporate_actions.public_notes`: pending merger notes
+  carry `status=PENDING` for both target and acquirer; completed distribution notes carry `status=CLOSED` for both MOD
+  and THRM. Producer company and excluded rows retain the note, and the publisher independently reprojects it from
+  the same captured registry. A LITE notice never admits the pending target. THRM displays “MOD 每股配發 0.44619 股 THRM”
+  without inheriting MOD shareholder-return suppression, entitlement proofs, or adjusted returns.
 - `scripts/distribution_adjusted_returns.py` owns MOD suppression and the Decimal shareholder-entitlement calculator.
   MOD distributed 0.44619 THRM on October 1; due bills run September 28–October 1 and the reviewed ex-spin boundary is
   October 2. Fractional cash means actual net proceeds, never a fraction times an endpoint price; distributed THRM

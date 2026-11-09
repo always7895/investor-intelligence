@@ -1250,7 +1250,7 @@ def build(fetch: Callable[[str], bytes] | None, now: datetime, with_news: bool =
                   if captured is not None else corporate_actions.load_actions(today=now.date()))
     # The protected host binds registry bytes to the same immutable capture catalog.
     pending_targets = corporate_actions.pending_targets(action_doc)
-    pending_acquirers = corporate_actions.pending_acquirers(action_doc)
+    action_notes = corporate_actions.public_notes(action_doc, asof=now.date())
     distributions = corporate_actions.completed_distributions(action_doc, asof=now.date())
     entitlement_source = (captured.operand("entitlement_evidence")
                           if captured is not None and "entitlement_evidence" in captured.manifest()
@@ -1358,10 +1358,7 @@ def build(fetch: Callable[[str], bytes] | None, now: datetime, with_news: bool =
                              "latest_event": public_event_research.latest_event(
                                  reviewed_events, symbol=symbol, cutoff=now.date(),
                                  reviewed_events=event_registry),
-                             **({"corporate_action": corporate_actions.distribution_note(distributions[symbol][-1])}
-                                if symbol in distributions else
-                                {"corporate_action": corporate_actions.acquirer_note(pending_acquirers[symbol])}
-                                if symbol in pending_acquirers else {})}
+                             **({"corporate_action": action_notes[symbol]} if symbol in action_notes else {})}
     # Pure research-only rules for every candidate; never alter ranking scores or gates.
     for company in companies.values():
         company["screen_conditions"] = validated_rule_engine.evaluate(
@@ -1448,14 +1445,18 @@ def build(fetch: Callable[[str], bytes] | None, now: datetime, with_news: bool =
                              "reason_zh": "併購待完成，暫不納入排行",
                              "acquirer": pending["acquirer_symbol"], "kind": pending["kind"],
                              "ratio": pending["exchange_ratio"], "expected_close": pending["expected_close"],
-                             "source_url": pending["source_url"]})
+                             "source_url": pending["source_url"],
+                             **({"corporate_action": company["corporate_action"]}
+                                if "corporate_action" in company else {})})
             continue
         market, fund, sig, pos = company["market"], company["fundamentals"], company["serenity"], company["leopold"]
         long_term, reasons = long_term_gate(market)
         if serenity_excluded(sig):
             reasons.append("SERENITY_BEARISH")
         if reasons:
-            excluded.append({"symbol": company["symbol"], "reasons": reasons})
+            excluded.append({"symbol": company["symbol"], "reasons": reasons,
+                             **({"corporate_action": company["corporate_action"]}
+                                if "corporate_action" in company else {})})
             continue
         capture, capture_detail = capture_score(fund)
         archetype = "EXPLOSION" if company["market_cap_usd"] and company["market_cap_usd"] < EXPLOSION_CAP_USD else "COMPOUNDER"

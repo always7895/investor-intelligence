@@ -79,7 +79,7 @@ async function makePreviews(): Promise<Record<string, LineOutboundMessage[]>> {
   dealRaw.top[0].symbol = "MRVL";
   dealRaw.top[0].name = "Synthetic MRVL Acquirer";
   dealRaw.top[0].corporate_action = {
-    target_symbol: "LITE", acquirer_symbol: "MRVL", kind: "ALL_STOCK",
+    target_symbol: "LITE", acquirer_symbol: "MRVL", kind: "ALL_STOCK", status: "PENDING",
     exchange_ratio: 4.5, cash_per_share: null, currency: null,
     expected_close: "first half of calendar year 2028",
     source_url: "https://www.sec.gov/Archives/edgar/data/0001633978/000119312526442758/d163169dex991.htm",

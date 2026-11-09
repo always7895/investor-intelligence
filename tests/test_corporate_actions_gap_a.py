@@ -132,7 +132,7 @@ class CorporateActionLoaderTests(unittest.TestCase):
                 p.write_text(json.dumps(obj), encoding="utf-8")
                 loaded = m.load_actions(p, today=date(2026, 11, 7))
                 self.assertEqual(m.pending_targets(loaded), {})
-                self.assertEqual(m.pending_acquirers(loaded), {})
+                self.assertEqual(m.public_notes(loaded, asof=date(2026, 11, 7)), {})
 
     def test_null_review_date_is_explicit_and_never_backfilled(self):
         import corporate_actions as m
@@ -151,7 +151,7 @@ class CorporateActionLoaderTests(unittest.TestCase):
         doc["entries"][0].update(target_symbol="TEST", acquirer_symbol="OTHER")
         loaded = m.load_actions_bytes(json.dumps(doc).encode(), today=date(2026, 11, 7))
         self.assertEqual(set(m.pending_targets(loaded)), {"TEST"})
-        self.assertEqual(set(m.pending_acquirers(loaded)), {"OTHER"})
+        self.assertEqual(set(m.public_notes(loaded, asof=date(2026, 11, 7))), {"TEST", "OTHER"})
         self.assertEqual(m.pending_targets(loaded)["TEST"]["status"], "PENDING")
 
     def test_top20_excludes_target_and_keeps_acquirer_score_with_note(self):

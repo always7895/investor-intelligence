@@ -42,14 +42,7 @@ class DistributionRegistryTest(unittest.TestCase):
         self.assertEqual({k: mod[k] for k in distribution()}, distribution())
         self.assertEqual(mod["flags"], [])
         self.assertNotIn("MOD", m.pending_targets(doc))
-        self.assertNotIn("MOD", m.pending_acquirers(doc))
         self.assertEqual(m.pending_targets(doc)["LITE"]["acquirer_symbol"], "MRVL")
-        self.assertEqual(m.acquirer_note(m.pending_acquirers(doc)["MRVL"]), {
-            "target_symbol": "LITE", "acquirer_symbol": "MRVL", "kind": "ALL_STOCK",
-            "exchange_ratio": 4.5, "cash_per_share": None, "currency": None,
-            "expected_close": "first half of calendar year 2028",
-            "source_url": "https://www.sec.gov/Archives/edgar/data/0001633978/000119312526442758/d163169dex991.htm",
-        })
 
     def test_bad_distribution_fail_closed(self):
         import corporate_actions as m
@@ -111,7 +104,7 @@ class DistributionRegistryTest(unittest.TestCase):
             "id": "cooling_power_train", "name_zh": "散熱", "chain": "datacenter", "chain_rank": 3,
             "leopold_constraint": "x", "filing_terms": [],
             "capturers": [{"symbol": t, "role": "x", "source_url": SEC, "source_date": EVENT}
-                          for t in ("MOD", "LITE", "MRVL")],
+                          for t in ("MOD", "THRM", "LITE", "MRVL")],
         }
         # No disk/HTTP capture or host writes; mock only data inputs.
         from tempfile import TemporaryDirectory
@@ -138,7 +131,15 @@ class DistributionRegistryTest(unittest.TestCase):
         self.assertIn("DEAL_PENDING_TARGET", excluded["LITE"]["reasons"])
         mrvl = next(row for row in doc["top"] if row["symbol"] == "MRVL")
         self.assertEqual(mrvl["corporate_action"]["exchange_ratio"], 4.5)
-        self.assertNotIn("corporate_action", excluded["MOD"])
+        self.assertEqual(excluded["LITE"]["corporate_action"]["status"], "PENDING")
+        self.assertEqual(excluded["LITE"]["corporate_action"]["exchange_ratio"], 4.5)
+        self.assertEqual(excluded["MOD"]["corporate_action"]["status"], "CLOSED")
+        self.assertEqual(excluded["MOD"]["corporate_action"]["shares_per_share"], 0.44619)
+        thrm = next(row for row in doc["top"] if row["symbol"] == "THRM")
+        self.assertEqual(thrm["corporate_action"]["target_symbol"], "MOD")
+        self.assertEqual(thrm["market"]["ret_6m"], 0.8)
+        self.assertNotIn("return_reasons", thrm["market"])
+        self.assertNotIn("distribution_adjustment", thrm["market"])
 
 
 if __name__ == "__main__":

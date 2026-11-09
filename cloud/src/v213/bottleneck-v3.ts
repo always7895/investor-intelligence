@@ -132,7 +132,7 @@ export interface Outlook {
 }
 interface LeopoldLead { long_weight: number; status: string; }
 interface MergerActionNote {
-  target_symbol: string; acquirer_symbol: string; kind: "ALL_STOCK" | "CASH" | "MIXED";
+  target_symbol: string; acquirer_symbol: string; kind: "ALL_STOCK" | "CASH" | "MIXED"; status: "PENDING";
   exchange_ratio: number | null; cash_per_share: number | null; currency: string | null;
   expected_close: string; source_url: string;
 }
@@ -158,7 +158,7 @@ export interface BottleneckEntry {
   parts: { layer_heat: number; capture: number; lead: number; confirmation: number; size: number; penalty: number };
   fundamentals: Fundamentals | null; market: Market; market_cap_usd: number | null;
   serenity: SerenityLead | null; leopold: LeopoldLead | null;
-  /** Reviewed public merger term. Acquirer display only, never score-bearing. */
+  /** Controlled public terms for either party. Display only; no admission or entitlement transfer. */
   corporate_action?: CorporateActionNote;
   /** Research-only hypotheses. All conditions remain unvalidated and score-neutral. */
   screen_conditions?: { state: "UNVERIFIED"; rules: {rule_id: string; label_zh: string; status: "PASS" | "FAIL" | "UNKNOWN"}[] };
@@ -384,10 +384,12 @@ function validCorporateAction(raw: unknown, symbol: string, generatedAt: string)
   if (x.kind === "DISTRIBUTION") {
     const fields = ["target_market", "target_symbol", "kind", "status", "distribution_date",
       "related_market", "related_symbol", "shares_per_share", "source_url", "source_date", "review_by"];
-    return keysExactly(x, fields) && x.target_market === "US" && x.target_symbol === symbol
+    return keysExactly(x, fields) && x.target_market === "US"
+      && (x.target_symbol === symbol || x.related_symbol === symbol)
+      && str(x.target_symbol, 15) && /^[A-Z0-9][A-Z0-9.-]{0,14}$/.test(x.target_symbol as string)
       && x.related_market === "US" && x.status === "CLOSED"
       && str(x.related_symbol, 15) && /^[A-Z0-9][A-Z0-9.-]{0,14}$/.test(x.related_symbol as string)
-      && x.related_symbol !== symbol && num(x.shares_per_share)
+      && x.related_symbol !== x.target_symbol && num(x.shares_per_share)
       && (x.shares_per_share as number) > 0 && (x.shares_per_share as number) <= 10000
       && calendarDay(x.distribution_date) && calendarDay(x.source_date)
       && (x.source_date as string) >= (x.distribution_date as string)
@@ -397,9 +399,11 @@ function validCorporateAction(raw: unknown, symbol: string, generatedAt: string)
       && sourceText(x.source_url, 400)
       && /^https:\/\/www\.sec\.gov\/Archives\/[a-zA-Z0-9/_-]+\.[a-zA-Z0-9]+$/.test(x.source_url as string);
   }
-  const keys = ["target_symbol", "acquirer_symbol", "kind", "exchange_ratio", "cash_per_share", "currency", "expected_close", "source_url"];
+  const keys = ["target_symbol", "acquirer_symbol", "kind", "status", "exchange_ratio", "cash_per_share", "currency", "expected_close", "source_url"];
   if (!keysExactly(x, keys) || !str(x.target_symbol, 15) || !/^[A-Z0-9][A-Z0-9.-]{0,14}$/.test(x.target_symbol as string)
-    || x.target_symbol === symbol || x.acquirer_symbol !== symbol || !["ALL_STOCK", "CASH", "MIXED"].includes(String(x.kind))
+    || !str(x.acquirer_symbol, 15) || !/^[A-Z0-9][A-Z0-9.-]{0,14}$/.test(x.acquirer_symbol as string)
+    || x.target_symbol === x.acquirer_symbol || (x.target_symbol !== symbol && x.acquirer_symbol !== symbol)
+    || x.status !== "PENDING" || !["ALL_STOCK", "CASH", "MIXED"].includes(String(x.kind))
     || !str(x.expected_close, 70) || !/^(?:20\d{2}-(?:H[12]|Q[1-4])|(?:first|second) half of calendar year 20\d{2}|20\d{2}-\d{2}-\d{2})$/.test(x.expected_close as string)
     || !https(x.source_url) || !(x.source_url as string).startsWith("https://www.sec.gov/Archives/")) return false;
   const share = num(x.exchange_ratio) && (x.exchange_ratio as number) > 0 && (x.exchange_ratio as number) <= 10000;
@@ -413,7 +417,11 @@ function corporateActionText(entry: BottleneckEntry): string | null {
   const deal = entry.corporate_action;
   if (!deal) return null;
   if (deal.kind === "DISTRIBUTION") {
-    return `${deal.distribution_date} 完成分拆：每股配發 ${deal.shares_per_share.toFixed(5)} 股 ${deal.related_symbol}；${entry.market.distribution_adjustment
+    const terms = `${deal.distribution_date} 完成分拆（${deal.status}）：${deal.target_symbol} 每股配發 ${deal.shares_per_share.toFixed(5)} 股 ${deal.related_symbol}`;
+    if (entry.symbol !== deal.target_symbol) {
+      return `${terms}；${deal.related_symbol} 為配發標的，未套用 ${deal.target_symbol} 股東權益報酬`;
+    }
+    return `${terms}；${entry.market.distribution_adjustment
       ? "跨事件報酬依已覆核一手權益資料計算（非交易報酬）" : "未取得完整權益調整價格，跨事件報酬不顯示"}`;
   }
   const firstHalf = /^first half of calendar year (20\d{2})$/.exec(deal.expected_close);
@@ -422,7 +430,7 @@ function corporateActionText(entry: BottleneckEntry): string | null {
   const terms = deal.kind === "ALL_STOCK" ? `每股換 ${deal.exchange_ratio!.toFixed(3)} 股 ${deal.acquirer_symbol}`
     : deal.kind === "CASH" ? `每股現金 ${deal.cash_per_share} ${deal.currency}`
     : `每股換 ${deal.exchange_ratio!.toFixed(3)} 股 ${deal.acquirer_symbol} 加現金 ${deal.cash_per_share} ${deal.currency}`;
-  return `併購進行中：${deal.target_symbol} ${terms}，預計 ${expected}完成；收購方維持獨立評分，完成仍待審核`;
+  return `併購進行中（${deal.status}）：${deal.target_symbol} ${terms}，預計 ${expected}完成；收購方維持獨立評分，完成仍待審核`;
 }
 
 function corporateActionNotice(entry: BottleneckEntry): string | null {
@@ -581,7 +589,9 @@ function validEntry(raw: any, generatedAt: string): raw is BottleneckEntry {
       && validRevenueCheck(raw.fundamentals.cross_check)))
     && raw.market && str(raw.market.source, 80) && https(raw.market.source_url) && str(raw.market.asof, 12)
     && ["ret_6m", "ret_1y", "cagr_2y", "cagr_listed"].every(key => optNum(raw.market[key])) && optNum(raw.market_cap_usd)
-    && validReturnReasons(raw.market, raw.corporate_action)
+    && validReturnReasons(raw.market,
+      raw.corporate_action?.kind === "DISTRIBUTION" && raw.corporate_action.target_symbol !== raw.symbol
+        ? undefined : raw.corporate_action)
     && (raw.market.cross_check === undefined || (raw.market.cross_check && str(raw.market.cross_check.source_id, 40)
       && https(raw.market.cross_check.source_url) && num(raw.market.cross_check.price) && raw.market.cross_check.price > 0
       && optStr(raw.market.cross_check.asof, 30) && str(raw.market.cross_check.currency, 8) && optNum(raw.market.cross_check.diff)))

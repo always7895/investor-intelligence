@@ -862,7 +862,7 @@ def captured_bottleneck_v3_body(raw: bytes, now: datetime, effective_inputs=None
             if guidance_machine_enabled:
                 raise machine.MachinePublicationBlocked("DEAL_PENDING_TARGET")
             return {}  # do not seal an obsolete pre-deal target ranking into a newer report
-        acquirer_actions = {entry["acquirer_symbol"]: entry for entry in active}
+        action_notes = corporate_actions.public_notes(actions, asof=generated.date())
         pick = lambda row, keys: {key: row.get(key) for key in keys}  # noqa: E731
         top = []
         zh = build_zh_names.names_for([entry["symbol"] for entry in doc["top"]],
@@ -953,10 +953,7 @@ def captured_bottleneck_v3_body(raw: bytes, now: datetime, effective_inputs=None
                 "name_zh_source": zh[entry["symbol"]][1] if entry["symbol"] in zh else None,
                 "layer": entry["layer"], "archetype": entry["archetype"], "score": entry["score"],
                 "role": entry["role"][:200], "role_zh": str(role_zh)[:200] if role_zh else None,
-                **({"corporate_action": corporate_actions.distribution_note(distributions[entry["symbol"]][-1])}
-                   if entry["symbol"] in distributions else
-                   {"corporate_action": corporate_actions.acquirer_note(acquirer_actions[entry["symbol"]])}
-                   if entry["symbol"] in acquirer_actions else {}),
+                **({"corporate_action": action_notes[entry["symbol"]]} if entry["symbol"] in action_notes else {}),
                 "role_source": entry["role_source"], "outlook": _with_order_forecast(
                     entry["symbol"], _sealed_outlook(entry.get("outlook"), generated), (entry.get("outlook") or {}).get("orders"),
                     order_scenarios.get(entry["symbol"]), generated, order_claim_registry,

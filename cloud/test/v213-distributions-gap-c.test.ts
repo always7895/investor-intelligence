@@ -55,7 +55,7 @@ describe("GAP-C distribution note, strict shape and legacy merger compatibility"
   });
 
   it("preserves exact LITE/MRVL all-stock note and rejects a new key on it", () => {
-    const action = { target_symbol: "LITE", acquirer_symbol: "S1", kind: "ALL_STOCK",
+    const action = { target_symbol: "LITE", acquirer_symbol: "S1", kind: "ALL_STOCK", status: "PENDING",
       exchange_ratio: 4.5, cash_per_share: null, currency: null,
       expected_close: "first half of calendar year 2028",
       source_url: "https://www.sec.gov/Archives/edgar/data/0001633978/000119312526442758/d163169dex991.htm" };
