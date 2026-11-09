@@ -5,7 +5,7 @@ import { combineQuotes, handleGlobalEquityLookup } from "../src/v213/global-equi
 import { identitySymbolBucket } from "../src/v213/identity-shards";
 import { formatVisibleMoment } from "../src/v213/line-formatters";
 import { loadDelayedQuote, loadListingPrice } from "../src/v213/market-observations";
-import { pinPublicSnapshot } from "../src/v213/public-snapshot";
+import { clearVerifiedLazyBodies, pinPublicSnapshot } from "../src/v213/public-snapshot";
 import { SNAPSHOT_SEAL_KEY } from "../src/v213/snapshot-seal";
 import { asKv, MemoryKv } from "./fake-kv";
 import { sealUnboundReport } from "./sealed-report-migration";
@@ -70,8 +70,8 @@ async function sealedQuotes(options: {
 }
 
 describe("M1 observation and acquisition clocks", () => {
-  beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(NOW); });
-  afterEach(() => { vi.useRealTimers(); });
+  beforeEach(() => { clearVerifiedLazyBodies(); vi.useFakeTimers(); vi.setSystemTime(NOW); });
+  afterEach(() => { clearVerifiedLazyBodies(); vi.useRealTimers(); });
 
   it.each(["2026-11-06", "2026-11-06T21:00:00Z"])("keeps NVDA 186.64 at provider AS OF %s despite a Sunday fetch", async asof => {
     const { env, view, document } = await sealedQuotes({ quote: { ...QUOTE, asof }, listingAsOf: "2026-11-05" });
@@ -174,6 +174,7 @@ describe("M1 observation and acquisition clocks", () => {
     expect(await loadDelayedQuote(view, "NVDA", Date.parse(GENERATED) - 300_001)).toBeNull();
     expect(await loadListingPrice(view, RECORD, Date.parse(GENERATED) + 4 * 86400_000 + 1)).toBeNull();
     expect(await loadListingPrice(view, RECORD, Date.parse(GENERATED) - 300_001)).toBeNull();
+    clearVerifiedLazyBodies(); // Exercise a cold read, not the already verified content-addressed body.
     const tampered = await sealedQuotes({ tamper: true });
     expect(await loadDelayedQuote(tampered.view, "NVDA", NOW)).toBeNull();
   });

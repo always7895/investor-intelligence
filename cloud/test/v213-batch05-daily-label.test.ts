@@ -15,7 +15,8 @@ vi.mock("../src/v213/market-observations", async importOriginal => {
 const sha = async (body: string) => Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(body))),
   b => b.toString(16).padStart(2, "0")).join("");
 const NOW = "2026-09-15T12:01:00Z";
-async function answer(style: "text" | "flex", asof: string | null, source = "yahoo-daily-close") {
+async function answer(style: "text" | "flex", asof: string | null, source = "yahoo-daily-close",
+  hourlyAsOf: string | null = "2026-09-15T11:59:00Z") {
   const kv = new MemoryKv();
   for (const [key, body] of Object.entries(fixture.values)) kv.values.set(key, body);
   const sealKey = `snapshot:${fixture.run}:v213:snapshot-seal:v1`;
@@ -25,7 +26,7 @@ async function answer(style: "text" | "flex", asof: string | null, source = "yah
       sources: [{ id: source, url: "https://example.com/synthetic-daily" }], rows: { SIVE: [32.5, 1, asof, "SEK", 0] } },
     "v213:quotes:v1": { schema: "v213-quotes-v1", generated_at: fixture.stamp, quotes: {
       "SIVE.ST": { symbol: "SIVE.ST", price: 33, previous_close: 32, change_pct: 0.03, currency: "SEK",
-        asof: fixture.stamp, source: "Yahoo Finance (unofficial, delayed)", source_url: "https://example.com/synthetic-hourly" }
+        asof: hourlyAsOf, fetched_at: fixture.stamp, source: "Yahoo Finance (unofficial, delayed)", source_url: "https://example.com/synthetic-hourly" }
     } },
   };
   for (const [key, value] of Object.entries(lazy)) {
@@ -52,19 +53,21 @@ describe("BATCH05 daily source and date contract", () => {
   it("B05-I5 renamed daily Yahoo label is still one provider on text and Flex", async () => {
     for (const style of ["text", "flex"] as const) {
       const reply = await answer(style, "2026-09-14");
-      // Same provider: newest hourly observation wins; obsolete daily label is not a second price.
-      expect(reply).toContain("Yahoo Finance（非官方，延遲）");
-      expect(reply).toContain("最新觀察價 33.00 SEK");
-      expect(reply).not.toContain("Yahoo 日收盤（合成改名）");
+      // One provider: the genuine newer observation wins without a second corroborating price.
+      expect(reply).toContain("33.00 SEK");
+      expect(reply).not.toContain("32.50 SEK");
       expect(reply).not.toContain("交叉比對");
       expect(reply).not.toContain("2026-09-14T");
     }
   });
-  it("B05-I5 missing trade date is explicitly acquisition-only, never an invented close date", async () => {
+  it("B05-I5 acquisition-only prices retain listing precedence and never claim a latest observation", async () => {
     for (const style of ["text", "flex"] as const) {
-      const reply = await answer(style, null);
-      expect(reply).toContain("09-15 20:00（台北）");
-      expect(reply).toContain("最新觀察價 33.00 SEK");
+      const reply = await answer(style, null, "yahoo-daily-close", null);
+      expect(reply).toContain("32.50 SEK");
+      expect(reply).not.toContain("33.00 SEK");
+      expect(reply).toContain("觀察時間未揭露");
+      expect(reply).not.toContain("最新觀察價");
+      expect(reply).toContain("擷取時間 09-15 20:00（台北）");
       expect(reply).not.toContain(fixture.stamp);
       expect(reply).not.toContain("交叉比對");
     }
