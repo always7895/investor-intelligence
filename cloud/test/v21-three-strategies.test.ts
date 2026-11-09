@@ -416,6 +416,24 @@ describe("Stage 1C producer bridge and observation boundaries", () => {
     expect(oneSided.strategies.collar.put.ask).toBeGreaterThan(0);
   });
 
+  it("routes a qualified put beside a call observation through the shared recommendation cards", () => {
+    const mixed = observed("delta_call");
+    expect(mixed.quote_observation).toBeDefined();
+    expect(mixed.suggestions).toEqual([]);
+    const cards = bubbles(render(mixed, "flex"));
+    expect(joined(cards[0])).toContain("可用策略");
+    expect(joined(cards.at(-1))).toContain("資料來源與說明");
+    const visible = joined(cards);
+    expect(visible).toContain(mixed.strategies.cc.unavailable);
+    expect(visible).toContain("現金擔保賣權");
+    expect(visible).toContain("建議賣出限價");
+    expect(visible).toContain("Bid情境");
+    expect(joined(render(mixed, "text"))).toContain("建議賣出限價");
+    const observationCards = bubbles(render(observationOnly(), "flex"));
+    expect(joined(observationCards[0])).toContain("報價觀察");
+    expect(joined(observationCards)).not.toContain("建議賣出限價");
+  });
+
   it("does not infer put-chain absence from omitted metadata or an omitted strategy block", () => {
     const raw = observationOnly();
     delete raw.strategies;

@@ -832,11 +832,7 @@ function monthlyObservationMessages(cycle:CoveredCallCycle,style:"flex"|"text",o
     footer:footerBox("報價非可執行，流動性與指派風險；非投資建議、不下單")};
   const messages:LineOutboundMessage[]=[{type:"flex",
     altText:altSummary({topic:cycle.ticker+" 月期權報價觀察",status:eligibility,next:"查看文字來源"}),
-    contents:{type:"carousel",contents:[
-      bubble,
-      ...("block" in csp ? [cspDetailBubble(cardContext(cycle,"每月期權"), csp.block)] : []),
-      ...("block" in collar ? [collarDetailBubble(cardContext(cycle,"每月期權"), collar.block)] : []),
-    ]}}];
+    contents:{type:"carousel",contents:[bubble]}}];
   assertLineMessages(messages);
   return messages;
 }
@@ -848,7 +844,10 @@ export function buildCoveredCallMessages(cycle: CoveredCallCycle, periodLabel: s
   // (the only one a public caller converts to an unavailable report) denies instead of rendering.
   const admission = admitPublicOption(cycle);
   if (!admission.ok) throw new OptionRightsNotAdmittedError();
-  if(cycle.quote_observation) return monthlyObservationMessages(cycle,style,admission.operator_accepted===true);
+  const rawCsp = cycle.strategies?.csp, rawCollar = cycle.strategies?.collar;
+  const hasPutStrategy = (rawCsp && !("unavailable" in rawCsp)) || (rawCollar && !("unavailable" in rawCollar));
+  if (cycle.quote_observation && !cycle.suggestions.length && !hasPutStrategy)
+    return monthlyObservationMessages(cycle, style, admission.operator_accepted === true);
   const ctx = cardContext(cycle, periodLabel);
   ctx.operatorNotice = admission.operator_accepted === true ? OPERATOR_ACCEPTED_NOTICE_ZH : null;
   const { carried, carriedLabel, operatorNotice, dteZh, spotLabel } = ctx;
@@ -869,8 +868,7 @@ export function buildCoveredCallMessages(cycle: CoveredCallCycle, periodLabel: s
     assertLineMessages(messages);
     return messages;
   }
-  const csp = cspShown(cycle);
-  const collar = collarShown(cycle);
+  const csp = cspShown(cycle), collar = collarShown(cycle);
   const bubbles: unknown[] = [overviewBubble(ctx),
     ...(cycle.suggestions.length > 0 ? [ccDetailBubble(ctx)] : []),
     ...("block" in csp ? [cspDetailBubble(ctx, csp.block)] : []),
