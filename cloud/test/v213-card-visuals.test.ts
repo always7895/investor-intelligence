@@ -14,7 +14,7 @@ const nodes = (value: unknown, type: string): any[] => !value || typeof value !=
 const card = (rank: number, filler = ""): MacroIndustryCard => ({
   rank, industry_id: `ind_${rank}`, industry_name: `合成產業 ${rank} (Synthetic industry ${rank})`,
   current_state: `成員營收年增 +26.1%（US$135.00B → US$170.22B，2026-06-30）${filler}`, outlook_12_36m: `價格年增 -3.2%${filler}`,
-  growth: { rate_pct: 26.1, units: "% YoY", period: "2026 Q2", type: "actual", publisher: "SEC", date: "2026-06-30", source_id: "syn",
+  growth: { rate_pct: 26.1, units: "% YoY", period: "2026 Q2", type: "actual", publisher: "SEC", date: "2026-06-30", source_id: "sec-xbrl-frames-revenue",
     url: "https://example.com/growth", raw_passage: "Synthetic passage of the growth figure" },
   demand_drivers: [`需求 +10.0%${filler}`], supply_constraint_chokepoint: `RPO 年增 +86.3%${filler}`, pricing: "PPI 年增 +45.0%",
   value_chain_position: "SIC 3571", beneficiaries_key_suppliers: ["Synthetic A", "Synthetic B"],
@@ -32,7 +32,7 @@ describe("card body visuals", () => {
     expect((richText("沒有任何數字") as any).contents).toBeUndefined();
   });
 
-  it("TOP5 overview ranks with badges and score meters", () => {
+  it("TOP5 overview ranks with score meters, cards disclose sample growth, confidence and catalyst horizons", () => {
     const messages = buildMacroTop5OverviewFlex({ title: "TOP5產業總覽", generated_at: "2026-09-25T12:00:00Z", horizon: "12-36M",
       qualified_count: 5, shortfall: 0, status: "ADMITTED_TOP5", industries: [1, 2, 3, 4, 5].map(rank => card(rank)) });
     assertLineMessages(messages);
@@ -40,6 +40,15 @@ describe("card body visuals", () => {
     const widths = nodes(overview.body, "box").map(box => box.width).filter((w: unknown) => typeof w === "string" && /%$/.test(w as string));
     expect(widths.slice(0, 5)).toEqual(["83%", "76%", "69%", "62%", "55%"]);
     expect(JSON.stringify(overview.body)).toContain("Synthetic industry 1");
+    expect(JSON.stringify(overview.body)).toContain("機會分數構成");
+    const first = nodes(messages, "bubble")[1];
+    const texts = nodes(first.body, "text").map(node => node.text);
+    expect(texts).toEqual(expect.arrayContaining(["+26.1%", "資料完整度", "80%", "6M", "1Y", "2Y"]));
+    // Disclosure belongs on the actual industry card, not only its overview or alt text.
+    expect(texts).toEqual(expect.arrayContaining([
+      expect.stringMatching(/樣本.*營收.*年增/),
+      expect.stringMatching(/非總市場/),
+    ]));
   });
 
   it("oversized content drops highlighting to stay inside LINE limits, and carousels are packed by size", () => {

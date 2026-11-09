@@ -1,7 +1,8 @@
 """Versioned order-forecast transport through the real lazy publisher.
 
 Historical producer fixtures exercise envelope admission, detachment and the
-disabled transport path. Additive unrelated report fields are not frozen bytes.
+disabled transport path. Exact legacy and enveloped bodies are frozen in the
+shared cross-language fixture as the publisher/Worker wire-integrity contract.
 """
 from __future__ import annotations
 
@@ -89,13 +90,16 @@ class WirePublisherTests(unittest.TestCase):
             path.write_text(json.dumps(FIXTURE["unsealed_doc"]), encoding="utf-8")
             return publish_sealed_snapshot.lazy_bottleneck_v3_body(path, NOW, **kwargs)
 
-    def test_disabled_transport_keeps_plain_forecasts(self) -> None:
+    def test_1_option_omitted_or_false_produces_exact_frozen_legacy_body(self) -> None:
         body_key = publish_sealed_snapshot.BOTTLENECK_V3_KEY
         res_omitted = self.run_publisher()
         res_false = self.run_publisher(guidance_wire_enabled=False)
         self.assertEqual(res_omitted, res_false)
+        self.assertEqual(res_omitted, FIXTURE["expected_legacy_body"])
+        self.assertEqual(res_false, FIXTURE["expected_legacy_body"])
         body = json.loads(res_omitted[body_key])
         self.assertEqual(body["generated_at"], GENERATED_AT)
+        self.assertEqual(len(body["top"]), 10)
         # Sibling v2 stays unchanged and the v3 value is the plain producer result (no envelope).
         for entry in body["top"]:
             self.assertEqual(entry["outlook"]["order_forecast"]["version"], 2)
@@ -119,6 +123,11 @@ class WirePublisherTests(unittest.TestCase):
             self.assertEqual(v3["payload"], _producer_v3(entry["symbol"]))
             self.assertEqual(entry["outlook"]["order_forecast"], _producer_v2(entry["symbol"]))        # Repeated serialization is deterministic.
         self.assertEqual(self.run_publisher(guidance_wire_enabled=True), res_true)
+
+    def test_3_output_equals_shared_fixture_legacy_and_enveloped_bodies(self) -> None:
+        # The Worker consumes these same frozen strings, not regenerated mock expectations.
+        self.assertEqual(self.run_publisher(), FIXTURE["expected_legacy_body"])
+        self.assertEqual(self.run_publisher(guidance_wire_enabled=True), FIXTURE["expected_wire_body"])
 
 
 
