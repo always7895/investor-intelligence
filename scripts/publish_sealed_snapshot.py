@@ -1257,7 +1257,9 @@ def pointer_text(meta, seal_sha: str) -> str:
 
 
 def retained_publication(snapshot_root: Path, objects: dict, pointer: str, now: datetime) -> dict | None:
-    """Read-only preflight: hourly evaluation never creates an unchanged seal."""
+    """Read-only preflight; an ambiguous pointer can never suppress a new seal."""
+    if top20_carry_forward.pointer_ambiguous(snapshot_root):
+        return None  # Only real remote reconciliation can make old proof usable.
     candidate = top20_carry_forward.ranking_from_objects(objects, json.loads(pointer))
     previous = top20_carry_forward.confirmed_snapshot(snapshot_root)
     if candidate is None and previous is None:

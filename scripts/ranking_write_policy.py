@@ -1,9 +1,11 @@
 """Ranking-only cadence and conservative, local UTC-day KV attempt reservations.
 
 Hourly evaluation is free of policy writes. Reserve the ENTIRE remote transaction's
-worst-case puts (including retries/pointers) once, before starting it; no refunds
-or per-attempt second charge. Default allowance is 1000 - 600 = 400 attempts/day.
-A stopped day expires automatically at 00:00 UTC. Unknown ledgers fail closed.
+worst-case puts (including retries/pointers) before starting it. At a UTC rollover,
+reserve its full remaining plan again before another PUT launch; old reservations
+are never refunded and same-day attempts are never charged twice. The default
+allowance is 1000 - 600 = 400 attempts/day. Unknown ledgers fail closed.
+Stopped days expire automatically at 00:00 UTC.
 """
 from __future__ import annotations
 
@@ -220,3 +222,45 @@ class DailyWriteBudget:
                 self._save(value)
         except (OSError, ValueError, UnicodeError):
             pass  # Subsequent reservations still fail closed for unknown/busy state.
+
+
+class DailyWriteReservation:
+    """Retry-inclusive remaining plan, authorized again at each UTC-day boundary.
+
+    Slots count controlled CLI launches, not an asserted provider HTTP count.
+    Finishing an operation retires unused retries from the remaining plan only;
+    it never refunds the durable daily reservation.
+    """
+
+    def __init__(self, budget: DailyWriteBudget, count: int):
+        if type(count) is not int or count <= 0:
+            raise ValueError("RANKING_BUDGET_COUNT_INVALID")
+        self.budget = budget
+        self.remaining = count
+        self.reserved = 0
+        self.day = None
+
+    def authorize(self, now: datetime) -> bool:
+        day = _utc(now).date().isoformat()
+        if self.remaining <= 0 or self.day is not None and day < self.day:
+            return False
+        if day == self.day:
+            return True
+        if not self.budget.reserve(self.remaining, now):
+            return False
+        self.day = day
+        self.reserved += self.remaining
+        return True
+
+    def launch(self, now: datetime) -> bool:
+        """Consume one slot only after the full remaining plan is authorized."""
+        if not self.authorize(now):
+            return False
+        self.remaining -= 1
+        return True
+
+    def retire(self, count: int) -> None:
+        """Drop unused retry slots; durable reservations remain conservative."""
+        if type(count) is not int or not 0 <= count <= self.remaining:
+            raise ValueError("RANKING_BUDGET_COUNT_INVALID")
+        self.remaining -= count

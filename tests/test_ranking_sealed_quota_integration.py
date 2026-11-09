@@ -243,6 +243,270 @@ class SealedQuotaIntegration(KvTestCase):
         self.assertEqual(self.serving(), (original, pointer))
         self.assertTrue((self.snapshots / carry.CONFIRMED_NAME).exists())
 
+    def test_insufficient_without_local_receipt_preserves_verified_remote_ranking(self):
+        first, _ = self.publish(START)
+        (self.snapshots / carry.CONFIRMED_NAME).unlink()
+        before = copy.deepcopy(self.kv.store)
+        candidate = self.evaluate(START + timedelta(hours=1), unavailable=True)
+        mark = len(self.kv.puts)
+        retained = self.upload(candidate)
+        self.assertEqual((retained.exit, retained.record["status"], retained.record["retention_reason"],
+                          retained.record["retained_run_id"], retained.record["pointer_state"]),
+                         (0, "RETAINED_LAST_GOOD", "CANDIDATE_UNAVAILABLE", first["run_id"], "NOT_ATTEMPTED"))
+        self.assertEqual((len(self.kv.puts), self.kv.store), (mark, before))
+        self.assertEqual(carry.confirmed_snapshot(self.snapshots)["run_id"], first["run_id"])
+
+    def test_uncertain_remote_discovery_never_bootstraps_insufficiency_over_a_ranking(self):
+        self.publish(START)
+        (self.snapshots / carry.CONFIRMED_NAME).unlink()
+        before = copy.deepcopy(self.kv.store)
+        candidate = self.evaluate(START + timedelta(hours=1), unavailable=True)
+        self.kv.missing_get(POINTER_KEY, None)  # UNKNOWN is not an observed HTTP 404.
+        mark = len(self.kv.puts)
+        failed = self.upload(candidate)
+        self.assertEqual((failed.exit, failed.record["error_category"], failed.record["pointer_state"],
+                          failed.record["writes_reserved"]), (1, "BOOTSTRAP_REQUIRED", "NOT_ATTEMPTED", 0))
+        self.assertEqual((len(self.kv.puts), self.kv.store), (mark, before))
+        self.assertFalse((self.snapshots / carry.CONFIRMED_NAME).exists())
+
+    def test_explicit_pointer_404_allows_honest_insufficient_bootstrap_without_ranking_receipt(self):
+        candidate = self.evaluate(START, unavailable=True)
+        original = self.kv.fake_run
+
+        def observed_missing_pointer(*args, **kwargs):
+            result = original(*args, **kwargs)
+            argv = args[0]
+            if "get" in argv and argv[argv.index("get") + 1] == POINTER_KEY and result.returncode:
+                return subprocess.CompletedProcess(argv, 1, "",
+                    "Failed to fetch https://synthetic.invalid/value - 404: missing")
+            return result
+
+        with mock.patch.object(self.kv, "fake_run", side_effect=observed_missing_pointer):
+            result = self.upload(candidate)
+        self.assertEqual((result.exit, result.record["status"], result.record["pointer_state"]),
+                         (0, "SUCCEEDED", "READBACK_CONFIRMED"))
+        self.assertIsNone(carry.confirmed_snapshot(self.snapshots))
+        self.assertFalse((self.snapshots / carry.CONFIRMED_NAME).exists())
+        pointer = json.loads(self.kv.store[POINTER_KEY])
+        report = json.loads(self.kv.store[f"snapshot:{pointer['run_id']}:v213:top20-report:latest"])
+        self.assertEqual(report["records"], [])
+
+    def test_written_b_failed_readback_then_requested_a_never_uses_stale_a_receipt(self):
+        first, _ = self.publish(START)
+        receipt = self.snapshots / carry.CONFIRMED_NAME
+        receipt_a = receipt.read_bytes()
+        first_dir = self.snapshots / first["run_id"]
+        historical_a = {name: (first_dir / name).read_bytes() for name in ("objects.json", "pointer.raw.json")}
+        candidate_b = self.evaluate(START + timedelta(hours=1), list(reversed(self.symbols)))
+        self.kv.missing_get(POINTER_KEY, 1)
+        failed = self.upload(candidate_b)
+        self.assertEqual((failed.exit, failed.record["status"], failed.record["pointer_state"]),
+                         (1, "FAILED", "ATTEMPTED_UNCONFIRMED"))
+        self.assertEqual(json.loads(self.kv.store[POINTER_KEY])["run_id"], candidate_b["run_id"])
+        self.assertEqual(receipt.read_bytes(), receipt_a)
+        self.assertTrue(carry.pointer_ambiguous(self.snapshots))
+        self.assertIsNone(carry.confirmed_snapshot(self.snapshots))
+
+        # A pointer alone cannot reconcile custody: every member must read back.
+        self.kv.clear_hooks()
+        objects_b = json.loads((self.snapshots / candidate_b["run_id"] / "objects.json").read_text())
+        member = next(key for key in sorted(objects_b) if key.startswith(sync.BLOB_PREFIX))
+        self.kv.corrupt_get(member, None, b"not-the-sealed-member")
+        mark = len(self.kv.puts)
+        with mock.patch.object(subprocess, "run", self.kv.fake_run), \
+                mock.patch.object(sync, "_cli_command", return_value=["synthetic-cli"]):
+            self.assertIsNone(sync.reconcile_confirmed_snapshot(self.snapshots))
+        self.assertEqual(len(self.kv.puts), mark)
+        self.assertEqual(receipt.read_bytes(), receipt_a)
+        self.assertTrue(carry.pointer_ambiguous(self.snapshots))
+
+        candidate_a = self.evaluate(START + timedelta(hours=2))
+        self.assertNotEqual(candidate_a.get("status"), "RETAINED_LAST_GOOD")  # publisher preflight, not just sync
+        self.assertNotEqual(candidate_a["run_id"], first["run_id"])
+        self.kv.clear_hooks()
+        restored = self.upload(candidate_a)
+        self.assertEqual((restored.exit, restored.record["status"], restored.record["pointer_state"]),
+                         (0, "SUCCEEDED", "READBACK_CONFIRMED"))
+        body, pointer = self.serving()
+        self.assertEqual(policy.ordered_rank_digest(json.loads(body)), policy.ordered_rank_digest({"top": self.symbols}))
+        self.assertEqual(pointer["run_id"], candidate_a["run_id"])
+        self.assertFalse(carry.pointer_ambiguous(self.snapshots))
+        confirmed = carry.confirmed_snapshot(self.snapshots)
+        self.assertEqual(confirmed["run_id"], candidate_a["run_id"])
+        self.assertEqual(confirmed["objects"],
+                         json.loads((self.snapshots / candidate_a["run_id"] / "objects.json").read_text()))
+        self.assertEqual({name: (first_dir / name).read_bytes() for name in historical_a}, historical_a)
+        self.assertEqual(restored.record["objects_verified"], len(confirmed["objects"]))
+        self.assertEqual(self.kv.puts[-1][0], POINTER_KEY)
+
+    def test_pending_marker_must_be_durable_before_pointer_launch(self):
+        self.publish(START)
+        receipt = (self.snapshots / carry.CONFIRMED_NAME).read_bytes()
+        old_pointer = self.kv.store[POINTER_KEY]
+        candidate = self.evaluate(START + timedelta(hours=1), list(reversed(self.symbols)))
+        original = carry.mark_pointer_pending
+
+        def cannot_flush_marker(run_dir):
+            with mock.patch.object(carry.os, "fsync", side_effect=OSError("synthetic-flush-failure")):
+                original(run_dir)
+
+        mark = len(self.kv.puts)
+        with mock.patch.object(carry, "mark_pointer_pending", side_effect=cannot_flush_marker):
+            failed = self.upload(candidate)
+        self.assertEqual((failed.exit, failed.record["error_category"], failed.record["pointer_state"]),
+                         (1, "LOCAL_IO_FAILURE", "NOT_ATTEMPTED"))
+        self.assertNotIn(POINTER_KEY, [key for key, _ in self.kv.puts[mark:]])
+        self.assertEqual(self.kv.store[POINTER_KEY], old_pointer)
+        self.assertEqual((self.snapshots / carry.CONFIRMED_NAME).read_bytes(), receipt)
+        self.assertIsNotNone(carry.confirmed_snapshot(self.snapshots))
+
+    def test_midnight_requires_full_remaining_plan_and_resumes_after_next_reset(self):
+        self.publish(START)
+        candidate = self.evaluate(START + timedelta(days=1, seconds=-1), list(reversed(self.symbols)))
+        old_pointer = self.kv.store[POINTER_KEY]
+        original = self.kv.fake_run
+        launch_days = []
+        old_reserved = []
+        crossed = False
+
+        def cross_after_first_put(*args, **kwargs):
+            nonlocal crossed
+            argv = args[0]
+            if "put" in argv:
+                launch_days.append(Clock.instant.date())
+            result = original(*args, **kwargs)
+            if "put" in argv and not crossed:
+                crossed = True
+                old_reserved.append(json.loads(self.budget_path.read_text())["reserved"])
+                Clock.instant = START + timedelta(days=1)
+                # Only 47 free slots: one next PUT fits, but the 48-slot
+                # remaining worst-case plan does not. There must be NO launch.
+                self.assertTrue(policy.DailyWriteBudget(self.budget_path).reserve(353, Clock.instant))
+            return result
+
+        with mock.patch.object(self.kv, "fake_run", side_effect=cross_after_first_put):
+            stopped = self.upload(candidate)
+        self.assertEqual((stopped.exit, stopped.record["status"], stopped.record["retention_reason"],
+                          stopped.record["pointer_state"]), (0, "RETAINED_LAST_GOOD", "WRITE_BUDGET", "NOT_ATTEMPTED"))
+        self.assertEqual((launch_days, old_reserved), ([START.date()], [174]))
+        self.assertEqual((stopped.record["writes_attempted"], stopped.record["writes_reserved"]), (1, 51))
+        self.assertEqual(json.loads(self.budget_path.read_text())["reserved"], 353)
+        self.assertEqual(self.kv.store[POINTER_KEY], old_pointer)
+        _, resumed = self.publish(START + timedelta(days=2), list(reversed(self.symbols)))
+        self.assertIsNotNone(resumed)
+        self.assertEqual(resumed.record["pointer_state"], "READBACK_CONFIRMED")
+        self.assertEqual(json.loads(self.budget_path.read_text())["reserved"], 51)
+
+    def test_retry_crossing_midnight_reserves_every_remaining_slot_once_on_new_day(self):
+        self.publish(START)
+        candidate = self.evaluate(START + timedelta(days=1, seconds=-1), list(reversed(self.symbols)))
+        original = self.kv.fake_run
+        launch_days = []
+        crossed = False
+
+        def retry_on_new_day(*args, **kwargs):
+            nonlocal crossed
+            argv = args[0]
+            if "put" in argv:
+                launch_days.append(Clock.instant.date())
+            if "put" in argv and not crossed:
+                crossed = True
+                self.kv.fail_put(argv[argv.index("put") + 1], 1, NETWORK)
+                result = original(*args, **kwargs)
+                Clock.instant = START + timedelta(days=1)
+                self.assertTrue(policy.DailyWriteBudget(self.budget_path).reserve(350, Clock.instant))
+                return result
+            return original(*args, **kwargs)
+
+        with mock.patch.object(self.kv, "fake_run", side_effect=retry_on_new_day):
+            result = self.upload(candidate)
+        self.assertEqual((result.exit, result.record["status"], result.record["pointer_state"]),
+                         (0, "SUCCEEDED", "READBACK_CONFIRMED"))
+        self.assertEqual((result.record["writes_attempted"], result.record["writes_reserved"]), (18, 101))
+        self.assertEqual(launch_days.count(START.date()), 1)
+        self.assertEqual(launch_days.count((START + timedelta(days=1)).date()), 17)
+        self.assertEqual(json.loads(self.budget_path.read_text())["reserved"], 400)
+        self.assertEqual(self.kv.puts[-1][0], POINTER_KEY)
+
+    def test_discovery_crossing_midnight_reserves_only_the_current_utc_day(self):
+        self.publish(START)
+        (self.snapshots / carry.CONFIRMED_NAME).unlink()
+        candidate = self.evaluate(START + timedelta(days=1, seconds=-1), list(reversed(self.symbols)))
+        original = self.kv.fake_run
+        crossed = False
+
+        def discover_across_midnight(*args, **kwargs):
+            nonlocal crossed
+            argv = args[0]
+            result = original(*args, **kwargs)
+            if "get" in argv and argv[argv.index("get") + 1] == POINTER_KEY and not crossed:
+                crossed = True
+                Clock.instant = START + timedelta(days=1)
+            return result
+
+        with mock.patch.object(self.kv, "fake_run", side_effect=discover_across_midnight):
+            result = self.upload(candidate)
+        self.assertEqual((result.exit, result.record["writes_reserved"], result.record["writes_attempted"]), (0, 51, 17))
+        self.assertEqual((json.loads(self.budget_path.read_text())["day"],
+                          json.loads(self.budget_path.read_text())["reserved"]), ("2026-11-02", 51))
+
+    def test_cli_selection_crossing_midnight_stops_before_any_remote_put_launch(self):
+        self.publish(START)
+        candidate = self.evaluate(START + timedelta(days=1, seconds=-1), list(reversed(self.symbols)))
+        old_pointer = self.kv.store[POINTER_KEY]
+
+        def select_cli_on_next_day():
+            Clock.instant = START + timedelta(days=1)
+            self.assertTrue(policy.DailyWriteBudget(self.budget_path).reserve(400, Clock.instant))
+            return ["synthetic-cli"]
+
+        mark = len(self.kv.puts)
+        with mock.patch.object(sync, "_cli_command", side_effect=select_cli_on_next_day):
+            stopped = run_sy(sync, self.kv, self.snapshots / candidate["run_id"], self.ledger, {},
+                             seam="B", real_cli=True)
+        self.assertEqual((stopped.exit, stopped.record["status"], stopped.record["retention_reason"]),
+                         (0, "RETAINED_LAST_GOOD", "WRITE_BUDGET"))
+        self.assertEqual((stopped.record["writes_attempted"], stopped.record["last_cli_attempts"],
+                          stopped.record["last_cli_exit_code"]), (0, 0, None))
+        self.assertEqual((len(self.kv.puts), self.kv.store[POINTER_KEY]), (mark, old_pointer))
+
+    def test_pointer_rollover_denial_has_no_attempt_or_ack_and_requires_reconciliation(self):
+        first, _ = self.publish(START)
+        receipt_a = (self.snapshots / carry.CONFIRMED_NAME).read_bytes()
+        old_pointer = self.kv.store[POINTER_KEY]
+        candidate = self.evaluate(START + timedelta(days=1, seconds=-1), list(reversed(self.symbols)))
+        objects = json.loads((self.snapshots / candidate["run_id"] / "objects.json").read_text())
+        last_member = sorted(objects)[-1]
+        original = self.kv.fake_run
+        crossed = False
+
+        def cross_after_object_readback(*args, **kwargs):
+            nonlocal crossed
+            argv = args[0]
+            result = original(*args, **kwargs)
+            if "get" in argv and argv[argv.index("get") + 1] == last_member and not crossed:
+                crossed = True
+                Clock.instant = START + timedelta(days=1)
+                self.assertTrue(policy.DailyWriteBudget(self.budget_path).reserve(398, Clock.instant))
+            return result
+
+        mark = len(self.kv.puts)
+        with mock.patch.object(self.kv, "fake_run", side_effect=cross_after_object_readback):
+            stopped = self.upload(candidate)
+        self.assertEqual((stopped.exit, stopped.record["status"], stopped.record["error_category"],
+                          stopped.record["pointer_state"]), (1, "FAILED", "WRITE_BUDGET_UNAVAILABLE", "NOT_ATTEMPTED"))
+        self.assertNotIn(POINTER_KEY, [key for key, _ in self.kv.puts[mark:]])
+        self.assertEqual(self.kv.store[POINTER_KEY], old_pointer)
+        self.assertEqual((self.snapshots / carry.CONFIRMED_NAME).read_bytes(), receipt_a)
+        self.assertTrue(carry.pointer_ambiguous(self.snapshots))
+        self.assertIsNone(carry.confirmed_snapshot(self.snapshots))
+        mark = len(self.kv.puts)
+        with mock.patch.object(subprocess, "run", self.kv.fake_run), \
+                mock.patch.object(sync, "_cli_command", return_value=["synthetic-cli"]):
+            reconciled = sync.reconcile_confirmed_snapshot(self.snapshots)
+        self.assertEqual((reconciled["run_id"], len(self.kv.puts)), (first["run_id"], mark))
+        self.assertFalse(carry.pointer_ambiguous(self.snapshots))
+
     def test_thirty_days_hourly_real_seals_keep_top20_and_daily_writes_bounded(self):
         attempted = defaultdict(int)
         reserved = defaultdict(int)

@@ -20,7 +20,7 @@ export interface RetainedRanking {
  * observedAt (not parseAt) for time-limited machine approval/admission decisions.
  * Invalid/missing custody is a real bootstrap prerequisite, not a fallback ranking.
  */
-export async function readRetainedRanking(view: PublicSnapshotView, observedAt = Date.now()): Promise<RetainedRanking | null> {
+export async function readRetainedRanking(view: PublicSnapshotView, observedAt = Date.now(), factsOnly = false): Promise<RetainedRanking | null> {
   if (!Number.isFinite(observedAt) || Math.abs(observedAt) > 8_640_000_000_000_000
     || !hasVerifiedSnapshotCustody(view, RANKING_KEY)) return null;
   // text() performs the lazy blob digest verification; manifest membership alone
@@ -36,14 +36,15 @@ export async function readRetainedRanking(view: PublicSnapshotView, observedAt =
   const parseAt = Date.parse(doc.generated_at);
   if (!Number.isFinite(parseAt) || parseAt > observedAt
     || new Date(parseAt).toISOString() !== (doc.generated_at.includes(".") ? doc.generated_at : doc.generated_at.replace("Z", ".000Z"))) return null;
-  // Only the ranking age gate can be relaxed. Fresh reports keep the normal path.
-  if (v213ReportAgeFresh([doc.generated_at], observedAt)) return null;
+  // Fresh data without current machine authority may expose sealed facts only;
+  // the caller must withhold every forecast, never replay approval at parseAt.
+  if (!factsOnly && v213ReportAgeFresh([doc.generated_at], observedAt)) return null;
   if (!Array.isArray(doc.top) || doc.top.length < 10 || doc.top.length > 20) return null;
   const symbols = new Set<string>();
   for (const row of doc.top) {
     if (!row || typeof row !== "object" || typeof row.symbol !== "string" || !row.symbol.trim() || symbols.has(row.symbol)) return null;
     symbols.add(row.symbol);
   }
-  const notice = `歷史保留排名（原始資料時間 ${doc.generated_at}）：目前未取得新的有效封存排行，保留最後驗證的排名。非即時資料；訂單、預估與情境僅代表該時間，不代表目前核准、權利或投資建議。`;
+  const notice = `歷史保留排名（原始資料時間 ${doc.generated_at}）：保留最後驗證的排行事實。非即時資料；訂單、預估與情境僅代表該時間，不代表目前核准、權利或投資建議。`;
   return { raw, originalAsOf: doc.generated_at, parseAt, observedAt, notice };
 }

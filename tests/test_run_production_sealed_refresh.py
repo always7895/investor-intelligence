@@ -560,7 +560,7 @@ class MachineRetainedRunnerTests(unittest.TestCase):
                 (scripts / name).write_text('raise AssertionError("suppressed path must not publish/replay/sync")\n', encoding="utf-8")
             helper = ('import sys\nprint(\'{"status":"REJECTED","reason":"BOOTSTRAP_REQUIRED"}\')\nsys.exit(2)\n'
                       if bootstrap else PUBLISH_RETAINED)
-            (scripts / "top20_carry_forward.py").write_text(helper, encoding="utf-8")
+            (scripts / "ranking_confirmed_heartbeat.py").write_text(helper, encoding="utf-8")
             args = [shell, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", str(scripts / SCRIPT.name),
                     "-GuidanceAutoUpdateEnabled", "-GuidanceDirtyRebuildEnabled", "-GuidanceMachinePublicationEnabled"]
             if carry:
@@ -582,7 +582,7 @@ class MachineRetainedRunnerTests(unittest.TestCase):
 
     def test_missing_good_or_nonboolean_suppression_cannot_forge_retained_success(self):
         for shell in shells():
-            for kwargs, reason in (({"bootstrap": True}, "BOOTSTRAP_REQUIRED"), ({"invalid": True}, "MACHINE_EXPORT_UNAVAILABLE")):
+            for kwargs, reason in (({"bootstrap": True}, "CONFIRMED_HEARTBEAT_UNAVAILABLE"), ({"invalid": True}, "MACHINE_EXPORT_UNAVAILABLE")):
                 code, outcome = self.run_machine_retained(shell, carry=False, **kwargs)
                 self.assertEqual(code, 2, outcome)
                 self.assertEqual(outcome["error_category"], reason)

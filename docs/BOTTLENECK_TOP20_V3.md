@@ -419,6 +419,13 @@ Source implementation only: **IMPLEMENTED_UNVERIFIED**, not deployed or independ
   caller-owned `II_R2B_SHADOW_LOG`, never its immutable code tree. Failed ranking/data validation never appends.
   An observation precedes serialization/sealing: later publication failure leaves no proof of publication, acceptance
   or causality. Source hashes exclude invocation-only clocks/decay; actual source changes remain merely possible causes.
+- `scripts/ranking_confirmed_heartbeat.py` handles a genuine host NO_CHANGE when the remote confirmed seal is already
+  six hours old, including a previous failed publication. It reuses verified confirmed bytes without rewriting raw
+  ranking or producing a fresh host ACK. Original report/data/approval/capture bytes, claim time and payload digests
+  remain unchanged; only assembly identity/seal bindings are rebound. Publisher budget preflight precedes staging;
+  normal replay/sync performs all-object readback and pointer-last. An ambiguous pointer attempt invalidates local
+  suppression proof until `sync.reconcile_confirmed_snapshot` verifies the actual remote pointer and every object.
+  Transactions crossing UTC midnight reserve their full remaining bounded plan again before the next day's PUT.
 - Serenity schema 4 distinguishes original/reply/quote/repost, deduplicates source identity/content across scoring and
   chronology, and records source/retrieval age and mirror status. An archive or oEmbed lookup does not authenticate
   an author's claim or create an independent source. Current source fingerprints exclude clock-derived decay; older

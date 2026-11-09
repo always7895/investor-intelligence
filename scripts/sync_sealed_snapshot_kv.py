@@ -34,6 +34,7 @@ LAST_CALL_DETAIL: dict = {"http_status": None, "provider_code": None}
 TOTAL_ATTEMPTS = 0
 PUT_ATTEMPTS = 0
 ACTIVE_WRITE_BUDGET = None
+ACTIVE_WRITE_RESERVATION = None
 BLOB_PREFIX = "blob:v1:"
 RUN_KEY_TTL_SECONDS = 14 * 86400
 BLOB_TTL_SECONDS = 30 * 86400
@@ -58,6 +59,10 @@ class CliUnavailable(RuntimeError):
     """A local locked CLI could not be selected; no CLI launch occurred."""
 
 
+class WriteBudgetUnavailable(RuntimeError):
+    """The next controlled PUT launch has no full remaining-plan authorization."""
+
+
 def _cli_command() -> list[str]:
     """Use the already-installed Wrangler matching BOTH manifest and lock.
 
@@ -79,8 +84,14 @@ def _cli_command() -> list[str]:
 
 
 def _run_cli(args: list[str]) -> subprocess.CompletedProcess:
+    command = _cli_command()
+    # Resolve local prerequisites FIRST, then check the day immediately before
+    # launching each PUT/retry. No additional Python/CLI retry wrapper is used.
+    if args[:3] == ["kv", "key", "put"] and ACTIVE_WRITE_RESERVATION is not None:
+        if not ACTIVE_WRITE_RESERVATION.launch(datetime.now(timezone.utc)):
+            raise WriteBudgetUnavailable()
     return subprocess.run(
-        [*_cli_command(), *args], cwd=str(CLOUD_DIR), capture_output=True,
+        [*command, *args], cwd=str(CLOUD_DIR), capture_output=True,
         text=True, encoding="utf-8", errors="replace", timeout=300,
     )
 
@@ -192,8 +203,11 @@ def _error_summary(p: subprocess.CompletedProcess) -> str:
 def _run_with_retry(args: list[str]) -> subprocess.CompletedProcess:
     global TOTAL_ATTEMPTS, PUT_ATTEMPTS
     launched = 0
+    is_put = args[:3] == ["kv", "key", "put"]
+    authorized = 0
     LAST_ERROR.clear()
     for attempt in range(1, ATTEMPTS + 1):
+        remaining_before = ACTIVE_WRITE_RESERVATION.remaining if is_put and ACTIVE_WRITE_RESERVATION is not None else None
         try:
             p = _run_cli(args)
             launched += 1
@@ -201,6 +215,9 @@ def _run_with_retry(args: list[str]) -> subprocess.CompletedProcess:
         except CliUnavailable:
             p = subprocess.CompletedProcess(args, None, "", "")
             category = "CLI_UNAVAILABLE"
+        except WriteBudgetUnavailable:
+            p = subprocess.CompletedProcess(args, None, "", "")
+            category = "WRITE_BUDGET_UNAVAILABLE"
         except subprocess.TimeoutExpired as error:
             launched += 1
             out = error.stdout.decode("utf-8", "replace") if isinstance(error.stdout, bytes) else (error.stdout or "")
@@ -213,6 +230,8 @@ def _run_with_retry(args: list[str]) -> subprocess.CompletedProcess:
             launched += 1  # an attempted launch, not a fabricated native exit
             p = subprocess.CompletedProcess(args, None, "", "")
             category = "CLI_LAUNCH_FAILED"
+        if remaining_before is not None:
+            authorized += remaining_before - ACTIVE_WRITE_RESERVATION.remaining
         LAST_CALL.update(attempts=launched, exit_code=p.returncode, error_category=category)
         LAST_CALL_DETAIL.update(_cli_failure_detail(p.stdout, p.stderr) if p.returncode != 0 else
                                 {"http_status": None, "provider_code": None})
@@ -226,7 +245,9 @@ def _run_with_retry(args: list[str]) -> subprocess.CompletedProcess:
             break
         time.sleep((AUTH_RETRY_SECONDS if rejected else RETRY_SECONDS) * attempt)
     TOTAL_ATTEMPTS += launched
-    if args[:3] == ["kv", "key", "put"]:
+    if is_put and ACTIVE_WRITE_RESERVATION is not None:
+        ACTIVE_WRITE_RESERVATION.retire(ATTEMPTS - authorized)
+    if is_put:
         PUT_ATTEMPTS += launched
     if LAST_CALL["error_category"] == KV_DAILY_LIMIT and ACTIVE_WRITE_BUDGET is not None:
         ACTIVE_WRITE_BUDGET.stop_until_reset(datetime.now(timezone.utc))
@@ -282,6 +303,8 @@ def _finish_call(record: dict, category: str | None = None) -> None:
                   last_cli_exit_code=LAST_CALL["exit_code"],
                   error_category=category or LAST_CALL["error_category"])
     record["writes_attempted"] = PUT_ATTEMPTS
+    if ACTIVE_WRITE_RESERVATION is not None:
+        record["writes_reserved"] = ACTIVE_WRITE_RESERVATION.reserved
 
 
 
@@ -319,48 +342,52 @@ def _retain(record: dict, previous: dict | None, reason: str) -> int:
     return 0
 
 
-def _discover_last_good(run_dir: Path) -> dict | None:
-    """Bootstrap a receipt from real readbacks, never merely a local sealed run."""
+def _discover_last_good(snapshot_root: Path) -> tuple[dict | None, bool]:
+    """Return (confirmed ranking, proved bootstrap-safe), never infer absence.
+
+    Bootstrap is safe only after an explicit pointer 404 or a stable pointer
+    whose complete sealed object set was read back and is genuinely insufficient.
+    """
     from publish_sealed_snapshot import OBJECT_KEYS, MACRO_KEY
     raw = client_get("snapshot:current")
     if raw is None:
-        return None
+        return None, LAST_CALL_DETAIL["http_status"] == 404
     try:
         pointer = json.loads(raw)
         run = pointer["run_id"]
         if not isinstance(run, str) or not RUN_ID.fullmatch(run):
-            return None
+            return None, False
         prefix = f"snapshot:{run}:"
         seal_key = prefix + carry.SEALED_MANIFEST_KEY
         seal_text = client_get(seal_key)
         if seal_text is None or sha(seal_text) != pointer.get("seal_sha256"):
-            return None
+            return None, False
         manifest = json.loads(seal_text)
         rows = manifest["objects"]
         if manifest.get("run_id") != run or not isinstance(rows, dict) or not 1 <= len(rows) <= 4096:
-            return None
+            return None, False
         objects = {seal_key: seal_text}
         for name, entry in rows.items():
             if not isinstance(name, str) or not isinstance(entry, dict):
-                return None
+                return None, False
             digest = entry.get("sha256")
             if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
-                return None
+                return None, False
             key = prefix + name if name in (*OBJECT_KEYS, MACRO_KEY) else "blob:v1:" + digest
             body = objects.get(key)
             if body is None:
                 body = client_get(key)
             if body is None or sha(body) != digest or len(body.encode("utf-8")) != entry.get("utf8_bytes"):
-                return None
+                return None, False
             objects[key] = body
         ranking = carry.ranking_from_objects(objects, pointer)
-        if ranking is None:
-            return None
         # Re-read the pointer after the entire object set: a concurrent promotion
         # cannot be mistaken for the captured serving set.
         if client_get("snapshot:current") != raw:
-            return None
-        target = carry.plain_path(run_dir.parent / run)
+            return None, False
+        if ranking is None:
+            return None, True
+        target = carry.plain_path(snapshot_root / run)
         object_raw = json.dumps(objects, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
         pointer_raw = raw.encode("utf-8")
         for name, data in (("objects.json", object_raw), ("pointer.raw.json", pointer_raw)):
@@ -370,18 +397,28 @@ def _discover_last_good(run_dir: Path) -> dict | None:
                 # Objects' mapping order/spacing may differ; immutable local bytes
                 # must agree semantically and are never overwritten.
                 if (json.loads(existing) != objects if name == "objects.json" else existing != data):
-                    return None
+                    return None, False
             else:
                 target.mkdir(parents=True, exist_ok=True)
                 path.write_bytes(data)
         carry.confirm_snapshot(target)
-        return carry.confirmed_snapshot(run_dir.parent)
+        return carry.confirmed_snapshot(snapshot_root), False
     except (ValueError, KeyError, TypeError):
-        return None
+        return None, False
+
+
+def reconcile_confirmed_snapshot(snapshot_root: Path) -> dict | None:
+    """Repair local custody proof using actual readbacks; never issue a remote PUT.
+
+    None is not an absence claim. A genuine ranking requires every seal member
+    and a repeat identical serving pointer; only that proof clears ambiguity.
+    """
+    previous, _ = _discover_last_good(carry.plain_path(snapshot_root))
+    return previous
 
 
 def sync_run(run_dir: Path, record: dict) -> int:
-    global ACTIVE_WRITE_BUDGET
+    global ACTIVE_WRITE_BUDGET, ACTIVE_WRITE_RESERVATION
     run_dir = carry.plain_path(run_dir)
     objects = json.loads(carry.plain_path(run_dir / "objects.json").read_text(encoding="utf-8"))
     ptr_raw = carry.plain_path(run_dir / "pointer.raw.json").read_text(encoding="utf-8").strip()
@@ -409,11 +446,16 @@ def sync_run(run_dir: Path, record: dict) -> int:
     previous = carry.confirmed_snapshot(run_dir.parent)
     budget = write_policy.DailyWriteBudget(LEDGER.with_name("ranking-kv-write-budget.json"))
     ACTIVE_WRITE_BUDGET = budget
-    instant = datetime.now(timezone.utc)
-    if candidate is not None and previous is None:
-        previous = _discover_last_good(run_dir)
+    bootstrap_safe = False
+    # Discover before deciding whether ANY insufficient candidate can replace
+    # remote custody, regardless of whether a local receipt exists yet.
+    if previous is None:
+        previous, bootstrap_safe = _discover_last_good(run_dir.parent)
+    instant = datetime.now(timezone.utc)  # Discovery may have crossed 00:00 UTC.
     if candidate is None and previous is not None:
         return _retain(record, previous, "CANDIDATE_UNAVAILABLE")
+    if candidate is None and not bootstrap_safe:
+        return _retain(record, None, "CANDIDATE_UNAVAILABLE")
     if candidate is not None and write_policy.publication_due(
             previous["ranking"] if previous else None, candidate, instant) == "NO_CHANGE":
         return _retain(record, previous, "NO_CHANGE")
@@ -424,9 +466,11 @@ def sync_run(run_dir: Path, record: dict) -> int:
     # Reserve the WHOLE plan, including the pointer and all bounded PUT retries,
     # before staging or the first remote write. GETs never consume the write quota.
     worst_case = (len(entries) - len(reused) + 1) * ATTEMPTS
-    if not budget.reserve(worst_case, instant):
+    reservation = write_policy.DailyWriteReservation(budget, worst_case)
+    if not reservation.authorize(datetime.now(timezone.utc)):
         return _retain(record, previous, "WRITE_BUDGET")
-    record["writes_reserved"] = worst_case
+    ACTIVE_WRITE_RESERVATION = reservation
+    record["writes_reserved"] = reservation.reserved
     record["objects_reused"] = len(reused)
     staged = carry.plain_path(run_dir / ".kv-stage")
     staged.mkdir(exist_ok=True)
@@ -445,8 +489,9 @@ def sync_run(run_dir: Path, record: dict) -> int:
             continue
         if not client_put(key, fp, BLOB_TTL_SECONDS if blob else RUN_KEY_TTL_SECONDS):
             _finish_call(record)
-            if record["error_category"] == KV_DAILY_LIMIT:
-                return _retain(record, previous, KV_DAILY_LIMIT)
+            if record["error_category"] in {KV_DAILY_LIMIT, "WRITE_BUDGET_UNAVAILABLE"}:
+                reason = KV_DAILY_LIMIT if record["error_category"] == KV_DAILY_LIMIT else "WRITE_BUDGET"
+                return _retain(record, previous, reason)
             _record_failed_object(record, key)
             return 1
         record["objects_uploaded"] += 1
@@ -464,8 +509,18 @@ def sync_run(run_dir: Path, record: dict) -> int:
         record["objects_verified"] += 1
     print(f"READBACK_VERIFIED {record['objects_verified']}")
     record["phase"] = "POINTER_PUT"
-    record["pointer_state"] = "ATTEMPTED_UNCONFIRMED"
-    if not client_put("snapshot:current", ptr_fp):
+    # A durable marker invalidates old serving proof before even an uncertain
+    # pointer write. The old receipt/run bytes remain intact for history.
+    try:
+        carry.mark_pointer_pending(run_dir)
+    except (OSError, ValueError):
+        _finish_call(record, "LOCAL_IO_FAILURE")
+        return 1
+    put_before = PUT_ATTEMPTS
+    pointer_written = client_put("snapshot:current", ptr_fp)
+    if pointer_written or PUT_ATTEMPTS > put_before or LAST_CALL["error_category"] != "WRITE_BUDGET_UNAVAILABLE":
+        record["pointer_state"] = "ATTEMPTED_UNCONFIRMED"
+    if not pointer_written:
         _finish_call(record)
         _record_failed_object(record, "snapshot:current")
         return 1
@@ -537,9 +592,10 @@ def read_freshness(record: dict) -> int:
 
 
 def main() -> int:
-    global TOTAL_ATTEMPTS, PUT_ATTEMPTS, ACTIVE_WRITE_BUDGET
+    global TOTAL_ATTEMPTS, PUT_ATTEMPTS, ACTIVE_WRITE_BUDGET, ACTIVE_WRITE_RESERVATION
     TOTAL_ATTEMPTS = PUT_ATTEMPTS = 0
     ACTIVE_WRITE_BUDGET = None
+    ACTIVE_WRITE_RESERVATION = None
     LAST_CALL.update(attempts=0, exit_code=None, error_category="NONE")
     LAST_CALL_DETAIL.update(http_status=None, provider_code=None)
     ap = argparse.ArgumentParser()
@@ -572,6 +628,7 @@ def main() -> int:
         _finish_call(record, "UNKNOWN")
         code = 1
     ACTIVE_WRITE_BUDGET = None
+    ACTIVE_WRITE_RESERVATION = None
     if stream is not None:
         try:
             with stream:

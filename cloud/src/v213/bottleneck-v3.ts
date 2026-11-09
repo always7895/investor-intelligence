@@ -755,7 +755,7 @@ export async function loadBottleneckV3(view: PublicSnapshotView, options: Bottle
   } else raw = await view.json<unknown>([BOTTLENECK_V3_KEY]);
   const current = machineUnavailable ? null : parseBottleneckV3(raw, observedAt, effectiveOptions);
   if (current) return current;
-  const retained = await readRetainedRanking(view, observedAt);
+  const retained = await readRetainedRanking(view, observedAt, options.guidanceMachineEnabled === true);
   if (!retained) return null;
   const historical = parseBottleneckV3(retained.raw, retained.parseAt, effectiveOptions);
   if (!historical) return null;

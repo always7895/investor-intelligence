@@ -385,6 +385,15 @@ def run_sy(sy, kv: FakeKV, run_dir: Path, ledger: Path, names: dict, *, seam: st
         stack.enter_context(mock.patch.object(sys, "argv", argv))
         stack.enter_context(mock.patch.object(sy, "LEDGER", ledger))
         stack.enter_context(mock.patch.object(sy.time, "sleep", sleeps.append))
+        try:
+            operands = json.loads((Path(run_dir) / "objects.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            operands = None  # SY.main still owns malformed/missing operand outcomes.
+        if isinstance(operands, dict) and not any(key.endswith(":v213:snapshot-seal:v1") for key in operands):
+            # Old transport-only fixtures have no seal/ranking. Explicitly
+            # model verified empty custody at that separate policy boundary;
+            # real sealed integration operands always exercise real discovery.
+            stack.enter_context(mock.patch.object(sy, "_discover_last_good", return_value=(None, True)))
         if seam == "A":
             stack.enter_context(mock.patch.object(sy, "client_put", kv.sy_put))
             stack.enter_context(mock.patch.object(sy, "client_get", kv.sy_get))

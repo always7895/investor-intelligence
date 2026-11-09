@@ -84,15 +84,15 @@ describe("LINE aliases for the current products", () => {
     }
   });
 
-  it("without a fresh v3 names the unavailable product for words new to ranking; certified words keep their path", async () => {
-    const env = await sealedEnv(doc(now - 15 * HOUR));  // past the report-age bound
-    for (const text of ["瓶頸榜", "前二十", "瓶頸爆發榜"]) {
+  it("keeps dated last-good ranking facts reachable through every ranking alias", async () => {
+    const previous = doc(now - 15 * HOUR);
+    const env = await sealedEnv(previous);
+    for (const text of ["瓶頸榜", "前二十", "瓶頸爆發榜", "TOP20", "排名", "前20", "TOP20。"]) {
       const body = await answer(env, text);
-      expect(body, text).toContain("瓶頸爆發 TOP20 目前沒有已封存且在時效內的資料");
-      expect(body, text).toContain("七欄Top20");
+      expect(body, text).toContain(previous.generated_at);
+      for (const entry of previous.top) expect(body, text).toContain(entry.symbol);
+      expect(body, text).not.toContain("七欄Top20");
     }
-    const button = await answer(env, "TOP20");  // the certified Top20 path (T1-T11 contracts), unchanged
-    for (const text of ["排名", "前20", "TOP20。"]) expect(await answer(env, text), text).toBe(button);
   });
 
   it("sends industry ranking phrasings to the Leopold industry ranking, not the company Top20", async () => {

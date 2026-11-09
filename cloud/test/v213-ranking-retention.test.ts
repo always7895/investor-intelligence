@@ -6,6 +6,7 @@ import { BOTTLENECK_V3_KEY, buildBottleneckDetail, buildBottleneckTop20Messages,
 import { clearVerifiedLazyBodies, pinPublicSnapshot, scopePublicSnapshot, type PublicSnapshotView } from "../src/v213/public-snapshot";
 import { readRetainedRanking } from "../src/v213/ranking-retention";
 import { SNAPSHOT_LAZY_BLOB_PREFIX, SNAPSHOT_SEAL_KEY } from "../src/v213/snapshot-seal";
+import { GUIDANCE_BINDING_KEY } from "../src/v213/revenue-guidance-machine";
 import { asKv, MemoryKv } from "./fake-kv";
 
 // Existing synthetic offline sealed replay, never network or installed KV.
@@ -16,14 +17,15 @@ const sha = (body: string) => createHash("sha256").update(body, "utf8").digest("
 const prefix = `snapshot:${replay.run_id}:`;
 const HOUR = 3600_000;
 interface FixtureRanking { generated_at: string; top: { symbol: string; rank: number }[]; }
-function fixture(change?: (raw: FixtureRanking) => void) {
+function fixture(change?: (raw: FixtureRanking) => void, omitMachineBinding = false) {
   const kv = new MemoryKv();
   for (const [key, file] of Object.entries(replay.index)) kv.values.set(key, replay.files[file]!);
   const manifest = JSON.parse(kv.values.get(prefix + SNAPSHOT_SEAL_KEY)!);
   const blob = SNAPSHOT_LAZY_BLOB_PREFIX + manifest.objects[BOTTLENECK_V3_KEY].sha256;
   const raw: FixtureRanking = JSON.parse(kv.values.get(blob)!);
-  if (change) {
-    change(raw);
+  if (omitMachineBinding) delete manifest.objects[GUIDANCE_BINDING_KEY];
+  if (change || omitMachineBinding) {
+    change?.(raw);
     const body = JSON.stringify(raw);
     manifest.objects[BOTTLENECK_V3_KEY] = { sha256: sha(body), utf8_bytes: new TextEncoder().encode(body).byteLength };
     kv.values.delete(blob);
@@ -83,6 +85,18 @@ describe("historical ranking retention custody", () => {
       expect(JSON.stringify(buildBottleneckTop20Messages(historical, style))).toContain(raw.generated_at);
       expect(JSON.stringify(buildBottleneckDetail(historical, historical.top[0]!.symbol, style))).toContain(raw.generated_at);
     }
+  });
+
+  it("keeps fresh sealed facts available when machine authority is absent, without any forecast fallback", async () => {
+    const { env, raw } = fixture(undefined, true);
+    vi.spyOn(Date, "now").mockReturnValue(Date.parse(raw.generated_at) + HOUR);
+    const facts = await loadBottleneckV3(await pinPublicSnapshot(env), { guidanceMachineEnabled: true });
+    expect(facts?.top).toHaveLength(raw.top.length);
+    if (!facts) throw new Error("SEALED_FACTS_UNAVAILABLE");
+    expect(facts.generated_at).toBe(raw.generated_at);
+    expect(facts.historical_forecasts_unavailable).toBe(true);
+    expect(facts.top.every(entry => !entry.forecast && !entry.outlook && !entry.trend)).toBe(true);
+    expect(estimateTop20Fallback(facts, facts.top[0]!)).toBeNull();
   });
 
   it("does not let wire metadata create historical custody or suppress ordinary forecast validation", () => {

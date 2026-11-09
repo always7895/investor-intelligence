@@ -185,6 +185,42 @@ class QuotaPolicy(unittest.TestCase):
             self.assertFalse(budget.reserve(8, START + timedelta(days=1)))
             self.assertFalse(budget.can_reserve(8, START + timedelta(days=1)))
 
+    def test_remaining_plan_reauthorizes_at_midnight_without_refunding_old_day(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "budget.json"
+            budget = policy.DailyWriteBudget(path)
+            plan = policy.DailyWriteReservation(budget, 12)
+            self.assertTrue(plan.authorize(START))
+            original = path.read_bytes()
+            self.assertTrue(plan.launch(START))
+            plan.retire(2)  # The first successful PUT did not use its other two retries.
+            self.assertEqual((plan.remaining, plan.reserved), (9, 12))
+            self.assertTrue(plan.authorize(START + timedelta(hours=23)))
+            self.assertEqual(path.read_bytes(), original)
+            tomorrow = START + timedelta(days=1)
+            self.assertTrue(budget.reserve(392, tomorrow))
+            stopped = path.read_bytes()
+            self.assertFalse(plan.launch(tomorrow))  # Eight free slots cannot authorize the remaining nine.
+            self.assertEqual((plan.remaining, plan.reserved, path.read_bytes()), (9, 12, stopped))
+            self.assertTrue(plan.launch(START + timedelta(days=2)))
+            self.assertEqual((plan.remaining, plan.reserved), (8, 21))
+            self.assertEqual(json.loads(path.read_bytes())["reserved"], 9)
+            self.assertFalse(plan.launch(START))  # A clock rollback cannot reuse old authorization.
+
+    def test_full_allowance_reservation_does_not_double_charge_same_day_launches(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "budget.json"
+            plan = policy.DailyWriteReservation(policy.DailyWriteBudget(path), 400)
+            self.assertTrue(plan.authorize(START))
+            original = path.read_bytes()
+            for _ in range(20):
+                self.assertTrue(plan.launch(START))
+                plan.retire(2)
+            self.assertEqual((plan.remaining, plan.reserved), (340, 400))
+            self.assertEqual(path.read_bytes(), original)
+            with self.assertRaises(ValueError):
+                plan.retire(plan.remaining + 1)
+
     def test_thirty_days_hourly_serving_budget_reset_and_bounded_journal(self):
         with tempfile.TemporaryDirectory() as td, patch.object(rotation, "MAX_SEGMENT_BYTES", 32 * 1024):
             journal = Path(td) / "shadow.jsonl"

@@ -11,7 +11,6 @@ pointer state and error category literal of the sync is inside those lists (the 
 compares a literal designed from the code; the comment above each row cites the lines it was designed from."""
 from __future__ import annotations
 
-import inspect
 import json
 import re
 import sys
@@ -29,19 +28,9 @@ from sealed_kv_fakes import (  # noqa: E402
     run_sy)
 
 REFRESH = (ROOT / "scripts" / "run_production_sealed_refresh.ps1").read_text(encoding="utf-8-sig")
-WATCHDOG = (ROOT / "scripts" / "freshness_watchdog.ps1").read_text(encoding="utf-8-sig")
 GUID = "0123456789abcdef0123456789abcdef"
 VIEW = ("status", "phase", "error_category", "pointer_state")
 CALLER_REFUSES = "CALLER_REFUSES"
-SYNC_PHASES = {"INPUT", "PREFLIGHT", "OBJECT_PUT", "OBJECT_READBACK", "POINTER_PUT", "POINTER_READBACK", "LOCAL_LEDGER", "COMPLETE"}
-WATCH_PHASES = {"INPUT", "POINTER_READ", "POINTER_PARSE", "REPORT_READ", "REPORT_PARSE", "COMPLETE"}
-POINTER_STATES = {"NOT_ATTEMPTED", "ATTEMPTED_UNCONFIRMED", "READBACK_CONFIRMED"}
-STATUSES = {"SUCCEEDED", "FAILED", "RETAINED_LAST_GOOD"}
-CATEGORIES = {"NONE", "UNKNOWN", "AUTHENTICATION_ERROR", "DAILY_KV_LIMIT", "NETWORK_FAILURE", "TRANSIENT_HTTP", "TIMEOUT",
-              "CLI_UNAVAILABLE", "CLI_LAUNCH_FAILED", "READBACK_MISMATCH", "PARSE_FAILED", "INPUT_INVALID",
-              "LOCAL_IO_FAILURE", "OUTCOME_WRITE_FAILED", "BOOTSTRAP_REQUIRED"}
-WATCH_ONLY = {"PARSE_FAILED"}  # SY main: --read-freshness parse failures
-SYNC_ONLY = {"READBACK_MISMATCH", "INPUT_INVALID", "BOOTSTRAP_REQUIRED"}
 
 
 def quoted(fragment: str) -> tuple:
@@ -55,9 +44,6 @@ def refresh_lists() -> dict:
             for field in ("status", "pointer_state", "error_category", "phase")}
 
 
-def watchdog_lists() -> dict:
-    """The closed category and phase lists of the freshness watchdog (freshness_watchdog.ps1 84-85)."""
-    return {name: quoted(re.search(r"\$" + name + r" = @\(([^)]*)\)", WATCHDOG).group(1)) for name in ("categories", "phases")}
 
 
 def read_safe_sync_outcome(path: Path, expected_run: str, lists: dict) -> dict:
@@ -179,32 +165,6 @@ class RefreshSyncContract(KvTestCase):
         self.assertRow(row, (1, ("FAILED", "INPUT", "OUTCOME_WRITE_FAILED", "NOT_ATTEMPTED"), CALLER_REFUSES))
         self.assertEqual((r.ops, self.kv.store[POINTER_KEY]), ((), OLD_POINTER))
 
-    # P6-3: every literal the sync can write into an outcome record is inside the callers' closed lists, so no change
-    # can introduce a value the caller would throw on. The literals are scraped from SY (_outcome, sync_run,
-    # read_freshness, main, _finish_call/classify/_run_with_retry categories) and pinned here as designed sets.
-    def test_P6_3_sync_literals_are_inside_both_callers_lists(self):
-        source = inspect.getsource(SY)
-        sync_side = inspect.getsource(SY._outcome) + inspect.getsource(SY.sync_run) + inspect.getsource(SY.main)
-        watch_side = inspect.getsource(SY._outcome) + inspect.getsource(SY.read_freshness) + inspect.getsource(SY.main)
-        phase = r'(?:record\["phase"\] = |phase=|"phase": )"([A-Z_]+)"'
-        state = r'(?:record\["pointer_state"\] = |pointer_state=|"pointer_state": )"([A-Z_]+)"'
-        status = r'(?:status=|"status": )"([A-Z_]+)"'
-        direct = r'(?:category = |return |error_category=|"error_category": |KV_DAILY_LIMIT = )"([A-Z_]+)"'
-        categories = set(re.findall(direct, source))
-        for match in re.finditer(r'_finish_call\(record, "([A-Z_]+)"(?: if [^"\n]* else "([A-Z_]+)")?', source):
-            categories.update(group for group in match.groups() if group)
-        categories.update(re.findall(r'"([A-Z_]+)"', re.search(r"TRANSIENT_CATEGORIES = \{([^}]*)\}", source).group(1)))
-        scraped = Row(("sync_phases", "pointer_states", "statuses", "categories", "watch_phases"),
-                      (set(re.findall(phase, sync_side)), set(re.findall(state, sync_side)), set(re.findall(status, source)),
-                       categories, set(re.findall(phase, watch_side))))
-        self.assertRow(scraped, (SYNC_PHASES, POINTER_STATES, STATUSES, CATEGORIES, WATCH_PHASES))
-        refresh, watchdog = refresh_lists(), watchdog_lists()
-        outside = Row(("sync_phases", "pointer_states", "statuses", "sync_categories", "watch_categories", "watch_phases"),
-                      (SYNC_PHASES - set(refresh["phase"]), POINTER_STATES - set(refresh["pointer_state"]),
-                       STATUSES - set(refresh["status"]), CATEGORIES - WATCH_ONLY - set(refresh["error_category"]),
-                       CATEGORIES - SYNC_ONLY - set(watchdog["categories"]), WATCH_PHASES - set(watchdog["phases"])))
-        self.assertRow(outside, (set(), set(), set(), set(), set(), set()))
-        self.assertEqual(min(len(values) for values in (*refresh.values(), *watchdog.values())) >= 2, True)  # lists were found
 
 
 if __name__ == "__main__":

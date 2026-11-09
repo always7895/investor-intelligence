@@ -2,8 +2,9 @@
 """Top20 last-known-good (LKG) bundle for the hourly sealed publisher (single-writer design, T5).
 
 The hourly publisher evaluates without re-sealing an unchanged ranking before the six-hour heartbeat. A confirmed
-last-good seal and its exact report/row times remain untouched during cadence or quota suppression; historical
-retention never grants fresh evidence or a new approval. A data-only refresh writes a candidate bundle; ``promote``
+last-good seal and its exact report/row times remain untouched during cadence or quota suppression; a durable
+pending-pointer marker disables that receipt until actual pointer/all-object custody is confirmed again.
+Historical retention never grants fresh evidence or a new approval. A data-only refresh writes a candidate bundle; ``promote``
 copies it into the LKG directory only after the same checks and ordered-ranking cadence pass. ``due`` tells the
 hourly script whether a refresh is needed and not suppressed by the persisted backoff after a failed refresh.
 
@@ -32,6 +33,7 @@ import v213_evidence_policy as policy  # noqa: E402
 import ranking_write_policy as write_policy  # noqa: E402
 
 CONFIRMED_NAME = ".ranking-last-good.json"
+AMBIGUOUS_NAME = ".ranking-pointer-pending.json"
 SEALED_RANKING_KEY = "v213:bottleneck-top20:v3"
 SEALED_MANIFEST_KEY = "v213:snapshot-seal:v1"
 
@@ -85,9 +87,29 @@ def ranking_from_objects(objects: dict, pointer: dict) -> dict | None:
     return {**document, "generated_at": seal["generated_at"]}
 
 
+def pointer_ambiguous(snapshot_root: Path) -> bool:
+    """Even a corrupt pending marker blocks historical receipts as serving proof."""
+    return plain_path(plain_path(snapshot_root) / AMBIGUOUS_NAME).exists()
+
+
+def mark_pointer_pending(run_dir: Path) -> None:
+    """Durably invalidate serving proof BEFORE any possible pointer PUT launch."""
+    run_dir = plain_path(run_dir)
+    pointer = plain_path(run_dir / "pointer.raw.json").read_bytes()
+    parsed = json.loads(pointer)
+    if not isinstance(parsed, dict) or not RUN_ID.fullmatch(str(parsed.get("run_id", ""))):
+        raise ValueError("LAST_GOOD_POINTER")
+    marker = {"schema_version": 1, "run_id": parsed["run_id"],
+              "pointer_sha256": hashlib.sha256(pointer).hexdigest()}
+    _write_atomic(run_dir.parent / AMBIGUOUS_NAME,
+                  json.dumps(marker, separators=(",", ":")).encode("utf-8"))
+
+
 def confirmed_snapshot(snapshot_root: Path) -> dict | None:
-    """Local receipt exists only after all objects AND the pointer passed readback."""
+    """Return usable serving proof, never an old receipt during pointer ambiguity."""
     root = plain_path(snapshot_root)
+    if pointer_ambiguous(root):
+        return None
     receipt_path = plain_path(root / CONFIRMED_NAME)
     if not receipt_path.exists():
         return None
@@ -104,10 +126,11 @@ def confirmed_snapshot(snapshot_root: Path) -> dict | None:
     pointer = json.loads(pointer_raw)
     if pointer.get("run_id") != run:
         raise ValueError("LAST_GOOD_POINTER")
-    document = ranking_from_objects(json.loads(object_raw), pointer)
+    objects = json.loads(object_raw)
+    document = ranking_from_objects(objects, pointer)
     if document is None:
         return None
-    return {"run_id": run, "ranking": document, "pointer": pointer, "run_dir": run_dir}
+    return {"run_id": run, "ranking": document, "pointer": pointer, "objects": objects, "run_dir": run_dir}
 
 
 def confirm_snapshot(run_dir: Path) -> None:
@@ -123,6 +146,12 @@ def confirm_snapshot(run_dir: Path) -> None:
                "pointer_sha256": hashlib.sha256(pointer).hexdigest()}
     target = plain_path(run_dir.parent / CONFIRMED_NAME)
     _write_atomic(target, json.dumps(receipt, separators=(",", ":")).encode("utf-8"))
+    # Keep the old receipt throughout ambiguity. Only genuine all-object and
+    # pointer readback permits replacing it and clearing the pending marker.
+    pending = plain_path(run_dir.parent / AMBIGUOUS_NAME)
+    if pending.exists():
+        pending.unlink()
+        _sync_directory(run_dir.parent)
 
 
 def retained_snapshot(snapshot_root: Path, reason: str = "NO_CHANGE") -> dict:
@@ -240,13 +269,26 @@ def _read_state(lkg_dir: Path) -> dict[str, Any]:
         return {}
 
 
+def _sync_directory(path: Path) -> None:
+    if os.name != "nt":
+        fd = os.open(str(path), os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+        try:
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+
+
 def _write_atomic(path: Path, data: bytes) -> None:
     path = plain_path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     temp = path.with_name(path.name + ".tmp")
     plain_path(temp)
-    temp.write_bytes(data)
+    with temp.open("wb") as stream:
+        stream.write(data)
+        stream.flush()
+        os.fsync(stream.fileno())
     os.replace(temp, path)
+    _sync_directory(path.parent)
 
 
 def refresh_due(now: datetime, lkg_dir: Path = LKG_DIR) -> dict[str, Any]:

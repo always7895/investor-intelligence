@@ -183,10 +183,15 @@ function Invoke-MachinePresealDaily {
         $script:presealDaily.PublicationSuppressed -is [bool] -and $script:presealDaily.PublicationSuppressed -and
         $script:presealDaily.ServingLastGood -is [bool] -and $script:presealDaily.ServingLastGood -and
         $script:presealDaily.Reason -ceq 'NO_CHANGE' -and $null -eq $script:presealDaily.MachineBundle) {
-        $retained = Invoke-LoggedNative { & $py 'scripts\top20_carry_forward.py' retained --snapshot-root $runsRoot }
-        if ($retained.Code -ne 0) { throw 'BOOTSTRAP_REQUIRED' }
-        $script:MachineRetainedOutcome=Read-RetainedPublisherOutcome $retained
-        if ($null -eq $script:MachineRetainedOutcome) { throw 'BOOTSTRAP_REQUIRED' }
+        $heartbeat = Invoke-LoggedNative { & $py 'scripts\ranking_confirmed_heartbeat.py' --snapshot-root $runsRoot }
+        if ($heartbeat.Code -ne 0) { throw 'CONFIRMED_HEARTBEAT_UNAVAILABLE' }
+        $script:MachineRetainedOutcome=Read-RetainedPublisherOutcome $heartbeat
+        if ($null -eq $script:MachineRetainedOutcome) {
+            $script:MachineHeartbeatRunId=Get-PrintedRunId $heartbeat
+            if (-not $script:MachineHeartbeatRunId) { throw 'CONFIRMED_HEARTBEAT_UNAVAILABLE' }
+            $replayed=Invoke-LoggedNative { & $py 'scripts\stage_sealed_replay.py' --run-dir (Join-Path $runsRoot $script:MachineHeartbeatRunId) }
+            if ($replayed.Code -ne 0) { throw 'CONFIRMED_HEARTBEAT_REPLAY_FAILED' }
+        }
         return
     }
     if (-not $script:presealDaily.Completed -or $script:presealDaily.ExitCode -ne 0 -or
@@ -301,7 +306,7 @@ function Read-SafeSyncOutcome([string]$Path, [string]$ExpectedRun) {
     if (-not (Test-OutcomeInteger $r.schema_version 1 1) -or $r.operation -cne 'SYNC' -or $r.run_id -cne $ExpectedRun -or
         $r.status -cnotin @('SUCCEEDED','FAILED','RETAINED_LAST_GOOD') -or
         $r.pointer_state -cnotin @('NOT_ATTEMPTED','ATTEMPTED_UNCONFIRMED','READBACK_CONFIRMED') -or
-        $r.error_category -cnotin @('NONE','AUTHENTICATION_ERROR','DAILY_KV_LIMIT','NETWORK_FAILURE','TRANSIENT_HTTP','TIMEOUT','UNKNOWN','CLI_UNAVAILABLE','CLI_LAUNCH_FAILED','READBACK_MISMATCH','INPUT_INVALID','LOCAL_IO_FAILURE','OUTCOME_WRITE_FAILED','BOOTSTRAP_REQUIRED') -or
+        $r.error_category -cnotin @('NONE','AUTHENTICATION_ERROR','DAILY_KV_LIMIT','NETWORK_FAILURE','TRANSIENT_HTTP','TIMEOUT','UNKNOWN','CLI_UNAVAILABLE','CLI_LAUNCH_FAILED','READBACK_MISMATCH','INPUT_INVALID','LOCAL_IO_FAILURE','OUTCOME_WRITE_FAILED','BOOTSTRAP_REQUIRED','WRITE_BUDGET_UNAVAILABLE') -or
         $r.phase -cnotin @('INPUT','PREFLIGHT','OBJECT_PUT','OBJECT_READBACK','POINTER_PUT','POINTER_READBACK','LOCAL_LEDGER','COMPLETE') -or
         -not (Test-OutcomeInteger $r.cli_attempts_total 0 2147483647) -or
         -not (Test-OutcomeInteger $r.last_cli_attempts 0 3) -or
@@ -354,7 +359,7 @@ function Invoke-AdmittedLocalMaintenance([bool]$PublicationConfirmed) {
             }
         } catch { $m.data_status='LOCAL_EXCEPTION' }
     } else { $m.data_status='SKIPPED_BUDGET' }
-    if ($null -ne $script:MachineRetainedOutcome) {
+    if ($null -ne $script:MachineRetainedOutcome -or $script:MachineHeartbeatRunId) {
         $m.top20_status='RETAINED_LAST_GOOD'; $m.top20_exit=0
         return $m # no second ranking/export/ACK after the protected host suppressed it
     }
@@ -392,6 +397,7 @@ $retainedOutcome = $null
 $presealDaily = $null
 $script:MachinePublisherArgs=@()
 $script:MachineRetainedOutcome=$null
+$script:MachineHeartbeatRunId=$null
 $maintenanceAdmitted = $true
 $py = if ($env:PROJECT_PYTHON) { $env:PROJECT_PYTHON } else { 'python' }
 try {
@@ -403,8 +409,11 @@ try {
             $primaryPhase='GENERATE'
             $retainedOutcome=$script:MachineRetainedOutcome
             if ($null -ne $retainedOutcome) { $runId=$retainedOutcome.run_id }
+            if ($script:MachineHeartbeatRunId) { $runId=$script:MachineHeartbeatRunId }
         }
-        if ($CarryForwardTop20 -and $null -eq $retainedOutcome) {
+        if ($script:MachineHeartbeatRunId) {
+            # Already replayed exact confirmed evidence; no second producer/export.
+        } elseif ($CarryForwardTop20 -and $null -eq $retainedOutcome) {
             Add-Content -Path $log -Value "[$stamp] CARRY_FORWARD_TOP20 seal first"
             $sealed = Invoke-CarryForwardSeal
             if ($sealed.Code -ne 0) { $primaryCode=$sealed.Code; $primaryPhase=$sealed.Stage; $primaryCategory='GENERATION_OR_REPLAY_FAILED' }
