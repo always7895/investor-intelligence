@@ -424,6 +424,7 @@ Source implementation only: **IMPLEMENTED_UNVERIFIED**, not deployed or independ
   and THRM. Producer company and excluded rows retain the note, and the publisher independently reprojects it from
   the same captured registry. A LITE notice never admits the pending target. THRM displays “MOD 每股配發 0.44619 股 THRM”
   without inheriting MOD shareholder-return suppression, entitlement proofs, or adjusted returns.
+  Wire status enums remain validated metadata, never raw LINE text; each notice renders one zh-TW heading without duplication.
 - `scripts/distribution_adjusted_returns.py` owns MOD suppression and the Decimal shareholder-entitlement calculator.
   MOD distributed 0.44619 THRM on October 1; due bills run September 28–October 1 and the reviewed ex-spin boundary is
   October 2. Fractional cash means actual net proceeds, never a fraction times an endpoint price; distributed THRM

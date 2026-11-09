@@ -417,7 +417,7 @@ function corporateActionText(entry: BottleneckEntry): string | null {
   const deal = entry.corporate_action;
   if (!deal) return null;
   if (deal.kind === "DISTRIBUTION") {
-    const terms = `${deal.distribution_date} 完成分拆（${deal.status}）：${deal.target_symbol} 每股配發 ${deal.shares_per_share.toFixed(5)} 股 ${deal.related_symbol}`;
+    const terms = `${deal.distribution_date} 完成分拆：${deal.target_symbol} 每股配發 ${deal.shares_per_share.toFixed(5)} 股 ${deal.related_symbol}`;
     if (entry.symbol !== deal.target_symbol) {
       return `${terms}；${deal.related_symbol} 為配發標的，未套用 ${deal.target_symbol} 股東權益報酬`;
     }
@@ -430,7 +430,7 @@ function corporateActionText(entry: BottleneckEntry): string | null {
   const terms = deal.kind === "ALL_STOCK" ? `每股換 ${deal.exchange_ratio!.toFixed(3)} 股 ${deal.acquirer_symbol}`
     : deal.kind === "CASH" ? `每股現金 ${deal.cash_per_share} ${deal.currency}`
     : `每股換 ${deal.exchange_ratio!.toFixed(3)} 股 ${deal.acquirer_symbol} 加現金 ${deal.cash_per_share} ${deal.currency}`;
-  return `併購進行中（${deal.status}）：${deal.target_symbol} ${terms}，預計 ${expected}完成；收購方維持獨立評分，完成仍待審核`;
+  return `併購進行中：${deal.target_symbol} ${terms}，預計 ${expected}完成；收購方維持獨立評分，完成仍待審核`;
 }
 
 function corporateActionNotice(entry: BottleneckEntry): string | null {

@@ -28,7 +28,8 @@ describe("Controlled corporate-action card terms", () => {
         assertLineMessages(messages);
         const rendered = JSON.stringify(messages);
         expect(rendered).toContain("4.500 股 MRVL");
-        expect(rendered).toContain("PENDING");
+        expect(rendered).not.toMatch(/\b(?:PENDING|CLOSED)\b/);
+        expect(rendered.match(/併購進行中/g)).toHaveLength(1);
       }
     }
   });
@@ -55,7 +56,8 @@ describe("Controlled corporate-action card terms", () => {
     for (const mode of ["text", "flex"] as const) {
       const rendered = JSON.stringify(buildBottleneckTop20Messages(parsed, mode));
       expect(rendered).toContain("MOD 每股配發 0.44619 股 THRM");
-      expect(rendered).toContain("CLOSED");
+      expect(rendered).not.toMatch(/\b(?:PENDING|CLOSED)\b/);
+      expect(rendered.match(/分拆已完成/g)).toHaveLength(1);
       expect(rendered).toContain("未套用 MOD 股東權益報酬");
     }
     expect(parseBottleneckV3(specimen("UNRELATED", note), AT)).toBeNull();
