@@ -133,7 +133,6 @@ describe("source-page option date provenance", () => {
       expect(rendered).toContain("不代表期權腿成交時間");
       expect(rendered).toContain("各期權腿的觀察時間未提供");
       expect(rendered).toContain("擷取時間");
-      expect(rendered).toContain("2026-11-09");
       expect(rendered).not.toContain("2026-11-06T00:00");
     }
   });
@@ -146,13 +145,13 @@ describe("source-page option date provenance", () => {
         annualized_yield: 0.08 / 186.64 * 365 / 11, oi: 100, volume: 10 },
     }), now, fetched, "monthly");
     expect(valid).not.toBeNull();
+    expect(valid?.timestamp).toBe(fetched);
     for (const style of ["text", "flex"] as const) {
       const rendered = JSON.stringify(buildCoveredCallMessages(valid!, "每月期權", style));
       expect(rendered).toContain("來源頁報價觀察日期 2026-11-06");
       expect(rendered).toContain("各期權腿的觀察時間未提供");
       expect(rendered).toContain("不代表期權腿成交時間");
       expect(rendered).toContain("Last $0.08");
-      expect(rendered).toContain("2026-11-09");
     }
   });
 

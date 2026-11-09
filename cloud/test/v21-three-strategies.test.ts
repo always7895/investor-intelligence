@@ -556,7 +556,7 @@ describe("Stage 1C nullable executable sides and visible LIMIT scenarios", () =>
       expect(visibleFlex.match(/Bid情境/g)).toHaveLength(count!);
       expect(visibleFlex.match(/未成交每次降0\.01/g)).toHaveLength(count!);
       for (const line of texts(pages[index!]!.body).flatMap(value => value.split("\n"))) {
-        if (line.includes("Bid情境") || line.includes("LIMIT") || line.includes("價差占中價"))
+        if (line.includes("Bid情境") || line.startsWith("LIMIT") || line.includes("價差占中價"))
           expect(visibleText).toContain(line);
       }
       expect(visibleFlex).toContain("流動性警示");

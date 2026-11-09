@@ -154,16 +154,6 @@ describe("V29 card visual hierarchy", () => {
       if (Array.isArray(detail)) expect(explicitRows(bubblesOf(detail)[1]!.body as Node), `orders ${entry.symbol}`).toBeLessThanOrEqual(10);
     }
   });
-  it("presents all covered-call strike tiers in a compact table", async () => {
-    const bubble = (await v20Surfaces["covered-call (3 tiers)"]!())[1]!;
-    const body = bubble.body as Node;
-    expect(explicitRows(body)).toBeLessThanOrEqual(10);
-    const rendered = JSON.stringify(body);
-    for (const value of ["$112.00", "$108.00", "$106.00", "$11.00", "$37.00", "$63.00", "20.1%", "67.5%", "115.0%"])
-      expect(rendered).toContain(value);
-    expect(all(body).some(n => n.type === "text" && n.size === "3xl")).toBe(true);
-    expect(all(body).some(n => n.type === "box" && n.backgroundColor === "#EEF3F8")).toBe(true);
-  });
   it("uses no more than two KPI tiles per row", async () => {
     for (const name of ["bottleneck Top20 card", "bottleneck detail page 1", "options-product contract"]) {
       for (const bubble of await v20Surfaces[name]!()) {

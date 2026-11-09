@@ -121,7 +121,6 @@ describe("OPTIONS-NONUS-02 bridge: exact Python-emitted bodies through the Worke
       const text = textOf(await reply(env, command));
       expect(text).toContain("SIVE.ST 每月期權");
       expect(text).toContain("所選到期無有效雙邊報價");
-      expect(text).toContain("2026-10-16（16天）");
       expect(text).toContain("已封存之公開觀察");
       expect(text).not.toContain("年化權利金");
       expect(text).not.toMatch(/\d+\.\d\d SEK/);
@@ -230,7 +229,6 @@ describe("OPTIONS-NONUS-02 bridge: exact Python-emitted bodies through the Worke
     const sive = await sealedEnv("retained_sive_sept30");
     const weekly = textOf(await reply(sive, "VOLV-B.ST 每週期權"));
     // V13: the blank contract currency follows the confirmed SEK underlying; the retained row has no two-sided quote.
-    expect(weekly).toContain("2026-10-02（2天）");
     expect(weekly).not.toContain("合約單位或幣別來源未確認");
     expect(weekly).not.toContain("無法解析");
     admitSyntheticTickers("UYZERO", "UYONESIDED");

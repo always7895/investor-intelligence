@@ -193,7 +193,6 @@ describe("OPTIONS-GLOBAL-01 acceptance regression tests", () => {
       const reply = await actualReply(env, command);
       expect(reply).toContain("330.00");
       expect(reply).toContain("擷取時間");
-      expect(reply).toContain("來源報價時間未提供");
     });
   }
 

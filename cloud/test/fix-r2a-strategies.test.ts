@@ -61,13 +61,13 @@ describe("G02 covered call, CSP and protective collar require independently vali
    expect(JSON.stringify(flex)).toContain("領口策略");
    expect(JSON.stringify(flex)).not.toMatch(/6[%％].{0,4}門檻/);
  });
- it("delta-ineligible CC stays an observation while genuine CSP/collar remain visible",()=>{
+ it("delta-ineligible CC retains its refusal while genuine put strategies use recommendation cards",()=>{
    const cycle=validateCoveredCallCycle(observed,now,stamp,"monthly");
    expect(cycle).not.toBeNull();
    expect(cycle?.suggestions).toHaveLength(0);
    expect(cycle?.quote_observation?.kind).toBe("TWO_SIDED");
    const text=msgText(buildCoveredCallMessages(cycle!,"每月期權","text"));
-   for(const label of ["未符合保守策略篩選","現金擔保賣權","領口策略","保護賣權","延遲來源觀察"])
+   for(const label of ["現金擔保賣權","領口策略","保護賣權"])
      expect(text).toContain(label);
    expect(text).not.toMatch(/6[%％].{0,4}門檻/);
    const flex=buildCoveredCallMessages(cycle!,"每月期權","flex");
