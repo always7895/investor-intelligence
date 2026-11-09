@@ -44,7 +44,7 @@ const validQuote: OptionContractQuote = {
   timestamp: "2026-09-14T12:00:00Z",
   quote_basis: "delayed",
   source: "yfinance_public",
-  provenance: "https://example.invalid/options",
+  provenance: "合成測試來源",
   currency: "USD",
   multiplier: 100,
   rights_status: "reviewed_public_access",

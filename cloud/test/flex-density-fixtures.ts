@@ -182,7 +182,7 @@ export const v20Surfaces: Record<string, () => Promise<Node[]> | Node[]> = {
     const quote = validateOptionContractQuote({ ticker: "NVDA", expiry: "2026-09-25", dte: 11, strike: 125, type: "call", bid: 4.2, mid: 4.35, ask: 4.5, spread: 0.3,
       delta: 0.52, iv: 0.45, oi: 2500, volume: 480, breakeven: null, maxprofit: null, maxloss: null, annualized_yield: null,
       assignment_risk: "買方持有權利，無被動指派風險", liquidity_warning: "雙邊價差合理，流動性良好", timestamp: "2026-09-14T12:00:00Z",
-      quote_basis: "delayed", source: "yfinance_public", provenance: "https://example.invalid/options", currency: "USD", multiplier: 100, rights_status: "unadmitted_third_party" } as never,
+      quote_basis: "delayed", source: "yfinance_public", provenance: "合成測試來源", currency: "USD", multiplier: 100, rights_status: "unadmitted_third_party" } as never,
     { evaluatedAt: "2026-09-14T12:00:00Z" });
     return bubblesOf(buildOptionContractFlex(quote, { evaluatedAt: "2026-09-14T12:00:00Z" }));
   },
@@ -247,7 +247,7 @@ export async function v25FlexMessages(): Promise<Extract<LineOutboundMessage, { 
   const quote = validateOptionContractQuote({ ticker: "NVDA", expiry: "2026-09-25", dte: 11, strike: 125, type: "call", bid: 4.2, mid: 4.35, ask: 4.5, spread: 0.3,
     delta: 0.52, iv: 0.45, oi: 2500, volume: 480, breakeven: null, maxprofit: null, maxloss: null, annualized_yield: null,
     assignment_risk: "買方持有權利，無被動指派風險", liquidity_warning: "雙邊價差合理，流動性良好", timestamp: "2026-09-14T12:00:00Z",
-    quote_basis: "delayed", source: "yfinance_public", provenance: "https://example.invalid/options", currency: "USD", multiplier: 100, rights_status: "unadmitted_third_party" } as never,
+    quote_basis: "delayed", source: "yfinance_public", provenance: "合成測試來源", currency: "USD", multiplier: 100, rights_status: "unadmitted_third_party" } as never,
     { evaluatedAt: "2026-09-14T12:00:00Z" });
   const navigation = await v213PublicLineAnswer({} as never, parseQuery("選單"));
   const messages: LineOutboundMessage[] = [
