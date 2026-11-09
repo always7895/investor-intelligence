@@ -291,8 +291,8 @@ TRACE = ("import sys\nfrom pathlib import Path\nroot = Path(__file__).resolve().
 CARRY_PUBLISH = TRACE + (
     "args = sys.argv[1:]\n"
     "if '--top20-insufficient' in args:\n    run, state = 'RUN_B', 'INSUFFICIENT'\n"
-    "elif '--snapshot-root' in args:\n    run, state = 'RUN_C', 'CARRIED_FORWARD'\n"
-    "elif '--identity-shards' in args:\n    run, state = 'RUN_A', 'CARRIED_FORWARD'\n"
+    "elif '--top20-bundle' in args and args.index('--top20-bundle') + 1 < len(args) and not args[args.index('--top20-bundle') + 1].startswith('--'):\n    run, state = 'RUN_C', 'CARRIED_FORWARD'\n"
+    "elif '--top20-bundle' in args and '--identity-shards' in args:\n    run, state = 'RUN_A', 'CARRIED_FORWARD'\n"
     "else:\n    run, state = 'RUN_D', 'CARRIED_FORWARD'\n"
     "trace('PUBLISH ' + run + ' ' + ' '.join(a for a in args if a.startswith('--')))\n"
     "if (root / ('publish_fail_' + run)).exists():\n    print('Traceback: synthetic crash', file=sys.stderr)\n    sys.exit(2)\n"
@@ -320,7 +320,11 @@ ROTATION_STUB = "Add-Content -Path (Join-Path (Split-Path -Parent $PSScriptRoot)
 REFRESH_STUB = ("param([string]$ProjectRoot, [switch]$NoModelBridge, [switch]$NoTunnel, [switch]$NoSync, [switch]$NoAutoActivation)\n"
                 "Add-Content -Path (Join-Path $PSScriptRoot 'trace.txt') -Value ('REFRESH nosync=' + [bool]$NoSync)\n"
                 "if (Test-Path (Join-Path $PSScriptRoot 'refresh_hang')) { Start-Sleep -Seconds 120 }\nexit 0\n")
-FIRST_SEAL = "PUBLISH RUN_A --live-clock --top20-bundle --identity-shards --bottleneck-v3 --market-observations --price-shards"
+PRIMARY_ARGS = "--live-clock --reconcile-confirmed --snapshot-root"
+FIRST_SEAL = "PUBLISH RUN_A " + PRIMARY_ARGS + " --top20-bundle --identity-shards --bottleneck-v3 --market-observations --price-shards"
+WITHOUT_IDENTITY_SEAL = "PUBLISH RUN_D " + PRIMARY_ARGS + " --top20-bundle --bottleneck-v3 --market-observations --price-shards"
+INSUFFICIENT_SEAL = "PUBLISH RUN_B " + PRIMARY_ARGS + " --top20-insufficient --market-observations --price-shards"
+DEFAULT_SEAL = "PUBLISH RUN_D " + PRIMARY_ARGS + " --identity-shards --market-observations --price-shards --bottleneck-v3"
 
 
 def without_rotation(trace: list[str]) -> list[str]:
@@ -413,7 +417,7 @@ class CarryForwardHourlyTests(unittest.TestCase):
             code, trace, log, _ = self.run_carry(shell, ("replay_fail_aaaa", "not_due"))
             self.assertEqual(code, 0, (shell, log))
             self.assertEqual(trace[:5], [FIRST_SEAL, "REPLAY aaaa FAIL",
-                                         "PUBLISH RUN_D --live-clock --top20-bundle", "REPLAY dddd PASS", "SYNC dddd"], trace)
+                                         WITHOUT_IDENTITY_SEAL, "REPLAY dddd PASS", "SYNC dddd"], trace)
             self.assertIn("REPLAY FAILED run=20260926T010000Z-aaaaaaaaaaaa tier=OK", log)
             self.assertEqual((self.outcome["primary_exit"], self.outcome["run_id"], self.outcome["pointer_state"]),
                              (0, "20260926T010000Z-dddddddddddd", "READBACK_CONFIRMED"))
@@ -422,8 +426,8 @@ class CarryForwardHourlyTests(unittest.TestCase):
         for shell in shells():
             code, trace, log, _ = self.run_carry(shell, ("replay_fail_aaaa", "replay_fail_dddd", "not_due"))
             self.assertEqual(code, 0, (shell, log))
-            self.assertEqual(trace[2:7], ["PUBLISH RUN_D --live-clock --top20-bundle", "REPLAY dddd FAIL",
-                                          "PUBLISH RUN_B --live-clock --top20-insufficient", "REPLAY bbbb PASS", "SYNC bbbb"], trace)
+            self.assertEqual(trace[2:7], [WITHOUT_IDENTITY_SEAL, "REPLAY dddd FAIL",
+                                          INSUFFICIENT_SEAL, "REPLAY bbbb PASS", "SYNC bbbb"], trace)
             self.assertIn("REPLAY FAILED", log)
             self.assertNotIn("REFRESH nosync=True", trace)
             self.assertEqual((self.outcome["primary_exit"], self.outcome["run_id"]), (0, "20260926T010000Z-bbbbbbbbbbbb"))
@@ -436,8 +440,8 @@ class CarryForwardHourlyTests(unittest.TestCase):
             code, trace, log, _ = self.run_carry(shell, ("replay_fail_aaaa", "replay_fail_dddd", "replay_fail_bbbb"))
             self.assertNotEqual(code, 0)
             self.assertFalse([line for line in trace if line.startswith("SYNC")], trace)
-            self.assertEqual(trace[:6], [FIRST_SEAL, "REPLAY aaaa FAIL", "PUBLISH RUN_D --live-clock --top20-bundle",
-                                         "REPLAY dddd FAIL", "PUBLISH RUN_B --live-clock --top20-insufficient", "REPLAY bbbb FAIL"], trace)
+            self.assertEqual(trace[:6], [FIRST_SEAL, "REPLAY aaaa FAIL", WITHOUT_IDENTITY_SEAL,
+                                         "REPLAY dddd FAIL", INSUFFICIENT_SEAL, "REPLAY bbbb FAIL"], trace)
             # replaces 'GENERATE FAILED stage=REPLAY (pointer untouched)'
             self.assertEqual((self.outcome["primary_exit"], self.outcome["primary_phase"], self.outcome["error_category"],
                               self.outcome["pointer_state"], self.outcome["run_id"]),
@@ -484,7 +488,7 @@ class CarryForwardHourlyTests(unittest.TestCase):
         for shell in shells():
             code, trace, log, _ = self.run_carry(shell, ("publish_fail_RUN_A", "not_due"))
             self.assertEqual(code, 0, (shell, log))
-            self.assertEqual(trace[1:4], ["PUBLISH RUN_D --live-clock --top20-bundle", "REPLAY dddd PASS", "SYNC dddd"], trace)
+            self.assertEqual(trace[1:4], [WITHOUT_IDENTITY_SEAL, "REPLAY dddd PASS", "SYNC dddd"], trace)
             self.assertIn("GENERATE FAILED tier=", log)
 
     def test_old_runs_under_the_snapshot_root_are_pruned_after_the_seal(self):
@@ -532,7 +536,7 @@ class CarryForwardHourlyTests(unittest.TestCase):
         for shell in shells():
             code, trace, log, _ = self.run_carry(shell, carry=False)
             self.assertEqual(code, 0, (shell, log))
-            self.assertEqual(trace, ["ROTATION", "PUBLISH RUN_D --live-clock", "SYNC dddd"])
+            self.assertEqual(trace, ["ROTATION", DEFAULT_SEAL, "SYNC dddd"])
             self.assertEqual((self.outcome["primary_exit"], self.outcome["local_maintenance"]), (0, None))  # no maintenance off-switch
 
 
