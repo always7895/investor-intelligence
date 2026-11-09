@@ -66,11 +66,23 @@ def ranking_from_objects(objects: dict, pointer: dict) -> dict | None:
     seal = json.loads(seal_text)
     if seal.get("run_id") != run or not isinstance(seal.get("objects"), dict):
         raise ValueError("SEALED_RANKING_MANIFEST")
+    if ("core_run_id" in seal) != ("ranking_persisted_at" in seal):
+        raise ValueError("SEALED_RANKING_MANIFEST")
+    if "core_run_id" in seal:
+        if not isinstance(seal["core_run_id"], str) or not RUN_ID.fullmatch(seal["core_run_id"]):
+            raise ValueError("SEALED_RANKING_MANIFEST")
+        # The protected host reads only a confirmed local receipt. Do not import
+        # publisher/provider modules (or perform credential/network IO) here.
+        persisted = datetime.fromisoformat(seal["ranking_persisted_at"].replace("Z", "+00:00"))
+        assembled = datetime.fromisoformat(seal["generated_at"].replace("Z", "+00:00"))
+        if persisted.tzinfo is None or assembled.tzinfo is None or persisted > assembled:
+            raise ValueError("SEALED_RANKING_MANIFEST")
     name = SEALED_RANKING_KEY if SEALED_RANKING_KEY in seal["objects"] else "v213:top20-report:latest"
     entry = seal["objects"].get(name)
     if not isinstance(entry, dict):
         return None
-    key = "blob:v1:" + str(entry.get("sha256")) if name == SEALED_RANKING_KEY else prefix + name
+    key = ("blob:v1:" + str(entry.get("sha256")) if name == SEALED_RANKING_KEY
+           else f"snapshot:{seal.get('core_run_id', run)}:{name}")
     body = objects.get(key)
     if not isinstance(body, str) or hashlib.sha256(body.encode("utf-8")).hexdigest() != entry.get("sha256") \
             or len(body.encode("utf-8")) != entry.get("utf8_bytes"):
@@ -82,9 +94,10 @@ def ranking_from_objects(objects: dict, pointer: dict) -> dict | None:
     if document.get("schema") != "v213-bottleneck-top20-v3-sealed" and (
             not isinstance(rows, list) or not 10 <= len(rows) <= 20):
         return None  # an honest insufficient/legacy two-row fixture is not a Top20
-    write_policy.publication_due(None, document, datetime.fromisoformat(seal["generated_at"].replace("Z", "+00:00")))
-    # The cadence clock is the seal assembly, NEVER a rewritten source/body clock.
-    return {**document, "generated_at": seal["generated_at"]}
+    ranking_clock = seal.get("ranking_persisted_at", seal["generated_at"])
+    write_policy.publication_due(None, document, datetime.fromisoformat(ranking_clock.replace("Z", "+00:00")))
+    # A market-only global seal never advances the ranking's own persistence clock.
+    return {**document, "generated_at": ranking_clock}
 
 
 def pointer_ambiguous(snapshot_root: Path) -> bool:

@@ -53,7 +53,6 @@ import revenue_guidance_wire  # noqa: E402
 import revenue_consensus_quarterly  # noqa: E402
 import top20_carry_forward  # noqa: E402
 import official_quarterly_revenue  # noqa: E402
-import ranking_write_policy as write_policy  # noqa: E402
 
 MACRO_KEY = "v213:macro-industry:latest"
 SHARES_BASES = ("OUTSTANDING", "DILUTED_WEIGHTED_AVERAGE")  # scripts/bottleneck_top20_v3.py shares_basis
@@ -390,7 +389,7 @@ def lazy_identity_bodies(path: Path, now: datetime) -> "dict[str, str]":
     try:
         document = json.loads(path.read_bytes().decode("utf-8"))
         generated = datetime.strptime(document["generated_at"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
-        if document.get("schema") != "v213-identity-shard-v2" or now - generated > IDENTITY_MAX_AGE:
+        if document.get("schema") != "v213-identity-shard-v2" or not timedelta(0) <= now - generated <= IDENTITY_MAX_AGE:
             return {}
         bodies = {f"v213:identity:v2:sym:{bucket}": _dumps(shard) for bucket, shard in sorted(document["symbol_shards"].items())}
         bodies.update({f"v213:identity:v2:name:{bucket}": _dumps(shard) for bucket, shard in sorted(document["name_shards"].items())})
@@ -1256,37 +1255,6 @@ def pointer_text(meta, seal_sha: str) -> str:
     return _dumps(pointer)
 
 
-def retained_publication(snapshot_root: Path, objects: dict, pointer: str, now: datetime) -> dict | None:
-    """Read-only preflight; an ambiguous pointer can never suppress a new seal."""
-    if top20_carry_forward.pointer_ambiguous(snapshot_root):
-        return None  # Only real remote reconciliation can make old proof usable.
-    candidate = top20_carry_forward.ranking_from_objects(objects, json.loads(pointer))
-    previous = top20_carry_forward.confirmed_snapshot(snapshot_root)
-    if candidate is None and previous is None:
-        return None
-    reason = ("CANDIDATE_UNAVAILABLE" if candidate is None else
-              write_policy.publication_due(previous["ranking"] if previous else None, candidate, now))
-    if previous is None:
-        return None
-    if reason not in {"NO_CHANGE", "CANDIDATE_UNAVAILABLE"}:
-        # Exactly the syncer's real content-addressed reuse plan, including every
-        # bounded retry and the serving pointer; the authoritative reserve remains
-        # inside sync immediately before its first possible PUT.
-        import sync_sealed_snapshot_kv as sync
-        ledger = sync.load_ledger()
-        reused = sum(key.startswith(LAZY_BLOB_PREFIX) and
-                     0 <= now.timestamp() - ledger.get(key[len(LAZY_BLOB_PREFIX):], 0.0) < sync.BLOB_REUSE_SECONDS
-                     for key in objects)
-        worst_case = (len(objects) - reused + 1) * sync.ATTEMPTS
-        budget = write_policy.DailyWriteBudget(sync.LEDGER.with_name("ranking-kv-write-budget.json"))
-        if budget.can_reserve(worst_case, now):
-            return None
-        reason = "WRITE_BUDGET"
-    old_pointer = previous["pointer"]
-    return {"status": "RETAINED_LAST_GOOD", "retention_reason": reason,
-            "pointer_state": "NOT_ATTEMPTED", "run_id": previous["run_id"],
-            "retained_run_id": previous["run_id"], "public_data_as_of": old_pointer.get("public_data_as_of"),
-            "promoted_at": old_pointer.get("promoted_at"), "run_dir": str(previous["run_dir"])}
 
 
 def main(argv=None) -> None:
@@ -1300,6 +1268,8 @@ def main(argv=None) -> None:
                     help="Carry-forward mode, but seal an INSUFFICIENT Top20 with this reason (replay fallback).")
     ap.add_argument("--snapshot-root", type=Path, default=SNAPSHOT_ROOT,
                     help="Directory for sealed runs (default state/v213-snapshots).")
+    ap.add_argument("--reconcile-confirmed", action="store_true",
+                    help="Read-only remote reconciliation before live product selection when local confirmation is unavailable.")
     ap.add_argument("--identity-shards", nargs="?", const=str(IDENTITY_SHARDS_PATH), default=None, metavar="PATH",
                     help="Seal the global identity shards as lazy objects (no PATH: data/cache/identity_shards_latest.json).")
     ap.add_argument("--market-observations", nargs="?", const=str(MARKET_OBSERVATIONS_PATH), default=None, metavar="PATH",
@@ -1359,17 +1329,29 @@ def main(argv=None) -> None:
     seal_text, seal_sha = build_seal(bodies, meta, lazy)
     pointer = pointer_text(meta, seal_sha)
     args.snapshot_root = top20_carry_forward.plain_path(args.snapshot_root)
-    out_dir = args.snapshot_root / meta["run_id"]
     prefix = f"snapshot:{meta['run_id']}:"
     objects = {prefix + key: bodies[key] for key in [*OBJECT_KEYS, MACRO_KEY]}
     objects[prefix + SEAL_KEY] = seal_text
     for body in lazy.values():
         objects[LAZY_BLOB_PREFIX + _sha(body)] = body
-    retained = retained_publication(args.snapshot_root, objects, pointer, LIVE_NOW or
-                                   datetime.fromisoformat(GENERATED_AT.replace("Z", "+00:00")))
-    if retained is not None:
-        print(json.dumps(retained, indent=2))
-        return
+    selection = None
+    selected_pointer = json.loads(pointer)
+    if args.live_clock:
+        import sealed_product_policy as products
+        selection = products.prepare_publication(args.snapshot_root, objects, pointer, LIVE_NOW,
+                                                  reconcile=args.reconcile_confirmed)
+        if "retained" in selection:
+            print(json.dumps(selection["retained"], indent=2))
+            return
+        objects, pointer = selection["objects"], selection["pointer"]
+        selected_pointer = json.loads(pointer)
+        selected_parts = products.parts(objects, selected_pointer)
+        lazy = selected_parts["lazy"]
+        selected_report = json.loads(selected_parts["core"]["v213:top20-report:latest"])
+        meta = {**meta, "run_id": selected_pointer["run_id"], "transaction_id": selected_pointer["transaction_id"],
+                "top20": selected_report, "report": selected_report}
+        seal_sha = selected_pointer["seal_sha256"]
+    out_dir = args.snapshot_root / meta["run_id"]
     out_dir = top20_carry_forward.plain_path(out_dir)
     objects_path = out_dir / "objects.json"
     objects_bytes = _dumps(objects).encode("utf-8")
@@ -1396,13 +1378,16 @@ def main(argv=None) -> None:
         "run_id": meta["run_id"],
         "transaction_id": meta["transaction_id"],
         "seal_sha256": seal_sha,
-        "promoted_at": PROMOTED_AT,
-        "public_data_as_of": PUBLISHED_DATA_AS_OF,
+        "promoted_at": selected_pointer["promoted_at"],
+        "public_data_as_of": selected_pointer["public_data_as_of"],
         "ranked": ranked,
         **counts,
         "objects_json": _display_path(objects_path),
         "pointer_raw_json": _display_path(pointer_path),
     }
+    if selection is not None:
+        summary.update({key: selection[key] for key in ("ranking_status", "ranking_reason", "writes_by_product")
+                        if key in selection})
     if lazy:
         summary["lazy_objects"] = len(lazy)
     if carry is not None:

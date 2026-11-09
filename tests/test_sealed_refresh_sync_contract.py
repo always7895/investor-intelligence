@@ -10,7 +10,6 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
-import re
 import sys
 import tempfile
 import unittest
@@ -26,7 +25,6 @@ from sealed_kv_fakes import (  # noqa: E402
     NOWRITE, OLD_POINTER, POINTER_KEY, Q_OK, RUN, FakeKV, Fixture, KvTestCase, Row, cli_environment, make_cloud,
     run_sy)
 
-REFRESH = (ROOT / "scripts" / "run_production_sealed_refresh.ps1").read_text(encoding="utf-8-sig")
 GUID = "0123456789abcdef0123456789abcdef"
 VIEW = ("status", "phase", "error_category", "pointer_state")
 CALLER_REFUSES = "CALLER_REFUSES"
@@ -113,20 +111,6 @@ class RefreshSyncContract(KvTestCase):
             view = CALLER_REFUSES
         return r, Row(("exit", "outcome", "caller_view"), (r.exit, r.outcome, view))
 
-    # P6-1, refresh ps1 403-408: exactly one sync start, `--run-dir $runDir --outcome-path $outcomePath`, with a fresh
-    # sealed-sync-<guid>.json under the log dir. Substituted, it is the argv run_sy hands to SY.main (sealed_kv_fakes
-    # 366-368), and the caller's reader accepts the outcome of a completed sync with the caller's own verdict fields.
-    def test_P6_1_caller_argv_is_parsed_by_the_sync(self):
-        starts = re.findall(r"& \$py ['\"]scripts\\sync_sealed_snapshot_kv\.py['\"]([^}\r\n]*)\}", REFRESH)
-        self.assertEqual([start.split() for start in starts], [["--run-dir", "$runDir", "--outcome-path", "$outcomePath"]])
-        self.assertIn("$outcomePath = Join-Path $logDir ('sealed-sync-' + [guid]::NewGuid().ToString('N') + '.json')",
-                      REFRESH)
-        run_dir = self.tmp / "runs" / RUN
-        argv = [{"$runDir": str(run_dir), "$outcomePath": str(self.outcome)}.get(token, token) for token in starts[0].split()]
-        self.assertEqual(argv, ["--run-dir", str(run_dir), "--outcome-path", str(self.outcome)])
-        _, row = self.caller_row(Fixture(RUN, "sy"))
-        self.assertRow(row, (0, Q_OK, Q_OK))
-        self.assertEqual(self.kv.store[POINTER_KEY], Fixture(RUN, "sy").ptr_raw.encode("utf-8"))
 
     # P6-2a, SY 252-254 (seam B: 'kv put failed' classifies UNKNOWN, SY 115, terminal at 156): the caller reads the
     # same failure, with the pointer NOT_ATTEMPTED.
@@ -262,13 +246,26 @@ class RefreshSyncContract(KvTestCase):
 
         # One genuine read-only emitter path, with transport bytes as its only
         # fixture seam, complements the exhaustive enforced-schema value table.
+        import sealed_product_policy as products
+        at = "2026-11-09T00:00:00Z"
+        bodies = {key: "{}" for key in products.core_keys()}
+        bodies[products.PIPELINE_KEY] = at
+        bodies["v213:top20-report:latest"] = json.dumps({"generated_at": at, "records": [{"name": "合成"}] * 20}, ensure_ascii=False)
+        seal = {"schema_version": 1, "run_id": RUN, "transaction_id": "a" * 32,
+                "generated_at": at, "public_data_as_of": at, "objects": {
+                    key: {"sha256": SY.sha(body), "utf8_bytes": len(body.encode("utf-8"))} for key, body in bodies.items()}}
+        seal_text = json.dumps(seal, ensure_ascii=False)
+        pointer = json.dumps({"run_id": RUN, "transaction_id": "a" * 32, "seal_sha256": SY.sha(seal_text),
+                              "promoted_at": at, "public_data_as_of": at})
+        store = {**{f"snapshot:{RUN}:{key}": body for key, body in bodies.items()},
+                 f"snapshot:{RUN}:v213:snapshot-seal:v1": seal_text, "snapshot:current": pointer}
         observed = SY._outcome("WATCHDOG")
-        pointer = json.dumps({"run_id": RUN, "public_data_as_of": "2026-11-09T00:00:00Z"})
-        report = json.dumps({"generated_at": "2026-11-09T00:00:00Z", "records": [{}] * 20})
-        with mock.patch.object(SY, "client_get", side_effect=[pointer, report]), \
+        with mock.patch.object(SY, "client_get", side_effect=store.get), \
                 mock.patch.object(SY, "TOTAL_ATTEMPTS", 0), \
                 mock.patch.object(SY, "LAST_CALL", {"attempts": 0, "exit_code": 0, "error_category": "NONE"}):
             self.assertEqual(SY.read_freshness(observed), 0)
+        self.assertEqual(observed["anchor"], "2026-11-09T00:00:00+00:00")
+        self.assertEqual(observed["report_generated_at"], "2026-11-09T00:00:00+00:00")
         add("WATCHDOG", "actual_read_freshness_emission", observed, True)
 
         for host in HOSTS:

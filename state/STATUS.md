@@ -14,10 +14,11 @@
   Bounded v3 checkpoint/tail HMAC journals need a process-only signing key and an explicit caller-owned log path.
   Missing configuration is UNCONFIGURED, not SIGNED; journal failures remain advisory and cannot stop last-good serving.
   Source hashes exclude invocation-only clocks/decay; the signed observation time remains explicit.
-- Hourly ranking evaluation persists only changed ordered membership/order or a heartbeat at least six hours apart.
-  A UTC-reset local guard reserves 600 of the free 1,000 daily KV writes for other products and caps ranking reservations
-  at 400, including bounded retries and pointer writes. Quota suppression retains a verified nonempty last-good snapshot;
-  historical cards keep their original date and do not renew machine forecast approval. No bootstrap ranking is invented.
+- Hourly ranking evaluation uses remote-readback-confirmed order and its independent clock, not unpublished B1 completion;
+  ranking persists only ordered changes or six-hour heartbeats. Retry-inclusive UTC ledgers cap ranking400 / other products600
+  out of1,000 without borrowing. Quotes/options/coverage publish2h, prices3h and identity24h; expired bytes are omitted/refused,
+  never renewed. Fresh market-only seals reuse original core identity, ranking bytes and approval clocks. Quota holds preserve
+  verified nonempty last-good facts with their original dates; historical machine forecasts remain unavailable. No invented bootstrap.
 - 13F polls for new publications inside its cache cadence. Amendment periods and quarter-end/publication dates stay distinct;
   partial sources are not falsely fresh. Serenity schema 4 retains original/reply/quote/repost/mirror provenance.
 - Free SEC/TWSE/TPEx/DART discovery extends beyond fixed layers but does not admit a company. Independently reviewed

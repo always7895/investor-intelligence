@@ -392,19 +392,39 @@ Source implementation only: **IMPLEMENTED_UNVERIFIED**, not deployed or independ
   Conditions never alter scores or override company, positive-return, rights or freshness gates.
   R10 ATM terms and R13 independent institutional changes remain UNKNOWN without document-level evidence.
   Relative momentum needs aligned QQQ/SOXX observations; missing benchmarks and incomplete drawdown windows remain UNKNOWN.
-- `scripts/ranking_write_policy.py` separates hourly evaluation from persistence: only an ordered Top20 membership/order
-  change, an initial qualified ranking, or a heartbeat at least six hours after the last confirmed seal permits writes.
-  Source/score/clock-only changes within six hours do not rewrite the ranking, journal, completion witness or KV pointer.
-  A genuine retained host result uses a run-bound machine frame; it consumes no pending input and creates no new ACK.
-- KV free-tier writes are [1,000/day](https://developers.cloudflare.com/kv/platform/limits/). The local UTC ledger reserves
-  600 for other products and permits at most 400 ranking writes/day. Before any remote write, one atomic reservation
-  covers all unreused objects, the pointer, and every bounded caller retry; failed attempts are not refunded. Other
-  products must remain within their reserve: this is not an account-wide meter. Provider daily-limit errors stop further
-  writes until 00:00 UTC; the next permitted evaluation resumes automatically. No manually changed flag is required.
-  No-change, budget and genuinely insufficient-candidate outcomes retain only a readback-confirmed last-good snapshot
-  (`NO_CHANGE`, `WRITE_BUDGET`, `CANDIDATE_UNAVAILABLE`); they are not new publications. An unaffordable first publication
-  without verified last-good returns `BOOTSTRAP_REQUIRED`, never an invented ranking. Bad seals, digests and clocks refuse.
-  All-object readback, immutable lazy blobs and pointer-last remain mandatory; an attempted pointer is never called retained.
+- `scripts/ranking_write_policy.py` separates hourly evaluation from ranking persistence: only changed ordered Top20
+  membership/order, an initial qualified ranking, or a six-hour heartbeat after the **remote-readback-confirmed ranking**
+  permits ranking writes. A local B1 completion is not publication proof and cannot suppress a failed changed-order retry.
+  Source/score/clock-only changes do not rewrite the ranking or journal within that interval. A genuine retained host
+  frame consumes no pending input and creates no new witness or ACK.
+- `scripts/sealed_product_policy.py` selects independently due products over one immutable seal. A market-only publication
+  preserves the exact ranking blob, binding and `ranking_persisted_at`; a ranking-only publication preserves product clocks.
+  Collection continues independently, including protected-host NO_CHANGE. The following are publication cadences, not
+  permission to renew old source observations:
+
+  | Product | Publication | Source admission / actual reader hard bound | Write partition |
+  |---|---|---|---|
+  | Ranking + optional machine binding | Ordered change or 6h | Original report14h; historical facts keep their date and lose forecast authority |400/day|
+  | Quotes + options |2h|Cache≤5h / reader≤6h|600/day|
+  | Options coverage |2h|Reader≤6h and original validity boundary; absent rights remain unavailable|600/day|
+  | Price shards |3h|Cache≤3d / reader≤4d|600/day|
+  | Identity generation, including name/token routes |24h|Cache and all actual reader routes≤8d|600/day|
+  | Activation/eager core |12h target at the next due ranking **with new evidence**|Original report, data, approval, claim and capture bounds still apply|400/day|
+
+  Identity collection remains20h, prices2.9h and markets0.9h. Expired or invalid product generations are omitted, never
+  restamped; readers independently refuse them. Source outages can create disclosed unavailability, not fresh numbers.
+  The two-hour market publication cadence leaves room inside the six-hour source bound; hourly publication is not assumed
+  to fit the reserve. Production-shaped measured costs, full identity churn and failed attempts are reported by the lane's
+  source-bound30-day evidence, not inferred from a frozen ranking blob.
+- KV free-tier writes are [1,000/day](https://developers.cloudflare.com/kv/platform/limits/). Separate locked UTC ledgers
+  cap retry-inclusive reservations at400 ranking /600 independent products without borrowing. Each root's liveness marker,
+  seal and pointer belong to the ranking partition only when that root persists ranking; market-only controls use600.
+  Before any PUT, both full remaining plans are authorized, again on UTC rollover. Partial reservations and failures are
+  charged without refunds; outcome counters include partial authorization. This is not an account-wide billing meter.
+  Provider daily-limit errors stop both partitions until00:00 UTC; the next permitted evaluation resumes without a flag.
+  Budget suppression may hold a changed candidate while independently affordable products continue. Complete all-object
+  readback, immutable blobs, pending-pointer ambiguity and pointer-last remain mandatory. An attempted pointer is never
+  called retained; unaffordable bootstrap without verified custody is `BOOTSTRAP_REQUIRED`, never an invented ranking.
 - The Worker can serve exact historical ranking facts only through verified sealed-reader custody, with the original
   as-of and a dated historical notice on ranking/detail Text and Flex. It does not restamp old data. Historical machine
   forecasts, fallback models and attached company reports are withheld rather than renewing approval at a replay clock.
@@ -419,15 +439,17 @@ Source implementation only: **IMPLEMENTED_UNVERIFIED**, not deployed or independ
   caller-owned `II_R2B_SHADOW_LOG`, never its immutable code tree. Failed ranking/data validation never appends.
   An observation precedes serialization/sealing: later publication failure leaves no proof of publication, acceptance
   or causality. Source hashes exclude invocation-only clocks/decay; actual source changes remain merely possible causes.
-- `scripts/ranking_confirmed_heartbeat.py` handles a genuine host NO_CHANGE when the remote confirmed seal is already
-  six hours old, including a previous failed publication. It reuses verified confirmed bytes without rewriting raw
-  ranking or producing a fresh host ACK. Original report/data/approval/capture bytes, claim time and payload digests
-  remain unchanged; only assembly identity/seal bindings are rebound. Publisher budget preflight precedes staging;
-  normal replay/sync performs all-object readback and pointer-last. An ambiguous pointer attempt invalidates local
-  suppression proof until `sync.reconcile_confirmed_snapshot` verifies the actual remote pointer and every object.
-  Transactions crossing UTC midnight reserve their full remaining bounded plan again before the next day's PUT.
-  A missing confirmed heartbeat fails closed with runner exit 2 and bounded
-  `CONFIRMED_HEARTBEAT_UNAVAILABLE`; it cannot become retained success or a new publication/ACK.
+- `scripts/ranking_confirmed_heartbeat.py` handles genuine protected-host NO_CHANGE by selecting independently fresh cache
+  products, not by copying an expired whole seal. Only a due ranking heartbeat advances its persistence clock; confirmed
+  core identity and original report/data/approval/capture/claim payload bytes remain exact, without another host ACK.
+  A paired root stores `last_successful_pipeline_timestamp` under its **global** run as actual seal liveness; all other
+  eager objects remain under the confirmed **core** run. Public `runId` remains the core/claim identity; audit `sealRunId`
+  is the global identity. This marker is not an activation payload, evidence date or approval renewal.
+  Original legacy-report expiration can refuse legacy routes while independently fresh products and valid current V3
+  ranking remain available. Replay v5 binds both identities and the exact copied seal SHA before execution; source mutation,
+  wrong hashes and broken declared machine bindings refuse. Historical machine facts cannot regain forecasts.
+  An ambiguous pointer attempt invalidates suppression until actual remote pointer + every member reconcile. Missing proof
+  returns runner exit2 / `CONFIRMED_HEARTBEAT_UNAVAILABLE`, never retained success or a fabricated publication.
 - Serenity schema 4 distinguishes original/reply/quote/repost, deduplicates source identity/content across scoring and
   chronology, and records source/retrieval age and mirror status. An archive or oEmbed lookup does not authenticate
   an author's claim or create an independent source. Current source fingerprints exclude clock-derived decay; older

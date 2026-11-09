@@ -270,16 +270,16 @@ class StagedReplayTests(unittest.TestCase):
     def test_expectations_are_state_aware(self):
         import stage_sealed_replay as replay
         base = {"reader_contract_version": replay.READER_CONTRACT_VERSION, "integrity": "sealed", "run_id": "R",
-                "macro_overview_sealed": True}
+                "seal_run_id": "R", "seal_sha256": "a" * 64, "macro_overview_sealed": True}
         carried = {**base, "fresh": True, "top20_records": 20, "line_flex_messages": 4, "line_text_messages": 1,
                    "broadcast_ready": True, "v21_records": 20, "v212_records": 20, "test_only_admission": False}
-        self.assertEqual(replay.expectations(carried, "CARRIED_FORWARD", "R"), [])
-        self.assertEqual(replay.expectations({**carried, "top20_records": 2}, "CARRIED_FORWARD", "R"), ["TOP20_RECORDS"])
+        self.assertEqual(replay.expectations(carried, "CARRIED_FORWARD", "R", seal_run_id="R", seal_sha256="a" * 64), [])
+        self.assertEqual(replay.expectations({**carried, "top20_records": 2}, "CARRIED_FORWARD", "R", seal_run_id="R", seal_sha256="a" * 64), ["TOP20_RECORDS"])
         insufficient = {**base, "fresh": False, "refusal_is_insufficient": True, "v21_records": 0}
-        self.assertEqual(replay.expectations(insufficient, "INSUFFICIENT", "R"), [])
-        self.assertIn("INSUFFICIENT_REFUSAL", replay.expectations({**insufficient, "refusal_is_insufficient": False}, "INSUFFICIENT", "R"))
-        self.assertIn("RUN_ID", replay.expectations(carried, "CARRIED_FORWARD", "OTHER"))
-        self.assertIn("FRESH", replay.expectations({**base, "fresh": False}, None, "R"))
+        self.assertEqual(replay.expectations(insufficient, "INSUFFICIENT", "R", seal_run_id="R", seal_sha256="a" * 64), [])
+        self.assertIn("INSUFFICIENT_REFUSAL", replay.expectations({**insufficient, "refusal_is_insufficient": False}, "INSUFFICIENT", "R", seal_run_id="R", seal_sha256="a" * 64))
+        self.assertIn("RUN_ID", replay.expectations(carried, "CARRIED_FORWARD", "OTHER", seal_run_id="R", seal_sha256="a" * 64))
+        self.assertIn("FRESH", replay.expectations({**base, "fresh": False}, None, "R", seal_run_id="R", seal_sha256="a" * 64))
 
     def test_real_readers_replay_both_states(self):
         import shutil
@@ -327,8 +327,8 @@ class StagedReplayIdentityTests(unittest.TestCase):
     def test_taiwan_name_must_resolve_to_the_exchange_listing(self):
         import stage_sealed_replay as replay
         base = {"reader_contract_version": replay.READER_CONTRACT_VERSION, "integrity": "sealed", "run_id": "R",
-                "macro_overview_sealed": True, "fresh": True}
+                "seal_run_id": "R", "seal_sha256": "a" * 64, "macro_overview_sealed": True, "fresh": True}
         good = {**base, "identity_probe": {"NVDA": "RESOLVED:NASDAQ:NVDA", "2330": "RESOLVED:TWSE:2330", "台積電": "RESOLVED:TWSE:2330"}}
-        self.assertEqual(replay.expectations(good, "OTHER", "R", True, False), [])
+        self.assertEqual(replay.expectations(good, "OTHER", "R", True, False, seal_run_id="R", seal_sha256="a" * 64), [])
         bad = {**good, "identity_probe": {**good["identity_probe"], "台積電": "NEEDS_MARKET_SELECTION"}}
-        self.assertEqual(replay.expectations(bad, "OTHER", "R", True, False), ["IDENTITY_TW_NAME"])
+        self.assertEqual(replay.expectations(bad, "OTHER", "R", True, False, seal_run_id="R", seal_sha256="a" * 64), ["IDENTITY_TW_NAME"])

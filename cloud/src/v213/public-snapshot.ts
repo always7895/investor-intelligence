@@ -8,7 +8,13 @@ export { clearVerifiedLazyBodies } from "./sealed-slice";
 
 interface SnapshotPointer { run_id?: unknown; runId?: unknown; }
 export interface PublicSnapshotView {
+  /** Immutable eager-core / activation-claim identity, NOT the newer global seal run.
+   * Market-only publication must not renew references, dedupe or admission authority. */
   readonly runId: string | null;
+  /** Verified global seal/pointer identity for custody auditors only; never activation or data freshness. */
+  readonly sealRunId?: string;
+  /** Exact pointer-bound seal digest verified by the real reader, for replay/custody auditing only. */
+  readonly sealSha256?: string;
   readonly kind: "snapshot" | "legacy" | "invalid";
   readonly integrity: "sealed" | "legacy" | "invalid";
   json<T>(logicalKeys: string[]): Promise<T | null>;
@@ -104,7 +110,7 @@ async function readPublicSnapshot(env: StorageEnv): Promise<PublicSnapshotView> 
           return (await pending) ?? undefined;
         };
         return Object.freeze<PublicSnapshotView>({
-          runId: verified.pointer.run_id, kind: "snapshot", integrity: "sealed",
+          runId: verified.coreRunId, sealRunId: verified.pointer.run_id, sealSha256: verified.pointer.seal_sha256, kind: "snapshot", integrity: "sealed",
           hasSealedObject(key: string) {
             return verified.objects.has(key) || verified.lazy.has(key);
           },

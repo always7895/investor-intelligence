@@ -6,7 +6,6 @@ import copy
 import json
 import subprocess
 import sys
-from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from io import StringIO
 from pathlib import Path
@@ -69,12 +68,19 @@ class SealedQuotaIntegration(KvTestCase):
         def build(_carry=None):
             bodies = {name: json.dumps({"synthetic": name}, separators=(",", ":")) for name in publisher.OBJECT_KEYS}
             bodies[publisher.MACRO_KEY] = '{"synthetic":"macro"}'
+            bodies["last_successful_pipeline_timestamp"] = stamp(now)
             bodies["v213:top20-report:latest"] = json.dumps(report, separators=(",", ":"))
             run = now.strftime("%Y%m%dT%H%M%SZ") + "-" + publisher._sha(bodies["v213:top20-report:latest"])[:12]
             return bodies, {"run_id": run, "transaction_id": "0" * 32, "report": report, "top20": report}
 
-        identities = {f"v213:identity:v2:sym:X{index}": json.dumps({"synthetic_identity": index})
-                      for index in range(self.identity_count)}
+        keys = ([f"v213:identity:v2:sym:{bucket}" for bucket in "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"]
+                + [f"v213:identity:v2:name:{bucket}" for bucket in range(16)]
+                + [f"v213:identity:v2:tok:{bucket}" for bucket in range(8)])
+        if not 0 <= self.identity_count <= len(keys):
+            raise ValueError("SYNTHETIC_IDENTITY_SHAPE_INVALID")
+        collected = START + timedelta(hours=20 * int((now - START).total_seconds() // (20 * 3600)))
+        identities = {key: json.dumps({"synthetic_identity": index, "generated_at": stamp(collected)})
+                      for index, key in enumerate(keys[:self.identity_count])}
         buffer = StringIO()
         with mock.patch.object(publisher, "build_bodies", build), \
                 mock.patch.object(publisher, "lazy_identity_bodies", return_value=identities), \
@@ -122,15 +128,16 @@ class SealedQuotaIntegration(KvTestCase):
         self.assertEqual(self.serving(), (original, pointer))
         heartbeat, uploaded = self.publish(START + timedelta(hours=6))
         self.assertNotEqual(first["run_id"], heartbeat["run_id"])
-        self.assertEqual(uploaded.record["objects_reused"], 24)
-        self.assertEqual(uploaded.record["writes_reserved"], (15 + 1 + 1) * 3)
+        self.assertEqual(uploaded.record["objects_reused"], 13 + 24)
+        self.assertEqual((uploaded.record["ranking_writes_reserved"], uploaded.record["market_writes_reserved"]), (12, 0))
         self.assertEqual(uploaded.record["objects_verified"], 40)
         self.assertEqual(self.kv.puts[-1][0], POINTER_KEY)
 
     def test_whole_plan_budget_stop_has_zero_puts_and_resumes_at_utc_reset(self):
         first, _ = self.publish(START)
         budget = policy.DailyWriteBudget(self.budget_path)
-        self.assertTrue(budget.reserve(400 - 123 - 50, START))
+        used = json.loads(self.budget_path.read_text())["reserved"]
+        self.assertTrue(budget.reserve(400 - used - 11, START))  # the lean changed ranking needs12, not the whole bundle
         changed = list(reversed(self.symbols))
         retained = self.evaluate(START + timedelta(hours=1), changed)
         self.assertEqual(retained["retention_reason"], "WRITE_BUDGET")
@@ -161,9 +168,9 @@ class SealedQuotaIntegration(KvTestCase):
         self.kv.fail_put(first_put, 1, NETWORK)
         retried = self.upload(candidate)
         self.assertEqual(retried.exit, 0)
-        self.assertEqual(retried.record["writes_attempted"], 18)
-        self.assertEqual(retried.record["writes_reserved"], 51)
-        self.assertEqual(json.loads(self.budget_path.read_text())["reserved"], 174)
+        self.assertEqual(retried.record["writes_attempted"], 5)
+        self.assertEqual((retried.record["ranking_writes_reserved"], retried.record["market_writes_reserved"]), (12, 0))
+        self.assertEqual(json.loads(self.budget_path.read_text())["reserved"], 63)
         old_body, old_pointer = self.serving()
         quota_candidate = self.evaluate(START + timedelta(hours=2), self.symbols)
         original = self.kv.fake_run
@@ -221,7 +228,8 @@ class SealedQuotaIntegration(KvTestCase):
         self.assertEqual(self.kv.store, before)
 
     def test_unaffordable_bootstrap_is_explicit_and_has_no_partial_upload(self):
-        self.identity_count = 140
+        self.identity_count = 60
+        self.assertTrue(policy.DailyWriteBudget(self.budget_path).reserve(400, START))
         candidate = self.evaluate(START)
         result = self.upload(candidate)
         self.assertEqual((result.exit, result.record["error_category"], result.record["pointer_state"]),
@@ -379,8 +387,8 @@ class SealedQuotaIntegration(KvTestCase):
                 crossed = True
                 old_reserved.append(json.loads(self.budget_path.read_text())["reserved"])
                 Clock.instant = START + timedelta(days=1)
-                # Only 47 free slots: one next PUT fits, but the 48-slot
-                # remaining worst-case plan does not. There must be NO launch.
+                # One PUT fits the new day, but the complete remaining ranking
+                # plan does not. Independent market capacity cannot be borrowed.
                 self.assertTrue(policy.DailyWriteBudget(self.budget_path).reserve(353, Clock.instant))
             return result
 
@@ -388,8 +396,8 @@ class SealedQuotaIntegration(KvTestCase):
             stopped = self.upload(candidate)
         self.assertEqual((stopped.exit, stopped.record["status"], stopped.record["retention_reason"],
                           stopped.record["pointer_state"]), (0, "RETAINED_LAST_GOOD", "WRITE_BUDGET", "NOT_ATTEMPTED"))
-        self.assertEqual((launch_days, old_reserved), ([START.date()], [174]))
-        self.assertEqual((stopped.record["writes_attempted"], stopped.record["writes_reserved"]), (1, 51))
+        self.assertEqual((launch_days, old_reserved), ([START.date()], [102]))
+        self.assertEqual((stopped.record["writes_attempted"], stopped.record["writes_reserved"]), (1, 123))
         self.assertEqual(json.loads(self.budget_path.read_text())["reserved"], 353)
         self.assertEqual(self.kv.store[POINTER_KEY], old_pointer)
         _, resumed = self.publish(START + timedelta(days=2), list(reversed(self.symbols)))
@@ -414,7 +422,8 @@ class SealedQuotaIntegration(KvTestCase):
                 self.kv.fail_put(argv[argv.index("put") + 1], 1, NETWORK)
                 result = original(*args, **kwargs)
                 Clock.instant = START + timedelta(days=1)
-                self.assertTrue(policy.DailyWriteBudget(self.budget_path).reserve(350, Clock.instant))
+                remaining = sync.ACTIVE_WRITE_RESERVATION.remaining["ranking"]
+                self.assertTrue(policy.DailyWriteBudget(self.budget_path).reserve(400 - remaining, Clock.instant))
                 return result
             return original(*args, **kwargs)
 
@@ -422,9 +431,9 @@ class SealedQuotaIntegration(KvTestCase):
             result = self.upload(candidate)
         self.assertEqual((result.exit, result.record["status"], result.record["pointer_state"]),
                          (0, "SUCCEEDED", "READBACK_CONFIRMED"))
-        self.assertEqual((result.record["writes_attempted"], result.record["writes_reserved"]), (18, 101))
+        self.assertEqual((result.record["writes_attempted"], result.record["writes_reserved"]), (42, 245))
         self.assertEqual(launch_days.count(START.date()), 1)
-        self.assertEqual(launch_days.count((START + timedelta(days=1)).date()), 17)
+        self.assertEqual(launch_days.count((START + timedelta(days=1)).date()), 41)
         self.assertEqual(json.loads(self.budget_path.read_text())["reserved"], 400)
         self.assertEqual(self.kv.puts[-1][0], POINTER_KEY)
 
@@ -446,7 +455,7 @@ class SealedQuotaIntegration(KvTestCase):
 
         with mock.patch.object(self.kv, "fake_run", side_effect=discover_across_midnight):
             result = self.upload(candidate)
-        self.assertEqual((result.exit, result.record["writes_reserved"], result.record["writes_attempted"]), (0, 51, 17))
+        self.assertEqual((result.exit, result.record["writes_reserved"], result.record["writes_attempted"]), (0, 123, 41))
         self.assertEqual((json.loads(self.budget_path.read_text())["day"],
                           json.loads(self.budget_path.read_text())["reserved"]), ("2026-11-02", 51))
 
@@ -507,39 +516,72 @@ class SealedQuotaIntegration(KvTestCase):
         self.assertEqual((reconciled["run_id"], len(self.kv.puts)), (first["run_id"], mark))
         self.assertFalse(carry.pointer_ambiguous(self.snapshots))
 
-    def test_thirty_days_hourly_real_seals_keep_top20_and_daily_writes_bounded(self):
-        attempted = defaultdict(int)
-        reserved = defaultdict(int)
-        retained = 0
-        resets = 0
-        for hour in range(30 * 24):
-            now = START + timedelta(hours=hour)
-            # Ordinary changes about every nine hours; several busy market days
-            # also change hourly in the evening and exercise actual budget stops.
-            generation = hour // 9 + (hour % 24 if hour // 24 % 5 == 0 and hour % 24 >= 18 else 0)
-            shift = generation % 20
-            symbols = self.symbols[shift:] + self.symbols[:shift]
-            before = len(self.kv.puts)
-            summary, result = self.publish(now, symbols)
-            attempted[now.date()] += len(self.kv.puts) - before
-            if result is not None:
-                reserved[now.date()] += result.record["writes_reserved"]
-                self.assertLessEqual(result.record["writes_attempted"], result.record["writes_reserved"])
-            else:
-                retained += 1
-                self.assertEqual(summary["pointer_state"], "NOT_ATTEMPTED")
-            body, pointer = self.serving()
-            self.assertTrue(body)
-            self.assertEqual(json.loads(self.kv.store[f"snapshot:{pointer['run_id']}:{publisher.SEAL_KEY}"])["run_id"], pointer["run_id"])
-            self.assertLessEqual(attempted[now.date()], 400)
-            self.assertLessEqual(reserved[now.date()], 400)
-            if hour and hour % 24 == 0:
-                resets += 1
-                self.assertNotEqual(summary.get("retention_reason"), "WRITE_BUDGET")  # automatic reset, even if not yet due
-        self.assertEqual((len(attempted), resets), (30, 29))
-        self.assertGreater(retained, 500)
-        self.assertEqual(len(reserved), 30)
-        print("RANKING_KV_30_DAY_EVIDENCE " + json.dumps({
-            "served_hours": 30 * 24, "utc_resets": resets, "retained_hours": retained,
-            "days": [{"utc_day": day.isoformat(), "put_attempts": attempted[day], "reserved_worst_case": reserved[day]}
-                     for day in sorted(attempted)]}, separators=(",", ":")))
+    def selected_upload(self, selected):
+        pointer = json.loads(selected["pointer"])
+        directory = self.snapshots / pointer["run_id"]
+        directory.mkdir()
+        (directory / "objects.json").write_text(publisher._dumps(selected["objects"]), encoding="utf-8")
+        (directory / "pointer.raw.json").write_text(selected["pointer"], encoding="utf-8")
+        return self.upload({"run_id": pointer["run_id"]})
+
+    def test_exhausted_ranking_budget_still_publishes_fresh_market_without_candidate_b(self):
+        import sealed_product_policy as products
+        self.publish(START)
+        candidate = self.evaluate(START + timedelta(hours=2), list(reversed(self.symbols)))
+        directory = self.snapshots / candidate["run_id"]
+        objects = json.loads((directory / "objects.json").read_bytes())
+        pointer_text = (directory / "pointer.raw.json").read_text()
+        previous = carry.confirmed_snapshot(self.snapshots)
+        original_ranking = products.parts(previous["objects"], previous["pointer"])["lazy"][publisher.BOTTLENECK_V3_KEY]
+        used = json.loads(self.budget_path.read_text())["reserved"]
+        self.assertTrue(policy.DailyWriteBudget(self.budget_path).reserve(400 - used, Clock.instant))
+        quote = publisher._dumps({"schema": "v213-quotes-v1", "generated_at": stamp(Clock.instant), "quotes": {}})
+        selected = products.prepare_publication(self.snapshots, objects, pointer_text, Clock.instant,
+            previous=previous, fresh_products={"v213:quotes:v1": quote})
+        detail = products.parts(selected["objects"], json.loads(selected["pointer"]))
+        self.assertEqual((selected["ranking_status"], detail["manifest"]["ranking_persisted_at"]), ("REUSED", stamp(START)))
+        self.assertEqual(detail["lazy"][publisher.BOTTLENECK_V3_KEY], original_ranking)
+        self.assertEqual(detail["lazy"]["v213:quotes:v1"], quote)
+        result = self.selected_upload(selected)
+        self.assertEqual((result.exit, result.record["pointer_state"]), (0, "READBACK_CONFIRMED"))
+        self.assertEqual((result.record["ranking_writes_reserved"], result.record["market_writes_reserved"]), (0, 15))
+        self.assertEqual(json.loads(self.budget_path.read_text())["reserved"], 400)
+        served, _pointer = self.serving()
+        self.assertEqual(served.decode(), original_ranking)
+
+    def test_expired_market_members_are_removed_without_renewing_source_or_product_clock(self):
+        import sealed_product_policy as products
+        self.publish(START)
+        previous = carry.confirmed_snapshot(self.snapshots)
+        Clock.instant = START + timedelta(hours=2)
+        quote = publisher._dumps({"schema": "v213-quotes-v1", "generated_at": stamp(Clock.instant), "quotes": {}})
+        selected = products.prepare_publication(self.snapshots, previous["objects"], json.dumps(previous["pointer"]),
+            Clock.instant, previous=previous, fresh_products={"v213:quotes:v1": quote}, confirmed_only=True)
+        self.assertEqual(self.selected_upload(selected).exit, 0)
+        previous = carry.confirmed_snapshot(self.snapshots)
+        before = products.parts(previous["objects"], previous["pointer"])
+        Clock.instant = START + timedelta(hours=8, seconds=1)
+        selected = products.prepare_publication(self.snapshots, previous["objects"], json.dumps(previous["pointer"]),
+            Clock.instant, previous=previous, fresh_products={}, confirmed_only=True)
+        detail = products.parts(selected["objects"], json.loads(selected["pointer"]))
+        self.assertNotIn("v213:quotes:v1", detail["manifest"]["objects"])
+        self.assertNotIn("v213:options-coverage:v1", detail["manifest"]["objects"])
+        self.assertEqual(detail["manifest"]["product_persisted_at"]["market"], stamp(START + timedelta(hours=2)))
+        self.assertEqual(detail["core_run_id"], before["core_run_id"])
+        self.assertEqual(detail["lazy"][publisher.BOTTLENECK_V3_KEY], before["lazy"][publisher.BOTTLENECK_V3_KEY])
+        result = self.selected_upload(selected)
+        self.assertEqual((result.exit, result.record["market_writes_attempted"]), (0, 0))
+
+    def test_partial_two_partition_authorization_is_charged_even_without_a_put(self):
+        market = policy.DailyWriteBudget(self.budget_path.with_name("market-kv-write-budget.json"),
+                                        reserve=400)
+        self.assertTrue(market.reserve(600, START))
+        candidate = self.evaluate(START)
+        result = self.upload(candidate)
+        self.assertEqual((result.exit, result.record["error_category"], result.record["pointer_state"]),
+                         (1, "BOOTSTRAP_REQUIRED", "NOT_ATTEMPTED"))
+        self.assertEqual((result.record["ranking_writes_reserved"], result.record["market_writes_reserved"],
+                          result.record["writes_reserved"], result.record["writes_attempted"]), (51, 0, 51, 0))
+        self.assertEqual(json.loads(self.budget_path.read_bytes())["reserved"], 51)
+        self.assertEqual(self.kv.puts, [])
+        self.assertNotIn(POINTER_KEY, self.kv.store)

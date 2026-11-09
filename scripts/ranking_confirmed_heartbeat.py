@@ -1,27 +1,26 @@
-"""Reseal confirmed bytes after genuine host NO_CHANGE; never produce ranking/ACK.
+"""Continue independently due products after genuine protected-host NO_CHANGE.
 
-Only the activation envelope identity is rebound (its original claimed_at and
-payload digests remain evidence). All reports, approvals and lazy blobs stay exact.
-The normal replay and sync own admission, all-object readback and pointer-last.
+Reuse confirmed core/ranking custody without renewing report, approval or ACK.
+A ranking heartbeat advances only its persistence clock; original core identity
+and evidence bytes stay exact. Independently fresh products keep their own clocks.
 """
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 from datetime import datetime, timezone
 from pathlib import Path
-from uuid import uuid4
 
 import publish_sealed_snapshot as publisher
 import top20_carry_forward as carry
 
 
 def encoded(value):
-    return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+    return json.dumps(value, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
 
 
-def stage(snapshot_root: Path, now: datetime) -> dict:
+def stage(snapshot_root: Path, now: datetime, *, product_paths: dict[str, Path] | None = None) -> dict:
+    import sealed_product_policy as products
     root = carry.plain_path(snapshot_root)
     try:
         previous = carry.confirmed_snapshot(root)
@@ -32,62 +31,58 @@ def stage(snapshot_root: Path, now: datetime) -> dict:
         previous = sync.reconcile_confirmed_snapshot(root)
     if previous is None:
         raise ValueError("BOOTSTRAP_REQUIRED")
-    source = dict(previous["objects"])
-    old_pointer = previous["pointer"]
-    old_prefix = f"snapshot:{previous['run_id']}:"
-    seal = json.loads(source[old_prefix + carry.SEALED_MANIFEST_KEY])
-    assembled = datetime.fromisoformat(seal["generated_at"].replace("Z", "+00:00"))
-    if now < assembled:
+    source = products.parts(previous["objects"], previous["pointer"])
+    if now < products.instant(source["manifest"]["generated_at"]):
         raise ValueError("CONFIRMED_CLOCK_IN_FUTURE")
-    if (now - assembled).total_seconds() < 6 * 3600:
-        return carry.retained_snapshot(root)
-    # Validate EVERY immutable operand, not only the ranking selected by receipt.
-    for name, entry in seal["objects"].items():
-        key = old_prefix + name
-        if key not in source:
-            key = "blob:v1:" + entry["sha256"]
-        body = source[key].encode("utf-8")
-        if hashlib.sha256(body).hexdigest() != entry["sha256"] or len(body) != entry["utf8_bytes"]:
-            raise ValueError("CONFIRMED_OBJECT_MISMATCH")
-    instant = now.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    run = now.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ-") + uuid4().hex[:12]
-    prefix = f"snapshot:{run}:"
-    transaction = uuid4().hex
-    objects = {}
-    for key, body in source.items():
-        if key == old_prefix + carry.SEALED_MANIFEST_KEY:
-            continue
-        if key.startswith(old_prefix):
-            objects[prefix + key[len(old_prefix):]] = body
-        elif key.startswith("blob:v1:"):
-            objects[key] = body
-        else:
-            raise ValueError("CONFIRMED_OBJECT_NAMESPACE")
-    claim_key = prefix + "v213:activation-claim"
-    claim = json.loads(objects[claim_key])
-    if claim["run_id"] != previous["run_id"] or claim["transaction_id"] != seal["transaction_id"]:
-        raise ValueError("CONFIRMED_CLAIM_BINDING")
-    claim.update(run_id=run, transaction_id=transaction)
-    objects[claim_key] = encoded(claim)
-    seal["objects"]["v213:activation-claim"] = {
-        "sha256": hashlib.sha256(objects[claim_key].encode("utf-8")).hexdigest(),
-        "utf8_bytes": len(objects[claim_key].encode("utf-8")),
-    }
-    seal.update(run_id=run, transaction_id=transaction, generated_at=instant)
-    seal_text = encoded(seal)
-    objects[prefix + carry.SEALED_MANIFEST_KEY] = seal_text
-    pointer = {**old_pointer, "run_id": run, "transaction_id": transaction,
-               "seal_sha256": hashlib.sha256(seal_text.encode("utf-8")).hexdigest(), "promoted_at": instant}
-    pointer_text = encoded(pointer)
-    retained = publisher.retained_publication(root, objects, pointer_text, now)
-    if retained is not None:
-        return retained
+    paths = {"identity": publisher.IDENTITY_SHARDS_PATH, "prices": publisher.PRICE_SHARDS_PATH,
+             "market": publisher.MARKET_OBSERVATIONS_PATH}
+    if product_paths is not None:
+        if not set(product_paths) <= set(paths):
+            raise ValueError("PRODUCT_PATH_INVALID")
+        paths.update(product_paths)
+    fresh = publisher.lazy_identity_bodies(Path(paths["identity"]), now)
+    fresh.update(publisher.lazy_price_bodies(Path(paths["prices"]), now))
+    fresh.update(publisher.lazy_market_bodies(Path(paths["market"]), now))
+    fresh.update(publisher.lazy_options_coverage_body(fresh.get("v213:options:v2"), now))
+    selected = products.prepare_publication(root, previous["objects"], encoded(previous["pointer"]), now,
+        previous=previous, fresh_products=fresh, confirmed_only=True)
+    if "retained" in selected:
+        return selected["retained"]
+    pointer_text = selected["pointer"]
+    pointer = json.loads(pointer_text)
+    run = pointer["run_id"]
+    detail = products.parts(selected["objects"], pointer)
+    report = json.loads(detail["core"]["v213:top20-report:latest"])
+    summary = {"run_id": run, "transaction_id": pointer["transaction_id"],
+               "core_run_id": detail["core_run_id"], "seal_sha256": pointer["seal_sha256"],
+               "public_data_as_of": pointer["public_data_as_of"], "source_run_id": previous["run_id"],
+               "top20_state": "INSUFFICIENT" if report.get("status") == "INSUFFICIENT_EVIDENCE" else "CARRIED_FORWARD",
+               "ranking_status": selected["ranking_status"],
+               "ranking_persisted_at": detail["manifest"]["ranking_persisted_at"]}
     destination = carry.plain_path(root / run)
-    destination.mkdir(parents=True, exist_ok=False)
-    (destination / "objects.json").write_bytes(encoded(objects).encode("utf-8"))
-    (destination / "pointer.raw.json").write_bytes(pointer_text.encode("utf-8"))
-    return {"status": "STAGED_CONFIRMED_HEARTBEAT", "run_id": run,
-            "source_run_id": previous["run_id"], "public_data_as_of": pointer["public_data_as_of"]}
+    summary_path = carry.plain_path(destination / "summary.json")
+    summary_bytes = publisher._dumps(summary).encode("utf-8")
+    if summary_path.is_file():
+        existing_bytes = summary_path.read_bytes()
+        existing = json.loads(existing_bytes)
+        if not isinstance(existing, dict) or any(existing.get(key) != summary[key] for key in
+                ("run_id", "transaction_id", "seal_sha256", "top20_state")):
+            raise ValueError("SEALED_RUN_DIR_CONFLICT")
+        summary_bytes = existing_bytes
+    payloads = {"objects.json": publisher._dumps(selected["objects"]).encode("utf-8"),
+                "pointer.raw.json": pointer_text.encode("utf-8"), "summary.json": summary_bytes}
+    for name, data in payloads.items():
+        path = carry.plain_path(destination / name)
+        if path.is_file() and path.read_bytes() != data:
+            raise ValueError("SEALED_RUN_DIR_CONFLICT")
+    destination.mkdir(parents=True, exist_ok=True)
+    for name, data in payloads.items():
+        carry.plain_path(destination / name).write_bytes(data)
+    return {"status": ("STAGED_CONFIRMED_HEARTBEAT" if selected["ranking_status"] == "PERSISTED"
+                       else "STAGED_INDEPENDENT_PRODUCTS"),
+            "run_id": run, "source_run_id": previous["run_id"],
+            "public_data_as_of": pointer["public_data_as_of"],
+            "ranking_status": selected["ranking_status"], "writes_by_product": selected["writes_by_product"]}
 
 
 def main():

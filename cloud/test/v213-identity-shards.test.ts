@@ -1,15 +1,19 @@
 // Sealed identity shards (lazy content-addressed objects) through the real LINE stock lookup. Synthetic values only.
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { parseQuery } from "../src/core";
 import { handleGlobalEquityLookup } from "../src/v213/global-equity-lookup";
 import { resolveGlobalIdentity } from "../src/v213/global-identity";
-import { identityNameBucket, identitySymbolBucket, loadIdentityCatalogForQuery } from "../src/v213/identity-shards";
-import { pinPublicSnapshot } from "../src/v213/public-snapshot";
+import { identityNameBucket, identitySymbolBucket, identityTokenBucket, identityTokenKey, loadIdentityCatalogForQuery } from "../src/v213/identity-shards";
+import { clearVerifiedLazyBodies, pinPublicSnapshot } from "../src/v213/public-snapshot";
 import { SNAPSHOT_SEAL_KEY } from "../src/v213/snapshot-seal";
 import { asKv, MemoryKv } from "./fake-kv";
 import { sealUnboundReport } from "./sealed-report-migration";
 
 const RUN = "20260926T020000Z-abcdefabcdef";
+const GENERATED = "2026-09-26T01:00:00Z";
+const NOW = Date.parse("2026-09-26T02:00:00Z");
+beforeEach(() => { vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(NOW); clearVerifiedLazyBodies(); });
+afterEach(() => vi.useRealTimers());
 const FEEDS = [
   { id: "nasdaq-listed", url: "https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt", retrieved_at: "2026-09-26T01:00:00Z", sha256: "a".repeat(64), rows: 1 },
   { id: "twse-listed", url: "https://openapi.twse.com.tw/v1/opendata/t187ap03_L", retrieved_at: "2026-09-26T01:00:00Z", sha256: "b".repeat(64), rows: 1 },
@@ -55,11 +59,14 @@ function shards(): Record<string, unknown> {
   if (!out["v213:identity:v2:sym:A"]) {
     out["v213:identity:v2:sym:A"] = { schema: "v213-identity-shard-v2", kind: "symbol", bucket: "A", generated_at: "2026-09-26T01:00:00Z", feeds: FEEDS, rows: [] };
   }
+  out[identityTokenKey(identityTokenBucket("sivers"))] = { schema: "v213-identity-shard-v2", kind: "token",
+    bucket: String(identityTokenBucket("sivers")), generated_at: GENERATED,
+    rows: [["sivers semiconductors", "S", "SIVE", "NASDAQ STOCKHOLM"]] };
   return out;
 }
 
 /** A sealed run whose manifest lists the shards as lazy objects stored under blob:v1:<sha256>. */
-async function sealedWithShards(tamper?: string) {
+async function sealedWithShards(tamper?: string, modify?: (documents: Record<string, unknown>) => void) {
   const kv = new MemoryKv();
   const stamp = new Date(Date.now() - 60_000).toISOString().replace(/\.\d{3}Z$/, "Z");
   kv.values.set("v213:top20-report:latest", JSON.stringify({ synthetic: "report" }));
@@ -67,7 +74,8 @@ async function sealedWithShards(tamper?: string) {
   await sealUnboundReport(kv, RUN);
   const sealKey = `snapshot:${RUN}:${SNAPSHOT_SEAL_KEY}`;
   const seal = JSON.parse(kv.values.get(sealKey)!);
-  for (const [key, value] of Object.entries(shards())) {
+  const documents = shards(); modify?.(documents);
+  for (const [key, value] of Object.entries(documents)) {
     const body = JSON.stringify(value);
     const digest = await sha(body);
     seal.objects[key] = { sha256: digest, utf8_bytes: new TextEncoder().encode(body).byteLength };
@@ -144,5 +152,53 @@ describe("sealed identity shards", () => {
     expect(view.integrity).toBe("sealed");
     expect(resolveGlobalIdentity(await loadIdentityCatalogForQuery(view, "SIVE"), "SIVE").status).toBe("UNAVAILABLE");
     expect(resolveGlobalIdentity(await loadIdentityCatalogForQuery(view, "NVDA"), "NVDA").status).toBe("RESOLVED");
+  });
+
+  it.each([
+    ["symbol", "v213:identity:v2:sym:S", "SIVE.ST", "SIVE"],
+    ["name", `v213:identity:v2:name:${identityNameBucket("台積電")}`, "公司 台積電", "2330"],
+    ["token", identityTokenKey(identityTokenBucket("sivers")), "公司 Sivers", "SIVE"],
+  ])("enforces the original timestamp on every %s shard route", async (_kind, key, query, symbol) => {
+    const cases: [unknown, boolean][] = [
+      [new Date(NOW - 8 * 86400_000).toISOString(), true],
+      [new Date(NOW - 8 * 86400_000 - 1).toISOString(), false],
+      [new Date(NOW + 300_000).toISOString(), true],
+      [new Date(NOW + 300_001).toISOString(), false],
+      ["2026-02-30T01:00:00Z", false], ["2026-09-26", false], [undefined, false], [true, false],
+    ];
+    for (const [stamp, accepted] of cases) {
+      const env = await sealedWithShards(undefined, documents => {
+        const shard = documents[key!];
+        if (!shard || typeof shard !== "object" || Array.isArray(shard)) throw new Error("MISSING_TEST_SHARD");
+        (shard as Record<string, unknown>).generated_at = stamp;
+      });
+      const view = await pinPublicSnapshot(env);
+      const catalog = await loadIdentityCatalogForQuery(view, query!, { leadingToken: true });
+      const resolution = resolveGlobalIdentity(catalog, query!);
+      expect(resolution.status, String(stamp)).toBe(accepted ? "RESOLVED" : "UNAVAILABLE");
+      if (resolution.status === "RESOLVED") expect(resolution.record.symbol).toBe(symbol);
+    }
+  });
+
+  it("does not let fresh name/token indexes resurrect an expired symbol shard", async () => {
+    const env = await sealedWithShards(undefined, documents => {
+      const shard = documents["v213:identity:v2:sym:S"];
+      if (!shard || typeof shard !== "object" || Array.isArray(shard)) throw new Error("MISSING_TEST_SHARD");
+      (shard as Record<string, unknown>).generated_at = new Date(NOW - 8 * 86400_000 - 1).toISOString();
+    });
+    const view = await pinPublicSnapshot(env);
+    for (const query of ["公司 Sivers Semiconductors", "公司 Sivers"]) {
+      expect(resolveGlobalIdentity(await loadIdentityCatalogForQuery(view, query, { leadingToken: true }), query).status).toBe("UNAVAILABLE");
+    }
+    expect(resolveGlobalIdentity(await loadIdentityCatalogForQuery(view, "NVDA"), "NVDA").status).toBe("RESOLVED");
+  });
+
+  it("rechecks cached immutable shard bytes against the actual reader clock without relabeling them", async () => {
+    const view = await pinPublicSnapshot(await sealedWithShards());
+    expect((await loadIdentityCatalogForQuery(view, "SIVE.ST"))?.generated_at).toBe(GENERATED);
+    vi.setSystemTime(Date.parse(GENERATED) + 8 * 86400_000);
+    expect(resolveGlobalIdentity(await loadIdentityCatalogForQuery(view, "SIVE.ST"), "SIVE.ST").status).toBe("RESOLVED");
+    vi.setSystemTime(Date.parse(GENERATED) + 8 * 86400_000 + 1);
+    expect(await loadIdentityCatalogForQuery(view, "SIVE.ST")).toBeNull();
   });
 });

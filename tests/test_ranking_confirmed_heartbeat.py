@@ -10,6 +10,7 @@ import ranking_confirmed_heartbeat as heartbeat
 import publish_sealed_snapshot as publisher
 import top20_carry_forward as carry
 from sealed_kv_fakes import POINTER_KEY
+import sealed_product_policy as products
 
 
 class ConfirmedHeartbeatTests(unittest.TestCase):
@@ -18,6 +19,7 @@ class ConfirmedHeartbeatTests(unittest.TestCase):
         self.h.setUp()
         self.addCleanup(self.h.doCleanups)
         self.addCleanup(self.h.tearDown)
+        self.product_paths = {name: self.h.tmp / "no-input" / name for name in ("identity", "prices", "market")}
         original = publisher.build_seal
 
         def seal(bodies, meta, lazy=None):
@@ -41,20 +43,22 @@ class ConfirmedHeartbeatTests(unittest.TestCase):
         self.assertNotEqual(failed["run_id"], first["run_id"])
         self.assertEqual((self.h.snapshots / carry.CONFIRMED_NAME).read_bytes(), original_receipt)
         Clock.instant = START + timedelta(hours=7)
-        staged = heartbeat.stage(self.h.snapshots, Clock.instant)
+        staged = heartbeat.stage(self.h.snapshots, Clock.instant, product_paths=self.product_paths)
         self.assertEqual(staged["status"], "STAGED_CONFIRMED_HEARTBEAT")
         before = json.loads(original_objects)
         after = json.loads((self.h.snapshots / staged["run_id"] / "objects.json").read_bytes())
         old_prefix = f"snapshot:{first['run_id']}:"
-        new_prefix = f"snapshot:{staged['run_id']}:"
-        for key, value in before.items():
-            if key in (old_prefix + carry.SEALED_MANIFEST_KEY, old_prefix + "v213:activation-claim"):
-                continue
-            self.assertEqual(after[new_prefix + key[len(old_prefix):] if key.startswith(old_prefix) else key], value)
+        staged_pointer = json.loads((self.h.snapshots / staged["run_id"] / "pointer.raw.json").read_bytes())
+        detail = products.parts(after, staged_pointer)
+        self.assertEqual(detail["core_run_id"], first["run_id"])
+        for logical, value in detail["core"].items():
+            if logical != products.PIPELINE_KEY:
+                self.assertEqual(before[old_prefix + logical], value)
+        self.assertEqual(detail["core"][products.PIPELINE_KEY], integration.stamp(Clock.instant))
+        self.assertEqual(detail["manifest"]["ranking_persisted_at"], integration.stamp(Clock.instant))
         old_claim = json.loads(before[old_prefix + "v213:activation-claim"])
-        new_claim = json.loads(after[new_prefix + "v213:activation-claim"])
-        self.assertEqual(old_claim["claimed_at"], new_claim["claimed_at"])
-        self.assertEqual(old_claim["payload_digests"], new_claim["payload_digests"])
+        new_claim = json.loads(detail["core"]["v213:activation-claim"])
+        self.assertEqual(old_claim, new_claim)
         self.assertEqual((self.h.snapshots / carry.CONFIRMED_NAME).read_bytes(), original_receipt)
         result = self.h.upload(staged)
         self.assertEqual(result.exit, 0, result.outcome)
@@ -66,29 +70,36 @@ class ConfirmedHeartbeatTests(unittest.TestCase):
         self.assertEqual(confirmed["pointer"]["public_data_as_of"], first["public_data_as_of"])
         files = {p: p.read_bytes() for p in self.h.snapshots.rglob("*") if p.is_file()}
         Clock.instant = START + timedelta(hours=8)
-        retained = heartbeat.stage(self.h.snapshots, Clock.instant)
+        retained = heartbeat.stage(self.h.snapshots, Clock.instant, product_paths=self.product_paths)
         self.assertEqual(retained["retention_reason"], "NO_CHANGE")
         self.assertEqual(files, {p: p.read_bytes() for p in self.h.snapshots.rglob("*") if p.is_file()})
         self.assertEqual((original_dir / "objects.json").read_bytes(), original_objects)
 
-    def test_budget_retains_without_local_stage_then_midnight_resumes(self):
+    def test_ranking_budget_does_not_starve_market_and_midnight_resumes_rank_heartbeat(self):
         self.h.publish(START)
-        self.h.budget_path.parent.mkdir(parents=True, exist_ok=True)
         import ranking_write_policy as policy
         budget = policy.DailyWriteBudget(self.h.budget_path)
         used = json.loads(self.h.budget_path.read_bytes())["reserved"]
         self.assertTrue(budget.reserve(400 - used, START))
-        before = set(self.h.snapshots.iterdir())
         Clock.instant = START + timedelta(hours=7)
-        retained = heartbeat.stage(self.h.snapshots, Clock.instant)
-        self.assertEqual(retained["retention_reason"], "WRITE_BUDGET")
-        self.assertEqual(set(self.h.snapshots.iterdir()), before)
+        staged = heartbeat.stage(self.h.snapshots, Clock.instant, product_paths=self.product_paths)
+        self.assertEqual((staged["status"], staged["ranking_status"]), ("STAGED_INDEPENDENT_PRODUCTS", "REUSED"))
+        result = self.h.upload(staged)
+        self.assertEqual((result.exit, result.record["ranking_writes_reserved"], result.record["market_writes_reserved"]), (0, 0, 12))
+        previous = carry.confirmed_snapshot(self.h.snapshots)
+        detail = products.parts(previous["objects"], previous["pointer"])
+        original_core = detail["core_run_id"]
+        self.assertEqual(detail["manifest"]["ranking_persisted_at"], integration.stamp(START))
+        self.assertEqual(detail["manifest"]["product_persisted_at"]["market"], integration.stamp(Clock.instant))
         Clock.instant = START + timedelta(days=1)
-        staged = heartbeat.stage(self.h.snapshots, Clock.instant)
+        staged = heartbeat.stage(self.h.snapshots, Clock.instant, product_paths=self.product_paths)
         self.assertEqual(staged["status"], "STAGED_CONFIRMED_HEARTBEAT")
         result = self.h.upload(staged)
-        self.assertEqual(result.exit, 0, result.outcome)
-        self.assertEqual(result.record["pointer_state"], "READBACK_CONFIRMED")
+        self.assertEqual((result.exit, result.record["pointer_state"]), (0, "READBACK_CONFIRMED"))
+        confirmed = carry.confirmed_snapshot(self.h.snapshots)
+        detail = products.parts(confirmed["objects"], confirmed["pointer"])
+        self.assertEqual(detail["core_run_id"], original_core)
+        self.assertEqual(json.loads(detail["lazy"][publisher.BOTTLENECK_V3_KEY])["generated_at"], integration.stamp(START))
 
 
 if __name__ == "__main__":

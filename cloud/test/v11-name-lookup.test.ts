@@ -193,7 +193,8 @@ const MANY_NOTE = "名稱比對：輸入文字是多家公司名稱的開頭字�
 const SIVERS_ABSENT = "識別代號暫不可用：代號「SIVERS」目前未在已封存公開身分目錄中";
 const bullets = (text: string) => text.split("\n").filter(item => item.startsWith("• "));
 
-afterEach(() => vi.unstubAllGlobals());
+beforeEach(() => { vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(Date.parse(GENERATED) + 60_000); });
+afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
 
 describe("V11 W5 name lookup through the real LINE entry", () => {
   it.each(["Sivers", "sivers", "SIVERS", "公司 Sivers", "Sivers Semiconductors"])("answers %s with the Sivers Semiconductors listing", async input => {

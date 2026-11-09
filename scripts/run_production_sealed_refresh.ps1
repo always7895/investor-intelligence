@@ -75,7 +75,8 @@ try {
     if ($RefreshTimeoutSeconds -lt 1 -or $PostSealBudgetSeconds -lt 1 -or $KeepRuns -lt 0) { throw 'BUDGET_INVALID' }
     . (Join-Path $repo 'scripts\v213_operation_lock.ps1')
     if (-not (Test-Path -LiteralPath $logDir)) { New-Item -ItemType Directory -Path $logDir | Out-Null }
-    if (-not [string]::IsNullOrWhiteSpace($SnapshotRoot)) { $env:II_SNAPSHOT_ROOT = $runsRoot }
+    # Every protected-host launch inherits the resolved publication authority root.
+    $env:II_SNAPSHOT_ROOT = $runsRoot
 } catch {
     Write-Host 'SEALED_REFRESH_FAILED phase=ROOT_OR_PREREQUISITE pointer_state=NOT_ATTEMPTED maintenance=NOT_ADMITTED'
     exit 1
@@ -208,23 +209,22 @@ function Invoke-MachinePresealDaily {
 }
 
 function Invoke-CarryForwardSeal {
-    # Seal first, in tiers, each replayed through the real readers before any KV write: (1) the carried Top20 plus
-    # the identity shards, (2) the carried Top20 alone (an identity defect never costs the Top20), (3) an
-    # INSUFFICIENT Top20. The macro overview is sealed in every tier.
+    # Each fallback removes only the defective product; quotes/options/prices
+    # retain their own cadence even when ranking or identity input is unavailable.
     $tiers = @(
         [pscustomobject]@{ Stage = 'OK'; Args = @('--top20-bundle', '--identity-shards', '--bottleneck-v3', '--market-observations', '--price-shards') },
-        [pscustomobject]@{ Stage = 'WITHOUT_LAZY'; Args = @('--top20-bundle') },
-        [pscustomobject]@{ Stage = 'INSUFFICIENT_FALLBACK'; Args = @('--top20-insufficient', 'TOP20_STAGED_REPLAY_FAILED') }
+        [pscustomobject]@{ Stage = 'WITHOUT_IDENTITY'; Args = @('--top20-bundle','--bottleneck-v3','--market-observations','--price-shards') },
+        [pscustomobject]@{ Stage = 'INSUFFICIENT_FALLBACK'; Args = @('--top20-insufficient','TOP20_STAGED_REPLAY_FAILED','--market-observations','--price-shards') }
     )
     if ($GuidanceMachinePublicationEnabled) {
         # Requested machine body+binding are mandatory in EVERY candidate: no
-        # WITHOUT_LAZY/INSUFFICIENT tier may silently discard their unavailable state.
+        # Identity/INSUFFICIENT fallback may never discard the requested machine state.
         $tiers=@([pscustomobject]@{Stage='MACHINE_CARRIED';Args=@('--top20-bundle','--identity-shards','--market-observations','--price-shards')+$script:MachinePublisherArgs})
     }
     $last = [pscustomobject]@{ Code = 1; RunId = $null; Stage = 'REPLAY' }
     foreach ($tier in $tiers) {
         $tierArgs = $tier.Args
-        $published = Invoke-LoggedNative { & $py "scripts\publish_sealed_snapshot.py" --live-clock @tierArgs }
+        $published = Invoke-LoggedNative { & $py "scripts\publish_sealed_snapshot.py" --live-clock --reconcile-confirmed --snapshot-root $runsRoot @tierArgs }
         $runId = if ($published.Code -eq 0) { Get-PrintedRunId $published } else { $null }
         if (-not $runId) {
             # A crash caused by an optional input must not cost the seal: fall through to the next tier.
@@ -456,7 +456,9 @@ try {
             } catch { Add-Content -Path $log -Value "[$stamp] ROTATION FAILED (publication continues)" }
             }
             $machineArgs=$script:MachinePublisherArgs
-            $published = Invoke-LoggedNative { & $py 'scripts\publish_sealed_snapshot.py' --live-clock @machineArgs }
+            $productArgs=@('--identity-shards','--market-observations','--price-shards')
+            if (-not $GuidanceMachinePublicationEnabled) { $productArgs += '--bottleneck-v3' }
+            $published = Invoke-LoggedNative { & $py 'scripts\publish_sealed_snapshot.py' --live-clock --reconcile-confirmed --snapshot-root $runsRoot @productArgs @machineArgs }
             if ($published.Code -ne 0) { $primaryCode=$published.Code; $primaryCategory='GENERATION_FAILED' }
             else {
                 $runId=Get-PrintedRunId $published

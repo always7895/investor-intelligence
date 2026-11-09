@@ -24,11 +24,13 @@ import { loadOptionObservation, optionTickerKeys } from "../src/v213/market-obse
 import { v213PublicLineAnswer } from "../src/v213/rich-menu";
 import { asKv, MemoryKv } from "./fake-kv";
 import { probeGuidanceMachine } from "./helpers/guidance-machine-probe";
+import { probeLegacyReport } from "./helpers/legacy-report-probe";
 
 // Bumped whenever the fields below change, so the gate and the staged replay can refuse an older reader.
 // v3: product probes (v3 official cross-checks and detail lines, order schedules, covered-call status, LINE aliases).
 // v4: guidance_machine_probe (ADMITTED/REFUSED/ABSENT): the sealed revenue-guidance machine binding read through the real machine loader.
-const READER_CONTRACT_VERSION = "v213-reader-replay-v4";
+// v5: exact verified seal SHA plus distinct global/core identities; expired legacy refusal never blocks healthy reused-core products.
+const READER_CONTRACT_VERSION = "v213-reader-replay-v5";
 const dir = process.env.V213_LIVE_REPLAY_DIR;
 const out = process.env.V213_LIVE_REPLAY_OUT;
 const query: ParsedQuery = { intent: "ranking", ticker: null, period: "weekly", referenceId: null, normalized: "Top 20" };
@@ -47,6 +49,7 @@ describe.skipIf(!dir || !out)("live public KV reader replay (operator gate only)
     const view = await pinPublicSnapshot(env as never);
     const report = await loadV213FreshTop20Report(env as never, query);
     const fresh = !!report && typeof report === "object";
+    const legacyProbe = await probeLegacyReport(view, env, report);
     const overview = view.integrity === "sealed" ? await view.json<Record<string, unknown>>([MACRO_PRODUCT_KEY]) : null;
     const ranking = validatePotentialRanking(overview?.potential_ranking);
     // The LINE answers users get (flex and text), and the broadcast's own pre-push checks (v21 order + build);
@@ -108,9 +111,14 @@ describe.skipIf(!dir || !out)("live public KV reader replay (operator gate only)
     const result = {
       reader_contract_version: READER_CONTRACT_VERSION,
       fresh, integrity: view.integrity, run_id: view.integrity === "sealed" ? view.runId : null,
+      seal_run_id: view.integrity === "sealed" ? view.sealRunId : null,
+      seal_sha256: view.integrity === "sealed" ? view.sealSha256 : null,
       reference: fresh ? getV213ReportReference(report as never) : null,
       refusal: fresh ? null : typeof report === "string" ? report.slice(0, 200) : "NO_REPORT",
       refusal_is_insufficient: report === INSUFFICIENT_EVIDENCE_MESSAGE,
+      legacy_report_expired_refused: legacyProbe.expiredRefused,
+      legacy_report_original_generated_at: legacyProbe.originalGeneratedAt,
+      pipeline_liveness_fresh: legacyProbe.pipelineFresh,
       top20_records: records.length,
       test_only_admission: fresh ? records[0]?.test_only_admission ?? null : null,
       report_generated_at: fresh ? (report as { generated_at: string }).generated_at : null,
@@ -122,7 +130,8 @@ describe.skipIf(!dir || !out)("live public KV reader replay (operator gate only)
       industry_v3_flex: bottleneck ? messageCount(buildIndustryExplosionMessages(bottleneck, "flex")) : 0,
       macro_overview_sealed: !!overview, potential_ranking_records: ranking?.records.length ?? 0,
       v3_cross_checks: crossChecks, v3_detail_probe: detailProbe, order_probe: orderProbe, option_probe: optionProbe, alias_probe: aliasProbe,
-      guidance_machine_probe: guidanceMachineProbe,
+      guidance_machine_probe: guidanceMachineProbe.status,
+      guidance_machine_dated_facts_only: guidanceMachineProbe.datedFactsOnly,
       evaluated_at: new Date().toISOString(),
     };
     writeFileSync(out!, JSON.stringify(result, null, 1));

@@ -1,11 +1,10 @@
-"""Ranking-only cadence and conservative, local UTC-day KV attempt reservations.
+"""Independent ranking cadence and conservative UTC-day KV reservations.
 
-Hourly evaluation is free of policy writes. Reserve the ENTIRE remote transaction's
-worst-case puts (including retries/pointers) before starting it. At a UTC rollover,
-reserve its full remaining plan again before another PUT launch; old reservations
-are never refunded and same-day attempts are never charged twice. The default
-allowance is 1000 - 600 = 400 attempts/day. Unknown ledgers fail closed.
-Stopped days expire automatically at 00:00 UTC.
+Reserve each product's ENTIRE retry-inclusive plan before a controlled PUT. The
+fixed partitions are 400 ranking and 600 market/identity attempts, so their sum
+cannot exceed the shared 1000 limit. At UTC rollover reserve the full remaining
+plan in both partitions before the next launch; never refund unused retries.
+Unknown ledgers fail closed. Stopped days expire automatically at 00:00 UTC.
 """
 from __future__ import annotations
 
@@ -264,3 +263,74 @@ class DailyWriteReservation:
         if type(count) is not int or not 0 <= count <= self.remaining:
             raise ValueError("RANKING_BUDGET_COUNT_INVALID")
         self.remaining -= count
+
+
+class PublicationWriteBudget:
+    """Two fixed durable partitions; neither can borrow the other's allowance."""
+
+    def __init__(self, ranking_path: Path):
+        self.parts = {
+            "ranking": DailyWriteBudget(ranking_path),
+            "market": DailyWriteBudget(Path(ranking_path).with_name("market-kv-write-budget.json"), reserve=400),
+        }
+
+    def can_reserve(self, counts: dict[str, int], now: datetime) -> bool:
+        return all(count == 0 or self.parts[name].can_reserve(count, now)
+                   for name, count in _publication_counts(counts).items())
+
+    def stop_until_reset(self, now: datetime) -> None:
+        # A provider-wide limit halts both partitions, not only the failed key.
+        for budget in self.parts.values():
+            budget.stop_until_reset(now)
+
+
+def _publication_counts(counts: dict[str, int]) -> dict[str, int]:
+    if (not isinstance(counts, dict) or not set(counts) <= {"ranking", "market"}
+            or any(type(count) is not int or count < 0 for count in counts.values())):
+        raise ValueError("PUBLICATION_BUDGET_COUNT_INVALID")
+    return {name: counts.get(name, 0) for name in ("ranking", "market")}
+
+
+class PublicationWriteReservation:
+    """Authorize both remaining partitions before every PUT, including retries."""
+
+    def __init__(self, budget: PublicationWriteBudget, counts: dict[str, int]):
+        counts = _publication_counts(counts)
+        if not any(counts.values()):
+            raise ValueError("PUBLICATION_BUDGET_COUNT_INVALID")
+        self.parts = {name: DailyWriteReservation(budget.parts[name], count)
+                      for name, count in counts.items() if count}
+        self.attempted = {"ranking": 0, "market": 0}
+        self.selected = "ranking" if "ranking" in self.parts else "market"
+
+    @property
+    def remaining(self) -> int:
+        return sum(part.remaining for part in self.parts.values())
+
+    @property
+    def reserved(self) -> int:
+        return sum(part.reserved for part in self.parts.values())
+
+    @property
+    def reserved_by_product(self) -> dict[str, int]:
+        return {name: self.parts[name].reserved if name in self.parts else 0
+                for name in ("ranking", "market")}
+
+    def select(self, product: str) -> None:
+        if product not in self.parts:
+            raise ValueError("PUBLICATION_BUDGET_PRODUCT_INVALID")
+        self.selected = product
+
+    def authorize(self, now: datetime) -> bool:
+        # Failed second-part authorization never refunds the first reservation.
+        # Preflight avoids this in the single-writer path; races remain bounded.
+        return all(part.remaining == 0 or part.authorize(now) for part in self.parts.values())
+
+    def launch(self, now: datetime) -> bool:
+        if not self.authorize(now) or not self.parts[self.selected].launch(now):
+            return False
+        self.attempted[self.selected] += 1
+        return True
+
+    def retire(self, count: int) -> None:
+        self.parts[self.selected].retire(count)

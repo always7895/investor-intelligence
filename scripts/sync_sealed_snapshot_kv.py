@@ -323,7 +323,9 @@ def _outcome(operation: str) -> dict:
             "run_id": "", "cli_attempts_total": 0, "last_cli_attempts": 0,
             "last_cli_exit_code": None, "objects_uploaded": 0, "objects_reused": 0,
             "objects_verified": 0, "failed_objects": [], "writes_reserved": 0,
-            "writes_attempted": 0, "ranking_allowance": 400,
+            "writes_attempted": 0, "ranking_allowance": 400, "market_allowance": 600, "daily_limit": 1000,
+            "ranking_writes_reserved": 0, "market_writes_reserved": 0,
+            "ranking_writes_attempted": 0, "market_writes_attempted": 0,
             "retention_reason": None, "retained_run_id": None}
 
 
@@ -334,6 +336,10 @@ def _finish_call(record: dict, category: str | None = None) -> None:
     record["writes_attempted"] = PUT_ATTEMPTS
     if ACTIVE_WRITE_RESERVATION is not None:
         record["writes_reserved"] = ACTIVE_WRITE_RESERVATION.reserved
+        for product, count in ACTIVE_WRITE_RESERVATION.reserved_by_product.items():
+            record[product + "_writes_reserved"] = count
+        for product, count in ACTIVE_WRITE_RESERVATION.attempted.items():
+            record[product + "_writes_attempted"] = count
 
 
 
@@ -395,6 +401,10 @@ def _discover_last_good(snapshot_root: Path) -> tuple[dict | None, bool]:
         rows = manifest["objects"]
         if manifest.get("run_id") != run or not isinstance(rows, dict) or not 1 <= len(rows) <= 4096:
             return None, False
+        core_run = manifest.get("core_run_id", run)
+        if not isinstance(core_run, str) or not RUN_ID.fullmatch(core_run):
+            return None, False
+        core_prefix = f"snapshot:{core_run}:"
         objects = {seal_key: seal_text}
         for name, entry in rows.items():
             if not isinstance(name, str) or not isinstance(entry, dict):
@@ -402,7 +412,9 @@ def _discover_last_good(snapshot_root: Path) -> tuple[dict | None, bool]:
             digest = entry.get("sha256")
             if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
                 return None, False
-            key = prefix + name if name in (*OBJECT_KEYS, MACRO_KEY) else "blob:v1:" + digest
+            storage_prefix = (prefix if "core_run_id" in manifest and name == "last_successful_pipeline_timestamp"
+                              else core_prefix)
+            key = storage_prefix + name if name in (*OBJECT_KEYS, MACRO_KEY) else "blob:v1:" + digest
             body = objects.get(key)
             if body is None:
                 body = client_get(key)
@@ -448,6 +460,7 @@ def reconcile_confirmed_snapshot(snapshot_root: Path) -> dict | None:
 
 def sync_run(run_dir: Path, record: dict) -> int:
     global ACTIVE_WRITE_BUDGET, ACTIVE_WRITE_RESERVATION
+    import sealed_product_policy as products
     run_dir = carry.plain_path(run_dir)
     objects = json.loads(carry.plain_path(run_dir / "objects.json").read_text(encoding="utf-8"))
     ptr_raw = carry.plain_path(run_dir / "pointer.raw.json").read_text(encoding="utf-8").strip()
@@ -458,6 +471,8 @@ def sync_run(run_dir: Path, record: dict) -> int:
         raise ValueError()
     record["run_id"] = pointer["run_id"]
     prefix = f"snapshot:{record['run_id']}:"
+    detail = products.parts(objects, pointer) if prefix + carry.SEALED_MANIFEST_KEY in objects else None
+    allowed = (set(detail["physical"]) | {prefix + carry.SEALED_MANIFEST_KEY}) if detail else None
     # Even malformed input must never smuggle the serving pointer into the
     # object-upload phase or cross a run boundary. Lazy blob bytes bind to key.
     for key, body in objects.items():
@@ -467,13 +482,14 @@ def sync_run(run_dir: Path, record: dict) -> int:
             digest = key[len(BLOB_PREFIX):]
             if not re.fullmatch(r"[0-9a-f]{64}", digest) or sha(body) != digest:
                 raise ValueError()
-        elif not key.startswith(prefix) or key == prefix:
+        elif (allowed is not None and "core_run_id" in detail["manifest"] and key not in allowed) or (
+                (allowed is None or "core_run_id" not in detail["manifest"]) and (not key.startswith(prefix) or key == prefix)):
             raise ValueError()
     entries = sorted(objects.items())
     record["phase"] = "PREFLIGHT"
     candidate = carry.ranking_from_objects(objects, pointer)
     previous = carry.confirmed_snapshot(run_dir.parent)
-    budget = write_policy.DailyWriteBudget(LEDGER.with_name("ranking-kv-write-budget.json"))
+    budget = write_policy.PublicationWriteBudget(LEDGER.with_name("ranking-kv-write-budget.json"))
     ACTIVE_WRITE_BUDGET = budget
     bootstrap_safe = False
     # Discover before deciding whether ANY insufficient candidate can replace
@@ -485,26 +501,43 @@ def sync_run(run_dir: Path, record: dict) -> int:
         return _retain(record, previous, "CANDIDATE_UNAVAILABLE")
     if candidate is None and not bootstrap_safe:
         return _retain(record, None, "CANDIDATE_UNAVAILABLE")
-    if candidate is not None and write_policy.publication_due(
+    reused_core = detail is not None and detail["core_run_id"] != pointer["run_id"]
+    if reused_core:
+        if previous is None:
+            return _retain(record, None, "CANDIDATE_UNAVAILABLE")
+        prior = products.parts(previous["objects"], previous["pointer"])
+        if (detail["core_run_id"] != prior["core_run_id"]
+                or {key: body for key, body in detail["core"].items() if key != products.PIPELINE_KEY}
+                != {key: body for key, body in prior["core"].items() if key != products.PIPELINE_KEY}):
+            raise ValueError("UNCONFIRMED_CORE_REUSE")
+        rank_clock = detail["manifest"]["ranking_persisted_at"]
+        prior_clock = prior["manifest"].get("ranking_persisted_at", prior["manifest"]["generated_at"])
+        if products.instant(rank_clock) == products.instant(prior_clock):
+            if ({key: body for key, body in detail["lazy"].items() if key in products.RANKING_KEYS}
+                    != {key: body for key, body in prior["lazy"].items() if key in products.RANKING_KEYS}):
+                raise ValueError("UNCONFIRMED_RANKING_REUSE")
+        elif (products.instant(rank_clock) != products.instant(detail["manifest"]["generated_at"])
+              or candidate is None or write_policy.publication_due(previous["ranking"], candidate, instant) == "NO_CHANGE"):
+            raise ValueError("UNCONFIRMED_RANKING_CLOCK")
+    elif candidate is not None and write_policy.publication_due(
             previous["ranking"] if previous else None, candidate, instant) == "NO_CHANGE":
         return _retain(record, previous, "NO_CHANGE")
     ledger = load_ledger()
     now = time.time()
-    reused = {key for key, _ in entries if key.startswith(BLOB_PREFIX) and
-              0 <= now - ledger.get(key[len(BLOB_PREFIX):], 0.0) < BLOB_REUSE_SECONDS}
-    # Reserve the WHOLE plan, including the pointer and all bounded PUT retries,
-    # before staging or the first remote write. GETs never consume the write quota.
-    worst_case = (len(entries) - len(reused) + 1) * ATTEMPTS
-    reservation = write_policy.DailyWriteReservation(budget, worst_case)
+    plan = products.write_plan(objects, pointer, ledger, instant, ATTEMPTS, BLOB_REUSE_SECONDS)
+    reused = plan["reused"]
+    reservation = write_policy.PublicationWriteReservation(budget, plan["counts"])
+    ACTIVE_WRITE_RESERVATION = reservation  # partial authorization still consumes and must report its partition
     if not reservation.authorize(datetime.now(timezone.utc)):
         return _retain(record, previous, "WRITE_BUDGET")
-    ACTIVE_WRITE_RESERVATION = reservation
     record["writes_reserved"] = reservation.reserved
     record["objects_reused"] = len(reused)
     staged = carry.plain_path(run_dir / ".kv-stage")
     staged.mkdir(exist_ok=True)
     staged_files = {}
     for index, (key, body) in enumerate(entries):
+        if key in reused:
+            continue
         fp = staged / f"object-{index}.bin"
         fp.write_bytes(body.encode("utf-8"))
         staged_files[key] = fp
@@ -516,6 +549,7 @@ def sync_run(run_dir: Path, record: dict) -> int:
         blob = key.startswith(BLOB_PREFIX)
         if key in reused:
             continue
+        reservation.select(plan["assignment"][key])
         if not client_put(key, fp, BLOB_TTL_SECONDS if blob else RUN_KEY_TTL_SECONDS):
             _finish_call(record)
             if record["error_category"] in {KV_DAILY_LIMIT, "WRITE_BUDGET_UNAVAILABLE"}:
@@ -546,6 +580,7 @@ def sync_run(run_dir: Path, record: dict) -> int:
         _finish_call(record, "LOCAL_IO_FAILURE")
         return 1
     put_before = PUT_ATTEMPTS
+    reservation.select(plan["assignment"]["snapshot:current"])
     pointer_written = client_put("snapshot:current", ptr_fp)
     if pointer_written or PUT_ATTEMPTS > put_before or LAST_CALL["error_category"] != "WRITE_BUDGET_UNAVAILABLE":
         record["pointer_state"] = "ATTEMPTED_UNCONFIRMED"
@@ -583,22 +618,70 @@ def _safe_instant(value) -> str | None:
 
 
 def read_freshness(record: dict) -> int:
-    """Read-only shared CLI adapter; export safe metadata, never raw KV bodies."""
+    """Read-only pointer-bound liveness and original report age; never raw bodies."""
     record["phase"] = "POINTER_READ"
-    raw = client_get("snapshot:current")
-    if raw is None:
+    pointer_raw = client_get("snapshot:current")
+    if pointer_raw is None:
         _finish_call(record)
         return 1
     record["phase"] = "POINTER_PARSE"
-    pointer = json.loads(raw)
-    if not isinstance(pointer, dict) or not RUN_ID.fullmatch(str(pointer.get("run_id", ""))):
+    pointer = json.loads(pointer_raw)
+    if (not isinstance(pointer, dict) or not isinstance(pointer.get("run_id"), str)
+            or not RUN_ID.fullmatch(pointer["run_id"])
+            or not isinstance(pointer.get("seal_sha256"), str)
+            or not re.fullmatch(r"[0-9a-f]{64}", pointer["seal_sha256"])):
         raise ValueError()
-    anchor = _safe_instant(pointer.get("public_data_as_of")) or _safe_instant(pointer.get("promoted_at"))
-    if anchor is None:
+    record["phase"] = "POINTER_READ"
+    seal_raw = client_get(f"snapshot:{pointer['run_id']}:v213:snapshot-seal:v1")
+    if seal_raw is None:
+        _finish_call(record)
+        return 1
+    record["phase"] = "POINTER_PARSE"
+    if len(seal_raw.encode("utf-8")) > 32768 or sha(seal_raw) != pointer["seal_sha256"]:
         raise ValueError()
-    record.update(run_id=pointer["run_id"], anchor=anchor, top20_state="UNKNOWN", report_generated_at=None)
+    seal = json.loads(seal_raw)
+    if (not isinstance(seal, dict) or type(seal.get("schema_version")) is not int
+            or seal["schema_version"] != 1 or seal.get("run_id") != pointer["run_id"]
+            or seal.get("transaction_id") != pointer.get("transaction_id")
+            or not isinstance(seal.get("objects"), dict)):
+        raise ValueError()
+    generated = _safe_instant(seal.get("generated_at"))
+    data_as_of = _safe_instant(seal.get("public_data_as_of"))
+    paired = "core_run_id" in seal
+    core_run = seal.get("core_run_id", pointer["run_id"])
+    if (paired != ("ranking_persisted_at" in seal)
+            or not isinstance(core_run, str) or not RUN_ID.fullmatch(core_run)
+            or generated is None or generated != _safe_instant(pointer.get("promoted_at"))
+            or data_as_of is None or data_as_of != _safe_instant(pointer.get("public_data_as_of"))):
+        raise ValueError()
+    if paired:
+        rank_at = _safe_instant(seal["ranking_persisted_at"])
+        if rank_at is None or datetime.fromisoformat(rank_at) > datetime.fromisoformat(generated):
+            raise ValueError()
+
+    def member(logical: str, run: str) -> str | None:
+        entry = seal["objects"].get(logical)
+        if (not isinstance(entry, dict) or type(entry.get("utf8_bytes")) is not int
+                or not 0 <= entry["utf8_bytes"] <= 2 * 1024 * 1024
+                or not isinstance(entry.get("sha256"), str)
+                or not re.fullmatch(r"[0-9a-f]{64}", entry["sha256"])):
+            raise ValueError()
+        body = client_get(f"snapshot:{run}:{logical}")
+        if body is not None and (len(body.encode("utf-8")) != entry["utf8_bytes"] or sha(body) != entry["sha256"]):
+            raise ValueError()
+        return body
+
+    record["phase"] = "POINTER_READ"
+    marker = member("last_successful_pipeline_timestamp", pointer["run_id"] if paired else core_run)
+    if marker is None:
+        _finish_call(record)
+        return 1
+    if marker != seal["generated_at" if paired else "public_data_as_of"]:
+        raise ValueError()
+    record.update(run_id=pointer["run_id"], core_run_id=core_run, anchor=_safe_instant(marker),
+                  public_data_as_of=data_as_of, top20_state="UNKNOWN", report_generated_at=None)
     record["phase"] = "REPORT_READ"
-    raw = client_get(f"snapshot:{record['run_id']}:v213:top20-report:latest")
+    raw = member("v213:top20-report:latest", core_run)
     if raw is None:
         _finish_call(record)
         record["top20_state"] = "REPORT_READ_FAILED"
@@ -611,10 +694,17 @@ def read_freshness(record: dict) -> int:
         record["top20_state"] = "INSUFFICIENT"
     else:
         rows = report.get("records")
-        generated = _safe_instant(report.get("generated_at"))
-        if not isinstance(rows, list) or generated is None:
+        report_time = _safe_instant(report.get("generated_at"))
+        if not isinstance(rows, list) or report_time is None:
             raise ValueError()
-        record.update(top20_state=f"RECORDS_{len(rows)}", report_generated_at=generated)
+        record.update(top20_state=f"RECORDS_{len(rows)}", report_generated_at=report_time)
+    record["phase"] = "POINTER_READ"
+    final_pointer = client_get("snapshot:current")
+    if final_pointer is None:
+        _finish_call(record)
+        return 1
+    if final_pointer != pointer_raw:
+        raise ValueError()
     _finish_call(record, "NONE")
     record.update(status="SUCCEEDED", phase="COMPLETE")
     return 0
