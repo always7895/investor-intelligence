@@ -1,4 +1,4 @@
-"""V21 (operator 2026-10-19): covered call + cash-secured put + collar on every weekly and monthly cycle, conservative first; no annualized-yield floor (removed 2026-11-03).
+"""V21: covered call + cash-secured put + collar, independently validated; monthly low-premium or incomplete calls remain non-executable observations.
 
 PRODUCER half: put parsing for the three providers (Yahoo option_chain().puts, Nasdaq US p_* fields, Nasdaq Nordic put rows), the
 strategy selection and arithmetic, fail-closed negatives, the Python validators, carry-forward, block-level degradation in the sealer and the
@@ -225,7 +225,8 @@ class FailClosedTests(unittest.TestCase):
         self.assertEqual(len(cycle["suggestions"]), 2, label)  # the covered call is untouched
         for name in ("csp", "collar"):
             block = cycle["strategies"][name]
-            self.assertEqual(list(block), ["unavailable"], f"{label} {name}")
+            self.assertNotIn("suggestions", block, f"{label} {name}")
+            self.assertNotIn("items", block, f"{label} {name}")
             self.assertTrue(block["unavailable"], label)
 
     def test_no_put_rows_one_sided_inverted_zero_and_nan_quotes_make_only_the_put_strategies_unavailable(self) -> None:
@@ -265,33 +266,107 @@ class FailClosedTests(unittest.TestCase):
         with mock.patch.object(builder, "http_json", lambda url: payload):
             self.assertEqual(builder.nasdaq_us_options("AAA", SPOT, TODAY, STAMP)["monthly"], {"unavailable": builder.NASDAQ_US_STALE_TEXT})
 
-    def test_a_cycle_without_a_covered_call_but_with_puts_is_emitted_with_the_cc_reason(self) -> None:
-        one_sided_calls = [(k, None, a) for k, b, a in chains.CALLS]
-        cycle = yahoo_cycle(chains.yahoo_chain(calls=one_sided_calls))
+    def assert_call_observation(self, cycle: dict, kind: str) -> dict:
         validate(cycle)
+        self.assertEqual((cycle["expiry"], cycle["dte"], cycle["timestamp"]), (EXPIRY, chains.DTE, STAMP))
         self.assertEqual(cycle["suggestions"], [])
-        self.assertIn(carry.NO_TWO_SIDED_REASON, cycle["strategies"]["cc"]["unavailable"])
-        self.assertIn("suggestions", cycle["strategies"]["csp"])
-        # a covered call that no strike qualifies for (the only strike's delta 0.347 is above the 0.20 cap) names the delta cap, not a yield floor
-        too_close = [(104.0, 1.83, 1.87)]
-        cycle = yahoo_cycle(chains.yahoo_chain(calls=too_close))
-        validate(cycle)
-        self.assertIn("沒有 Delta 不超過 0.20", cycle["strategies"]["cc"]["unavailable"])
-        self.assertNotIn("%", cycle["strategies"]["cc"]["unavailable"])
-        # a strike paying under 2% a year is no longer refused
-        low_yield = [(112.0, 0.01, 0.02)]
-        cycle = yahoo_cycle(chains.yahoo_chain(calls=low_yield))
-        validate(cycle)
-        self.assertEqual([item["strike"] for item in cycle["suggestions"]], [112.0])
-        self.assertLess(cycle["suggestions"][0]["annualized_yield"], 0.02)
-        self.assertEqual(list(cycle["strategies"]["collar"]), ["unavailable"])  # no call in the band for the collar either
+        self.assertNotIn("middle_suggestion", cycle)
+        cc = cycle.get("strategies", {}).get("cc")
+        if cc is not None:
+            self.assertTrue(cc.get("unavailable"))
+            self.assertFalse(cc.get("suggestions"))
+        observation = cycle["quote_observation"]
+        self.assertEqual(observation["kind"], kind)
+        return observation
 
-    def test_everything_unavailable_stays_the_plain_cycle_unavailable(self) -> None:
-        both = yahoo_cycle(chains.yahoo_chain(calls=[(k, None, a) for k, b, a in chains.CALLS], puts=[(k, None, a) for k, b, a in chains.PUTS]))
-        self.assertEqual(list(both), ["unavailable"])
-        self.assertIn(carry.NO_TWO_SIDED_REASON, both["unavailable"])  # the carry-forward trigger keeps its exact shape
-        no_puts_no_strike = yahoo_cycle(chains.yahoo_chain(calls=[(104.0, 1.83, 1.87)], puts=[]))  # delta 0.347 is above the 0.20 cap
-        self.assertEqual(list(no_puts_no_strike), ["unavailable"])
+    def test_unusable_call_quotes_preserve_csp_but_never_create_cc_or_collar(self) -> None:
+        expected_csp = yahoo_cycle()["strategies"]["csp"]
+        cases = {
+            "no bid": [(k, None, a) for k, b, a in chains.CALLS],
+            "no ask": [(k, b, None) for k, b, a in chains.CALLS],
+            "zero bid": [(k, 0.0, a) for k, b, a in chains.CALLS],
+            "inverted": [(k, a, b) for k, b, a in chains.CALLS],
+            "nan": [(k, float("nan"), float("nan")) for k, b, a in chains.CALLS],
+        }
+        for label, calls in cases.items():
+            with self.subTest(label=label):
+                cycle = yahoo_cycle(chains.yahoo_chain(calls=calls))
+                observed = self.assert_call_observation(cycle, "NO_TWO_SIDED")
+                self.assertIn(observed["strike"], [k for k, b, a in calls])
+                for field in ("bid", "ask", "last", "annualized_yield"):
+                    self.assertIsNone(observed[field], field)
+                self.assertEqual((observed["oi"], observed["volume"]), (100, 10))
+                self.assertEqual(cycle["strategies"]["csp"], expected_csp)
+                self.assertTrue(cycle["strategies"]["collar"]["unavailable"])
+                self.assertFalse(cycle["strategies"]["collar"].get("items"))
+
+    def test_last_trade_remains_indicative_and_never_supplies_an_executable_call_leg(self) -> None:
+        chain = chains.yahoo_chain(calls=[(108.0, None, 0.90)])
+        row = next(chain.calls.itertuples())
+        row.lastPrice = 0.09
+        row.openInterest = row.volume = None
+        cycle = yahoo_cycle(chain)
+        observed = self.assert_call_observation(cycle, "NO_TWO_SIDED")
+        self.assertIsNone(observed["bid"])
+        self.assertIsNone(observed["ask"])
+        self.assertEqual((observed["strike"], observed["last"]), (108.0, 0.09))
+        self.assertAlmostEqual(observed["annualized_yield"], 0.09 / SPOT * 365 / chains.DTE, places=6)
+        self.assertIsNone(observed["oi"])
+        self.assertIsNone(observed["volume"])
+        self.assertEqual(cycle["strategies"]["csp"], yahoo_cycle()["strategies"]["csp"])
+        self.assertTrue(cycle["strategies"]["collar"]["unavailable"])
+
+    def test_delta_ineligible_call_is_observed_without_discarding_valid_puts(self) -> None:
+        # The only call's delta is above the covered-call cap despite its high premium.
+        cycle = yahoo_cycle(chains.yahoo_chain(calls=[(104.0, 1.83, 1.87)]))
+        observed = self.assert_call_observation(cycle, "TWO_SIDED")
+        self.assertEqual((observed["strike"], observed["bid"], observed["ask"]), (104.0, 1.83, 1.87))
+        self.assertIsNone(observed["last"])
+        self.assertAlmostEqual(observed["annualized_yield"], 1.83 / SPOT * 365 / chains.DTE, places=6)
+        self.assertGreater(observed["annualized_yield"], 0.06)
+        self.assertEqual(cycle["strategies"]["csp"], yahoo_cycle()["strategies"]["csp"])
+        self.assertTrue(cycle["strategies"]["collar"]["unavailable"])
+
+    def test_low_premium_monthly_call_observation_preserves_csp_and_collar(self) -> None:
+        # The 110 call qualifies by delta but not monthly premium; the 107 call
+        # has the genuine two-sided quote and delta needed by the collar.
+        cycle = yahoo_cycle(chains.yahoo_chain(calls=[(107.0, 0.01, 0.02), (110.0, 0.01, 0.02)]))
+        observed = self.assert_call_observation(cycle, "TWO_SIDED")
+        self.assertIn(observed["strike"], (107.0, 110.0))
+        self.assertEqual((observed["bid"], observed["ask"]), (0.01, 0.02))
+        self.assertIsNone(observed["last"])
+        self.assertAlmostEqual(observed["annualized_yield"], 0.01 / SPOT * 365 / chains.DTE, places=6)
+        self.assertLess(observed["annualized_yield"], 0.02)
+        healthy = yahoo_cycle()
+        self.assertEqual(cycle["strategies"]["csp"], healthy["strategies"]["csp"])
+        collar = cycle["strategies"]["collar"]
+        self.assertEqual(collar["put"], healthy["strategies"]["collar"]["put"])
+        self.assertEqual([(item["call"]["strike"], item["call"]["bid"], item["call"]["ask"]) for item in collar["items"]],
+                         [(107.0, 0.01, 0.02)])
+
+    def test_no_executable_strategy_preserves_only_source_backed_observations(self) -> None:
+        cases = (
+            ("NO_TWO_SIDED", [(k, None, a) for k, b, a in chains.CALLS], [(k, None, a) for k, b, a in chains.PUTS]),
+            ("TWO_SIDED", [(104.0, 1.83, 1.87)], []),
+        )
+        for kind, calls, puts in cases:
+            with self.subTest(kind=kind):
+                cycle = yahoo_cycle(chains.yahoo_chain(calls=calls, puts=puts))
+                observed = self.assert_call_observation(cycle, kind)
+                self.assertIn(observed["strike"], [k for k, b, a in calls])
+                self.assertIsNone(observed["last"])
+                if kind == "NO_TWO_SIDED":
+                    for field in ("bid", "ask", "annualized_yield"):
+                        self.assertIsNone(observed[field], field)
+                else:
+                    self.assertEqual((observed["bid"], observed["ask"]), (1.83, 1.87))
+                    self.assertAlmostEqual(observed["annualized_yield"], 1.83 / SPOT * 365 / chains.DTE, places=6)
+                for name in ("cc", "csp", "collar"):
+                    block = cycle.get("strategies", {}).get(name)
+                    if block is not None:
+                        self.assertTrue(block.get("unavailable"), name)
+                        self.assertFalse(block.get("suggestions"), name)
+                        self.assertFalse(block.get("items"), name)
 
 
 class ValidatorTests(unittest.TestCase):

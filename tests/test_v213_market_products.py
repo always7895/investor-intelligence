@@ -21,6 +21,7 @@ import json
 import subprocess
 import sys
 import unittest
+from datetime import date
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -41,6 +42,7 @@ from validate_v213_market_products import (  # noqa: E402
     validate_growth_rate,
     MarketProductValidationError,
 )
+from tests.fixtures.options_global_publisher_cases import standard_monthly_expiry  # noqa: E402
 
 
 class TestV213MarketProducts(unittest.TestCase):
@@ -478,7 +480,7 @@ class TestV213MarketProducts(unittest.TestCase):
         }
 
     def test_covered_call_period_dte_bucket(self) -> None:
-        """B2: cycle admission retains weekly 0-14 and accepts the shared monthly outer window."""
+        """Weekly 0-14 and standard-monthly 0-60 bounds use independently valid calendars."""
         from datetime import datetime, timezone, timedelta
         base_dt = datetime(2026, 9, 30, 12, 0, 0, tzinfo=timezone.utc)
         base_stamp = "2026-09-30T12:00:00Z"
@@ -486,8 +488,16 @@ class TestV213MarketProducts(unittest.TestCase):
         # In-bucket boundaries pass for the matching period.
         for dte in (0, 2, 3, 14):  # DTE 0-2 is a valid current-week weekly (operator 2026-10-11)
             validate_covered_call_cycle(self._covered_call_cycle(dte, exp(dte)), evaluated_at=base_stamp, period="weekly")
-        for dte in (0, 2, 7, 13, 14, 21, 45, 60):  # the monthly bucket is 0-60 (operator 2026-11-03: the nearest standard monthly, no minimum DTE)
-            validate_covered_call_cycle(self._covered_call_cycle(dte, exp(dte)), evaluated_at=base_stamp, period="monthly")
+        # Move the observation clock, not the standard expiry, to reach exact
+        # monthly boundaries without accidentally testing a weekly-like date.
+        monthly_expiry = standard_monthly_expiry(2026, 12)
+        for dte in (0, 1, 2, 3, 4, 5, 6, 7, 13, 14, 21, 45, 60):
+            with self.subTest(period="monthly", dte=dte):
+                asof = monthly_expiry - timedelta(days=dte)
+                stamp = f"{asof.isoformat()}T12:00:00Z"
+                cycle = self._covered_call_cycle(dte, monthly_expiry.isoformat(), timestamp=stamp)
+                cycle.update(asof_date=asof.isoformat(), monthly_rule="THIRD_FRIDAY")
+                validate_covered_call_cycle(cycle, evaluated_at=stamp, document_at=stamp, period="monthly")
         # Out-of-bucket is rejected (21-day contract under weekly is the concrete B2 case).
         for dte, period in ((15, "weekly"), (21, "weekly")):
             with self.assertRaises(MarketProductValidationError) as ctx:
@@ -495,12 +505,24 @@ class TestV213MarketProducts(unittest.TestCase):
             self.assertEqual(str(ctx.exception), "DTE_OUTSIDE_PERIOD_BUCKET")
         # A monthly above 60 DTE (or below 0) is no valid DTE at all.
         for dte in (61, -1):
-            with self.assertRaises(MarketProductValidationError) as ctx:
-                validate_covered_call_cycle(self._covered_call_cycle(dte, exp(dte)), evaluated_at=base_stamp, period="monthly")
-            self.assertEqual(str(ctx.exception), "INVALID_DTE")
+            asof = monthly_expiry - timedelta(days=dte)
+            stamp = f"{asof.isoformat()}T12:00:00Z"
+            cycle = self._covered_call_cycle(dte, monthly_expiry.isoformat(), timestamp=stamp)
+            with self.assertRaisesRegex(MarketProductValidationError, "^INVALID_DTE$"):
+                validate_covered_call_cycle(cycle, evaluated_at=stamp, period="monthly")
         # Without period context the bucket is not enforced (existing callers stay compatible).
         validate_covered_call_cycle(self._covered_call_cycle(7, exp(7)), evaluated_at=base_stamp)
         validate_covered_call_cycle(self._covered_call_cycle(30, exp(30)), evaluated_at=base_stamp)
+
+    def test_monthly_standard_claim_cannot_admit_an_arbitrary_calendar_date(self) -> None:
+        from datetime import timedelta
+        today = date(2026, 9, 30)
+        for dte in (7, 14, 21, 45):
+            with self.subTest(dte=dte):
+                cycle = self._covered_call_cycle(dte, (today + timedelta(days=dte)).isoformat())
+                cycle["monthly_rule"] = "THIRD_FRIDAY"
+                with self.assertRaisesRegex(MarketProductValidationError, "^MONTHLY_RULE_INCONSISTENT$"):
+                    validate_covered_call_cycle(cycle, evaluated_at="2026-09-30T12:00:00Z", period="monthly")
 
     def test_covered_call_suggestion_shape_rejected(self) -> None:
         """B5: a non-record suggestion entry raises the domain error instead of an AttributeError."""
@@ -524,7 +546,8 @@ class TestV213MarketProducts(unittest.TestCase):
         now = datetime(2026, 9, 30, 12, 0, 0, tzinfo=timezone.utc)
         gen = now.strftime("%Y-%m-%dT%H:%M:%SZ")
         ts = (now - timedelta(minutes=30)).strftime("%Y-%m-%dT%H:%M:%SZ")
-        monthly = self._covered_call_cycle(21, (now + timedelta(days=21)).date().isoformat(), timestamp=ts)
+        monthly_expiry = standard_monthly_expiry(2026, 10)
+        monthly = self._covered_call_cycle((monthly_expiry - now.date()).days, monthly_expiry.isoformat(), timestamp=ts)
         bad_weekly = self._covered_call_cycle(7, (now + timedelta(days=7)).date().isoformat(), timestamp=ts)
         bad_weekly["suggestions"] = [None]  # the AttributeError root cause pre-fix
         doc = {
@@ -555,18 +578,18 @@ class TestV213MarketProducts(unittest.TestCase):
         (raw JSON 1e309 -> inf), a wrong type or a negative raises the per-cycle domain error, while null/missing stays
         an accepted unknown. Ports the independent probe's rejection assertions into a durable test."""
         base_stamp = "2026-09-30T12:00:00Z"
-        from datetime import datetime, timezone, timedelta
-        exp = (datetime(2026, 9, 30, tzinfo=timezone.utc) + timedelta(days=21)).date().isoformat()
+        expiry = standard_monthly_expiry(2026, 10)
+        dte, exp = (expiry - date(2026, 9, 30)).days, expiry.isoformat()
         # A legitimate null or missing optional field is accepted (stays unknown downstream).
         for field in ("oi", "volume", "spread_pct"):
-            ok = self._covered_call_cycle(21, exp)
+            ok = self._covered_call_cycle(dte, exp)
             ok["suggestions"][0][field] = None
             validate_covered_call_cycle(copy.deepcopy(ok), evaluated_at=base_stamp, period="monthly")
-            missing = self._covered_call_cycle(21, exp)
+            missing = self._covered_call_cycle(dte, exp)
             missing["suggestions"][0].pop(field, None)
             validate_covered_call_cycle(copy.deepcopy(missing), evaluated_at=base_stamp, period="monthly")
             # A finite non-negative value is accepted.
-            good = self._covered_call_cycle(21, exp)
+            good = self._covered_call_cycle(dte, exp)
             good["suggestions"][0][field] = 0 if field != "spread_pct" else 0.0
             validate_covered_call_cycle(copy.deepcopy(good), evaluated_at=base_stamp, period="monthly")
         # Nonfinite (parsed from raw JSON 1e309), wrong types and negatives are rejected.
@@ -580,7 +603,7 @@ class TestV213MarketProducts(unittest.TestCase):
                 ({}, "STRICT_FINITE_NUMBER_REQUIRED"),
                 (-1, "INVALID_LIQUIDITY_FIELD"),
             ):
-                bad = self._covered_call_cycle(21, exp)
+                bad = self._covered_call_cycle(dte, exp)
                 bad["suggestions"][0][field] = value
                 with self.assertRaises(MarketProductValidationError) as ctx:
                     validate_covered_call_cycle(bad, evaluated_at=base_stamp, period="monthly")
@@ -609,6 +632,9 @@ class TestV213MarketProducts(unittest.TestCase):
 
         bridge = json.loads(committed)
         self.assertEqual(bridge["clock"], "2026-09-30T12:00:00Z")
+        admitted_cases = {"healthy", "edge_5h", "weekly_dte_2", "weekly_dte_3", "weekly_dte_14",
+                          "monthly_dte_16", "monthly_dte_51"}
+        self.assertTrue(admitted_cases <= bridge["cases"].keys())
         for name, case in bridge["cases"].items():
             body = case["options_body"]
             self.assertTrue(body, f"{name}: whole document collapsed to empty")
@@ -620,6 +646,13 @@ class TestV213MarketProducts(unittest.TestCase):
             self.assertIn("TSM", case["quotes_body"], f"{name}: quote object lost")
             tsm = doc["options"]["TSM"][case["period"]]
             self.assertEqual("suggestions" in tsm, case["admitted"])
+            self.assertEqual(case["admitted"], name in admitted_cases, name)
+            if case["admitted"] and case["period"] == "monthly":
+                expiry = date.fromisoformat(tsm["expiry"])
+                self.assertEqual(expiry.weekday(), 4, name)
+                self.assertTrue(15 <= expiry.day <= 21, name)
+                self.assertEqual(tsm["dte"], (expiry - date(2026, 9, 30)).days, name)
+                self.assertTrue(7 <= tsm["dte"] <= 60, name)
 
         # I2/I2a focus: both the exponent (1e309) and the big-integer (10**309) representation reject only the TSM
         # cycle with an explicit reason; the sibling and quotes survive and no big-integer literal leaks either.
@@ -641,9 +674,9 @@ class TestV213MarketProducts(unittest.TestCase):
         across representative required numeric fields (cycle spot and per-suggestion prices) and every optional liquidity
         field, asserting STRICT_FINITE_NUMBER_REQUIRED naming the field each time; the publisher-level healthy-sibling
         survival is proved by the bridge fixture's bigint_* cases."""
-        from datetime import datetime, timezone, timedelta
         base_stamp = "2026-09-30T12:00:00Z"
-        exp = (datetime(2026, 9, 30, tzinfo=timezone.utc) + timedelta(days=21)).date().isoformat()
+        expiry = standard_monthly_expiry(2026, 10)
+        dte, exp = (expiry - date(2026, 9, 30)).days, expiry.isoformat()
         representations = {
             "exponent_pos_inf": float("inf"),   # raw JSON 1e309
             "exponent_neg_inf": float("-inf"),  # raw JSON -1e309
@@ -655,24 +688,24 @@ class TestV213MarketProducts(unittest.TestCase):
         required_suggestion_fields = ("strike", "bid", "ask", "mid", "limit_price")
         for label, value in representations.items():
             for field in optional_fields + required_suggestion_fields:
-                bad = self._covered_call_cycle(21, exp)
+                bad = self._covered_call_cycle(dte, exp)
                 bad["suggestions"][0][field] = value
                 with self.assertRaises(MarketProductValidationError) as ctx:
                     validate_covered_call_cycle(bad, evaluated_at=base_stamp, period="monthly")
                 self.assertIn("STRICT_FINITE_NUMBER_REQUIRED", str(ctx.exception), f"{label}/{field}")
                 self.assertIn(field, str(ctx.exception), f"{label}/{field}")
             # Representative required cycle-level numeric field.
-            bad_spot = self._covered_call_cycle(21, exp)
+            bad_spot = self._covered_call_cycle(dte, exp)
             bad_spot["spot"] = value
             with self.assertRaises(MarketProductValidationError) as ctx:
                 validate_covered_call_cycle(bad_spot, evaluated_at=base_stamp, period="monthly")
             self.assertIn("STRICT_FINITE_NUMBER_REQUIRED", str(ctx.exception), f"{label}/spot")
             self.assertIn("spot", str(ctx.exception), f"{label}/spot")
         # The matrix does not over-reject: a large-but-representable value and the healthy baseline still pass.
-        big_finite = self._covered_call_cycle(21, exp)
+        big_finite = self._covered_call_cycle(dte, exp)
         big_finite["suggestions"][0]["oi"] = 10 ** 18  # large yet finite as a float, must stay accepted
         validate_covered_call_cycle(copy.deepcopy(big_finite), evaluated_at=base_stamp, period="monthly")
-        validate_covered_call_cycle(self._covered_call_cycle(21, exp), evaluated_at=base_stamp, period="monthly")
+        validate_covered_call_cycle(self._covered_call_cycle(dte, exp), evaluated_at=base_stamp, period="monthly")
 
 if __name__ == "__main__":
     unittest.main()

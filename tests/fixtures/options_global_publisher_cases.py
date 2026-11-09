@@ -11,7 +11,8 @@ Case matrix (all TSM.monthly unless the period column says otherwise; GOOD.month
 controls that must survive every rejection):
   healthy / stale-row / invalid-row / calendar-rollover row / future row / exact 5h / just beyond 5h /
   expired / impossible expiry / fractional DTE / expiry-DTE mismatch / malformed suggestion shapes /
-  weekly & monthly DTE bucket boundaries / actual-evaluation-now vs outer document time / row-after-document /
+  weekly DTE bucket boundaries / source-calendar monthly dates and unproven-expiry guards /
+  actual-evaluation-now vs outer document time / row-after-document /
   I2 optional nonfinite (raw JSON exponent 1e309) on oi, volume and spread_pct /
   I2a optional big-integer (raw JSON 10**309) on oi, volume and spread_pct.
 
@@ -28,8 +29,9 @@ import json
 import socket
 import sys
 import tempfile
+from calendar import Calendar, FRIDAY
 from contextlib import contextmanager
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -52,6 +54,12 @@ QUOTES = {"TSM": {"symbol": "TSM", "price": 300.0, "currency": "USD", "asof": BA
                   "source": "Yahoo Finance (unofficial, delayed)", "source_url": "https://finance.yahoo.com/quote/TSM"}}
 
 
+def standard_monthly_expiry(year: int, month: int) -> date:
+    """Independent test calendar: select the third Friday from the month's actual weeks."""
+    fridays = [week[FRIDAY] for week in Calendar().monthdayscalendar(year, month) if week[FRIDAY]]
+    return date(year, month, fridays[2])
+
+
 def _expiry(dte: int) -> str:
     return (NOW + timedelta(days=int(dte))).date().isoformat()
 
@@ -72,11 +80,14 @@ def _cycle(ticker: str, dte: int, expiry: str, timestamp: str = BASE_ROW_STAMP) 
 
 
 def _base_tsm() -> dict:
-    return _cycle("TSM", 16, _expiry(16))  # third Friday 2026-10-16
+    expiry = standard_monthly_expiry(2026, 10)
+    return _cycle("TSM", (expiry - NOW.date()).days, expiry.isoformat())
 
 
 def _good(timestamp: str = BASE_ROW_STAMP) -> dict:
-    return _cycle("GOOD", 16, _expiry(16), timestamp=timestamp)
+    row = _base_tsm()
+    row.update(ticker="GOOD", timestamp=timestamp)
+    return row
 
 
 @contextmanager
@@ -150,11 +161,21 @@ def _cases():
     for name, patch in base:
         out.append((name, "monthly", patched(**patch), BASE_GENERATED_AT, None, BASE_ROW_STAMP))
 
-    # Period DTE bucket boundaries (weekly 0-14 outer bound, monthly 0-60 since 2026-11-03): just inside and just outside both ends. weekly dte 2 is now
-    # inside (a Friday expiry seen on a Wednesday is the current-week weekly); the committed JSON is regenerated from the real publisher.
-    for period, dtes in (("weekly", (2, 3, 14, 15, 21)), ("monthly", (0, 7, 20, 21, 45, 46, 60, 61))):
-        for dte in dtes:
-            out.append((f"{period}_dte_{dte}", period, _cycle("TSM", dte, _expiry(dte)), BASE_GENERATED_AT, None, BASE_ROW_STAMP))
+    # Weekly outer bounds remain 0-14. Monthly admission also requires a proven
+    # standard date, without a minimum DTE; arbitrary offsets are not healthy monthly controls.
+    for dte in (2, 3, 14, 15, 21):
+        out.append((f"weekly_dte_{dte}", "weekly", _cycle("TSM", dte, _expiry(dte)), BASE_GENERATED_AT, None, BASE_ROW_STAMP))
+    # Keep the shared Worker clock fixed: its reachable third Fridays are 16,
+    # 51 and 79 days away. Exact 0/60-day boundaries use shifted clocks in unit tests.
+    for month in (10, 11, 12):
+        expiry = standard_monthly_expiry(2026, month)
+        dte = (expiry - NOW.date()).days
+        out.append((f"monthly_dte_{dte}", "monthly", _cycle("TSM", dte, expiry.isoformat()), BASE_GENERATED_AT, None, BASE_ROW_STAMP))
+    for dte in (0, 2, 6):
+        out.append((f"monthly_unproven_dte_{dte}", "monthly", _cycle("TSM", dte, _expiry(dte)), BASE_GENERATED_AT, None, BASE_ROW_STAMP))
+    false_standard = _cycle("TSM", 21, _expiry(21))
+    false_standard["monthly_rule"] = "THIRD_FRIDAY"
+    out.append(("monthly_false_standard", "monthly", false_standard, BASE_GENERATED_AT, None, BASE_ROW_STAMP))
 
     # Actual evaluation-now (not the outer document time) is used; a row later than the document is rejected. The GOOD
     # sibling carries a timestamp valid against that case's shifted document so it stays a genuine healthy control.

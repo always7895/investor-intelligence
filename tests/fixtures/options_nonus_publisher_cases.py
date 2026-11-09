@@ -338,19 +338,18 @@ def expect_unavailable(case: str, bodies: dict[str, str], symbol: str, cycle: st
 
 
 def expect_observation(case: str, bodies: dict[str, str], symbol: str, *, currency: str, dte: int, strike: float,
-                       bid: float | None = None, ask: float | None = None, last: float | None = None,
-                       nonstandard: bool = False) -> None:
+                       bid: float | None = None, ask: float | None = None, last: float | None = None) -> None:
     """Source-backed informational prices must not become executable tiers or a fabricated two-sided quote."""
     expect_available(case, bodies, symbol, "monthly", currency=currency)
     value = cycle_of(bodies, symbol, "monthly")
     assert value["expiry"] == dte_date(dte) and value["dte"] == dte, (case, symbol, value)
     assert value["suggestions"] == [] and not value.get("middle_suggestion") and not value.get("strategies"), (case, symbol, value)
-    assert bool(value.get("monthly_nonstandard")) == nonstandard, (case, symbol, value)
+    assert "monthly_nonstandard" not in value, (case, symbol, value)
     observation = value["quote_observation"]
     assert observation["kind"] == ("TWO_SIDED" if bid is not None and ask is not None else "NO_TWO_SIDED"), (case, symbol, observation)
     assert (observation["strike"], observation["bid"], observation["ask"], observation["last"]) == (strike, bid, ask, last), (case, symbol, observation)
     price = bid if bid is not None else last
-    annual = round(price / value["spot"] * 365 / dte, 6) if price is not None else None
+    annual = round(price / value["spot"] * 365 / max(dte, 1), 6) if price is not None else None
     assert observation["annualized_yield"] == annual, (case, symbol, observation)
 
 
@@ -571,11 +570,10 @@ def case_terms_and_quote_states() -> tuple[str, str, list[dict[str, Any]], Any]:
 
     def check(case: str, result: _Result, bodies: dict[str, str]) -> None:
         assert result.rc == 0, result.status
-        # An unverified nearer contract is never used; the independently verified standard successor can be shown.
+        # Invalid nearest-month terms never authorize a source-quoted successor.
         for symbol in ("TSIZE50.ST", "TSIZENONE.ST", "TCCYNONE.ST"):
-            expect_available(case, bodies, symbol, "monthly", currency="SEK")
-            value = cycle_of(bodies, symbol, "monthly")
-            assert (value["expiry"], value["dte"]) == (dte_date(51), 51), (case, symbol, value)
+            expect_unavailable(case, bodies, symbol, "monthly")
+            assert dte_date(16) in cycle_of(bodies, symbol, "monthly")["unavailable"]
         expect_unavailable(case, bodies, "TSIZE50.ST", "weekly")
         expect_unavailable(case, bodies, "TSIZE1005.ST", "monthly")
         expect_available(case, bodies, "TOUTSIDE.ST", "monthly", currency="SEK")
@@ -591,16 +589,16 @@ def case_terms_and_quote_states() -> tuple[str, str, list[dict[str, Any]], Any]:
         expect_unavailable(case, bodies, "TSZPREC.ST", "monthly")  # exactly not 100: never rounded into the standard
         expect_unavailable(case, bodies, "TSZLONG.ST", "monthly")  # over the bounded precision
         expect_available(case, bodies, "VOLV-B.ST", "monthly", currency="SEK")
-        # Five missing two-sided quotes remain unhealthy; the three verified successors add read, healthy chains.
-        expect_health(case, result, "STOCKHOLM", 14, 9)
-    return ("terms_and_quote_states", "SYNTHETIC: verified successor contracts versus refused terms; source-only monthly observations never turn lastSale/settlement/OI into two-sided quotes", specs, check)
+        # Five missing two-sided quotes remain unhealthy; invalid nearest terms stay refused.
+        expect_health(case, result, "STOCKHOLM", 11, 6)
+    return ("terms_and_quote_states", "SYNTHETIC: nearest-month terms stay binding; source-only observations never turn lastSale/settlement/OI into two-sided quotes", specs, check)
 
 
 # Weekly selection is calendar-week based (as of Wed 2026-09-30 a single listed expiry is a weekly only for 1 <= DTE <= 11).
-# The standard-monthly selector accepts the third Friday or its listed earlier-week shift; other verified 7-60DTE contracts
-# are informational nonstandard observations only, never recommendation tiers.
+# The nearest standard is October 16. Missing it never admits a successor or an
+# unproven Monday–Thursday holiday shift.
 WEEKLY_DTE_RANGE = (1, 11)
-MONTHLY_DTES = frozenset({12, 13, 14, 15, 16, 47, 48, 49, 50, 51})
+MONTHLY_DTES = frozenset({16})
 NORDIC_DTES = (3, 11, 12, 14, 15, 16, 17, 20, 21, 45, 46, 50, 51, 52, 60, 61)
 
 
@@ -623,13 +621,9 @@ def case_dte_nordic_matrix() -> tuple[str, str, list[dict[str, Any]], Any]:
                 if in_cycle(cycle, dte):
                     expect_available(case, bodies, symbol, cycle, currency="SEK")
                     assert cycle_of(bodies, symbol, cycle)["dte"] == dte
-                elif cycle == "monthly" and 7 <= dte <= 60:
-                    strike, bid, ask = qualifying(100.0, dte)
-                    expect_observation(case, bodies, symbol, currency="SEK", dte=dte, strike=strike,
-                                       bid=bid, ask=ask, nonstandard=True)
                 else:
                     expect_unavailable(case, bodies, symbol, cycle)
-    return ("dte_nordic_matrix", "SYNTHETIC: Stockholm weekly/standard-monthly boundaries and source-bound nonstandard observations through real main", specs, check)
+    return ("dte_nordic_matrix", "SYNTHETIC: Stockholm weekly and nearest-standard monthly boundaries through real main", specs, check)
 
 
 US_DTES = NORDIC_DTES
@@ -659,17 +653,13 @@ def case_dte_us_matrix() -> tuple[str, str, list[dict[str, Any]], Any]:
                     if in_cycle(cycle, dte):
                         expect_available(case, bodies, symbol, cycle, currency="USD")
                         assert cycle_of(bodies, symbol, cycle)["dte"] == dte, (symbol, cycle)
-                    elif cycle == "monthly" and 7 <= dte <= 60:
-                        strike, bid, ask = qualifying(100.0, dte)
-                        expect_observation(case, bodies, symbol, currency="USD", dte=dte, strike=strike,
-                                           bid=bid, ask=ask, nonstandard=True)
                     else:
                         expect_unavailable(case, bodies, symbol, cycle)
         expect_unavailable(case, bodies, "UYMISS", "weekly")
         expect_observation(case, bodies, "UYMISS", currency="USD", dte=16, strike=101.0, bid=4.0, ask=4.2)
         nasdaq = [u for u in result.requests if "/api/quote/" in u]
         assert not any("/api/quote/uymiss/" in u for u in nasdaq), "a successfully read strategy miss must not trigger a Nasdaq retry"
-        assert sum(1 for u in nasdaq if "/api/quote/uyempty/" in u) == 1, "an unread Yahoo chain gets exactly one Nasdaq retry"
+        assert sum(1 for u in nasdaq if "/api/quote/uyempty/" in u) == 2, "one Nasdaq fallback plus one bounded nearest-month fetch"
         for symbol in ("UYZERO", "UYONESIDED"):
             expect_unavailable(case, bodies, symbol, "weekly")
             expect_observation(case, bodies, symbol, currency="USD", dte=16, strike=120.0)

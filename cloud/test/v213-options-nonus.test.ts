@@ -29,7 +29,7 @@ const FEEDS = [{ id: "nordic-shares", url: "https://example.com", retrieved_at: 
                { id: "lse-aim", url: "https://api.londonstockexchange.com/api/v1/components/refresh", retrieved_at: stamp, sha256: "d".repeat(64), rows: 1 }];
 
 type Options = { options?: string; quotes?: string; tamper?: boolean; dropBlob?: boolean; badPointer?: boolean; flex?: boolean };
-type Cycle = { unavailable?: string; ticker?: string; currency?: string; dte?: number; multiplier?: number; suggestions?: { strike: number }[] };
+type Cycle = { unavailable?: string; ticker?: string; currency?: string; dte?: number; multiplier?: number; suggestions?: { strike: number }[]; quote_observation?: { strike: number } };
 
 async function sha(text: string): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
@@ -88,7 +88,11 @@ async function reply(env: unknown, command: string): Promise<any[]> {
 }
 
 const textOf = (messages: any[]) => messages.map(m => m.text ?? JSON.stringify(m.contents ?? m)).join("\n");
-const strikeOf = (cycle: Cycle) => cycle.suggestions![0]!.strike.toFixed(2);
+const strikeOf = (cycle: Cycle) => {
+  const strike = cycle.suggestions?.[0]?.strike ?? cycle.quote_observation?.strike;
+  if (strike === undefined) throw new Error("Fixture has no quoted strike");
+  return strike.toFixed(2);
+};
 
 beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(FIXED_NOW); });
 afterEach(() => { vi.useRealTimers(); });
@@ -232,21 +236,24 @@ describe("OPTIONS-NONUS-02 bridge: exact Python-emitted bodies through the Worke
     expect(weekly).not.toContain("合約單位或幣別來源未確認");
     expect(weekly).not.toContain("無法解析");
     const us = await sealedEnv("dte_us_matrix");
-    for (const command of ["UYZERO 每週期權", "UYZERO 每月期權", "UYONESIDED 每月期權"]) {
+    expect(textOf(await reply(us, "UYZERO 每週期權"))).toContain("所選到期無有效雙邊報價");
+    admitSyntheticTickers("UYZERO", "UYONESIDED");
+    for (const command of ["UYZERO 每月期權", "UYONESIDED 每月期權"]) {
       const text = textOf(await reply(us, command));
-      expect(text, command).toContain("所選到期無有效雙邊報價");
-      expect(text, command).not.toContain("年化權利金");
+      expect(text, command).toContain("2026-10-16");
+      expect(text, command).toContain("無雙邊報價");
+      expect(text, command).not.toContain("建議賣出限價");
     }
   });
 
   it("distinguishes no-listing evidence from no two-sided quote from strategy miss in the reader output", async () => {
     const env = await sealedEnv("terms_and_quote_states");
+    admitSyntheticTickers("QLASTSALE.ST", "QMISS.ST");
     const read = async (key: string) => textOf(await reply(env, `${key} 每月期權`));
-    expect(await read("QLASTSALE.ST")).toContain("所選到期無有效雙邊報價");
-    expect(await read("QLASTSALE.ST")).not.toContain("沒有年化權利金");
-    expect(await read("QMISS.ST")).toContain("沒有 Delta 不超過 0.20 且有雙邊報價的履約價");
-    expect(await read("QMISS.ST")).not.toContain("年化權利金");
-    expect(await read("QMISS.ST")).not.toContain("所選到期無有效雙邊報價");
+    expect(await read("QLASTSALE.ST")).toContain("無雙邊報價");
+    expect(await read("QLASTSALE.ST")).toContain("來源觀察");
+    expect(await read("QMISS.ST")).toContain("未符合保守策略篩選");
+    expect(await read("QMISS.ST")).not.toContain("建議賣出限價");
     expect(await read("TSIZE50.ST")).toContain("合約單位非標準100股");
     const identity = await sealedEnv("identity_matrix");
     expect(textOf(await reply(identity, "IDPUT.ST 每月期權"))).toContain("是否上市未確認");

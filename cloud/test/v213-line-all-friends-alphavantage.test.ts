@@ -66,7 +66,7 @@ function cycle(ticker: string) {
     timestamp: stamp, source: "Yahoo Finance option chain (unofficial, delayed)", provenance: `https://finance.yahoo.com/quote/${ticker}/options`,
     rights_status: "unadmitted_third_party",
     suggestions: [{ role: "HIGH_STRIKE", strike: 330, bid: 2.0, ask: 2.1, mid: 2.05, limit_price: 2.05, premium_per_contract: 205,
-      period_yield: 2.05 / 300, annualized_yield: 2.05 / 300 * 365 / dte, upside_to_strike: 330 / 300 - 1, delta: 0.18, delta_basis: "QUOTED_IV",
+      period_yield: 2.05 / 300, annualized_yield: 2.05 / 300 * 365 / Math.max(dte, 1), upside_to_strike: 330 / 300 - 1, delta: 0.18, delta_basis: "QUOTED_IV",
       iv: 0.4, oi: 900, volume: 50, spread_pct: 0.0488 }],
   };
 }

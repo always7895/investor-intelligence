@@ -17,7 +17,7 @@
   {
     "dte": 0,
     "period": "monthly",
-    "expected": false
+    "expected": true
   },
   {
     "dte": 1,
@@ -27,7 +27,7 @@
   {
     "dte": 1,
     "period": "monthly",
-    "expected": false
+    "expected": true
   },
   {
     "dte": 6,
@@ -37,7 +37,7 @@
   {
     "dte": 6,
     "period": "monthly",
-    "expected": false
+    "expected": true
   },
   {
     "dte": 7,

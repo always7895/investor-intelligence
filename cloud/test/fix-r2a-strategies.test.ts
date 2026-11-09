@@ -13,28 +13,35 @@ const stamp="2026-11-08T14:16:09Z";
 const now=Date.parse(stamp);
 const msgText=(messages:readonly any[])=>messages.map(m=>m.text??JSON.stringify(m)).join("\n");
 
-describe("G01 validated standard monthly >=7 DTE",()=>{
- it("accepts the standard Friday, refuses under-7DTE and false monthly-rule claims",()=>{
+describe("G01 nearest standard monthly with no minimum DTE",()=>{
+ it("accepts the standard Friday and refuses weekly dates and false monthly-rule claims",()=>{
    expect(validateCoveredCallCycle(qualified,now,stamp,"monthly")).not.toBeNull();
    const short={...qualified,expiry:"2026-11-13",dte:5,monthly_rule:undefined};
    expect(validateCoveredCallCycle(short,now,stamp,"monthly")).toBeNull();
    const falseMarker={...nonstandard,monthly_rule:"LATER_LISTED"};
    expect(validateCoveredCallCycle(falseMarker,now,stamp,"monthly")).toBeNull();
  });
- it("retains a validated old weekly-like 33DTE as NONSTANDARD dated line, never a month sell advice",()=>{
-   const legacy={...nonstandard};
-   delete (legacy as any).monthly_nonstandard; // old public cache predates the label
-   const cycle=validateCoveredCallCycle(legacy,now,stamp,"monthly");
-   expect(cycle?.monthly_nonstandard).toBe(true);
-   const text=msgText(buildCoveredCallMessages(cycle!,"每月期權","text"));
-   for(const token of ["每月期權","非標準月到期","2026-12-11","觀察","不可執行"]){
-     if(token!=="不可執行")expect(text).toContain(token);
+ it("rejects old weekly-in-monthly rows with or without the obsolete marker",()=>{
+   const { monthly_nonstandard: _obsolete, ...legacy } = nonstandard;
+   expect(validateCoveredCallCycle(legacy,now,stamp,"monthly")).toBeNull();
+   expect(validateCoveredCallCycle(nonstandard,now,stamp,"monthly")).toBeNull();
+ });
+ it.each([0,1,2,3,4,5,6])("keeps %i-DTE standard observations and warns only at short expiry",dte=>{
+   const { strategies: _strategies, ...base } = observed;
+   const at = Date.parse("2026-11-20T20:59:00Z") - dte*86_400_000;
+   const captured = new Date(at).toISOString();
+   const raw = {...base, expiry:"2026-11-20", dte, timestamp:captured,
+     asof_date:captured.slice(0,10),
+     quote_observation:{...base.quote_observation,
+       annualized_yield:base.quote_observation.bid/base.spot*365/Math.max(dte,1)}};
+   const cycle=validateCoveredCallCycle(raw,at,captured,"monthly");
+   expect(cycle).not.toBeNull();
+   for(const style of ["text","flex"] as const){
+     const text=msgText(buildCoveredCallMessages(cycle!,"每月期權",style));
+     expect(text).toContain("2026-11-20");
+     expect(text.includes("年化收益以至少 1 天換算")).toBe(dte<=2);
    }
-   expect(text).not.toContain("建議賣出限價");
-   expect(text).not.toContain("舊版資料");
-   const flex=buildCoveredCallMessages(cycle!,"每月期權","flex");
-   expect(flex).toHaveLength(1);
-   expect(JSON.stringify(flex)).toContain("非標準月到期");
+   if(dte===0)expect(validateCoveredCallCycle(raw,Date.parse("2026-11-20T21:00:00Z"),captured,"monthly")).toBeNull();
  });
 });
 describe("G02 covered call, CSP and protective collar require independently validated real legs",()=>{

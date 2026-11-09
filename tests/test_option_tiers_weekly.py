@@ -21,6 +21,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import build_market_quotes_options as builder  # noqa: E402
 import option_recommendation_rules as rules  # noqa: E402
 from validate_v213_market_products import MarketProductValidationError, validate_covered_call_cycle  # noqa: E402
+from tests.fixtures.options_global_publisher_cases import standard_monthly_expiry  # noqa: E402
 
 D = date
 LISTED = [D(2026, 10, 9), D(2026, 10, 16)]
@@ -356,11 +357,16 @@ class TierValidatorTests(unittest.TestCase):
         swapped["suggestions"][1]["role"] = "MIDDLE"
         self.reject(swapped, "COVERED_CALL_ROLES")
 
-    def test_dte_zero_is_valid_and_dte_beyond_sixty_is_not(self):
+    def test_weekly_and_standard_monthly_both_admit_expiry_day(self):
         zero = tier_cycle(dte=0, expiry="2026-10-07", asof="2026-10-07")
         validate_covered_call_cycle(zero, period="weekly", **EVAL)
-        self.reject(tier_cycle(dte=61, expiry="2026-12-07", asof="2026-10-07"), "INVALID_DTE", period="monthly")
-        validate_covered_call_cycle(tier_cycle(dte=0, expiry="2026-10-07", asof="2026-10-07", week=None), period="monthly", **EVAL)
+        far_expiry = standard_monthly_expiry(2026, 12)
+        self.reject(tier_cycle(dte=(far_expiry - D(2026, 10, 7)).days, expiry=far_expiry.isoformat(), week=None),
+                    "INVALID_DTE", period="monthly")
+        expiry_day = standard_monthly_expiry(2026, 10).isoformat()
+        stamp = f"{expiry_day}T14:00:00Z"
+        monthly_zero = tier_cycle(dte=0, expiry=expiry_day, asof=expiry_day, week=None, timestamp=stamp)
+        validate_covered_call_cycle(monthly_zero, period="monthly", evaluated_at=stamp, document_at=stamp)
 
     def test_a_dte_zero_row_is_rejected_after_the_us_session_close(self):
         def zero(stamp):
@@ -379,14 +385,20 @@ class TierValidatorTests(unittest.TestCase):
         self.reject(tier_cycle(asof="2026-02-30"), "INVALID_ASOF_DATE")
         self.reject(tier_cycle(asof=20261007), "INVALID_ASOF_DATE")
         self.reject(tier_cycle(asof="2026-10-08"), "ASOF_DTE_INCONSISTENT")
-        # the monthly bucket is 0-60: a 2-DTE expiry is inside it, but a weekly marker never rides a monthly row
-        self.reject(tier_cycle(), "INVALID_WEEKLY_WEEK", period="monthly")
-        validate_covered_call_cycle(tier_cycle(week=None), period="monthly", **EVAL)
+        # A proven monthly expiry is independent of the weekly calendar bucket,
+        # but a weekly marker may never ride a monthly row.
+        expiry = standard_monthly_expiry(2026, 10)
+        monthly = tier_cycle(dte=(expiry - D(2026, 10, 7)).days, expiry=expiry.isoformat(), week=None)
+        self.reject({**monthly, "weekly_week": "NEXT"}, "INVALID_WEEKLY_WEEK", period="monthly")
+        validate_covered_call_cycle(monthly, period="monthly", **EVAL)
+        self.reject(tier_cycle(week=None), "MONTHLY_UNPROVEN_EXPIRY", period="monthly")
 
     def test_the_weekly_week_marker_is_weekly_only_and_two_valued(self):
         self.reject(tier_cycle(asof=None, week="LATER"), "INVALID_WEEKLY_WEEK")
-        self.reject(tier_cycle(dte=30, expiry="2026-11-06", asof=None, week="CURRENT"), "INVALID_WEEKLY_WEEK", period="monthly")
-        validate_covered_call_cycle(tier_cycle(dte=30, expiry="2026-11-06", asof="2026-10-07", week=None), period="monthly", **EVAL)
+        expiry = standard_monthly_expiry(2026, 11)
+        dte = (expiry - D(2026, 10, 7)).days
+        self.reject(tier_cycle(dte=dte, expiry=expiry.isoformat(), asof=None, week="CURRENT"), "INVALID_WEEKLY_WEEK", period="monthly")
+        validate_covered_call_cycle(tier_cycle(dte=dte, expiry=expiry.isoformat(), week=None), period="monthly", **EVAL)
 
     def test_the_old_three_to_fourteen_window_no_longer_hides_the_current_weeks_expiry(self):
         for dte in (0, 1, 2):
@@ -407,9 +419,10 @@ class WindowAdmissionTests(unittest.TestCase):
         from tests.test_monthly_options_fallback import WINDOW_ADMISSION_CASES, window_observations
         for case, actual in zip(WINDOW_ADMISSION_CASES, window_observations(WINDOW_ADMISSION_CASES), strict=True):
             with self.subTest(dte=case["dte"], period=case["period"]):
-                self.assertEqual(actual["producer_available"], case["expected"])
+                producer_expected = case["expected"] and (case["period"] != "monthly" or case["dte"] < 28)
+                self.assertEqual(actual["producer_available"], producer_expected)
                 self.assertEqual(actual["validator_available"], case["expected"])
-                if case["expected"]:
+                if producer_expected:
                     self.assertTrue(actual["produced_validated"])
 
 

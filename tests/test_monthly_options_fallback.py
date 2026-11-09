@@ -1,6 +1,5 @@
-"""Offline monthly producer/validator regression: nearest >=7DTE standard,
-then its successor, otherwise a labeled source-verified nonstandard observation.
-No invented quote and no former 21-45 / 14-60 monthly window."""
+"""Offline nearest-standard monthly regression: no minimum DTE, no weekly
+substitution and no quote-driven successor; source-calendar shifts require proof."""
 from __future__ import annotations
 
 import copy
@@ -108,34 +107,29 @@ class MonthlyProducerTests(unittest.TestCase):
         validate_covered_call_cycle(old, STAMP, STAMP, "monthly")
 
     def test_a_far_closer_expiry_is_never_replaced_by_a_nearer_30_days(self):
-        for today, expected in ((date(2026, 11, 3), "2026-11-20"), (date(2026, 11, 18), "2026-12-18"), (date(2026, 11, 19), "2026-12-18")):
+        for today in (date(2026, 11, 3), date(2026, 11, 18), date(2026, 11, 19)):
             with self.subTest(today=today):
                 cycle = produce((date(2026, 11, 20), date(2026, 12, 18)), today=today, stamp=stamp_of(today))["monthly"]
-                self.assertEqual(cycle["expiry"], expected)
+                self.assertEqual(cycle["expiry"], "2026-11-20")
                 validate_covered_call_cycle(cycle, stamp_of(today), stamp_of(today), "monthly")
 
     def test_expiry_day_counts_until_the_stockholm_close_then_the_next_monthly(self):
         today = date(2026, 11, 20)
         listed = (date(2026, 11, 20), date(2026, 12, 18))
         before = produce(listed, today=today, stamp=stamp_of(today, 16, 29))["monthly"]  # 17:29 CET: open
-        # >=7-day monthly screening now prioritizes the next regular monthly over expiry-day.
-        self.assertEqual((before["expiry"], before["dte"]), ("2026-12-18", 28))
+        self.assertEqual((before["expiry"], before["dte"]), ("2026-11-20", 0))
         validate_covered_call_cycle(before, stamp_of(today, 16, 29), stamp_of(today, 16, 29), "monthly")
         after = produce(listed, today=today, stamp=stamp_of(today, 16, 31))["monthly"]  # 17:31 CET: closed
         self.assertEqual((after["expiry"], after["dte"], after["monthly_rule"]), ("2026-12-18", 28, "THIRD_FRIDAY"))
         validate_covered_call_cycle(after, stamp_of(today, 16, 31), stamp_of(today, 16, 31), "monthly")
 
-    def test_holiday_shift_and_a_month_without_a_listed_monthly(self):
-        today = date(2026, 6, 1)  # the third Friday 2026-06-19 is a holiday: the latest listed expiry of that week is the monthly
-        shifted = produce((date(2026, 6, 16), date(2026, 6, 18), date(2026, 7, 17)), today=today, stamp=stamp_of(today))["monthly"]
-        self.assertEqual((shifted["expiry"], shifted["monthly_rule"]), ("2026-06-18", "HOLIDAY_SHIFT"))
-        validate_covered_call_cycle(shifted, stamp_of(today), stamp_of(today), "monthly")
-        today = date(2026, 11, 3)
-        later = produce((date(2026, 12, 18),), today=today, stamp=stamp_of(today))["monthly"]
-        self.assertEqual((later["expiry"], later["dte"], later["monthly_rule"]), ("2026-12-18", 45, "LATER_LISTED"))
-        validate_covered_call_cycle(later, stamp_of(today), stamp_of(today), "monthly")
+    def test_missing_friday_does_not_infer_a_holiday_or_advance_a_month(self):
+        for expiries in ((date(2026, 11, 19), date(2026, 12, 18)), (date(2026, 12, 18),)):
+            cycle = produce(expiries)["monthly"]
+            self.assertEqual(set(cycle), {"unavailable"})
+            self.assertIn("2026-11-20", cycle["unavailable"])
 
-    def test_only_standard_monthlies_are_admitted_as_strategy_others_show_labeled_expiry(self):
+    def test_only_standard_monthlies_are_admitted_in_the_monthly_slot(self):
         for expiries in ((), (date(2027, 1, 15),)):
             with self.subTest(expiries=expiries):
                 self.assertIn("unavailable", produce(expiries)["monthly"])
@@ -145,10 +139,8 @@ class MonthlyProducerTests(unittest.TestCase):
         ):
             with self.subTest(expiries=expiries):
                 cycle = produce(expiries)["monthly"]
-                self.assertEqual(cycle["expiry"], expected)
-                self.assertIs(cycle["monthly_nonstandard"], True)
-                self.assertEqual(cycle["suggestions"], [])
-                validate_covered_call_cycle(cycle,STAMP,STAMP,"monthly")
+                self.assertEqual(set(cycle), {"unavailable"})
+                self.assertIn("2026-11-20", cycle["unavailable"])
         self.assertIn("標準月選", produce((date(2026, 11, 6),))["monthly"]["unavailable"])
         self.assertNotIn("0-60", produce(())["monthly"]["unavailable"])
 
@@ -165,11 +157,10 @@ class MonthlyProducerTests(unittest.TestCase):
         rows = [nordic_row(date(2026, 11, 20), bid="", ask=""), nordic_row(date(2026, 12, 18))]
         with patch.object(builder, "http_json", return_value={"data": {"instrumentListing": {"rows": rows}}}):
             result = builder.nordic_options("SIVE.ST", "SIVE", 100.0, TODAY, STAMP, "synthetic", spot_currency="SEK")
-        # Next standard monthly is explicitly inspected instead of withholding the whole line.
-        self.assertEqual(result["monthly"]["expiry"], "2026-12-18")
-        self.assertEqual(result["monthly"]["quote_observation"]["kind"], "TWO_SIDED")
+        self.assertEqual(result["monthly"]["expiry"], "2026-11-20")
+        self.assertEqual(result["monthly"]["quote_observation"]["kind"], "NO_TWO_SIDED")
         self.assertEqual(result["monthly"]["suggestions"], [])
-        self.assertEqual(next(item for item in result.health if item["cycle"] == "monthly")["expiry"], "2026-12-18")
+        self.assertEqual(next(item for item in result.health if item["cycle"] == "monthly")["expiry"], "2026-11-20")
 
     def test_no_annualized_yield_floor(self):
         # A real low premium remains visible as an observation, never as a 6%-qualified sell tier.
@@ -199,7 +190,7 @@ class MonthlyProducerTests(unittest.TestCase):
         with self.assertRaises(MarketProductValidationError):
             validate_covered_call_cycle(weekly_marker, STAMP, STAMP, "weekly")  # a monthly_rule never marks a weekly
 
-    def test_validator_keeps_proven_legacy_weekly_only_as_nonstandard_monthly(self):
+    def test_validator_rejects_legacy_weekly_in_monthly(self):
         cycle = produce()["monthly"]
         cycle.pop("monthly_rule")  # rows sealed by the previous producer have none
         validate_covered_call_cycle(cycle, STAMP, STAMP, "monthly")
@@ -207,9 +198,8 @@ class MonthlyProducerTests(unittest.TestCase):
         old_fallback.update(dte=14, expiry="2026-11-16")
         for suggestion in old_fallback["suggestions"]:
             suggestion["annualized_yield"] = suggestion["period_yield"] * 365 / 14
-        # Existing sealed 14-DTE row remains parseable, but the Worker is
-        # required to derive "monthly_nonstandard" and NOT display an order.
-        validate_covered_call_cycle(old_fallback, STAMP, STAMP, "monthly")
+        with self.assertRaises(MarketProductValidationError):
+            validate_covered_call_cycle(old_fallback, STAMP, STAMP, "monthly")
 
     def test_nasdaq_fetch_window_reaches_sixty_days(self):
         def listed_window(url):
@@ -222,7 +212,7 @@ class MonthlyProducerTests(unittest.TestCase):
             return {"data": {"lastTrade": "LAST TRADE: $100.00 (AS OF NOV 2, 2026)", "table": {"rows": rows}}}
         with patch.object(builder, "http_json", side_effect=listed_window):
             result = builder.nasdaq_us_options("TEST", 100.0, TODAY, STAMP)
-        self.assertEqual((result["monthly"]["dte"], result["monthly"]["monthly_rule"]), (46, "LATER_LISTED"))
+        self.assertIn("2026-11-20", result["monthly"]["unavailable"])
 
     def test_yahoo_lists_and_fetches_the_selected_monthly_only(self):
         call = SimpleNamespace(strike=120.0, bid=0.30, ask=0.32, impliedVolatility=None,
@@ -240,7 +230,7 @@ class MonthlyProducerTests(unittest.TestCase):
         ticker = SimpleNamespace(options=["2026-11-20", "2026-12-18"])
         chain = SimpleNamespace(calls=SimpleNamespace(itertuples=lambda: iter([call])))
         today = date(2026, 11, 20)
-        for stamp, expected in ((stamp_of(today, 20, 59), "2026-12-18"), (stamp_of(today, 21, 1), "2026-12-18")):  # 15:59 / 16:01 EST
+        for stamp, expected in ((stamp_of(today, 20, 59), "2026-11-20"), (stamp_of(today, 21, 0), "2026-12-18")):
             with self.subTest(stamp=stamp):
                 with patch.dict(sys.modules, {"yfinance": SimpleNamespace(Ticker=lambda _: ticker)}):
                     with patch.object(ticker, "option_chain", create=True, side_effect=lambda expiry: chain):
@@ -258,11 +248,13 @@ class MonthlyRuleTests(unittest.TestCase):
                         days.append(date.fromisoformat(text))
                     except ValueError:
                         pass
-                choice = rules.select_monthly(days, date.fromisoformat(row["as_of"]), expiry_day_open_now=row.get("expiry_day_open", True))
+                verified = [date.fromisoformat(day) for day in row.get("verified_monthly_expiries", [])]
+                choice = rules.select_monthly(days, date.fromisoformat(row["as_of"]), expiry_day_open_now=row.get("expiry_day_open", True),
+                                               verified_monthly_expiries=verified)
                 self.assertEqual(choice.expiry.isoformat() if choice else None, row["expected"])
                 self.assertEqual(choice.rule if choice else None, row["rule"])
                 self.assertEqual(rules.select_monthly_expiry(days, date.fromisoformat(row["as_of"]),
-                                                              expiry_day_open_now=row.get("expiry_day_open", True)), choice.expiry if choice else None)
+                    expiry_day_open_now=row.get("expiry_day_open", True), verified_monthly_expiries=verified), choice.expiry if choice else None)
 
     def test_constants_and_the_removed_fallback(self):
         self.assertEqual(rules.MONTHLY_DTE_BUCKET, (0, 60))
@@ -274,7 +266,7 @@ class MonthlyRuleTests(unittest.TestCase):
 
     def test_the_operator_examples(self):
         listed = [date(2026, 11, 20), date(2026, 12, 18)]
-        for as_of, open_now, expected in ((date(2026, 11, 3), True, date(2026, 11, 20)), (date(2026, 11, 20), True, date(2026, 12, 18)),
+        for as_of, open_now, expected in ((date(2026, 11, 3), True, date(2026, 11, 20)), (date(2026, 11, 20), True, date(2026, 11, 20)),
                                            (date(2026, 11, 20), False, date(2026, 12, 18))):
             self.assertEqual(rules.select_monthly_expiry(listed, as_of, expiry_day_open_now=open_now), expected)
 
@@ -289,7 +281,7 @@ class MonthlyRuleTests(unittest.TestCase):
         self.assertEqual(fetch_options.DEFAULT_POLICY["periods"]["monthly"]["maximum_dte"], 60)
         policy = {"selection": "monthly", "target_dte": 30}
         expiry_day = date(2026, 11, 20)
-        self.assertEqual(fetch_options_ibkr._strict_expiration(expiries, policy, today=expiry_day, expiry_day_open_now=True), (expiries[1], 28, "OK"))
+        self.assertEqual(fetch_options_ibkr._strict_expiration(expiries, policy, today=expiry_day, expiry_day_open_now=True), (expiries[0], 0, "OK"))
         self.assertEqual(fetch_options_ibkr._strict_expiration(expiries, policy, today=expiry_day, expiry_day_open_now=False), (expiries[1], 28, "OK"))
 
 

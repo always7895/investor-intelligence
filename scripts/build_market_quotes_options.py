@@ -25,10 +25,9 @@ Sunday; only when none remains (weekend, after the week's last weekly, or after 
 the next calendar week; never a later one. The as-of date is the exchange-local date (US: New York, Stockholm: Stockholm),
 recorded in each cycle as asof_date together with weekly_week (CURRENT or NEXT). Tiny DTE (0-2) annualizes over at least one
 day. The rules live in option_recommendation_rules.py (twin: cloud/src/v213/option-recommendation-rules.ts).
-Monthly (operator 2026-11-03): the nearest standard monthly expiry on or after the exchange-local as-of date, whatever its DTE: the
-listed expiry on the month's third Friday, else (holiday) the latest listed expiry of that Monday-Thursday before it; on the expiry day
-itself only before the session close, afterwards (or when the month's monthly is not listed) the earliest later standard monthly within
-60 DTE. The branch that applied is recorded in the cycle as the additive monthly_rule (THIRD_FRIDAY, HOLIDAY_SHIFT or LATER_LISTED).
+Monthly: the nearest standard venue expiry on or after the exchange-local date, including expiry day until close.
+Missing standard chains trigger bounded source lookup, never weekly relabelling or a later month chosen for better quotes.
+Holiday shifts require verified source-calendar evidence; an absent Friday alone does not establish a holiday.
 Each carries a sell limit (mid rounded down to the tick, or bid + a quarter of the spread when the spread exceeds 25% of
 the mid; never below the bid), premium per contract, period and
 annualized yield on the current price, the upside kept up to the strike, delta as the assignment reference, OI, volume
@@ -120,8 +119,6 @@ CYCLES = {"weekly": rules.WEEKLY_DTE_BUCKET, "monthly": rules.MONTHLY_DTE_BUCKET
 RISK_FREE = 0.04
 MAX_HIGH_STRIKE_DELTA = 0.20  # the high-strike suggestion keeps the model assignment reference low
 MONTHLY_ANNUAL_HURDLE = 0.06
-MONTHLY_MIN_DTE = 7
-MONTHLY_EXPIRIES_TO_CHECK = 2
 BALANCED_DELTA = 0.30
 BALANCED_MONEYNESS = 1.05     # when a lower strike has no delta at all, about 5% out of the money
 MIDDLE_DELTA = rules.MIDDLE_DELTA          # the middle tier sits between HIGH_STRIKE (<= 0.20) and BALANCED (0.30)
@@ -692,9 +689,9 @@ def _weekly_choice(expiries: Iterable[str], today: date | None, stamp: str, venu
     return rules.select_weekly_expiry(days, today, expiry_day_open_now=rules.expiry_day_open(rules.parse_utc_instant(stamp), venue))
 
 
-def _monthly_choice(expiries: Iterable[str], today: date | None, stamp: str, venue: str) -> "rules.MonthlyChoice | None":
-    """Source-listed standard third-Friday/venue shift at >=7 DTE; missing
-    listings trigger bounded source-specific lookup and dated nonstandard display."""
+def _monthly_choice(expiries: Iterable[str], today: date | None, stamp: str, venue: str,
+                    verified_monthly_expiries: Iterable[date] = ()) -> "rules.MonthlyChoice | None":
+    """Nearest standard expiry, with no DTE floor or quote-driven month substitution."""
     if today is None:
         return None
     days: set[date] = set()
@@ -703,7 +700,8 @@ def _monthly_choice(expiries: Iterable[str], today: date | None, stamp: str, ven
             days.add(date.fromisoformat(str(text)))
         except ValueError:
             continue
-    return rules.select_monthly(days, today, expiry_day_open_now=rules.expiry_day_open(rules.parse_utc_instant(stamp), venue))
+    return rules.select_monthly(days, today, expiry_day_open_now=rules.expiry_day_open(rules.parse_utc_instant(stamp), venue),
+                                verified_monthly_expiries=verified_monthly_expiries)
 
 
 def _is_actual_date(text: str) -> bool:
@@ -713,35 +711,26 @@ def _is_actual_date(text: str) -> bool:
         return False
 
 
-def _calendar_standard_monthlies(today: date) -> list[tuple[str, int]]:
-    """Bounded targeted fetch candidates; a calendar date is NOT proof a contract is listed.
-    Only a typed contract row from the provider can authorize displaying quote fields."""
-    choices = []
+def _calendar_standard_monthlies(today: date, stamp: str, venue: str) -> list[tuple[str, int]]:
+    """One bounded targeted fetch date; a calendar date alone never proves a listing."""
     for offset in range(4):
         year, month_zero = divmod(today.year * 12 + today.month - 1 + offset, 12)
         third = rules.third_friday(year, month_zero + 1)
         dte = (third - today).days
-        if 7 <= dte <= rules.MONTHLY_DTE_BUCKET[1]:
-            choices.append((third.isoformat(), dte))
-    return choices[:MONTHLY_EXPIRIES_TO_CHECK]
+        if dte > 0 or (dte == 0 and rules.expiry_day_open(rules.parse_utc_instant(stamp), venue)):
+            return [(third.isoformat(), dte)] if dte <= rules.MONTHLY_DTE_BUCKET[1] else []
+    return []
 
 
-def _monthly_candidates(expiries: Iterable[str], today: date | None, stamp: str, venue: str) -> list["rules.MonthlyChoice"]:
-    """Nearest standard monthly with at least seven calendar days and its successor.
-    The 60-day maximum remains the existing publisher/Worker validation boundary."""
-    if today is None:
-        return []
-    remaining = sorted(set(text for text in expiries if isinstance(text, str) and
-        len(text) == 10 and text >= (today + timedelta(days=MONTHLY_MIN_DTE)).isoformat() and
-        text <= (today + timedelta(days=rules.MONTHLY_DTE_BUCKET[1])).isoformat()))
-    selected: list["rules.MonthlyChoice"] = []
-    for _ in range(MONTHLY_EXPIRIES_TO_CHECK):
-        choice = _monthly_choice(remaining, today, stamp, venue)
-        if choice is None:
-            break
-        selected.append(choice)
-        remaining = [text for text in remaining if text > choice.expiry.isoformat()]
-    return selected
+def _monthly_candidates(expiries: Iterable[str], today: date | None, stamp: str, venue: str,
+                        verified_monthly_expiries: Iterable[date] = ()) -> list["rules.MonthlyChoice"]:
+    choice = _monthly_choice(expiries, today, stamp, venue, verified_monthly_expiries)
+    return [choice] if choice else []
+
+
+def _missing_monthly_date(today: date | None, stamp: str, venue: str) -> str:
+    targets = _calendar_standard_monthlies(today, stamp, venue) if today is not None else []
+    return f"最近標準月選 {targets[0][0]} 未取得可核驗合約資料" if targets else "最近標準月選未取得可核驗合約資料"
 
 
 def _monthly_quote_observation(ticker: str, spot: float, choices: list["rules.MonthlyChoice"],
@@ -757,16 +746,16 @@ def _monthly_quote_observation(ticker: str, spot: float, choices: list["rules.Mo
     by_expiry = {choice.expiry.isoformat(): choice for choice in choices}
     available = [row for row in calls if row.get("expiry") in by_expiry and row.get("size") == 100
                  and _cent_exact(row.get("strike")) and row["strike"] > spot
-                 and isinstance(row.get("dte"), int) and MONTHLY_MIN_DTE <= row["dte"] <= 60]
+                 and isinstance(row.get("dte"), int) and 0 <= row["dte"] <= 60]
     if not available:
         return None
     both = [row for row in available if _is_two_sided(row.get("bid"), row.get("ask"))]
     # The observation is *not* a tradeable tier: even a very wide spread can be shown with the explicit spread caveat.
-    # Pick largest bid/spot annualized among the two checked expiries; no delta inference or fake liquidity values.
-    best = max(both, key=lambda row: (row["bid"]/spot*365/row["dte"], -row["dte"])) if both else None
+    # Compare strikes only within the nearest standard expiry; never advance the month for a better quote.
+    best = max(both, key=lambda row: row["bid"]/spot*365/rules.effective_days(row["dte"])) if both else None
     if best is None:
         with_last = [row for row in available if _is_finite_positive(row.get("last"))]
-        best = max(with_last, key=lambda row: (row["last"]/spot*365/row["dte"], -row["dte"])) if with_last else min(
+        best = max(with_last, key=lambda row: row["last"]/spot*365/rules.effective_days(row["dte"])) if with_last else min(
             available, key=lambda row: (row["dte"], row["strike"]))
     dte = best["dte"]
     is_both = best in both
@@ -776,7 +765,7 @@ def _monthly_quote_observation(ticker: str, spot: float, choices: list["rules.Mo
            "strike": best["strike"],
            "bid": best["bid"] if is_both else None, "ask": best["ask"] if is_both else None,
            "last": last if not is_both else None,
-           "annualized_yield": round(annual/spot*365/dte, 6) if annual is not None else None,
+           "annualized_yield": round(annual/spot*365/rules.effective_days(dte), 6) if annual is not None else None,
            "oi": best.get("oi") if isinstance(best.get("oi"), int) and best["oi"] >= 0 else None,
            "volume": best.get("volume") if isinstance(best.get("volume"), int) and best["volume"] >= 0 else None}
     choice = by_expiry[best["expiry"]]
@@ -801,66 +790,6 @@ def _monthly_quote_observation(ticker: str, spot: float, choices: list["rules.Mo
     return result
 
 
-def _nonstandard_monthly_observation(
-        calls: list[dict[str, Any]], puts: list[dict[str, Any]] | None, ticker: str, spot: float,
-        stamp: str, today: date | None, *, currency: str, source: str, provenance: str,
-        rights: str, identity: dict[str, str] | None) -> dict[str, Any] | None:
-    """Fallback when neither standard monthly is available in the *actually read* chain.
-    The earliest real 7-60DTE expiry is displayed as 非標準月到期, with source time.
-    This is strictly OBSERVATION-ONLY: zero invented strikes/premia and zero sell tiers.
-    Never overwrite a found standard monthly; the reader independently classifies dates."""
-    if today is None or not _is_finite_positive(spot):
-        return None
-    rows = [row for row in calls if row.get("size") == 100
-            and _is_finite_positive(row.get("strike")) and _cent_exact(row["strike"])
-            and isinstance(row.get("dte"), int) and 7 <= row["dte"] <= 60
-            and isinstance(row.get("expiry"), str) and len(row["expiry"]) == 10]
-    # If only the put side is present, still show the actually observed expiry, never a guessed call.
-    put_days = [row for row in (puts or []) if row.get("size") == 100
-                and isinstance(row.get("dte"), int) and 7 <= row["dte"] <= 60
-                and isinstance(row.get("expiry"), str) and len(row["expiry"]) == 10]
-    listed = sorted(set(row["expiry"] for row in rows + put_days))
-    # A standard expiry with no quote is NOT evidence that the next real
-    # non-standard listed contract is a standard month. Classify each date.
-    eligible_days: list[date] = []
-    for iso in listed:
-        try:
-            parsed = date.fromisoformat(iso)
-            if parsed.isoformat() == iso and parsed != rules.third_friday(parsed.year,parsed.month):
-                eligible_days.append(parsed)
-        except ValueError:
-            continue
-    if not eligible_days:
-        return None
-    day = min(eligible_days)
-    expiry = day.isoformat()
-    chosen = [row for row in rows if row["expiry"] == expiry and row["strike"] > spot]
-    two = [row for row in chosen if _is_two_sided(row.get("bid"), row.get("ask"))]
-    last = [row for row in chosen if _is_finite_positive(row.get("last"))]
-    best = min(two, key=lambda row: row["strike"]) if two else (
-        min(last, key=lambda row: row["strike"]) if last else
-        min(chosen, key=lambda row: row["strike"]) if chosen else None)
-    dte = (day - today).days
-    result = {"ticker": ticker, "strategy": "COVERED_CALL", "expiry": expiry, "dte": dte,
-              "spot": spot, "currency": currency, "multiplier": 100,
-              "quote_basis": "delayed", "timestamp": stamp, "source": source,
-              "provenance": provenance, "rights_status": rights,
-              "asof_date": today.isoformat(), "suggestions": [],
-              "monthly_nonstandard": True}
-    if identity is not None:
-        result.update(identity)
-    if best is not None:
-        has_both = best in two
-        price = best["bid"] if has_both else best.get("last") if best in last else None
-        result["quote_observation"] = {
-            "kind": "TWO_SIDED" if has_both else "NO_TWO_SIDED",
-            "strike": best["strike"], "bid": best["bid"] if has_both else None,
-            "ask": best["ask"] if has_both else None,
-            "last": None if has_both else price,
-            "annualized_yield": round(price / spot * 365 / dte, 6) if price is not None else None,
-            "oi": best.get("oi") if isinstance(best.get("oi"), int) and best["oi"] >= 0 else None,
-            "volume": best.get("volume") if isinstance(best.get("volume"), int) and best["volume"] >= 0 else None}
-    return result
 
 
 def _any_put_two_sided(puts: list[dict[str, Any]] | None) -> bool:
@@ -872,7 +801,8 @@ def _cycles_from_calls(calls: list[dict[str, Any]], ticker: str, spot: float, st
                        underlying: str | None = None,
                        no_window: Callable[[str, int, int], tuple[str, str]] | None = None,
                        today: date | None = None, week_expiries: Iterable[str] | None = None,
-                       identity: dict[str, str] | None = None, puts: list[dict[str, Any]] | None = None) -> CyclesResult:
+                       identity: dict[str, str] | None = None, puts: list[dict[str, Any]] | None = None,
+                       verified_monthly_expiries: Iterable[date] = ()) -> CyclesResult:
     """Weekly: the current calendar week's earliest listed expiry (the next week's only when this week has none left; see
     option_recommendation_rules); monthly: the nearest standard monthly (shared rule). Standard 100-share contracts only.
     today is the exchange-local as-of date (derived from the rows' expiry and dte when absent); week_expiries lets the caller
@@ -894,40 +824,14 @@ def _cycles_from_calls(calls: list[dict[str, Any]], ticker: str, spot: float, st
             window = [row for row in calls if choice and row["expiry"] == choice.expiry.isoformat() and row["strike"] and row["size"] == 100]
         else:
             monthly_choices = _monthly_candidates(
-                week_expiries if week_expiries is not None else [row["expiry"] for row in calls], today, stamp, venue)
+                week_expiries if week_expiries is not None else [row["expiry"] for row in calls + (puts or [])], today, stamp, venue,
+                verified_monthly_expiries)
             monthly = monthly_choices[0] if monthly_choices else None
             monthly_rule = monthly.rule if monthly else None
             window = [row for row in calls if monthly and row["expiry"] == monthly.expiry.isoformat()
                       and row["strike"] and row["size"] == 100]
-            # Source-backed maturity FIRST, not highest yield: the nearest standard
-            # >=7DTE expiry wins; try the second ONLY when that first expiry is unreadable
-            # or lacks both a positive two-sided quote and a positive last quote.
-            selected = None
-            for choice in monthly_choices:
-                candidate = [row for row in calls if row.get("expiry") == choice.expiry.isoformat()
-                             and row.get("size") == 100 and _is_finite_positive(row.get("strike"))]
-                call_read = any(_is_two_sided(row.get("bid"), row.get("ask"))
-                                or _is_finite_positive(row.get("last")) for row in candidate)
-                put_read = any(row.get("expiry") == choice.expiry.isoformat()
-                               and row.get("size") == 100
-                               and _is_two_sided(row.get("bid"), row.get("ask")) for row in (puts or []))
-                if call_read or put_read:
-                    selected = (candidate,choice)
-                    break
-            # A listed standard month whose source contains OTM strikes but no
-            # usable quote still merits a dated informational line, not "unavailable".
-            # A quoted successor has already been preferred above when the nearer
-            # expiry has no usable price.
-            if selected is None:
-                for choice in monthly_choices:
-                    candidate = [row for row in calls if row.get("expiry") == choice.expiry.isoformat()
-                        and row.get("size") == 100 and _is_finite_positive(row.get("strike"))]
-                    if any(row["strike"] > spot for row in candidate):
-                        selected = (candidate, choice)
-                        break
-            if selected is not None:
-                window, monthly = selected
-                monthly_rule = monthly.rule
+            # The nearest standard expiry is binding even when quotes or deltas are unusable.
+            if monthly is not None:
                 tiers, _ = covered_call_tiers(window, spot, window[0]["dte"]) if window else ([],None)
                 if not tiers or not any(tier["annualized_yield"] >= MONTHLY_ANNUAL_HURDLE for tier in tiers):
                     cc_reason = ("低於6%門檻，買權僅作報價觀察；不構成備兌買權建議" if tiers else
@@ -941,20 +845,6 @@ def _cycles_from_calls(calls: list[dict[str, Any]], ticker: str, spot: float, st
                            "read": True, "two_sided": observation["quote_observation"]["kind"] == "TWO_SIDED"})
                         out["monthly"] = observation
                         continue
-            # No usable standard monthly in the returned chain: never discard its
-            # nearest listed 7-60DTE expiry. It becomes an explicit nonstandard,
-            # no-trade observation, not a mislabelled monthly strategy.
-            if selected is None:
-                fallback = _nonstandard_monthly_observation(
-                    calls, puts, ticker, spot, stamp, today, currency=currency, source=source,
-                    provenance=provenance, rights=rights, identity=identity)
-                if fallback is not None:
-                    health_records.append({"venue": venue, "underlying": und,
-                        "expiry": fallback["expiry"], "cycle": "monthly", "status": "READ",
-                        "read": True, "two_sided": bool(
-                            fallback.get("quote_observation",{}).get("kind") == "TWO_SIDED")})
-                    out["monthly"] = fallback
-                    continue
         if not window and cycle == "monthly" and monthly is not None and puts is not None:
             put_rows = [row for row in puts if row.get("expiry") == monthly.expiry.isoformat()
                         and row.get("size") == 100]
@@ -971,6 +861,9 @@ def _cycles_from_calls(calls: list[dict[str, Any]], ticker: str, spot: float, st
                     continue
         if not window:
             message, status = no_window(cycle, low, high) if no_window else (_missing_text(missing, cycle, low, high), "NO_EXPIRY")
+            if cycle == "monthly":
+                expected = f"最近標準月選 {monthly.expiry.isoformat()} 未取得可核驗合約資料" if monthly else _missing_monthly_date(today, stamp, venue)
+                message = f"{expected}；{message}"
             health_records.append({"venue": venue, "underlying": und, "expiry": None, "cycle": cycle,
                                    "status": status, "read": False, "two_sided": False})
             out[cycle] = {"unavailable": _diag(message)}
@@ -1053,13 +946,8 @@ def nasdaq_us_options(symbol: str, spot: float, today: date, stamp: str) -> Cycl
         err_health = [{"venue": "US", "underlying": symbol, "expiry": None, "cycle": c,
                        "status": "READ_ERROR", "read": False, "two_sided": False} for c in CYCLES]
         return CyclesResult({cycle: {"unavailable": "Nasdaq 期權鏈讀取失敗"} for cycle in CYCLES}, health=err_health)
-    if not rows:
-        empty_health = [{"venue": "US", "underlying": symbol, "expiry": None, "cycle": c,
-                         "status": "EMPTY_RESPONSE", "read": False, "two_sided": False} for c in CYCLES]
-        return CyclesResult({c: {"unavailable": _missing_text("Nasdaq 無 {low}-{high} 天到期的上市期權", c, *CYCLES[c])} for c in CYCLES},
-                            health=empty_health)
     asof = _nasdaq_us_asof(payload)
-    if asof is None or not 0 <= (today - asof).days <= NASDAQ_US_MAX_ASOF_AGE_DAYS:
+    if rows and (asof is None or not 0 <= (today - asof).days <= NASDAQ_US_MAX_ASOF_AGE_DAYS):
         stale_health = [{"venue": "US", "underlying": symbol, "expiry": None, "cycle": c,
                          "status": "STALE_ASOF", "read": False, "two_sided": False} for c in CYCLES]
         return CyclesResult({c: {"unavailable": NASDAQ_US_STALE_TEXT} for c in CYCLES}, health=stale_health)
@@ -1093,11 +981,10 @@ def nasdaq_us_options(symbol: str, spot: float, today: date, stamp: str) -> Cycl
                              "iv": None, "oi": _int(row.get("p_Openinterest")),
                              "volume": _int(row.get("p_Volume")), "size": 100})
     decode_rows(rows)
-    # The broad provider response may omit some dates. Query up to the next two
-    # standard monthly dates explicitly, and admit ONLY a correctly dated typed
-    # contract with a valid source as-of. Never trust the calendar guess alone.
+    # A broad response can omit the nearest standard; fetch that exact date once.
+    # Only a typed contract with a valid source as-of can establish the listing.
     if not _monthly_candidates([row["expiry"] for row in calls+puts], today, stamp, "US"):
-        for standard_day, _days in _calendar_standard_monthlies(today):
+        for standard_day, _days in _calendar_standard_monthlies(today, stamp, "US"):
             if any(row["expiry"] == standard_day for row in calls+puts):
                 break
             targeted = NASDAQ_US_CHAIN.format(
@@ -1117,9 +1004,12 @@ def nasdaq_us_options(symbol: str, spot: float, today: date, stamp: str) -> Cycl
                 break
     if not calls and not puts:
         health = [{"venue":"US","underlying":symbol,"expiry":None,"cycle":c,
-                  "status":"SOURCE_ROWS_NOT_TYPED","read":False,"two_sided":False} for c in CYCLES]
+                  "status":"SOURCE_ROWS_NOT_TYPED" if rows else "EMPTY_RESPONSE","read":False,"two_sided":False} for c in CYCLES]
         msg = "Nasdaq US 已回應鏈資料，但到期日／履約價／買賣欄位無法解析為經核驗標準契約（非證明未上市）"
-        return CyclesResult({c:{"unavailable":msg} for c in CYCLES},health=health)
+        return CyclesResult({c:{"unavailable":
+            _diag(f"{_missing_monthly_date(today, stamp, 'US')}；{msg}") if c == "monthly"
+            else msg if rows else _missing_text("Nasdaq 無 {low}-{high} 天到期的上市期權", c, *CYCLES[c])
+            } for c in CYCLES},health=health)
     return _cycles_from_calls(calls, symbol, spot, stamp, currency="USD",
                               source="Nasdaq US option chain (public quote page API, delayed; Yahoo fallback)",
                               provenance=f"https://www.nasdaq.com/market-activity/stocks/{symbol.replace('-', '.').lower()}/option-chain",
@@ -1300,21 +1190,10 @@ def us_options(symbol: str, spot: float, today: date, stamp: str) -> CyclesResul
         else:
             monthly_choices = _monthly_candidates(expiries, today, stamp, "US")
             candidates = [(selected.expiry.isoformat(), (selected.expiry - today).days) for selected in monthly_choices]
-            # If the cached expiry list is only weekly, independently request the
-            # nearest standard third Friday and successor. A calendar date is not
-            # evidence of a listed contract until Yahoo returns a typed chain.
-            for calendar_choice in _calendar_standard_monthlies(today):
-                if calendar_choice not in candidates and len(candidates) < 2:
-                    candidates.append(calendar_choice)
+            # Missing nearest standard: fetch only that expiry, never substitute a successor or weekly.
             if not monthly_choices:
-                nearest_like = sorted((row, (date.fromisoformat(row)-today).days)
-                    for row in expiries if isinstance(row,str) and len(row)==10
-                    and _is_actual_date(row) and 7 <= (date.fromisoformat(row)-today).days <= 60
-                    and date.fromisoformat(row)!=rules.third_friday(
-                        date.fromisoformat(row).year,date.fromisoformat(row).month))
-                if nearest_like:
-                    candidates.append(nearest_like[0])
-            if monthly_choices:
+                candidates = _calendar_standard_monthlies(today, stamp, "US")
+            else:
                 monthly_rule = monthly_choices[0].rule
         if not candidates:
             health_records.append({"venue": "US", "underlying": symbol, "expiry": None, "cycle": cycle,
@@ -1322,9 +1201,7 @@ def us_options(symbol: str, spot: float, today: date, stamp: str) -> CyclesResul
             out[cycle] = {"unavailable": _missing_text("無 {low}-{high} 天到期的上市期權（Yahoo Finance 期權到期日清單）", cycle, low, high)}
             continue
         if cycle == "monthly":
-            # Yahoo supplies each expiry's put and call table separately; the old path only fetched
-            # the first month and could neither examine the next standard maturity nor construct
-            # the other two strategies from the second month's put side.
+            # Read both sides of the binding nearest standard expiry.
             all_calls: list[dict[str, Any]] = []
             all_puts: list[dict[str, Any]] = []
             put_side_seen = False
@@ -1355,7 +1232,7 @@ def us_options(symbol: str, spot: float, today: date, stamp: str) -> CyclesResul
                     all_puts.extend({**row, "expiry":month_expiry,"dte":month_dte,"size":100} for row in puts)
             if not all_calls and not all_puts:
                 known_window = any(_is_actual_date(row) and
-                    7 <= (date.fromisoformat(row)-today).days <= 60 for row in expiries)
+                    0 <= (date.fromisoformat(row)-today).days <= 60 for row in expiries)
                 status = "EXPIRY_LIST_ERROR" if expiry_list_error else (
                     "EMPTY_RESPONSE" if not expiries else "NO_EXPIRY" if not known_window else
                     "READ_ERROR" if read_failures>0 else "EMPTY_RESPONSE")
@@ -1366,12 +1243,12 @@ def us_options(symbol: str, spot: float, today: date, stamp: str) -> CyclesResul
                 reason = ("Yahoo 到期日清單讀取失敗；已獨立補查標準月到期日但未取得可核驗合約"
                           if expiry_list_error else
                           "Yahoo 標準月選鏈無可驗證合約資料；已補查標準到期日但來源未回傳可核驗合約（不能推定未上市）")
-                out["monthly"] = {"unavailable":reason}
+                out["monthly"] = {"unavailable": f"{_missing_monthly_date(today, stamp, 'US')}；{reason}"}
                 continue
             monthly_result=_cycles_from_calls(all_calls,symbol,spot,stamp,currency="USD",
                 source="Yahoo Finance option chain (unofficial, delayed)",
                 provenance=f"https://finance.yahoo.com/quote/{symbol}/options",
-                rights=YAHOO_RIGHTS_LABEL,missing="Yahoo 交易所到期清單沒有距到期至少7天的標準月選",
+                rights=YAHOO_RIGHTS_LABEL,missing="Yahoo 交易所到期清單沒有最近標準月選",
                 venue="US",underlying=symbol,today=today,
                 week_expiries=sorted({row["expiry"] for row in all_calls + all_puts}),
                 identity=YAHOO_OPTION_IDENTITY,puts=all_puts if put_side_seen else None)
@@ -1641,8 +1518,19 @@ def nordic_options(symbol: str, base: str, spot: float, today: date, stamp: str,
         return _nordic_unavailable(symbol, "UNDERLYING_CURRENCY_CONFLICT", "標的報價或上市幣別與 SEK 不符；不推薦")
     if any(state != "OK" for state in states):
         return _nordic_unavailable(symbol, "UNDERLYING_CURRENCY_UNCONFIRMED", "標的報價或上市幣別未確認為 SEK；不推薦")
+    monthly_refetched = False
     if not rows:
-        return _nordic_unavailable(symbol, "EMPTY_RESPONSE", "本次來源回應無可用之買權紀錄；是否上市未確認")
+        monthly_refetched = True
+        try:
+            refreshed = http_json(NORDIC_CHAIN.format(orderbook=orderbook))["data"]["instrumentListing"]["rows"]
+            if isinstance(refreshed, list):
+                rows = refreshed
+        except (TypeError, ValueError, KeyError, AttributeError, OSError):
+            pass
+        if not rows:
+            result = _nordic_unavailable(symbol, "EMPTY_RESPONSE", "本次來源回應無可用之買權紀錄；是否上市未確認")
+            result["monthly"]["unavailable"] = _diag(f"{_missing_monthly_date(today, stamp, 'STOCKHOLM')}；{result['monthly']['unavailable']}")
+            return result
     listed: list[dict[str, Any]] = []
     listed_puts: list[dict[str, Any]] = []
     saw_put_side = False
@@ -1664,14 +1552,10 @@ def nordic_options(symbol: str, base: str, spot: float, today: date, stamp: str,
             return _nordic_unavailable(symbol, "MALFORMED_ROWS",
                 "Nasdaq Nordic 已回應買權列，但合約名稱／原生代號／履約價與到期日未能同時核驗；未解析者不可推定未上市")
         return _nordic_unavailable(symbol, "NO_EXPIRY", "本次來源回應無可用之買權紀錄；是否上市未確認")
-    # This Nordic endpoint lists the whole option chain, not a per-expiry URL.
-    # If the first response lacks a standard monthly contract, re-query the
-    # source ONCE and inspect specifically the next standard 7-60DTE dates.
-    # Never invent an unsupported URL parameter or assert that an absent
-    # maturity is listed. On failure the non-standard observation survives.
-    standard_targets={iso for iso,_ in _calendar_standard_monthlies(today)}
-    if (standard_targets and not _monthly_candidates([x["expiry"] for x in listed],today,stamp,"STOCKHOLM")
-            and any(7 <= x["dte"] <= 60 for x in listed)):
+    # The Nordic endpoint has no per-expiry parameter. Re-read once for the exact
+    # nearest standard date; failure never authorizes a weekly or a later month.
+    standard_targets={iso for iso,_ in _calendar_standard_monthlies(today, stamp, "STOCKHOLM")}
+    if not monthly_refetched and standard_targets and not _monthly_candidates([x["expiry"] for x in listed],today,stamp,"STOCKHOLM"):
         try:
             refreshed = http_json(NORDIC_CHAIN.format(orderbook=orderbook))["data"]["instrumentListing"]["rows"]
             if isinstance(refreshed,list):

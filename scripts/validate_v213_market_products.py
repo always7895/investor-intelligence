@@ -565,35 +565,21 @@ def validate_covered_call_cycle(cycle: dict, evaluated_at: str | datetime | None
         if (not (on_friday or shifted) or (monthly_rule == rules.MONTHLY_RULE_THIRD_FRIDAY and not on_friday)
                 or (monthly_rule == rules.MONTHLY_RULE_HOLIDAY_SHIFT and not shifted)):
             raise MarketProductValidationError("MONTHLY_RULE_INCONSISTENT")
-    # A former sealed weekly-like expiry may still contain genuine, validated delayed quotes.
-    # Keep that line ONLY as a labeled NONSTANDARD observation, never as a standard monthly recommendation.
-    # Any claimed monthly_rule on a non-standard date remains a hard error (checked above).
-    if cycle.get("monthly_nonstandard") is not None and cycle.get("monthly_nonstandard") is not True:
-        raise MarketProductValidationError("MONTHLY_NONSTANDARD_MARKER_INVALID")
-    if period != "monthly" and cycle.get("monthly_nonstandard") is True:
-        raise MarketProductValidationError("MONTHLY_NONSTANDARD_MARKER_INVALID")
+    # Legacy weekly-in-monthly rows are rejected, never relabelled as observations.
+    if "monthly_nonstandard" in cycle:
+        raise MarketProductValidationError("MONTHLY_UNPROVEN_EXPIRY")
     if period == "monthly":
         friday = rules.third_friday(expiry.year, expiry.month)
-        rule = cycle.get("monthly_rule")
         standard = expiry.date() == friday or (
-            rule in (rules.MONTHLY_RULE_HOLIDAY_SHIFT,rules.MONTHLY_RULE_LATER_LISTED)
+            monthly_rule in (rules.MONTHLY_RULE_HOLIDAY_SHIFT, rules.MONTHLY_RULE_LATER_LISTED)
             and friday - timedelta(days=4) <= expiry.date() < friday)
-        fallback = dte >= 7 and not standard and rule is None and cycle.get("quote_basis") == "delayed"
-        if dte < 7 or not (standard or fallback):
+        if not standard:
             raise MarketProductValidationError("MONTHLY_UNPROVEN_EXPIRY")
-        if cycle.get("monthly_nonstandard") is True and not fallback:
-            raise MarketProductValidationError("MONTHLY_NONSTANDARD_MARKER_INVALID")
     spot = finite(cycle.get("spot"), "spot")
     annual_days = rules.effective_days(dte)  # annualized over at least one day: a DTE-0 contract never divides by zero
     # Optional observation-only month: explicitly not a covered-call strategy, with its own
     # strict, independently checked evidence. No missing bid/ask can become executable.
     observed = cycle.get("quote_observation", None)
-    # If a listed non-standard contract has no source quote, it still has an exact
-    # expiry and explicit observation-only status. No premiums/strategies are generated.
-    if cycle.get("monthly_nonstandard") is True and observed is None:
-        if cycle.get("suggestions") != [] or "strategies" in cycle or "middle_suggestion" in cycle:
-            raise MarketProductValidationError("MONTHLY_NONSTANDARD_NOT_AN_ORDER")
-        return
     if observed is not None:
         if period != "monthly" or cycle.get("suggestions") != [] or "middle_suggestion" in cycle:
             raise MarketProductValidationError("MONTHLY_OBSERVATION_NOT_A_STRATEGY")
@@ -601,7 +587,7 @@ def validate_covered_call_cycle(cycle: dict, evaluated_at: str | datetime | None
         if not isinstance(observed, dict) or set(observed) != keys or observed["kind"] not in ("TWO_SIDED", "NO_TWO_SIDED"):
             raise MarketProductValidationError("MONTHLY_OBSERVATION_SHAPE")
         strike = finite(observed["strike"], "observation.strike")
-        if not strike > spot > 0 or strike != round(strike, 2) or dte < 7:
+        if not strike > spot > 0 or strike != round(strike, 2) or dte < 0:
             raise MarketProductValidationError("MONTHLY_OBSERVATION_STRIKE_DTE")
         for name in ("oi", "volume"):
             value = observed[name]
@@ -623,7 +609,7 @@ def validate_covered_call_cycle(cycle: dict, evaluated_at: str | datetime | None
                 raise MarketProductValidationError("MONTHLY_OBSERVATION_ANNUALIZED")
         else:
             annual = finite(observed["annualized_yield"], "observation.annualized_yield")
-            expected = price/spot*365/dte
+            expected = price/spot*365/annual_days
             if abs(annual-expected) > max(1e-4,abs(expected)*1e-3):
                 raise MarketProductValidationError("MONTHLY_OBSERVATION_ANNUALIZED")
         if "strategies" in cycle:

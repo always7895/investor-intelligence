@@ -5,10 +5,9 @@
  * WEEKLY (calendar week, exchange local, Monday-Sunday): the earliest listed expiry from the as-of date through that week's
  * Sunday; only when none remains (weekend, after the week's last weekly, the expiry day after the session close) the earliest
  * listed expiry of the NEXT calendar week; nothing later is ever a weekly.
- * MONTHLY (operator 2026-11-03, no minimum DTE and no yield floor): the NEAREST standard monthly expiry on or after the as-of date.
- * A standard monthly is, per calendar month, the listed expiry on the third Friday; when none is listed that day (a holiday), the
- * latest listed expiry of that Monday-Thursday before it. The as-of day counts only while the session is open (the weekly's expiry-day
- * rule); otherwise, and when the month has no listed monthly, the earliest later standard monthly within 60 DTE (rule LATER_LISTED).
+ * MONTHLY: the nearest standard monthly on or after the exchange-local date, with no minimum DTE; expiry day counts until close.
+ * A shifted expiry requires explicit verified source-calendar evidence. A missing nearest standard chain is not permission
+ * to select a later month or infer a holiday from weekly dates.
  * ANNUALIZATION: days = max(dte, 1), so DTE 0 never divides by zero and is never annualized over under one day; DTE 0-2 is
  * labelled on the card. MIDDLE tier: a strike strictly between the HIGH_STRIKE and BALANCED strikes. */
 
@@ -138,50 +137,34 @@ export function monthlyRuleConsistent(expiry: string, rule: string): boolean {
   return rule === "THIRD_FRIDAY" ? onFriday : rule === "HOLIDAY_SHIFT" ? shifted : onFriday || shifted;
 }
 
-export const STANDARD_MONTHLY_MIN_DTE = 7;
-
-/** The listed standard monthly of a calendar month: the third Friday, else the latest listed expiry of that week's Monday-Thursday. */
-function standardMonthly(listed: ReadonlySet<string>, year: number, month: number): { expiry: string; rule: MonthlyRule } | null {
-  const friday = thirdFridayMs(year, month);
-  if (listed.has(isoDay(friday))) return { expiry: isoDay(friday), rule: "THIRD_FRIDAY" };
-  let latest: string | null = null;
-  for (const day of listed) {
-    const e = dayMs(day)!;
-    if (e >= friday - 4 * DAY_MS && e < friday && (latest === null || day > latest)) latest = day;
-  }
-  return latest === null ? null : { expiry: latest, rule: "HOLIDAY_SHIFT" };
-}
-
-/** Nearest source-listed standard monthly at least seven exchange-local days ahead.
- * An expiry 0-6 DTE is not a monthly recommendation. If no standard listing
- * exists, the producer/Worker preserves source-backed, explicitly NONSTANDARD
- * observations separately; this selector never returns a weekly as standard. */
-export function selectMonthly(expiries: readonly string[], asOf: string, expiryDayOpenNow = true): { expiry: string; rule: MonthlyRule } | null {
+/** Nearest standard monthly only. Verified shifts are source-calendar evidence, not inferred from missing Friday rows. */
+export function selectMonthly(expiries: readonly string[], asOf: string, expiryDayOpenNow = true,
+  verifiedMonthlyExpiries: readonly string[] = []): { expiry: string; rule: MonthlyRule } | null {
   const a = dayMs(asOf);
   if (a === null) return null;
   const listed = new Set(expiries.filter(day => dayMs(day) !== null));
   const start = new Date(a);
-  const earliest = a + STANDARD_MONTHLY_MIN_DTE * DAY_MS;
-  let expected: string | null = null;  // skipped sub-7DTE month is LATER_LISTED
-  for (let offset = 0; offset < 4; offset++) {  // asOf plus 60 days spans at most four calendar months
+  for (let offset = 0; offset < 4; offset++) {
     const monthIndex = start.getUTCFullYear() * 12 + start.getUTCMonth() + offset;
     const year = Math.floor(monthIndex / 12), month = (monthIndex % 12) + 1;
     const nominal = thirdFridayMs(year, month);
-    if (expected === null && (nominal > a || (nominal === a && expiryDayOpenNow))) expected = `${year}-${month}`;
-    const found = standardMonthly(listed, year, month);
-    if (found === null) continue;
-    const e = dayMs(found.expiry)!;
-    if (e < earliest) continue;
-    const dte = (e - a) / DAY_MS;
-    if (dte < MONTHLY_DTE_BUCKET[0] || dte > MONTHLY_DTE_BUCKET[1]) return null;
-    return { expiry: found.expiry, rule: expected === `${year}-${month}` ? found.rule : "LATER_LISTED" };
+    let expected = nominal;
+    for (const day of verifiedMonthlyExpiries) {
+      const shifted = dayMs(day);
+      if (shifted !== null && shifted >= nominal - 4 * DAY_MS && shifted < nominal
+        && (expected === nominal || shifted > expected)) expected = shifted;
+    }
+    if (expected < a || (expected === a && !expiryDayOpenNow)) continue;
+    if ((expected - a) / DAY_MS > MONTHLY_DTE_BUCKET[1] || !listed.has(isoDay(expected))) return null;
+    return { expiry: isoDay(expected), rule: expected !== nominal ? "HOLIDAY_SHIFT" : "THIRD_FRIDAY" };
   }
   return null;
 }
 
 /** The expiry of selectMonthly (the nearest standard monthly), or null. */
-export function selectMonthlyExpiry(expiries: readonly string[], asOf: string, expiryDayOpenNow = true): string | null {
-  return selectMonthly(expiries, asOf, expiryDayOpenNow)?.expiry ?? null;
+export function selectMonthlyExpiry(expiries: readonly string[], asOf: string, expiryDayOpenNow = true,
+  verifiedMonthlyExpiries: readonly string[] = []): string | null {
+  return selectMonthly(expiries, asOf, expiryDayOpenNow, verifiedMonthlyExpiries)?.expiry ?? null;
 }
 
 /** DTE 0-2: the annualized yield is computed over at least one day and is strongly amplified; say so (null for a longer or invalid DTE).

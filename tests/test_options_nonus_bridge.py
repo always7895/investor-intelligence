@@ -175,9 +175,8 @@ class BridgeFixtureTests(unittest.TestCase):
             self.assertEqual(set(terms[key]["monthly"]), {"unavailable"}, key)
         self.assertEqual(terms["TSZEXACT.ST"]["monthly"]["multiplier"], 100)
         for key in ("TSIZE50.ST", "TSIZENONE.ST", "TCCYNONE.ST"):
-            cycle = terms[key]["monthly"]
-            self.assertEqual((cycle["expiry"], cycle["dte"], cycle["multiplier"], cycle["currency"]),
-                             ("2026-11-20", 51, 100, "SEK"), key)
+            self.assertEqual(set(terms[key]["monthly"]), {"unavailable"}, key)
+            self.assertIn("2026-10-16", terms[key]["monthly"]["unavailable"], key)
         for key in ("QNOQUOTE.ST", "QONESIDED.ST", "QZERO.ST", "QCROSSED.ST", "QLASTSALE.ST", "QMISS.ST", "QCHEAP.ST"):
             self.assertEqual(terms[key]["monthly"]["suggestions"], [], key)
             self.assertFalse(terms[key]["monthly"].get("strategies"), key)
@@ -199,16 +198,12 @@ class BridgeFixtureTests(unittest.TestCase):
                 for cycle in ("weekly", "monthly"):
                     value = options[key][cycle]
                     emitted = "unavailable" not in value
-                    expected = generator.in_cycle(cycle, dte) if cycle == "weekly" else 7 <= dte <= 60
+                    expected = generator.in_cycle(cycle, dte)
                     self.assertEqual(emitted, expected, f"{case} {key} {cycle}")
                     if emitted:
                         self.assertEqual((value["expiry"], value["dte"]), (generator.dte_date(dte), dte))
                         if cycle == "monthly":
-                            nonstandard = not generator.in_cycle(cycle, dte)
-                            self.assertEqual(bool(value.get("monthly_nonstandard")), nonstandard)
-                            if nonstandard:
-                                self.assertEqual(value["suggestions"], [])
-                                self.assertFalse(value.get("strategies"))
+                            self.assertNotIn("monthly_nonstandard", value)
 
     def test_depleted_candidates_are_rejected_with_old_bytes_intact_and_boundaries_admit(self):
         with tempfile.TemporaryDirectory(prefix="bridge_depleted_") as tmp:

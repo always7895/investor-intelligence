@@ -83,10 +83,10 @@ async function sealedEnv(options: {
         provenance: "https://api.nasdaq.com/api/nordic/instruments/TX2540138/option-chain", rights_status: "candidate_local_review",
         suggestions: [
           { role: "HIGH_STRIKE", strike: 62, bid: 0.2, ask: 0.35, mid: 0.275, limit_price: 0.23, premium_per_contract: 23,
-            period_yield: 0.23 / 32.78, annualized_yield: 0.23 / 32.78 * 365 / dte, upside_to_strike: 62 / 32.78 - 1,
+            period_yield: 0.23 / 32.78, annualized_yield: 0.23 / 32.78 * 365 / Math.max(dte, 1), upside_to_strike: 62 / 32.78 - 1,
             delta: 0.061, delta_basis: "QUOTE_IMPLIED", iv: 1.5658, oi: 12, volume: null, spread_pct: 0.5455 },
           { role: "BALANCED", strike: 34, bid: 1.5, ask: 4.5, mid: 3, limit_price: 2.25, premium_per_contract: 225,
-            period_yield: 2.25 / 32.78, annualized_yield: 2.25 / 32.78 * 365 / dte, upside_to_strike: 34 / 32.78 - 1,
+            period_yield: 2.25 / 32.78, annualized_yield: 2.25 / 32.78 * 365 / Math.max(dte, 1), upside_to_strike: 34 / 32.78 - 1,
             delta: null, iv: null, oi: 16, volume: null, spread_pct: 1 },
         ] },
     } } };

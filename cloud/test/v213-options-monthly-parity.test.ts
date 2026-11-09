@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import * as rules from "../src/v213/option-recommendation-rules";
 import { validateCoveredCallCycle } from "../src/v213/covered-call";
 
-interface MonthlyCase { name: string; as_of: string; expiries: string[]; expected: string | null; rule: string | null; expiry_day_open?: boolean }
+interface MonthlyCase { name: string; as_of: string; expiries: string[]; expected: string | null; rule: string | null; expiry_day_open?: boolean; verified_monthly_expiries?: string[] }
 const cases = JSON.parse(readFileSync(new URL("../../tests/fixtures/monthly_expiry_cases.json", import.meta.url), "utf8")) as MonthlyCase[];
 interface WindowCase { dte: number; period: "weekly" | "monthly"; expected: boolean }
 interface WindowObservation {
@@ -34,7 +34,7 @@ def listed(row):
         except ValueError:
             pass
     return days
-choices = [rules.select_monthly(listed(row), date.fromisoformat(row["as_of"]), expiry_day_open_now=row.get("expiry_day_open", True)) for row in data["selection"]]
+choices = [rules.select_monthly(listed(row), date.fromisoformat(row["as_of"]), expiry_day_open_now=row.get("expiry_day_open", True), verified_monthly_expiries=[date.fromisoformat(day) for day in row.get("verified_monthly_expiries", [])]) for row in data["selection"]]
 fridays = [rules.third_friday(year, month).isoformat() for year in range(2026, 2031) for month in range(1, 13)]
 print(json.dumps({"constants": {"monthly_bucket": list(rules.MONTHLY_DTE_BUCKET), "weekly_bucket": list(rules.WEEKLY_DTE_BUCKET), "rules": list(rules.MONTHLY_RULES), "fridays": fridays},
                   "choices": [{"expiry": choice.expiry.isoformat(), "rule": choice.rule} if choice is not None else None for choice in choices],
@@ -78,8 +78,8 @@ describe("monthly rule constants Python/Worker parity", () => {
 describe("monthly expiry Python/Worker behavioral parity", () => {
   it.each(cases.map((row, index) => ({ ...row, index })))("$name", row => {
     const open = row.expiry_day_open ?? true;
-    expect(rules.selectMonthlyExpiry(row.expiries, row.as_of, open)).toBe(row.expected);
-    expect(rules.selectMonthly(row.expiries, row.as_of, open)?.rule ?? null).toBe(row.rule);
+    expect(rules.selectMonthlyExpiry(row.expiries, row.as_of, open, row.verified_monthly_expiries)).toBe(row.expected);
+    expect(rules.selectMonthly(row.expiries, row.as_of, open, row.verified_monthly_expiries)?.rule ?? null).toBe(row.rule);
     expect(pythonChoices[row.index]?.expiry ?? null).toBe(row.expected);
     expect(pythonChoices[row.index]?.rule ?? null).toBe(row.rule);
   });
@@ -89,10 +89,11 @@ describe("producer / Python validator / Worker window admission parity", () => {
   it.each(windowCases.map((row, index) => ({ ...row, index })))("$period at $dte DTE", row => {
     const observed = pythonWindows[row.index];
     if (observed === undefined) throw new Error(`Missing Python observation for ${row.period} at ${row.dte} DTE`);
-    expect(observed.producer_available).toBe(row.expected);
+    const producerExpected = row.expected && (row.period !== "monthly" || row.dte < 28);
+    expect(observed.producer_available).toBe(producerExpected);
     expect(observed.validator_available).toBe(row.expected);
     expect(validateCoveredCallCycle(observed.probe, Date.parse(observed.probe_at), observed.probe_at, row.period) !== null).toBe(row.expected);
-    if (row.expected) {
+    if (producerExpected) {
       expect(observed.produced_validated).toBe(true);
       expect(validateCoveredCallCycle(observed.produced, Date.parse(observed.produced_at), observed.produced_at, row.period)).not.toBeNull();
     }

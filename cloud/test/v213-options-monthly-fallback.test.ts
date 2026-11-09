@@ -257,10 +257,11 @@ describe("shared TS monthly selection and guidance (nearest standard monthly)", 
     expect(rules.MONTHLY_DTE_BUCKET).toEqual([0, 60]);
     expect("MONTHLY_FALLBACK_DTE_BUCKET" in rules).toBe(false);
     expect(rules.selectMonthlyExpiry(["2026-12-18", "2026-11-20"], "2026-11-03")).toBe("2026-11-20");
-    expect(rules.selectMonthlyExpiry(["2026-11-20", "2026-12-18"], "2026-11-20", true)).toBe("2026-12-18");
+    expect(rules.selectMonthlyExpiry(["2026-11-20", "2026-12-18"], "2026-11-20", true)).toBe("2026-11-20");
     expect(rules.selectMonthlyExpiry(["2026-11-20", "2026-12-18"], "2026-11-20", false)).toBe("2026-12-18");
-    expect(rules.selectMonthly(["2026-12-18"], "2026-11-03")).toEqual({ expiry: "2026-12-18", rule: "LATER_LISTED" });
-    expect(rules.selectMonthly(["2026-06-18", "2026-07-17"], "2026-06-01")).toEqual({ expiry: "2026-06-18", rule: "HOLIDAY_SHIFT" });
+    expect(rules.selectMonthly(["2026-12-18"], "2026-11-03")).toBeNull();
+    expect(rules.selectMonthly(["2026-06-18", "2026-07-17"], "2026-06-01", true, ["2026-06-18"])).toEqual({ expiry: "2026-06-18", rule: "HOLIDAY_SHIFT" });
+    expect(rules.selectMonthly(["2026-06-18", "2026-07-17"], "2026-06-01")).toBeNull();
     for (const expiries of [[], ["2026-11-06", "2026-11-13"], ["2027-01-15"], ["invalid", "2026-02-30"]]) {
       expect(rules.selectMonthlyExpiry(expiries, "2026-11-03")).toBeNull();
     }
@@ -298,8 +299,7 @@ describe("shared TS monthly selection and guidance (nearest standard monthly)", 
       expect(JSON.stringify(buildOptionsGuidanceFlexBubble(guidance))).not.toContain(wording);
     }
     const valid=validateCoveredCallCycle(cycle(dte), NOW, STAMP, "monthly");
-    expect(valid!==null).toBe(dte>=7);
-    if(valid && ![18,46].includes(dte))expect(valid.monthly_nonstandard).toBe(true);
+    expect(valid!==null).toBe([18,46].includes(dte));
     expect(() => validateOptionContractQuote(bareQuote(61), validation)).toThrow("QUOTE_PERIOD_MISMATCH");
     expect(() => validateOptionContractQuote(bareQuote(-1), validation)).toThrow();
   });

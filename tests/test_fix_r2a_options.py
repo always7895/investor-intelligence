@@ -86,8 +86,8 @@ def test_nordic_decimal_quote_but_no_identity_guess():
     assert builder._nordic_price("not_available") is None
 
 
-# G01 owner correction: source-specific bounded fetch + safe nonstandard visibility.
-def test_cached_month_like_contract_retained_as_nonstrategy_observation():
+# G01: missing standard monthly never authorizes a weekly observation.
+def test_cached_weekly_contract_is_not_a_monthly_observation():
     evidence={"expiry":"2026-12-11","dte":33,"strike":110.0,
               "bid":0.30,"ask":0.32,"last":None,"oi":20,"volume":3,"size":100}
     cycle=builder._cycles_from_calls(
@@ -95,18 +95,11 @@ def test_cached_month_like_contract_retained_as_nonstrategy_observation():
         provenance="https://example.org/source",rights="operator_accepted_unlicensed",
         missing="no standard",today=ASOF,venue="US",
         identity=builder.YAHOO_OPTION_IDENTITY)["monthly"]
-    assert cycle["expiry"]=="2026-12-11"
-    assert cycle["monthly_nonstandard"] is True
-    assert cycle["suggestions"]==[]
-    assert cycle["quote_observation"]["bid"]==0.30
-    validate_covered_call_cycle(cycle,STAMP,STAMP,"monthly")
-    tampered=copy.deepcopy(cycle)
-    tampered["monthly_rule"]="THIRD_FRIDAY"
-    with pytest.raises(MarketProductValidationError):
-        validate_covered_call_cycle(tampered,STAMP,STAMP,"monthly")
+    assert "2026-11-20" in cycle["unavailable"]
+    assert set(cycle) == {"unavailable"}
 
 
-def test_yahoo_queries_missing_standard_expiry_then_preserves_weekly_like_on_failure():
+def test_yahoo_queries_missing_nearest_standard_and_never_substitutes_weekly_or_successor():
     from types import SimpleNamespace
     from unittest.mock import patch
     fake_call=SimpleNamespace(strike=110.0,bid=0.35,ask=0.37,lastPrice=0.36,
@@ -119,22 +112,22 @@ def test_yahoo_queries_missing_standard_expiry_then_preserves_weekly_like_on_fai
             self.requests=[]
         def option_chain(self, expiry):
             self.requests.append(expiry)
-            if expiry=="2026-12-11" or (self.mode=="success" and expiry=="2026-12-18"):
+            if expiry=="2026-12-11" or (self.mode=="success" and expiry=="2026-11-20"):
                 return chain
             raise ValueError("No chain returned for that expiry")
     import sys
-    for mode,expected,nonstandard in (("success","2026-12-18",False),
-                                      ("only_weekly","2026-12-11",True)):
+    for mode in ("success", "only_weekly"):
         ticker=Ticker(mode)
         with patch.dict(sys.modules,{"yfinance":SimpleNamespace(Ticker=lambda _:ticker)}):
             result=builder.us_options("UNIT",100,ASOF,STAMP)
         month=result["monthly"]
-        assert month["expiry"]==expected
-        assert bool(month.get("monthly_nonstandard")) is nonstandard
-        assert month["suggestions"]==[] if nonstandard else "unavailable" not in month
-        assert "2026-11-20" in ticker.requests
-        assert "2026-12-18" in ticker.requests
-        validate_covered_call_cycle(month,STAMP,STAMP,"monthly")
+        assert ticker.requests == ["2026-11-20"]
+        if mode == "success":
+            assert month["expiry"] == "2026-11-20"
+            validate_covered_call_cycle(month,STAMP,STAMP,"monthly")
+        else:
+            assert set(month) == {"unavailable"}
+            assert "2026-11-20" in month["unavailable"]
 
 
 def test_nasdaq_queries_standard_expiry_when_initial_chain_lists_only_weekly():
@@ -147,27 +140,22 @@ def test_nasdaq_queries_standard_expiry_when_initial_chain_lists_only_weekly():
                 "table":{"rows":[{"expirygroup":expiry},item] if expiry else []}}}
     def http(url):
         all_requests.append(url)
-        if "fromdate=2026-11-20" in url:return payload(None)
-        if "fromdate=2026-12-18" in url:return payload("December 18, 2026")
+        if "fromdate=2026-11-20" in url:return payload("November 20, 2026")
         return payload("December 11, 2026")
     with patch.object(builder,"http_json",side_effect=http):
         result=builder.nasdaq_us_options("UNIT",100,ASOF,STAMP)["monthly"]
-    assert result["expiry"]=="2026-12-18"
-    assert not result.get("monthly_nonstandard")
-    assert len(all_requests)==3
-    assert result["quote_observation"]["kind"]=="TWO_SIDED"
+    assert result["expiry"]=="2026-11-20"
+    assert len(all_requests)==2
+    assert result.get("suggestions") or result.get("quote_observation")
     validate_covered_call_cycle(result,STAMP,STAMP,"monthly")
 
 
-def test_nordic_rechecks_full_source_then_falls_back_if_standard_not_listed():
+def test_nordic_rechecks_nearest_standard_then_refuses_if_not_listed():
     from unittest.mock import patch
     from tests.test_monthly_options_fallback import nordic_row
     initial=nordic_row(date(2026,12,11))
-    standard=nordic_row(date(2026,12,18))
-    for refreshed,expected,nonstandard in (
-        ([initial,standard],"2026-12-18",False),
-        ([initial],"2026-12-11",True),
-    ):
+    standard=nordic_row(date(2026,11,20))
+    for refreshed,available in (([initial,standard],True), ([initial],False)):
         requests=[]
         def http(url):
             requests.append(url)
@@ -176,7 +164,10 @@ def test_nordic_rechecks_full_source_then_falls_back_if_standard_not_listed():
         with patch.object(builder,"http_json",side_effect=http):
             cycle=builder.nordic_options("SIVE.ST","SIVE",100,ASOF,STAMP,
                 "synthetic",spot_currency="SEK")["monthly"]
-        assert cycle["expiry"]==expected
-        assert bool(cycle.get("monthly_nonstandard")) is nonstandard
         assert len(requests)==2
-        validate_covered_call_cycle(cycle,STAMP,STAMP,"monthly")
+        if available:
+            assert cycle["expiry"]=="2026-11-20"
+            validate_covered_call_cycle(cycle,STAMP,STAMP,"monthly")
+        else:
+            assert set(cycle)=={"unavailable"}
+            assert "2026-11-20" in cycle["unavailable"]

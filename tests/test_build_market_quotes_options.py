@@ -514,7 +514,7 @@ class FallbackTests(unittest.TestCase):
         builder.us_options = lambda symbol, spot, today, stamp: (_ for _ in ()).throw(ValueError("yahoo down"))
         builder.nasdaq_us_options = lambda symbol, spot, today, stamp: {c: {"unavailable": "Nasdaq 期權鏈讀取失敗"} for c in builder.CYCLES}
         out = builder.us_cycles("NVDA", 225.0, self.TODAY, self.STAMP)
-        self.assertEqual(out["monthly"]["unavailable"], "期權鏈讀取失敗（Yahoo 與 Nasdaq 備援）")
+        self.assertEqual(out["monthly"]["unavailable"], "Nasdaq 期權鏈讀取失敗")  # no authenticated fallback health: preserve source text
 
     def test_alpha_vantage_quote_needs_a_key_keeps_a_daily_budget_and_never_exposes_the_key(self):
         def fake_http(url):
@@ -1187,7 +1187,7 @@ class OptionPresessionAcceptanceTests(unittest.TestCase):
         builder.http_json = lambda url: nasdaq_urls.append(url) or {"data": {"table": {"rows": []}}}
 
         res_v4 = builder.us_cycles("V2", 100.0, self.TODAY, self.STAMP)
-        self.assertEqual(len(nasdaq_urls), 1)
+        self.assertEqual(len(nasdaq_urls), 2)  # broad response plus one exact nearest-standard lookup
         self.assertTrue(all(not x["read"] for x in res_v4.health))
         self.assertTrue(all(x["status"] == "EMPTY_RESPONSE" for x in res_v4.health))
 
@@ -1342,18 +1342,16 @@ class OptionPresessionAcceptanceTests(unittest.TestCase):
         builder.http_json = lambda url: {"data": {"instrumentListing": {"rows": rows}}}
         cycles = builder.nordic_options("SEL.ST", "SEL", 100.0, self.TODAY, self.STAMP, "TX_SEL", spot_currency="SEK")
         selected = {h["cycle"]: (h["expiry"], h["read"], h["two_sided"]) for h in cycles.health}
-        # The second listed standard monthly is screened when the nearest lacks a two-sided quote.
-        self.assertEqual(selected, {"weekly": ("2026-10-02", True, True), "monthly": ("2026-11-20", True, True)})
-        # The second expiry's verified two-sided quote clears the 6% hurdle,
-        # so the existing strategy path is retained, not converted into an observation.
-        self.assertTrue(cycles["monthly"]["suggestions"])
-        self.assertGreaterEqual(cycles["monthly"]["suggestions"][0]["annualized_yield"], .06)
+        # A quoted successor never replaces the unquoted nearest standard.
+        self.assertEqual(selected, {"weekly": ("2026-10-02", True, True), "monthly": ("2026-10-16", True, False)})
+        self.assertEqual(cycles["monthly"]["suggestions"], [])
+        self.assertEqual(cycles["monthly"]["quote_observation"]["kind"], "NO_TWO_SIDED")
 
         sys.modules["yfinance"] = FakeYFinanceModule({"SEL.ST": FakeTicker("SEL.ST", price=100.0, currency="SEK")})
         builder.broad_universe = lambda now: {"us": [], "sweden": {"SEL.ST": "TX_SEL"}}
         doc = builder.build(self.NOW)
         self.assertEqual(doc["collection"]["chain_health"]["STOCKHOLM"]["read"], 2)     # all groups would give 5
-        self.assertEqual(doc["collection"]["chain_health"]["STOCKHOLM"]["healthy"], 2)  # only selected weekly+monthly, not all groups
+        self.assertEqual(doc["collection"]["chain_health"]["STOCKHOLM"]["healthy"], 1)  # nearest monthly has no two-sided quote
 
     def test_05f_partial_yahoo_fallback_counts_only_the_retry_cycle(self):
         """Matrix Item 5 (Astra r2 fix 1): Yahoo reads the weekly chain with zero quotes and fails the monthly chain;
@@ -1861,18 +1859,15 @@ class NonUsTypedEvidenceTests(unittest.TestCase):
         self.assertNotIn("unavailable", mixed["monthly"], "a valid chain survives malformed siblings")
 
     def test_each_cycle_distinguishes_out_of_policy_from_unusable_in_window_terms(self):
-        # The next standard monthly now supplies an observation when the nearer one is term-invalid.
+        # Invalid nearest-month terms must not make a quoted successor eligible.
         nonstandard_nearest = self.nordic([self.call(16, contractSize="50"), self.call(51)])
-        self.assertNotIn("unavailable", nonstandard_nearest["monthly"])
-        self.assertEqual(nonstandard_nearest["monthly"]["expiry"], "2026-11-20")
-        self.assertTrue(nonstandard_nearest["monthly"]["suggestions"])
-        self.assertGreaterEqual(nonstandard_nearest["monthly"]["suggestions"][0]["annualized_yield"], .06)
+        self.assertIn("2026-10-16", nonstandard_nearest["monthly"]["unavailable"])
+        self.assertIn("合約單位非標準100股", nonstandard_nearest["monthly"]["unavailable"])
         self.assertIn("所列到期不在本週或下週策略範圍", nonstandard_nearest["weekly"]["unavailable"])
         self.assertIn("2026-10-16（16天）", nonstandard_nearest["weekly"]["unavailable"])
         unknown = self.nordic([self.call(16, contractSize=None), self.call(51)])
-        self.assertEqual(unknown["monthly"]["expiry"], "2026-11-20")
-        self.assertTrue(unknown["monthly"]["suggestions"])
-        self.assertGreaterEqual(unknown["monthly"]["suggestions"][0]["annualized_yield"], .06)
+        self.assertIn("2026-10-16", unknown["monthly"]["unavailable"])
+        self.assertIn("合約單位或幣別來源未確認", unknown["monthly"]["unavailable"])
         mixed_terms = self.nordic([self.call(16, contractSize="50", orderbookId="OBa"), self.call(16, 126.0, currency="USD", orderbookId="OBb"),
                                    self.call(16, 127.0, currency=None, orderbookId="OBc")])
         for part in ("合約單位非標準100股", "合約幣別與 SEK 不符", "合約單位或幣別來源未確認"):
@@ -1881,10 +1876,9 @@ class NonUsTypedEvidenceTests(unittest.TestCase):
         standard_beside_bad = self.nordic([self.call(16), self.call(51, contractSize="50")])
         self.assertNotIn("unavailable", standard_beside_bad["monthly"])
         no_monthly = self.nordic([self.call(23), self.call(30)])  # only non-standard expiry dates
-        self.assertEqual(no_monthly["monthly"]["expiry"], "2026-10-23")
-        self.assertIs(no_monthly["monthly"]["monthly_nonstandard"], True)
-        self.assertEqual(no_monthly["monthly"]["suggestions"], [])
-        self.assertEqual({h["status"] for h in no_monthly.health if h["cycle"] == "monthly"}, {"READ"})
+        self.assertIn("2026-10-16", no_monthly["monthly"]["unavailable"])
+        self.assertEqual(set(no_monthly["monthly"]), {"unavailable"})
+        self.assertEqual({h["status"] for h in no_monthly.health if h["cycle"] == "monthly"}, {"NO_EXPIRY"})
 
     def test_out_of_window_diagnostics_list_at_most_two_distinct_nearest_expiries(self):
         result = self.nordic([self.call(day) for day in (80, 62, 61, 63, 61)])
@@ -1923,14 +1917,9 @@ class NonUsTypedEvidenceTests(unittest.TestCase):
             weekly, monthly = "unavailable" not in out["weekly"], "unavailable" not in out["monthly"]
             # calendar-week rule as of Wed 2026-09-30 after the Stockholm close: a single listed expiry is a weekly for 1 <= DTE <= 11
             self.assertEqual(weekly, 1 <= dte <= 11, f"weekly {dte}")
-            # a single listed expiry is a monthly only when it is a standard monthly: 2026-10-16 (16 DTE) and 2026-11-20 (51 DTE), or, when the
-            # third Friday itself is not listed, the Monday-Thursday of its week (2026-10-12..10-15, 12-15 DTE)
-            # Any source-backed 7-60DTE expiry retains a dated monthly LINE;
-            # only the standard monthly itself may become an actionable strategy.
-            self.assertEqual(monthly, 7 <= dte <= 60, f"monthly {dte}")
-            if monthly and dte not in (12, 13, 14, 15, 16, 51):
-                self.assertIs(out["monthly"]["monthly_nonstandard"], True)
-                self.assertEqual(out["monthly"]["suggestions"], [])
+            # Only the nearest standard third Friday is eligible; Thursday rows
+            # without verified calendar proof are not inferred holiday shifts.
+            self.assertEqual(monthly, dte == 16, f"monthly {dte}")
             for cycle in ("weekly", "monthly"):
                 if "unavailable" not in out[cycle]:
                     self.assertEqual(out[cycle]["ticker"], "SIVE.ST")
