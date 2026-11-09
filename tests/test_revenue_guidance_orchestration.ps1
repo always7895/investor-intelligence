@@ -205,9 +205,6 @@ function Invoke-B2FaultDaily {
     $results[0]
 }
 
-$ranking3h = 'bottleneck_v3|scripts\bottleneck_top20_v3.py --if-older-than-hours 3'
-$ranking0h = 'bottleneck_v3|scripts\bottleneck_top20_v3.py --if-older-than-hours 0'
-
 # ---------------------------------------------------------------------------
 Write-Output 'CASE 1: both options omitted vs both explicitly false -> identical daily steps/args, aggregate success, provider unused, B2 DISABLED'
 $script:Store = New-B2Store
@@ -222,16 +219,20 @@ $sigs2 = (Get-StepSignatures $script:Rec) -join '; '
 $expectedSteps = @(
     'zh_names|scripts\build_zh_names.py --if-older-than-hours 168',
     'identity_shards|scripts\build_identity_shards.py --if-older-than-hours 20',
-    'serenity_signals|scripts\serenity_signals.py --refresh --if-older-than-hours 6',
+    'serenity_signals|scripts\serenity_signals.py --refresh --if-older-than-hours 0.9',
     'revenue_consensus|scripts\revenue_consensus_quarterly.py --if-older-than-hours 6',
     'industry_rotation|scripts\industry_rotation.py --refresh --if-older-than-hours 20',
     'company_reports|scripts\company_deep_report.py --refresh --if-older-than-hours 20',
-    'leopold_13f|scripts\leopold_positions.py --if-older-than-hours 24',
+    'leopold_13f|scripts\leopold_positions.py --if-older-than-hours 0.9',
+    'public_events|scripts\public_event_research.py --refresh-sec --if-older-than-hours 0.9',
     'guidance_release_check|scripts\revenue_guidance_release_check.py --if-older-than-hours 0.9',
-    'bottleneck_v3|scripts\bottleneck_top20_v3.py --if-older-than-hours 3',
+    'bottleneck_v3|scripts\bottleneck_top20_v3.py --if-older-than-hours 0',
     'price_shards|scripts\build_price_shards.py --if-older-than-hours 2.9',
     'market_observations|scripts\build_market_quotes_options.py --if-older-than-hours 0.9'
 )
+# Auto mode owns the pair through the acquired provider and same-owner ranking
+# collaborator. Every other step retains exactly the disabled plan's order/args.
+$expectedIndependentSteps = @($expectedSteps | Where-Object { $_ -notmatch '^(guidance_release_check|bottleneck_v3)\|' })
 Assert-True ($sigs1 -eq ($expectedSteps -join '; ')) 'case1 omitted-options exact existing step list/arguments'
 Assert-True ($sigs2 -eq ($expectedSteps -join '; ')) 'case1 explicit-false exact existing step list/arguments'
 Assert-Equal $r1.ExitCode 0 'case1 omitted-options aggregate success'
@@ -242,7 +243,7 @@ Assert-Equal $script:Store.Operations.Count 0 'case1 provider never acquired in 
 Assert-Equal $script:Store.RankingCalls.Count 0 'case1 same-owner ranking unused'
 
 # ---------------------------------------------------------------------------
-Write-Output 'CASE 2: auto true, provider available, ordinary unchanged/clean refresh -> ordered check then updater, normal 3h ranking exactly once, NO_CHANGE'
+Write-Output 'CASE 2: auto true, provider available, ordinary unchanged/clean refresh -> ordered check then updater, hourly ranking exactly once, NO_CHANGE'
 $script:Store = New-B2Store -ChangedThisRun $false -NewPending $null
 $script:Store.TraceSteps = $true
 $provider2 = New-B2InMemoryProvider
@@ -253,6 +254,7 @@ $sigs = (Get-StepSignatures $script:Rec) -join '; '
 Assert-Equal $r.B2.Disposition 'NO_CHANGE' 'case2 disposition'
 Assert-Equal $r.B2.ExitCode 0 'case2 B2 exit zero'
 Assert-Equal $r.ExitCode 0 'case2 aggregate success'
+Assert-Equal $sigs ($expectedIndependentSteps -join '; ') 'case2 exact independent step list/arguments'
 Assert-True ($sigs -notlike '*guidance_release_check*') 'case2 no legacy checker step in enabled mode'
 Assert-True ($sigs -notlike '*bottleneck_v3*') 'case2 no generic ranking fallback'
 Assert-Equal $script:Store.RankingCalls.Count 1 'case2 same-owner ranking exactly once'
@@ -278,6 +280,7 @@ $sigs = (Get-StepSignatures $script:Rec) -join '; '
 Assert-Equal $r.B2.Disposition 'CHANGED_REBUILD_PENDING' 'case3 disposition'
 Assert-Equal $r.B2.ExitCode 1 'case3 B2 nonzero'
 Assert-Equal $r.ExitCode 1 'case3 aggregate nonzero'
+Assert-Equal $sigs ($expectedIndependentSteps -join '; ') 'case3 exact independent step list/arguments despite pending rebuild'
 Assert-True ($r.B2.PendingRevision -eq 'input-v2') 'case3 pending revision retained in result'
 Assert-True (-not $r.B2.RankingAttempted) 'case3 no ranking attempted'
 Assert-True (-not $r.B2.ForcedRebuildAttempted) 'case3 no forced rebuild attempted'
@@ -302,6 +305,7 @@ $sigs = (Get-StepSignatures $script:Rec) -join '; '
 Assert-Equal $r.B2.Disposition 'REBUILD_COMPLETED' 'case4 disposition'
 Assert-Equal $r.B2.ExitCode 0 'case4 B2 exit zero'
 Assert-Equal $r.ExitCode 0 'case4 aggregate success'
+Assert-Equal $sigs ($expectedIndependentSteps -join '; ') 'case4 exact independent step list/arguments after completed rebuild'
 Assert-True ($sigs -notlike '*bottleneck_v3*') 'case4 no generic ranking fallback'
 Assert-Equal $script:Store.RankingCalls.Count 1 'case4 same-owner ranking exactly once'
 Assert-RankingCall 0 'Dirty' 'input-v2'
@@ -328,6 +332,7 @@ $sigs = (Get-StepSignatures $script:Rec) -join '; '
 Assert-Equal $r.B2.Disposition 'REBUILD_COMPLETED' 'case5 disposition'
 Assert-Equal $r.B2.ExitCode 0 'case5 B2 exit zero'
 Assert-Equal $r.ExitCode 0 'case5 aggregate success'
+Assert-Equal $sigs ($expectedIndependentSteps -join '; ') 'case5 exact independent step list/arguments after retained-pending recovery'
 Assert-True ($sigs -notlike '*bottleneck_v3*') 'case5 no generic ranking fallback'
 Assert-Equal $script:Store.RankingCalls.Count 1 'case5 same-owner ranking exactly once'
 Assert-RankingCall 0 'Dirty' 'input-v2'
@@ -357,6 +362,8 @@ Assert-Equal $rb.B2.Disposition 'NO_CHANGE' 'case6 second invocation NO_CHANGE'
 Assert-Equal $ra.ExitCode 0 'case6 first aggregate success'
 Assert-Equal $rb.ExitCode 0 'case6 second aggregate success'
 Assert-True ($sigsA -eq $sigsB) 'case6 stable command order across invocations'
+Assert-Equal $sigsA ($expectedIndependentSteps -join '; ') 'case6 first exact independent step list/arguments'
+Assert-Equal $sigsB ($expectedIndependentSteps -join '; ') 'case6 second exact independent step list/arguments'
 Assert-True ($sigsB -notlike '*bottleneck_v3*') 'case6 no generic ranking fallback'
 Assert-Equal $script:Store.RankingCalls.Count 2 'case6 one same-owner ranking per invocation'
 Assert-RankingCall 0 'Cadence' $null
