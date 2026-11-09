@@ -1086,7 +1086,7 @@ class OptionPresessionAcceptanceTests(unittest.TestCase):
             self.assertIn("unavailable", written["options"]["US_0"]["monthly"])
 
     def test_nasdaq_monthly_empty_rows_are_not_reported_as_untyped_contracts(self):
-        with mock.patch.object(builder, "http_json", return_value={"data": {"table": {"rows": []}}}):
+        with patch.object(builder, "http_json", return_value={"data": {"table": {"rows": []}}}):
             result = builder.nasdaq_us_options("AAPL", 100.0, self.TODAY, self.STAMP)
         self.assertEqual({item["status"] for item in result.health}, {"EMPTY_RESPONSE"})
         self.assertIn("本次回應無期權鏈資料", result["monthly"]["unavailable"])
@@ -1096,7 +1096,7 @@ class OptionPresessionAcceptanceTests(unittest.TestCase):
     def test_nasdaq_monthly_untyped_rows_keep_the_contract_verification_cause(self):
         response = {"data": {"lastTrade": last_trade(self.TODAY), "table": {"rows": [
             {"expirationDate": "2026-10-16", "strike": "unverified", "c_Bid": "1.0", "c_Ask": "1.1"}]}}}
-        with mock.patch.object(builder, "http_json", return_value=response):
+        with patch.object(builder, "http_json", return_value=response):
             result = builder.nasdaq_us_options("AAPL", 100.0, self.TODAY, self.STAMP)
         self.assertEqual({item["status"] for item in result.health}, {"SOURCE_ROWS_NOT_TYPED"})
         self.assertIn("無法解析為經核驗標準契約", result["monthly"]["unavailable"])
@@ -1106,14 +1106,14 @@ class OptionPresessionAcceptanceTests(unittest.TestCase):
         empty = {"data": {"table": {"rows": []}}}
         untyped = {"data": {"lastTrade": last_trade(self.TODAY), "table": {"rows": [
             {"expirationDate": "2026-10-16", "strike": "unverified", "c_Bid": "1.0", "c_Ask": "1.1"}]}}}
-        with mock.patch.object(builder, "http_json", side_effect=[empty, untyped]):
+        with patch.object(builder, "http_json", side_effect=[empty, untyped]):
             result = builder.nasdaq_us_options("AAPL", 100.0, self.TODAY, self.STAMP)
         self.assertEqual({item["status"] for item in result.health}, {"SOURCE_ROWS_NOT_TYPED"})
         self.assertIn("無法解析為經核驗標準契約", result["monthly"]["unavailable"])
 
     def test_nasdaq_unreadable_rows_are_not_treated_as_an_empty_chain(self):
         for rows in ({}, "unreadable", False):
-            with self.subTest(rows=rows), mock.patch.object(builder, "http_json",
+            with self.subTest(rows=rows), patch.object(builder, "http_json",
                     return_value={"data": {"table": {"rows": rows}}}):
                 result = builder.nasdaq_us_options("AAPL", 100.0, self.TODAY, self.STAMP)
             self.assertEqual({item["status"] for item in result.health}, {"READ_ERROR"})
