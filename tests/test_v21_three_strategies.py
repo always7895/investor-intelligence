@@ -69,8 +69,8 @@ class FloorTests(unittest.TestCase):
             row = {"strike": 105.0, "bid": bid, "ask": ask, "delta": 0.10, "iv": None, "oi": 1, "volume": 1}
             self.assertEqual(len(builder.covered_call_suggestions([row], 100.0, 0)), expected, bid)
         wide = {"strike": 105.0, "bid": 0.30, "ask": 0.60, "delta": 0.10, "iv": None, "oi": 1, "volume": 1}  # spread 67% of mid: still tradeable
-        self.assertEqual(builder.covered_call_suggestions([wide], 100.0, 30)[0]["limit_price"], 0.37)
-        self.assertEqual(builder.covered_call_suggestions([{**wide, "ask": 0.90}], 100.0, 30), [])  # spread over 100% of mid: refused
+        self.assertEqual(builder.covered_call_suggestions([wide], 100.0, 30)[0]["limit_price"], 0.45)
+        self.assertEqual(builder.covered_call_suggestions([{**wide, "ask": 0.90}], 100.0, 30)[0]["limit_price"], 0.60)
 
 
 class PutParsingTests(unittest.TestCase):
@@ -215,9 +215,18 @@ class SelectionTests(unittest.TestCase):
         self.assertEqual(builder._buy_limit(0.50, 0.53), 0.52)   # mid 0.515 -> up to 0.52
         self.assertEqual(builder._buy_limit(0.50, 0.51), 0.51)   # mid 0.505 -> 0.51 = ask
         self.assertEqual(builder._buy_limit(0.50, 0.5049), 0.5049)  # capped at an off-tick ask
-        self.assertEqual(builder._buy_limit(1.00, 1.50), 1.38)   # wide spread: ask minus a quarter, rounded up (1.375 -> 1.38)
+        self.assertEqual(builder._buy_limit(1.00, 1.50), 1.25)
         self.assertEqual(builder._sell_limit(0.50, 0.53), 0.51)
-        self.assertEqual(builder._sell_limit(1.00, 1.50), 1.12)  # wide spread: bid plus a quarter, rounded down
+        self.assertEqual(builder._sell_limit(1.00, 1.50), 1.25)
+        for bid, ask in ((0.5, 2.5), (0.005, 0.006), (0.5051, 0.5052), (0.50999, 0.51001), (1.00001, 1.00002)):
+            with self.subTest(bid=bid, ask=ask):
+                sell, buy = builder._sell_limit(bid, ask), builder._buy_limit(bid, ask)
+                self.assertLessEqual(bid, sell)
+                self.assertLessEqual(sell, (bid + ask) / 2)
+                self.assertLessEqual((bid + ask) / 2, buy)
+                self.assertLessEqual(buy, ask)
+        self.assertEqual(builder._sell_limit(0.005, None), 0.005)
+        self.assertEqual(builder._buy_limit(None, 0.005), 0.005)
 
 
 class FailClosedTests(unittest.TestCase):
@@ -230,15 +239,11 @@ class FailClosedTests(unittest.TestCase):
             self.assertNotIn("items", block, f"{label} {name}")
             self.assertTrue(block["unavailable"], label)
 
-    def test_no_put_rows_one_sided_inverted_zero_and_nan_quotes_make_only_the_put_strategies_unavailable(self) -> None:
+    def test_empty_inverted_and_nonfinite_put_quotes_refuse_only_put_strategies(self) -> None:
         cases = {
             "empty put table": [],
-            "one-sided (no bid)": [(k, None, a) for k, b, a in chains.PUTS],
-            "one-sided (no ask)": [(k, b, None) for k, b, a in chains.PUTS],
             "inverted": [(k, a, b) for k, b, a in chains.PUTS],
-            "zero bid": [(k, 0.0, a) for k, b, a in chains.PUTS],
             "nan": [(k, float("nan"), float("nan")) for k, b, a in chains.PUTS],
-            "spread wider than the mid": [(k, 0.01, 0.50) for k, b, a in chains.PUTS],
         }
         for label, puts in cases.items():
             self.assert_put_side_unavailable(yahoo_cycle(chains.yahoo_chain(puts=puts)), f"yahoo {label}")
@@ -284,7 +289,6 @@ class FailClosedTests(unittest.TestCase):
         expected_csp = yahoo_cycle()["strategies"]["csp"]
         cases = {
             "no bid": [(k, None, a) for k, b, a in chains.CALLS],
-            "no ask": [(k, b, None) for k, b, a in chains.CALLS],
             "zero bid": [(k, 0.0, a) for k, b, a in chains.CALLS],
             "inverted": [(k, a, b) for k, b, a in chains.CALLS],
             "nan": [(k, float("nan"), float("nan")) for k, b, a in chains.CALLS],
@@ -370,59 +374,174 @@ class FailClosedTests(unittest.TestCase):
                     self.assertFalse(block.get("items"), name)
 
 
-class ObservationReasonTests(unittest.TestCase):
-    def test_all_unavailable_reasons_survive_producer_and_validation(self) -> None:
-        from tests.fixtures.v21_worker_cases import generate_fixture_document
-        cases = generate_fixture_document()["observations"]
-        expected = {
-            "wide_all": ("買權買賣價差大於中價", "賣權買賣價差大於中價", "賣權買賣價差大於中價"),
-            "no_two_sided_put": ("買權買賣價差大於中價", "賣權無有效雙邊報價", "賣權無有效雙邊報價"),
-            "absent_puts": ("買權買賣價差大於中價", "無該到期的賣權報價", "無該到期的賣權報價"),
-            "unknown_puts": ("買權買賣價差大於中價", "無法判定賣權鏈是否缺漏", "無法判定賣權鏈是否缺漏"),
-        }
-        for name, reasons in expected.items():
-            with self.subTest(name=name):
-                cycle = cases[name]
+class OneSidedRecommendationTests(unittest.TestCase):
+    def test_yahoo_optional_ask_is_null_and_limits_and_yields_use_real_bid(self) -> None:
+        for absent in (None, 0.0):
+            chain = chains.yahoo_chain(calls=[(k, b, absent) for k, b, _ in chains.CALLS],
+                                       puts=[(k, b, absent) for k, b, _ in chains.PUTS])
+            with mock.patch.dict(sys.modules, {"yfinance": chains.yahoo_module(chain)}):
+                result = builder.us_options("AAA", SPOT, TODAY, STAMP)
+            cycle = result["monthly"]
+            validate(cycle)
+            self.assertFalse(next(h for h in result.health if h["cycle"] == "monthly")["two_sided"])
+            self.assertNotIn("quote_observation", cycle)
+            tiers = cycle["suggestions"] + ([cycle["middle_suggestion"]] if "middle_suggestion" in cycle else [])
+            for item in tiers:
+                self.assertIsNone(item["ask"])
+                self.assertIsNone(item["mid"])
+                self.assertIsNone(item["spread_pct"])
+                self.assertEqual(item["limit_price"], item["bid"])
+                self.assertEqual(item["premium_per_contract"], round(item["bid"] * 100, 2))
+                self.assertEqual(item["annualized_yield"], round(item["bid"] / SPOT * 365 / chains.DTE, 6))
+            for item in cycle["strategies"]["csp"]["suggestions"]:
+                self.assertIsNone(item["ask"])
+                self.assertEqual(item["limit_price"], item["bid"])
+                self.assertEqual(item["annualized_yield"], round(item["bid"] / item["strike"] * 365 / chains.DTE, 6))
+            self.assertIn("買入 Ask", cycle["strategies"]["collar"]["unavailable"])
+
+    def test_protective_put_needs_ask_not_bid_and_csp_degrades_independently(self) -> None:
+        for absent in (None, 0.0):
+            cycle = yahoo_cycle(chains.yahoo_chain(
+                calls=[(k, b, None) for k, b, _ in chains.CALLS],
+                puts=[(k, absent, a) for k, _, a in chains.PUTS]))
+            validate(cycle)
+            self.assertIn("賣出 Bid", cycle["strategies"]["csp"]["unavailable"])
+            collar = cycle["strategies"]["collar"]
+            put = collar["put"]
+            self.assertIsNone(put["bid"])
+            self.assertEqual(put["limit_price"], put["ask"])
+            for item in collar["items"]:
+                call = item["call"]
+                self.assertIsNone(call["ask"])
+                self.assertEqual(call["limit_price"], call["bid"])
+                self.assertEqual(item["net_premium_per_share"], round(call["bid"] - put["ask"], 4))
+                self.assertEqual(item["worst_case_net_per_share"], item["net_premium_per_share"])
+
+    def test_weekly_one_sided_quotes_reach_selection_without_becoming_healthy(self) -> None:
+        calls, puts = chains.bs_chain(3)
+        chain = chains.yahoo_chain([(k, b, None) for k, b, _ in calls],
+                                   [(k, None, a) for k, _, a in puts])
+        stamp = "2026-10-13T15:00:00Z"
+        with mock.patch.dict(sys.modules, {"yfinance": chains.yahoo_module(chain, "2026-10-16")}):
+            result = builder.us_options("AAA", SPOT, date(2026, 10, 13), stamp)
+        cycle = result["weekly"]
+        validate_covered_call_cycle(cycle, evaluated_at=stamp, document_at=stamp, period="weekly")
+        self.assertTrue(cycle["suggestions"])
+        self.assertTrue(cycle["strategies"]["collar"]["items"])
+        self.assertFalse(next(h for h in result.health if h["cycle"] == "weekly")["two_sided"])
+
+    def test_missing_midpoint_never_fabricates_delta_or_reinterprets_a_call_delta(self) -> None:
+        call = {"strike": 110.0, "bid": 0.5, "ask": None, "iv": None}
+        put = {"strike": 94.0, "bid": 0.5, "ask": None, "iv": None}
+        self.assertIsNone(builder.with_delta(call, SPOT, chains.DTE)["delta"])
+        self.assertIsNone(builder.with_put_delta(put, SPOT, chains.DTE)["delta"])
+        self.assertIsNone(builder.with_put_delta({**put, "delta": 0.25}, SPOT, chains.DTE)["delta"])
+        self.assertEqual(builder.with_put_delta({**put, "delta": -0.25}, SPOT, chains.DTE)["delta"], 0.25)
+        self.assertEqual(builder.covered_call_suggestions([call], SPOT, chains.DTE), [])
+        self.assertIn("缺少可核驗 delta", builder.cash_secured_put_tiers([put], SPOT, chains.DTE)[1])
+        for delta in (-0.1, True, float("nan"), float("inf"), 1.1, 0.2003):
+            self.assertEqual(builder.covered_call_suggestions([{**call, "delta": delta}], SPOT, chains.DTE), [])
+        for strike in (100.0, 99.0, 110.001):
+            self.assertEqual(builder.covered_call_suggestions([{**call, "strike": strike, "delta": 0.1}], SPOT, chains.DTE), [])
+        for delta in (-0.1999, -0.3001):
+            self.assertEqual(builder.cash_secured_put_tiers([{**put, "delta": delta}], SPOT, chains.DTE)[0], [])
+
+    def test_malformed_opposite_quotes_are_not_normalized_as_absence(self) -> None:
+        for invalid in (-0.01, float("nan"), float("inf"), 10**309, True, "bad", [], {}):
+            with self.subTest(invalid=invalid):
+                chain = chains.yahoo_chain(calls=[(112.0, 0.5, invalid)])
+                cycle = yahoo_cycle(chain)
                 validate(cycle)
-                self.assertEqual(cycle["expiry"], EXPIRY)
                 self.assertEqual(cycle["suggestions"], [])
-                self.assertEqual(cycle["quote_observation"]["kind"], "TWO_SIDED")
-                self.assertEqual(set(cycle["strategies"]), {"cc", "csp", "collar"})
-                for strategy, reason in zip(("cc", "csp", "collar"), reasons):
-                    self.assertIn(reason, cycle["strategies"][strategy]["unavailable"])
-                self.assertEqual(degrade_bad_strategy_blocks(cycle), cycle)
+                self.assertIn("報價格式", cycle["strategies"]["cc"]["unavailable"])
+                for parser in (builder._float, builder._nasdaq_us_quote, builder._nordic_price):
+                    value = builder._quote_value(invalid, parser)
+                    self.assertFalse(builder._quote_usable({"bid": 0.5, "ask": value}))
+                    self.assertFalse(builder._quote_usable({"bid": value, "ask": 0.5}, buy=True))
 
-    def test_independent_put_strategies_and_call_delta_reasons(self) -> None:
-        from tests.fixtures.v21_worker_cases import generate_fixture_document
-        cases = generate_fixture_document()["observations"]
-        healthy = yahoo_cycle()
-        wide = cases["wide_calls"]
-        validate(wide)
-        self.assertEqual(wide["strategies"]["csp"], healthy["strategies"]["csp"])
-        self.assertIn("買權買賣價差大於中價", wide["strategies"]["collar"]["unavailable"])
-        delta = cases["delta_call"]
-        validate(delta)
-        self.assertIn("Delta 不超過 0.20", delta["strategies"]["cc"]["unavailable"])
-        self.assertIn("delta 介於 0.20–0.30", delta["strategies"]["collar"]["unavailable"])
-        self.assertEqual(delta["strategies"]["csp"], healthy["strategies"]["csp"])
-        collar = cases["collar_only"]
-        validate(collar)
-        self.assertIn("0.20–0.30", collar["strategies"]["csp"]["unavailable"])
-        self.assertEqual(collar["strategies"]["collar"]["put"], healthy["strategies"]["collar"]["put"])
-        self.assertEqual([item["call"]["strike"] for item in collar["strategies"]["collar"]["items"]], [107.0])
-
-    def test_synthetic_nordic_299_wide_puts_are_not_reported_as_an_absent_chain(self) -> None:
-        puts = [(round(13 + index / 100, 2), 0.01, 0.50) for index in range(299)]
-        cycle = nordic_cycle(chains.nordic_rows(calls=[(16.4, 0.01, 0.50)], puts=puts), spot=16.2)["monthly"]
+    def test_subcent_bounded_limit_keeps_cent_rounded_premium_valid(self) -> None:
+        bid, ask = 0.005049, 0.00505
+        calls = [{"strike": 110.0, "bid": bid, "ask": ask, "delta": 0.1}]
+        puts = [{"strike": 94.0, "bid": bid, "ask": ask, "delta": -0.25}]
+        cycle = builder.cycle_result("AAA", EXPIRY, chains.DTE, SPOT, calls, currency="USD",
+            source="synthetic", provenance="https://example.com/options", rights=builder.YAHOO_RIGHTS_LABEL,
+            stamp=STAMP, asof=TODAY.isoformat(), identity=builder.YAHOO_OPTION_IDENTITY, puts=puts, monthly_rule="THIRD_FRIDAY")
         validate(cycle)
-        self.assertEqual(cycle["ticker"], "SIVE.ST")
-        for name in ("cc", "csp", "collar"):
-            self.assertIn("買賣價差大於中價", cycle["strategies"][name]["unavailable"])
-            self.assertNotIn("無該到期", cycle["strategies"][name]["unavailable"])
+        for item in (cycle["suggestions"][0], cycle["strategies"]["csp"]["suggestions"][0]):
+            self.assertEqual(item["limit_price"], bid)
+            self.assertEqual(item["premium_per_contract"], 0.50)
+        for leg in ("cc", "csp"):
+            for field, value in (("limit_price", bid - 1e-12), ("premium_per_contract", 0.52)):
+                bad = copy.deepcopy(cycle)
+                item = bad["suggestions"][0] if leg == "cc" else bad["strategies"]["csp"]["suggestions"][0]
+                item[field] = value
+                with self.assertRaises(MarketProductValidationError, msg=f"{leg} {field}"):
+                    validate(bad)
+
+    def test_one_sided_wire_validation_and_strategy_degradation(self) -> None:
+        good = yahoo_cycle(chains.yahoo_chain(calls=[(k, b, None) for k, b, _ in chains.CALLS],
+                                             puts=[(k, None, a) for k, _, a in chains.PUTS]))
+        validate(good)
+        for field, value in (("bid", None), ("ask", 0), ("ask", -1), ("ask", float("nan")),
+                             ("mid", 1), ("spread_pct", 0), ("limit_price", 99), ("delta_basis", "QUOTE_IMPLIED")):
+            bad = copy.deepcopy(good)
+            bad["suggestions"][0][field] = value
+            with self.assertRaises(MarketProductValidationError, msg=field):
+                validate(bad)
+        bad = copy.deepcopy(good)
+        bad["strategies"]["collar"]["put"]["ask"] = None
+        degraded = degrade_bad_strategy_blocks(bad)
+        validate(degraded)
+        self.assertEqual(degraded["suggestions"], good["suggestions"])
+        self.assertEqual(degraded["strategies"]["csp"], good["strategies"]["csp"])
+        self.assertEqual(degraded["strategies"]["collar"], {"unavailable": "報價未通過驗證"})
+
+
+class RecommendationReasonTests(unittest.TestCase):
+    def test_wide_quotes_use_midpoint_without_discarding_independent_strategies(self) -> None:
+        calls = [(k, 0.01, 0.50) for k, _, _ in chains.CALLS]
+        puts = [(k, 0.01, 0.50) for k, _, _ in chains.PUTS]
+        cycle = yahoo_cycle(chains.yahoo_chain(calls=calls, puts=puts))
+        validate(cycle)
+        self.assertNotIn("quote_observation", cycle)
+        self.assertEqual(cycle["suggestions"][0]["limit_price"], 0.25)
+        self.assertEqual(cycle["suggestions"][0]["premium_per_contract"], 25)
+        self.assertEqual(cycle["strategies"]["csp"]["suggestions"][0]["limit_price"], 0.25)
+        collar = cycle["strategies"]["collar"]
+        self.assertEqual(collar["put"]["limit_price"], 0.26)
+        self.assertEqual(collar["items"][0]["net_premium_per_share"], -0.01)
+        self.assertEqual(collar["items"][0]["worst_case_net_per_share"], -0.49)
+        for puts in ([], None):
+            independent = yahoo_cycle(chains.yahoo_chain(calls=calls, puts=puts))
+            validate(independent)
+            self.assertTrue(independent["suggestions"])
+            if puts is None:
+                self.assertNotIn("strategies", independent)
+            else:
+                for name in ("csp", "collar"):
+                    self.assertIn("無該到期", independent["strategies"][name]["unavailable"])
+
+    def test_call_delta_refusal_does_not_discard_valid_puts(self) -> None:
+        cycle = yahoo_cycle(chains.yahoo_chain(calls=[(104.0, 1.83, 1.87)]))
+        validate(cycle)
+        self.assertIn("Delta 不超過 0.20", cycle["strategies"]["cc"]["unavailable"])
+        self.assertIn("delta 介於 0.20–0.30", cycle["strategies"]["collar"]["unavailable"])
+        self.assertEqual(cycle["strategies"]["csp"], yahoo_cycle()["strategies"]["csp"])
+
+    def test_synthetic_nordic_wide_chain_uses_normal_delta_rules(self) -> None:
+        puts = [(round(13 + index / 100, 2), 0.01, 0.50) for index in range(299)]
+        cycle = nordic_cycle(chains.nordic_rows(calls=[(16.4, 0.5, 2.5)], puts=puts), spot=16.2)["monthly"]
+        validate(cycle)
+        self.assertEqual(cycle["suggestions"], [])
+        self.assertIn("Delta 不超過 0.20", cycle["strategies"]["cc"]["unavailable"])
+        self.assertTrue(cycle["strategies"]["csp"]["suggestions"])
+        for block in cycle["strategies"].values():
+            self.assertNotIn("價差", block.get("unavailable", ""))
 
     def test_later_expiry_puts_never_supply_the_nearest_months_strategy_or_reason(self) -> None:
         later = "2026-12-18"
-        calls = [{"expiry": EXPIRY, "dte": chains.DTE, "size": 100, "strike": 110.0, "bid": 0.01, "ask": 0.50}]
+        calls = [{"expiry": EXPIRY, "dte": chains.DTE, "size": 100, "strike": 110.0,
+                  "bid": 0.01, "ask": 0.50, "delta": 0.35}]
         puts = [{"expiry": later, "dte": (date.fromisoformat(later) - TODAY).days, "size": 100,
                  "strike": k, "bid": b, "ask": a, "iv": chains.IV} for k, b, a in chains.PUTS]
         cycle = builder._cycles_from_calls(calls, "AAA", SPOT, STAMP, currency="USD", source="synthetic",
@@ -430,17 +549,20 @@ class ObservationReasonTests(unittest.TestCase):
             today=TODAY, identity=builder.YAHOO_OPTION_IDENTITY, puts=puts)["monthly"]
         validate(cycle)
         self.assertEqual(cycle["expiry"], EXPIRY)
-        self.assertIn("買權買賣價差大於中價", cycle["strategies"]["cc"]["unavailable"])
+        self.assertIn("Delta 不超過", cycle["strategies"]["cc"]["unavailable"])
         for name in ("csp", "collar"):
             self.assertIn("無該到期的賣權報價", cycle["strategies"][name]["unavailable"])
 
-    def test_ineligible_itm_quotes_do_not_hide_otm_spread_or_missing_quote_failures(self) -> None:
-        for bid, ask, expected in ((0.01, 0.50, "買賣價差大於中價"), (None, 0.50, "無有效雙邊報價")):
+    def test_otm_required_side_and_delta_failures_are_distinguished(self) -> None:
+        for bid, ask, csp_reason, collar_reason in (
+                (None, 0.50, "賣出 Bid", "缺少可核驗 delta"),
+                (0.50, None, "缺少可核驗 delta", "買入 Ask"),
+                (0.50, 0.40, "倒掛", "倒掛")):
             puts = [{"strike": 90.0, "bid": bid, "ask": ask}, {"strike": 101.0, "bid": 1.0, "ask": 1.04}]
             calls = [{"strike": 110.0, "bid": bid, "ask": ask}, {"strike": 99.0, "bid": 1.0, "ask": 1.04}]
-            self.assertIn(expected, builder.cash_secured_put_tiers(puts, SPOT, chains.DTE)[1])
-            self.assertIn(expected, builder.collar_tiers(calls, puts, SPOT, chains.DTE)[1])
-            self.assertIn(expected, builder._covered_call_unavailable(calls, SPOT, chains.DTE, EXPIRY))
+            self.assertIn(csp_reason, builder.cash_secured_put_tiers(puts, SPOT, chains.DTE)[1])
+            self.assertIn(collar_reason, builder.collar_tiers(calls, puts, SPOT, chains.DTE)[1])
+            self.assertIn(csp_reason, builder._covered_call_unavailable(calls, SPOT, chains.DTE, EXPIRY))
 
     def test_all_unavailable_requires_a_valid_observation_and_cc_reason(self) -> None:
         cycle = yahoo_cycle(chains.yahoo_chain(calls=[(104.0, 1.83, 1.87)], puts=[]))
@@ -717,6 +839,35 @@ class CarryForwardTests(unittest.TestCase):
         self.assertEqual(carried["strategies"]["csp"]["suggestions"], self.cycle["strategies"]["csp"]["suggestions"])
         validate_covered_call_cycle(carried, evaluated_at=self.OFF_SESSION, document_at=self.OFF_SESSION.strftime("%Y-%m-%dT%H:%M:%SZ"),
                                     period="weekly", allow_previous_session=True)
+
+    def test_one_sided_live_recommendations_never_replace_a_two_sided_capture(self) -> None:
+        calls, puts = chains.bs_chain(3)
+        for name, call_rows, put_rows in (
+                ("call ask", [(k, b, None) for k, b, _ in calls], puts),
+                ("csp ask", calls, [(k, b, None) for k, b, _ in puts]),
+                ("protective bid", calls, [(k, None, a) for k, _, a in puts])):
+            with self.subTest(name=name):
+                chain = chains.yahoo_chain(call_rows, put_rows)
+                with mock.patch.dict(sys.modules, {"yfinance": chains.yahoo_module(chain, "2026-10-16")}):
+                    live = builder.us_options("T00", SPOT, date(2026, 10, 13), self.stamp)["weekly"]
+                validate_covered_call_cycle(live, self.stamp, self.stamp, "weekly")
+                state = self.state()
+                state.cycles, state._loaded = {"T00": {"weekly": copy.deepcopy(self.cycle)}}, True
+                self.assertEqual(state.capture({"T00": {"weekly": live}}, self.IN_SESSION), 0)
+                self.assertEqual(state.cycles["T00"]["weekly"], self.cycle)
+                self.assertFalse(carry._stored_cycle_ok("T00", "weekly", live, self.IN_SESSION))
+                options = {"T00": {"weekly": live}}
+                health = [{"venue": "US", "underlying": "T00", "expiry": "2026-10-16", "cycle": "weekly",
+                           "status": "READ", "read": True, "two_sided": False}]
+                self.assertEqual(state.apply(options, health, self.OFF_SESSION), 0)
+                self.assertEqual(options["T00"]["weekly"], live)
+                carried = copy.deepcopy(live)
+                carried["quote_basis"] = "previous_session_last"
+                for block in carried["strategies"].values():
+                    if "quote_basis" in block:
+                        block["quote_basis"] = "previous_session_last"
+                with self.assertRaisesRegex(MarketProductValidationError, "CARRIED_QUOTE_TWO_SIDED_REQUIRED"):
+                    validate_covered_call_cycle(carried, self.OFF_SESSION, self.OFF_SESSION, "weekly", allow_previous_session=True)
 
     def test_the_state_file_round_trips_strategies_and_a_tampered_block_is_not_trusted(self) -> None:
         with tempfile.TemporaryDirectory() as folder:

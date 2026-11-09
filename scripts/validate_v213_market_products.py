@@ -283,7 +283,10 @@ def _finite_number(value, name):
 
 
 def _agree(actual, expected, name, code):
-    if abs(_finite_number(actual, name) - expected) > max(1e-4, abs(expected) * 1e-3):
+    # Per-contract premiums are displayed in cents even when a bounded limit
+    # must retain an off-tick executable quote. Do not turn overflow into agreement.
+    absolute = 0.005 + 1e-9 if name == "premium_per_contract" else 1e-4
+    if not math.isfinite(expected) or abs(_finite_number(actual, name) - expected) > max(absolute, abs(expected) * 1e-3):
         raise MarketProductValidationError(f"{code}_DERIVED_MISMATCH: {name}")
 
 
@@ -293,21 +296,56 @@ STRATEGY_COLLAR_KEYS = frozenset({"role", "call", "net_premium_per_share", "max_
                                   "worst_case_net_per_share"})
 
 
-def _strategy_leg(leg, *, buy: bool, spot: float, put: bool, band: tuple[float, float], code: str, extra: frozenset = frozenset()) -> dict:
-    """One quoted leg (exact key set STRATEGY_LEG_KEYS plus `extra`): strike on the right side of the spot, a two-sided quote, the limit on
-    the right side of the mid (the mid is derived from bid and ask), an absolute delta inside the band and a known delta basis."""
-    if not isinstance(leg, dict) or set(leg) != STRATEGY_LEG_KEYS | extra:
-        raise MarketProductValidationError(f"{code}_SHAPE")
-    strike, bid, ask, limit = (_finite_number(leg.get(key), key) for key in ("strike", "bid", "ask", "limit_price"))
-    if not ((0 < strike < spot) if put else (strike > spot > 0)):
-        raise MarketProductValidationError(f"{code}_STRIKE_NOT_OUT_OF_THE_MONEY")
-    if not 0 < bid <= ask:
+def _execution_quote(leg: dict, *, buy: bool, code: str) -> tuple:
+    """Validate wire nullability and the bounded legacy-compatible limit envelope."""
+    bid = None if leg.get("bid") is None else _finite_number(leg["bid"], "bid")
+    ask = None if leg.get("ask") is None else _finite_number(leg["ask"], "ask")
+    limit = _finite_number(leg.get("limit_price"), "limit_price")
+    if not {"bid", "ask"} <= set(leg) or any(side is not None and side <= 0 for side in (bid, ask)):
+        raise MarketProductValidationError(f"{code}_PRICES_INCONSISTENT")
+    required = ask if buy else bid
+    if required is None:
+        raise MarketProductValidationError(f"{code}_REQUIRED_{'ASK' if buy else 'BID'}_MISSING")
+    if bid is None or ask is None:
+        if limit != required:
+            raise MarketProductValidationError(f"{code}_ONE_SIDED_LIMIT_INCONSISTENT")
+        if leg.get("delta_basis") == "QUOTE_IMPLIED":
+            raise MarketProductValidationError("ONE_SIDED_QUOTE_IMPLIED_DELTA_FORBIDDEN")
+        return bid, ask, None, limit
+    if bid > ask or not bid <= limit <= ask:
         raise MarketProductValidationError(f"{code}_PRICES_INCONSISTENT")
     mid = (bid + ask) / 2
-    if buy and not mid - 1e-9 <= limit <= ask + 1e-9:
+    if buy and limit < mid - 1e-9:
         raise MarketProductValidationError(f"{code}_BUY_LIMIT_OUTSIDE_MID_ASK")
-    if not buy and not bid - 1e-9 <= limit <= mid + 1e-9:
+    if not buy and limit > mid + 1e-9:
         raise MarketProductValidationError(f"{code}_PRICES_INCONSISTENT")
+    return bid, ask, mid, limit
+
+
+def has_two_sided_recommendations(cycle: dict) -> bool:
+    """After cycle validation, every recommended leg must be two-sided to qualify as a prior-session capture."""
+    legs = list(cycle.get("suggestions", []))
+    if cycle.get("middle_suggestion") is not None:
+        legs.append(cycle["middle_suggestion"])
+    strategies = cycle.get("strategies", {})
+    csp, collar = strategies.get("csp", {}), strategies.get("collar", {})
+    legs.extend(csp.get("suggestions", []))
+    if "put" in collar:
+        legs.append(collar["put"])
+        legs.extend(item["call"] for item in collar["items"])
+    return bool(legs) and all(leg["bid"] is not None and leg["ask"] is not None for leg in legs)
+
+
+def _strategy_leg(leg, *, buy: bool, spot: float, put: bool, band: tuple[float, float], code: str, extra: frozenset = frozenset()) -> dict:
+    """One quoted leg: executable side, bounded limit, OTM cent-exact strike, and a verified delta in the band."""
+    if not isinstance(leg, dict) or set(leg) != STRATEGY_LEG_KEYS | extra:
+        raise MarketProductValidationError(f"{code}_SHAPE")
+    strike = _finite_number(leg.get("strike"), "strike")
+    bid, ask, mid, limit = _execution_quote(leg, buy=buy, code=code)
+    if not ((0 < strike < spot) if put else (strike > spot > 0)):
+        raise MarketProductValidationError(f"{code}_STRIKE_NOT_OUT_OF_THE_MONEY")
+    if strike != round(strike, 2):
+        raise MarketProductValidationError(f"{code}_STRIKE_NOT_CENT_EXACT")
     delta = _finite_number(leg.get("delta"), "delta")
     if not 0 < delta <= 1:
         raise MarketProductValidationError("INVALID_DELTA_RANGE")
@@ -430,7 +468,7 @@ def degrade_bad_strategy_blocks(cycle):
 def validate_covered_call_cycle(cycle: dict, evaluated_at: str | datetime | None = None, document_at: str | datetime | None = None,
                                 period: str | None = None, *, allow_previous_session: bool = False) -> None:
     """Covered-call sell suggestions for one underlying and cycle (scripts/build_market_quotes_options.py): out-of-the-money
-    strikes with two-sided quotes, a limit between bid and mid, and every derived figure consistent with the prices. The
+    strikes with executable bids, a bounded sell limit, and every derived figure consistent with the prices. The
     optional additive middle_suggestion (role MIDDLE, strictly between the two suggestions' strikes), asof_date (exchange-local
     YYYY-MM-DD) and weekly_week (CURRENT or NEXT) are validated strictly when present and never required (older sealed rows).
     The carried basis (previous_session_last) is refused unless allow_previous_session is true (the sealer opts in; coverage does not).
@@ -626,22 +664,28 @@ def validate_covered_call_cycle(cycle: dict, evaluated_at: str | datetime | None
     if roles not in ([], ["HIGH_STRIKE"], ["HIGH_STRIKE", "BALANCED"]):
         raise MarketProductValidationError("COVERED_CALL_ROLES")
     def check_item(item: dict) -> float:
-        strike, bid, ask, mid, limit = (finite(item.get(key), key) for key in ("strike", "bid", "ask", "mid", "limit_price"))
+        strike = finite(item.get("strike"), "strike")
+        bid, ask, expected_mid, limit = _execution_quote(item, buy=False, code="COVERED_CALL")
         if not strike > spot > 0:
             raise MarketProductValidationError("COVERED_CALL_STRIKE_NOT_OUT_OF_THE_MONEY")
-        if not 0 < bid <= ask or abs(mid - (bid + ask) / 2) > 0.001 or not bid - 1e-9 <= limit <= mid + 1e-9:
+        if strike != round(strike, 2):
+            raise MarketProductValidationError("COVERED_CALL_STRIKE_NOT_CENT_EXACT")
+        if expected_mid is None:
+            if "mid" not in item or item["mid"] is not None or "spread_pct" not in item or item["spread_pct"] is not None:
+                raise MarketProductValidationError("COVERED_CALL_ONE_SIDED_MID_SPREAD")
+        elif abs(finite(item.get("mid"), "mid") - expected_mid) > 0.001:
             raise MarketProductValidationError("COVERED_CALL_PRICES_INCONSISTENT")
         checks = {"premium_per_contract": limit * 100, "period_yield": limit / spot,
                   "annualized_yield": limit / spot * 365 / annual_days, "upside_to_strike": strike / spot - 1}
         for key, expected in checks.items():
-            if abs(finite(item.get(key), key) - expected) > max(1e-4, abs(expected) * 1e-3):
-                raise MarketProductValidationError(f"COVERED_CALL_DERIVED_MISMATCH: {key}")
+            _agree(item.get(key), expected, key, "COVERED_CALL")
         delta = item.get("delta")
         if delta is not None and not 0 <= finite(delta, "delta") <= 1:
             raise MarketProductValidationError("INVALID_DELTA_RANGE")
         if item.get("role") == "HIGH_STRIKE" and (delta is None or finite(delta, "delta") > MAX_HIGH_STRIKE_DELTA):
             raise MarketProductValidationError("COVERED_CALL_HIGH_STRIKE_DELTA_ABOVE_LIMIT")
-        if item.get("delta_basis") not in (None, "QUOTED", "QUOTED_IV", "QUOTE_IMPLIED"):
+        if (item.get("delta_basis") not in (None, "QUOTED", "QUOTED_IV", "QUOTE_IMPLIED")
+                or (delta is not None and item.get("delta_basis") is None)):
             raise MarketProductValidationError("INVALID_DELTA_BASIS")
         if item.get("iv") is not None and not finite(item["iv"], "iv") > 0:
             raise MarketProductValidationError("INVALID_IMPLIED_VOLATILITY")
@@ -678,6 +722,8 @@ def validate_covered_call_cycle(cycle: dict, evaluated_at: str | datetime | None
         validate_strategies(cycle)
     elif not suggestions:
         raise MarketProductValidationError("COVERED_CALL_SUGGESTION_COUNT")
+    if carried and not has_two_sided_recommendations(cycle):
+        raise MarketProductValidationError("CARRIED_QUOTE_TWO_SIDED_REQUIRED")
 
 
 COVERAGE_SCHEMA = "v213-options-coverage-v1"

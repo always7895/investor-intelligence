@@ -130,14 +130,14 @@ class SuggestionTests(unittest.TestCase):
         rows = [row(95, 7, 7.2, 0.7), row(105, 2.0, 2.1, 0.33), row(110, 1.0, 1.05, 0.2), row(115, 0.6, 0.65, 0.15),
                 row(125, 0.3, 0.35, 0.08), row(140, 0.05, 0.1, 0.02), row(150, 0.4, 5.0, 0.01)]
         suggestions = builder.covered_call_suggestions(rows, spot, dte)
-        # No annualized-yield floor: 140 pays only 0.05 on the bid = 0.61% annualized,
-        # but it is the highest out-of-the-money strike with a two-sided quote and delta 0.02, so it is the high strike. 150 stays out (spread over the mid).
+        # The highest delta-eligible strike wins even when its spread exceeds the midpoint.
         self.assertEqual([s["role"] for s in suggestions], ["HIGH_STRIKE", "BALANCED"])
-        self.assertEqual(suggestions[0]["strike"], 140)
-        self.assertLess(suggestions[0]["annualized_yield"], 0.02)  # shown, not filtered
-        self.assertEqual(suggestions[1]["strike"], 105)  # delta nearest 0.30 below the first strike
-        self.assertEqual(suggestions[0]["limit_price"], 0.06)  # spread 67% of mid -> bid + a quarter of the spread, to the tick
-        self.assertAlmostEqual(suggestions[0]["annualized_yield"], 0.06 / 100 * 365 / 30, places=6)
+        self.assertEqual(suggestions[0]["strike"], 150)
+        self.assertEqual(suggestions[1]["strike"], 105)
+        self.assertEqual(suggestions[0]["limit_price"], 2.70)
+        self.assertAlmostEqual(suggestions[0]["annualized_yield"], 2.70 / 100 * 365 / 30, places=6)
+        cheap = builder.covered_call_suggestions([row(140, 0.05, 0.1, 0.02)], spot, dte)[0]
+        self.assertLess(cheap["annualized_yield"], 0.02)
         self.assertEqual(builder.covered_call_suggestions([row(125, 0.30, 0.35, 0.08)], spot, dte)[0]["limit_price"], 0.32)  # mid 0.325 rounded down
 
     def test_a_chain_without_delta_or_iv_is_capped_by_the_delta_its_quotes_imply(self):
@@ -182,10 +182,11 @@ class SuggestionTests(unittest.TestCase):
         self.assertEqual(suggestion["delta"], builder.bs_call_delta(100.0, 125.0, 30 / 365, 0.8))
         self.assertEqual(builder.covered_call_suggestions([row(120, 0.5, 0.54, 0.15)], 100.0, 30)[0]["delta_basis"], "QUOTED")
 
-    def test_wide_spread_moves_the_limit_towards_the_bid_and_untradeable_quotes_are_ignored(self):
+    def test_wide_spread_uses_midpoint_without_refusing_a_valid_delta(self):
         suggestions = builder.covered_call_suggestions([row(120, 1.0, 1.6)], 100.0, 20)
-        self.assertEqual(suggestions[0]["limit_price"], 1.15)  # spread 46% of mid -> bid + a quarter of the spread
-        self.assertEqual(builder.covered_call_suggestions([row(120, 0.2, 2.0)], 100.0, 20), [])  # spread > mid
+        self.assertEqual(suggestions[0]["limit_price"], 1.30)
+        wide = builder.covered_call_suggestions([row(120, 0.2, 2.0)], 100.0, 20)
+        self.assertEqual(wide[0]["limit_price"], 1.10)
 
     def test_no_qualifying_strike_gives_an_explicit_reason(self):
         # the only strike's quoted delta 0.35 is above the 0.20 cap; the reason names the delta cap and no yield floor
@@ -1041,7 +1042,7 @@ class OptionPresessionAcceptanceTests(unittest.TestCase):
         row_low_yield = CallRow(strike=150.0, bid=0.05, ask=0.10, impliedVolatility=0.3, volume=10, openInterest=5)
         # 3. Delta too high for high strike (delta 0.35 > 0.20)
         row_high_delta = CallRow(strike=105.0, bid=3.5, ask=3.6, impliedVolatility=0.45, volume=10, openInterest=5)
-        # 4. Spread exceeds mid limit (bid 1.0, ask 5.0 -> spread 4.0 / 3.0 > 1.0)
+        # 4. Spread exceeds midpoint, but quoted IV still supports a recommendation.
         row_wide_spread = CallRow(strike=120.0, bid=1.0, ask=5.0, impliedVolatility=0.5, volume=10, openInterest=5)
 
         expiry_date = "2026-10-16"
@@ -1059,9 +1060,11 @@ class OptionPresessionAcceptanceTests(unittest.TestCase):
             read_h = [x for x in res.health if x["read"]]
             self.assertEqual(len(read_h), 1)
             self.assertTrue(read_h[0]["two_sided"])  # Strategy-independent: quote is two-sided!
-            # Quoted OTM calls may be displayed for transparency, but none qualifies as a strategy.
-            self.assertTrue("unavailable" in res["monthly"] or res["monthly"].get("quote_observation"))
-            self.assertFalse(res["monthly"].get("suggestions"))
+            if test_row is row_wide_spread:
+                self.assertEqual(res["monthly"]["suggestions"][0]["limit_price"], 3.0)
+            else:
+                self.assertTrue("unavailable" in res["monthly"] or res["monthly"].get("quote_observation"))
+                self.assertFalse(res["monthly"].get("suggestions"))
 
         # Integrated check: 12 symbols with two-sided quotes failing strategy produce status OK, not failure
         with tempfile.TemporaryDirectory() as tmp:
@@ -2130,7 +2133,7 @@ class NonUsTypedEvidenceTests(unittest.TestCase):
                                            contractSize="REGULAR", currency="USD") for k, b, a in rows]
             return types.SimpleNamespace(calls=types.SimpleNamespace(itertuples=lambda: iter(calls)))
         expiry = (self.TODAY + timedelta(days=16)).isoformat()  # 2026-10-16, the third Friday
-        for label, rows in {"zero": [(120.0, 0.0, 0.0)], "one-sided": [(120.0, 0.5, None)], "crossed": [(120.0, 0.7, 0.6)],
+        for label, rows in {"zero": [(120.0, 0.0, 0.0)], "no bid": [(120.0, None, 0.5)], "crossed": [(120.0, 0.7, 0.6)],
                             "nan": [(120.0, float("nan"), float("nan"))]}.items():
             ticker = types.SimpleNamespace(options=[expiry], option_chain=lambda e, rows=rows: chain(rows))
             with mock.patch.dict(sys.modules, {"yfinance": types.SimpleNamespace(Ticker=lambda s: ticker)}):

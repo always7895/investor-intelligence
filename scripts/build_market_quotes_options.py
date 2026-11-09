@@ -16,9 +16,9 @@ screener and every Nasdaq Stockholm Large Cap share in SEK with listed exchange 
 Per underlying and cycle (weekly = the CURRENT calendar week's expiry, monthly = the NEAREST standard monthly expiry, no minimum DTE):
 up to three covered-call sell suggestions for a holder of 100 shares (operator 2026-09-26: collect premium, keep the strike as high as possible so the
 shares are not called away; operator 2026-10-11: a middle tier and the current-week weekly):
-- HIGH_STRIKE: the highest out-of-the-money strike with a valid two-sided quote and delta <= MAX_HIGH_STRIKE_DELTA; there is no
+- HIGH_STRIKE: the highest out-of-the-money strike with a valid sell quote and delta <= MAX_HIGH_STRIKE_DELTA; there is no
   annualized-yield floor (operator 2026-11-03), so a strike paying less than 2% a year is still listed and its annualized yield is
-  shown; strikes with a spread wider than the mid, or without a delta, are ignored;
+  shown; unverifiable delta never bypasses the cap.
 - BALANCED: a lower strike nearest delta BALANCED_DELTA (or BALANCED_MONEYNESS without a delta) for more premium;
 - MIDDLE (optional cycle key middle_suggestion): a strike strictly between the two, nearest MIDDLE_DELTA (or
   MIDDLE_MONEYNESS); absent when no listed strike lies between. Defined in option_recommendation_rules.py.
@@ -30,19 +30,19 @@ day. The rules live in option_recommendation_rules.py (twin: cloud/src/v213/opti
 Monthly: the nearest standard venue expiry on or after the exchange-local date, including expiry day until close.
 Missing standard chains trigger bounded source lookup, never weekly relabelling or a later month chosen for better quotes.
 Holiday shifts require verified source-calendar evidence; an absent Friday alone does not establish a holiday.
-Each carries a sell limit (mid rounded down to the tick, or bid + a quarter of the spread when the spread exceeds 25% of
-the mid; never below the bid), premium per contract, period and
-annualized yield on the current price, the upside kept up to the strike, delta as the assignment reference, OI, volume
-and spread. Delta is Black-Scholes from the quoted implied volatility (a labelled model Greek); a chain without one
+Each carries a sell LIMIT starting at the midpoint rounded down to the .01 tick, bounded by the real bid and ask.
+Buy LIMITs start at midpoint rounded up. With only the required executable side, that side is the reference limit;
+the absent opposite side, midpoint and spread remain unknown. Premium and yield use the limit.
+Delta is Black-Scholes from the quoted implied volatility (a labelled model Greek); a two-sided chain without one
 (Nasdaq Stockholm, the Nasdaq US fallback) takes the volatility implied by the strike's own bid/ask mid instead
-(delta_basis QUOTE_IMPLIED), so every high strike carries the same assignment cap. Prices are never modelled. A cycle
-without two-sided quotes stays unavailable with its reason.
+(delta_basis QUOTE_IMPLIED), so every high strike carries the same assignment cap. Prices are never modelled.
+Wide spreads do not disqualify recommendations; raw two-sided health remains a separate measure.
 V21 (operator 2026-10-19; the annualized-yield floor it set at 2% was removed on 2026-11-03): the same cycle row carries the optional additive
 object `strategies` from the same chain's put side (Yahoo option_chain().puts, Nasdaq US p_* fields, Nasdaq Nordic put rows; the same
 provider, label and quote_basis): csp (cash-secured put: |delta| in rules.CONSERVATIVE_DELTA_BAND, nearest 0.20 first) and collar (long stock,
 protective put |delta| nearest rules.PROTECTIVE_PUT_DELTA, the short call in the same band), each a block with rights_status, provider_id,
-quote_basis and timestamp, or {"unavailable": reason} when a leg lacks a valid two-sided quote or a delta. A cycle with no covered call but a
-real csp or collar block keeps suggestions == [] and strategies.cc = {"unavailable": reason}. Health stays call-based.
+quote_basis and timestamp, or {"unavailable": reason} when a leg lacks its required quote side or a verifiable delta.
+A cycle with no covered call but a real csp or collar block keeps suggestions == [] and strategies.cc = {"unavailable": reason}. Health stays call-based.
 
 Public admission (operator 2026-10-13): the Yahoo option-chain cycles claim the catalog identity YAHOO_OPTION_IDENTITY (provider_id,
 jurisdiction, venue, instrument_kind, publication_scope; quote_basis is the cycle's own). Only the audited catalog admits it
@@ -74,7 +74,7 @@ import threading
 import time
 import urllib.parse
 import urllib.request
-from decimal import Decimal
+from decimal import Decimal, ROUND_CEILING, ROUND_FLOOR
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterable
@@ -125,8 +125,6 @@ BALANCED_MONEYNESS = 1.05     # when a lower strike has no delta at all, about 5
 MIDDLE_DELTA = rules.MIDDLE_DELTA          # the middle tier sits between HIGH_STRIKE (<= 0.20) and BALANCED (0.30)
 MIDDLE_MONEYNESS = rules.MIDDLE_MONEYNESS  # when the candidates between have no delta
 TICK = 0.01
-MAX_SPREAD_PCT = 1.0          # a spread wider than the mid is not a tradeable quote
-WIDE_SPREAD_PCT = 0.25        # beyond this the limit moves from the mid towards the bid
 # The identity a Yahoo US option-chain cycle CLAIMS for public admission (never authority: only the audited catalog admits it; a test pins
 # this equal to the catalog's admitted scope). The rights label is the honest one for a provider shown on the operator's decision.
 YAHOO_OPTION_IDENTITY = {"provider_id": "yahoo_finance_option_chain", "jurisdiction": "US", "venue": "US_LISTED_OPTIONS",
@@ -159,20 +157,20 @@ OPTION_TWO_SIDED_COVERAGE_THRESHOLD = OPTION_TWO_SIDED_COVERAGE_RATIO_NUMERATOR 
 
 
 def _is_finite_positive(value: Any) -> bool:
-    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value) and value > 0
+    try:
+        return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value) and value > 0
+    except OverflowError:
+        return False
 
 
 def _is_two_sided(bid: Any, ask: Any) -> bool:
-    return (isinstance(bid, (int, float)) and not isinstance(bid, bool)
-            and isinstance(ask, (int, float)) and not isinstance(ask, bool)
-            and math.isfinite(bid) and math.isfinite(ask)
-            and 0 < bid <= ask)
+    return _is_finite_positive(bid) and _is_finite_positive(ask) and bid <= ask
 
 
 def _cent_exact(strike: Any) -> bool:
     """True when the strike is exactly representable with two decimals (15.5, 15.50, 15.5000, 0.07 yes; 15.505, 15.5049 no):
     the immutable reader formats money with two decimals, so only such a strike may be RECOMMENDED; nothing is ever rounded."""
-    return (isinstance(strike, (int, float)) and not isinstance(strike, bool) and math.isfinite(strike) and strike == round(strike, 2))
+    return _is_finite_positive(strike) and strike == round(strike, 2)
 
 
 def is_venue_coverage_depleted(read_count: int, healthy_count: int) -> bool:
@@ -346,9 +344,14 @@ def broad_universe(now: datetime, path: Path | None = None) -> dict[str, Any]:
 
 def bs_call_delta(spot: float, strike: float, years: float, vol: float | None, digits: int | None = 3) -> float | None:
     """Black-Scholes call delta, rounded for display; digits=None keeps full precision for limit checks."""
-    if not vol or vol <= 0 or years <= 0 or spot <= 0 or strike <= 0:
+    if not all(_is_finite_positive(value) for value in (vol, years, spot, strike)):
         return None
-    d1 = (math.log(spot / strike) + (RISK_FREE + vol * vol / 2) * years) / (vol * math.sqrt(years))
+    try:
+        d1 = (math.log(spot / strike) + (RISK_FREE + vol * vol / 2) * years) / (vol * math.sqrt(years))
+    except (ValueError, OverflowError, ZeroDivisionError):
+        return None
+    if not math.isfinite(d1):
+        return None
     delta = 0.5 * (1 + math.erf(d1 / math.sqrt(2)))
     return round(delta, digits) if digits is not None else delta
 
@@ -397,16 +400,20 @@ def implied_vol_put(price: float, spot: float, strike: float, years: float) -> f
 
 
 def with_put_delta(row: dict[str, Any], spot: float, dte: int) -> dict[str, Any]:
-    """The put row with its ABSOLUTE delta (|put delta| = 1 - call delta): Black-Scholes from the quoted implied volatility, else from the
-    volatility implied by its own bid/ask mid (QUOTE_IMPLIED). delta_exact keeps full precision for the band check. No delta, no
-    delta_basis: the row is then not eligible for any put strategy."""
+    """Absolute put delta from quoted IV, a signed quoted PUT delta, or its own two-sided midpoint."""
+    row = _normalized_quote(row)
     years = rules.effective_days(dte) / 365
-    if row.get("iv"):
+    if row["iv"] is not None:
         call = bs_call_delta(spot, row["strike"], years, row["iv"], digits=None)
         if call is not None:
             exact = 1 - call
             return {**row, "delta": round(exact, 3), "delta_exact": exact, "delta_basis": "QUOTED_IV"}
-    vol = implied_vol_put((row["bid"] + row["ask"]) / 2, spot, row["strike"], years)
+        row["iv"] = None
+    quoted = row.get("delta")
+    if _valid_delta(quoted) and quoted < 0:
+        return {**row, "delta": round(-quoted, 3), "delta_exact": -quoted, "delta_basis": "QUOTED"}
+    vol = (implied_vol_put((row["bid"] + row["ask"]) / 2, spot, row["strike"], years)
+           if _is_two_sided(row["bid"], row["ask"]) else None)
     if vol is None:
         return {**row, "delta": None, "delta_exact": None, "delta_basis": None}
     exact = 1 - bs_call_delta(spot, row["strike"], years, vol, digits=None)
@@ -414,19 +421,21 @@ def with_put_delta(row: dict[str, Any], spot: float, dte: int) -> dict[str, Any]
 
 
 def with_delta(row: dict[str, Any], spot: float, dte: int) -> dict[str, Any]:
-    """The row with its assignment reference: the quoted delta, else Black-Scholes from the quoted implied volatility,
-    else from the volatility implied by its own bid/ask mid (labelled QUOTE_IMPLIED). delta_exact keeps full precision
-    for the limit check (a rounded 0.200 must not admit 0.2003); delta and iv are rounded for display."""
-    years = rules.effective_days(dte) / 365  # a same-day expiry is modelled over one day, never zero
-    if row.get("delta") is not None:  # the Yahoo path computes it from the quoted IV when parsing
-        exact = bs_call_delta(spot, row["strike"], years, row["iv"], digits=None) if row.get("iv") else row["delta"]
-        return {**row, "delta_exact": exact, "delta_basis": "QUOTED_IV" if row.get("iv") else "QUOTED"}
-    if row.get("iv"):
+    """Call delta with full-precision cap evidence; no midpoint-derived Greek from a one-sided quote."""
+    row = _normalized_quote(row)
+    years = rules.effective_days(dte) / 365
+    if row["iv"] is not None:
         exact = bs_call_delta(spot, row["strike"], years, row["iv"], digits=None)
-        return {**row, "delta": round(exact, 3) if exact is not None else None, "delta_exact": exact, "delta_basis": "QUOTED_IV"}
-    vol = implied_vol((row["bid"] + row["ask"]) / 2, spot, row["strike"], years)
+        if exact is not None:
+            return {**row, "delta": round(exact, 3), "delta_exact": exact, "delta_basis": "QUOTED_IV"}
+        row["iv"] = None
+    quoted = row.get("delta")
+    if _valid_delta(quoted) and quoted >= 0:
+        return {**row, "delta": round(quoted, 3), "delta_exact": quoted, "delta_basis": "QUOTED"}
+    vol = (implied_vol((row["bid"] + row["ask"]) / 2, spot, row["strike"], years)
+           if _is_two_sided(row["bid"], row["ask"]) else None)
     if vol is None:
-        return {**row, "delta_basis": None}
+        return {**row, "delta": None, "delta_exact": None, "delta_basis": None}
     exact = bs_call_delta(spot, row["strike"], years, vol, digits=None)
     return {**row, "iv": round(vol, 4), "delta": round(exact, 3), "delta_exact": exact, "delta_basis": "QUOTE_IMPLIED"}
 
@@ -448,38 +457,53 @@ def _float(value: Any) -> float | None:
         return None
 
 
+def _quote_value(value: Any, parser: Callable[[Any], float | None] = _float) -> Any:
+    """Normalize genuine absence, but retain malformed source values so selection cannot mistake them for absence."""
+    if value is None or (isinstance(value, str) and value.strip() in ("", "-", "--", "N/A")):
+        return None
+    parsed = parser(value)
+    return (None if parsed == 0 else parsed) if parsed is not None else value
+
+
+def _valid_delta(value: Any) -> bool:
+    return (isinstance(value, (int, float)) and not isinstance(value, bool)
+            and -1 <= value <= 1 and math.isfinite(value))
+
+
+def _normalized_quote(row: dict[str, Any]) -> dict[str, Any]:
+    return {**row, "bid": row.get("bid") or None, "ask": row.get("ask") or None,
+            "iv": row.get("iv") if _is_finite_positive(row.get("iv")) else None}
+
+
 def _suggestion(role: str, row: dict[str, Any], spot: float, dte: int) -> dict[str, Any]:
     days = rules.effective_days(dte)  # annualization never uses fewer than one day (DTE 0 is the expiry day)
     bid, ask = row["bid"], row["ask"]
-    mid = round((bid + ask) / 2, 4)
-    spread_pct = (ask - bid) / mid if mid > 0 else 0.0
-    target = mid if spread_pct <= WIDE_SPREAD_PCT else bid + (ask - bid) / 4
-    limit = round(max(bid, math.floor(target / TICK + 1e-9) * TICK), 2)
+    mid = (bid + ask) / 2 if ask is not None else None
+    limit = _sell_limit(bid, ask)
     period_yield = limit / spot
     return {"role": role, "strike": row["strike"], "bid": bid, "ask": ask, "mid": mid, "limit_price": limit,
             "premium_per_contract": round(limit * 100, 2), "period_yield": round(period_yield, 6),
             "annualized_yield": round(period_yield * 365 / days, 6), "upside_to_strike": round(row["strike"] / spot - 1, 6),
             "delta": row.get("delta"), "delta_basis": row.get("delta_basis"), "iv": row.get("iv") or None, "oi": row.get("oi"), "volume": row.get("volume"),
-            "spread_pct": round((ask - bid) / mid, 4) if mid > 0 else None}
+            "spread_pct": round((ask - bid) / mid, 4) if mid is not None else None}
 
 
 def covered_call_tiers(rows: list[dict[str, Any]], spot: float, dte: int, *,
                        cent_exact_only: bool = True) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
     """(suggestions, middle): the highest usable strike (HIGH_STRIKE; no yield floor), a balanced strike below it (BALANCED), and
     the optional MIDDLE strike strictly between the two (never padded, never a duplicate strike). Only out-of-the-money
-    strikes with a two-sided quote qualify, and the high strike needs a delta (quoted or implied by its quote) within
+    strikes with an executable bid qualify, and the high strike needs a delta (quoted or implied by its quote) within
     MAX_HIGH_STRIKE_DELTA. Only a strike the two-decimal display represents exactly is recommended (cent_exact_only); health
     is computed before and never depends on this fence. DTE 0 (the expiry day) annualizes over one day."""
     if dte < 0:
         return [], None
     days = rules.effective_days(dte)
-    usable = [with_delta(row, spot, dte) for row in rows if row.get("strike") and row["strike"] > spot and row.get("bid")
-              and row.get("ask") and row["ask"] >= row["bid"] > 0
-              and (row["ask"] - row["bid"]) / ((row["ask"] + row["bid"]) / 2) <= MAX_SPREAD_PCT
+    usable = [with_delta(row, spot, dte) for row in rows if _is_finite_positive(row.get("strike")) and row["strike"] > spot
+              and _quote_usable(row)
               and (not cent_exact_only or _cent_exact(row["strike"]))]
     if not usable:
         return [], None
-    annual = lambda row: row["bid"] / spot * 365 / days  # noqa: E731 - on the bid: premium that is actually collectable
+    annual = lambda row: row["bid"] / spot * 365 / days  # noqa: E731 - compare quoted-side premium, not guaranteed proceeds
     high = [row for row in usable if row.get("delta_exact") is not None and row["delta_exact"] <= MAX_HIGH_STRIKE_DELTA]
     if not high:
         return [], None
@@ -506,24 +530,33 @@ def covered_call_suggestions(rows: list[dict[str, Any]], spot: float, dte: int, 
 
 # ---- V21 (operator 2026-10-19): cash-secured put and collar beside the covered call, conservative first ----------------------------------
 
-def _quote_usable(row: dict[str, Any]) -> bool:
-    """A two-sided quote whose spread is at most the mid (the covered-call rule): the only quote a strategy leg may stand on."""
+def _quote_usable(row: dict[str, Any], *, buy: bool = False) -> bool:
+    """Require the executable side; optional zero/absent opposite side is unknown, not a crossed quote."""
     bid, ask = row.get("bid"), row.get("ask")
-    return (_is_two_sided(bid, ask) and (ask - bid) / ((ask + bid) / 2) <= MAX_SPREAD_PCT)
+    required, opposite = (ask, bid) if buy else (bid, ask)
+    if not _is_finite_positive(required):
+        return False
+    if opposite is None or (type(opposite) in (int, float) and opposite == 0):
+        return True
+    return _is_two_sided(bid, ask)
 
 
-def _sell_limit(bid: float, ask: float) -> float:
-    """The sell limit of a covered call: the mid rounded DOWN to the tick (the bid plus a quarter of a wide spread), never below the bid."""
-    mid = round((bid + ask) / 2, 4)
-    target = mid if (ask - bid) / mid <= WIDE_SPREAD_PCT else bid + (ask - bid) / 4
-    return round(max(bid, math.floor(target / TICK + 1e-9) * TICK), 2)
+def _sell_limit(bid: float, ask: float | None) -> float:
+    """Midpoint rounded down to .01, then bounded without rounding the real quote boundary."""
+    if ask is None:
+        return bid
+    mid = (Decimal(str(bid)) + Decimal(str(ask))) / 2
+    rounded = float(mid.quantize(Decimal(str(TICK)), rounding=ROUND_FLOOR))
+    return min(ask, max(bid, rounded))
 
 
-def _buy_limit(bid: float, ask: float) -> float:
-    """The buy limit of a protective put: the mid rounded UP to the tick (the ask minus a quarter of a wide spread), never above the ask."""
-    mid = round((bid + ask) / 2, 4)
-    target = mid if (ask - bid) / mid <= WIDE_SPREAD_PCT else ask - (ask - bid) / 4
-    return round(min(ask, math.ceil(target / TICK - 1e-9) * TICK), 4)
+def _buy_limit(bid: float | None, ask: float) -> float:
+    """Midpoint rounded up to .01, then bounded without rounding the real quote boundary."""
+    if bid is None:
+        return ask
+    mid = (Decimal(str(bid)) + Decimal(str(ask))) / 2
+    rounded = float(mid.quantize(Decimal(str(TICK)), rounding=ROUND_CEILING))
+    return max(bid, min(ask, rounded))
 
 
 def _leg(row: dict[str, Any], limit: float) -> dict[str, Any]:
@@ -541,8 +574,8 @@ def _in_band(row: dict[str, Any], band: tuple[float, float]) -> bool:
     return row.get("delta_exact") is not None and band[0] - 1e-12 <= row["delta_exact"] <= band[1] + 1e-12
 
 
-def _otm_puts(puts: list[dict[str, Any]], spot: float, dte: int, cent_exact_only: bool) -> list[dict[str, Any]]:
-    rows = [with_put_delta(row, spot, dte) for row in puts if _is_finite_positive(row.get("strike")) and row["strike"] < spot and _quote_usable(row)
+def _otm_puts(puts: list[dict[str, Any]], spot: float, dte: int, cent_exact_only: bool, *, buy: bool = False) -> list[dict[str, Any]]:
+    rows = [with_put_delta(row, spot, dte) for row in puts if _is_finite_positive(row.get("strike")) and row["strike"] < spot and _quote_usable(row, buy=buy)
             and (not cent_exact_only or _cent_exact(row["strike"]))]
     return [row for row in rows if row.get("delta_exact") is not None]
 
@@ -553,7 +586,7 @@ def _otm_calls(rows: list[dict[str, Any]], spot: float, dte: int, cent_exact_onl
     return [row for row in usable if row.get("delta_exact") is not None]
 
 
-def _leg_quote_unavailable(rows: list[dict[str, Any]], spot: float, *, put: bool, cent_exact_only: bool = True) -> str | None:
+def _leg_quote_unavailable(rows: list[dict[str, Any]], spot: float, *, put: bool, buy: bool = False, cent_exact_only: bool = True) -> str | None:
     """Explain the first failed quote gate before testing delta, using only the eligible side of spot."""
     side = "賣權" if put else "買權"
     if not rows:
@@ -565,17 +598,18 @@ def _leg_quote_unavailable(rows: list[dict[str, Any]], spot: float, *, put: bool
     exact = [row for row in otm if not cent_exact_only or _cent_exact(row["strike"])]
     if not exact:
         return f"所選到期價外{side}履約價含超過兩位小數，顯示無法如實呈現；不提供建議"
-    both = [row for row in exact if _is_two_sided(row.get("bid"), row.get("ask"))]
-    if not both:
-        return f"所選到期價外{side}無有效雙邊報價（買賣價須為正且不倒掛）"
-    if not any(_quote_usable(row) for row in both):
-        return f"所選到期價外{side}買賣價差大於中價，不符合保守流動性篩選"
+    required = "ask" if buy else "bid"
+    executable = [row for row in exact if _is_finite_positive(row.get(required))]
+    if not executable:
+        return f"所選到期價外{side}缺少有效{'買入 Ask' if buy else '賣出 Bid'}（須為有限正數）"
+    if not any(_quote_usable(row, buy=buy) for row in executable):
+        return f"所選到期價外{side}報價格式無效、非有限值、負值或買賣價倒掛"
     return None
 
 
 def cash_secured_put_tiers(puts: list[dict[str, Any]], spot: float, dte: int, *,
                            cent_exact_only: bool = True) -> tuple[list[dict[str, Any]], str | None]:
-    """(items, reason): out-of-the-money puts with a two-sided quote and an absolute delta inside CONSERVATIVE_DELTA_BAND (there is
+    """(items, reason): out-of-the-money puts with an executable bid and an absolute delta inside CONSERVATIVE_DELTA_BAND (there is
     no yield floor); CONSERVATIVE = the delta nearest the band's lower edge, optional BALANCED =
     the delta nearest its upper edge among the higher strikes. Nothing is modelled: with no such strike the reason says which step failed."""
     if dte < 0:
@@ -585,10 +619,12 @@ def cash_secured_put_tiers(puts: list[dict[str, Any]], spot: float, dte: int, *,
         return [], reason
     days = rules.effective_days(dte)
     usable = _otm_puts(puts, spot, dte, cent_exact_only)
+    if not usable:
+        return [], "所選到期價外賣權缺少可核驗 delta（單邊報價不能由中價推算）"
     band = [row for row in usable if _in_band(row, rules.CONSERVATIVE_DELTA_BAND)]
     if not band:
         low, high = rules.CONSERVATIVE_DELTA_BAND
-        return [], f"通過價差篩選的價外賣權中，沒有 delta 絕對值介於 {low:.2f}–{high:.2f} 的履約價"
+        return [], f"所選到期價外賣權中，沒有 delta 絕對值介於 {low:.2f}–{high:.2f} 的履約價"
     first = _nearest(band, rules.CONSERVATIVE_DELTA_BAND[0])
     chosen = [("CONSERVATIVE", first)]
     higher = [row for row in band if row["strike"] > first["strike"]]
@@ -607,23 +643,29 @@ def collar_tiers(calls: list[dict[str, Any]], puts: list[dict[str, Any]], spot: 
                  cent_exact_only: bool = True) -> tuple[dict[str, Any] | None, str | None]:
     """({put, items}, reason): long stock + a protective put (absolute delta nearest PROTECTIVE_PUT_DELTA inside its window; buy limit = mid
     rounded up, never above the ask) + the short call in CONSERVATIVE_DELTA_BAND (the delta nearest the lower edge first, optional
-    BALANCED nearest the upper edge). Every leg needs its own two-sided quote and a delta; there is no yield floor on a collar."""
+    BALANCED nearest the upper edge). Every leg needs its executable quote side and a delta; there is no yield floor on a collar."""
     if dte < 0:
         return None, "所選到期已過期，不提供領口策略建議"
-    reason = _leg_quote_unavailable(puts, spot, put=True, cent_exact_only=cent_exact_only)
+    reason = _leg_quote_unavailable(puts, spot, put=True, buy=True, cent_exact_only=cent_exact_only)
     if reason:
         return None, reason
     window = rules.PROTECTIVE_PUT_DELTA_BAND
-    protective = [row for row in _otm_puts(puts, spot, dte, cent_exact_only) if _in_band(row, window)]
+    usable_puts = _otm_puts(puts, spot, dte, cent_exact_only, buy=True)
+    if not usable_puts:
+        return None, "所選到期保護性賣權缺少可核驗 delta（單邊報價不能由中價推算）"
+    protective = [row for row in usable_puts if _in_band(row, window)]
     if not protective:
-        return None, f"通過價差篩選的價外賣權中，沒有 delta 絕對值約 {rules.PROTECTIVE_PUT_DELTA:.2f}（{window[0]:.2f}–{window[1]:.2f}）的履約價"
+        return None, f"所選到期價外賣權中，沒有 delta 絕對值約 {rules.PROTECTIVE_PUT_DELTA:.2f}（{window[0]:.2f}–{window[1]:.2f}）的履約價"
     reason = _leg_quote_unavailable(calls, spot, put=False, cent_exact_only=cent_exact_only)
     if reason:
         return None, reason
-    band = [row for row in _otm_calls(calls, spot, dte, cent_exact_only) if _in_band(row, rules.CONSERVATIVE_DELTA_BAND)]
+    usable_calls = _otm_calls(calls, spot, dte, cent_exact_only)
+    if not usable_calls:
+        return None, "所選到期價外買權缺少可核驗 delta（單邊報價不能由中價推算）"
+    band = [row for row in usable_calls if _in_band(row, rules.CONSERVATIVE_DELTA_BAND)]
     if not band:
         low, high = rules.CONSERVATIVE_DELTA_BAND
-        return None, f"通過價差篩選的價外買權中，沒有 delta 介於 {low:.2f}–{high:.2f} 的履約價"
+        return None, f"所選到期價外買權中，沒有 delta 介於 {low:.2f}–{high:.2f} 的履約價"
     put_row = _nearest(protective, rules.PROTECTIVE_PUT_DELTA)
     put_leg = _leg(put_row, _buy_limit(put_row["bid"], put_row["ask"]))
     first = _nearest(band, rules.CONSERVATIVE_DELTA_BAND[0])
@@ -652,16 +694,20 @@ def strategy_blocks(calls: list[dict[str, Any]], puts: list[dict[str, Any]], spo
 
 def _covered_call_unavailable(rows: list[dict[str, Any]], spot: float, dte: int, expiry: str) -> str:
     """Explain a refused call using its actual quote and strategy evidence."""
+    if dte < 0:
+        return f"{expiry} 到期已過期，不提供備兌買權建議"
     if not rows:
         return f"{expiry} 到期未取得可核驗買權報價，不提供備兌買權建議"
-    if not any(_is_two_sided(row.get("bid"), row.get("ask")) for row in rows):
-        return _diag(f"本次回應有 {expiry}（{dte}天）買權，但{carry_forward.NO_TWO_SIDED_REASON}（買賣價須為正且不倒掛）")
-    if covered_call_suggestions(rows, spot, dte, cent_exact_only=False):
-        return _diag(f"本次回應有 {expiry}（{dte}天）有效雙邊報價，但符合條件之履約價含超過兩位小數，顯示無法如實呈現；不提供建議")
     reason = _leg_quote_unavailable(rows, spot, put=False)
     if reason:
-        return _diag(f"{expiry}：{reason}")
-    return f"{expiry} 到期通過價差篩選的價外買權中，沒有 Delta 不超過 {MAX_HIGH_STRIKE_DELTA:.2f} 的履約價"
+        # Keep the explicit quote-absence marker only for genuinely unusable quotes,
+        # so carry-forward cannot hide a delta/OTM/contract refusal.
+        suffix = (f"；{carry_forward.NO_TWO_SIDED_REASON}"
+                  if not any(_is_two_sided(row.get("bid"), row.get("ask")) or _quote_usable(row) for row in rows) else "")
+        return _diag(f"{expiry}：{reason}{suffix}")
+    if not _otm_calls(rows, spot, dte, True):
+        return f"{expiry} 到期價外買權缺少可核驗 delta（單邊報價不能由中價推算），不提供備兌買權建議"
+    return f"{expiry} 到期的價外買權中，沒有 Delta 不超過 {MAX_HIGH_STRIKE_DELTA:.2f} 的履約價"
 
 
 def cycle_result(ticker: str, expiry: str, dte: int, spot: float, rows: list[dict[str, Any]], *, currency: str, source: str,
@@ -826,10 +872,6 @@ def _monthly_quote_observation(ticker: str, spot: float, choices: list["rules.Mo
 
 
 
-def _any_put_two_sided(puts: list[dict[str, Any]] | None) -> bool:
-    return bool(puts) and any(_is_two_sided(row.get("bid"), row.get("ask")) for row in puts)
-
-
 def _cycles_from_calls(calls: list[dict[str, Any]], ticker: str, spot: float, stamp: str, *, currency: str, source: str,
                        provenance: str, rights: str, missing: str, venue: str = "US",
                        underlying: str | None = None,
@@ -881,7 +923,7 @@ def _cycles_from_calls(calls: list[dict[str, Any]], ticker: str, spot: float, st
         if not window and cycle == "monthly" and monthly is not None and puts is not None:
             put_rows = [row for row in puts if row.get("expiry") == monthly.expiry.isoformat()
                         and row.get("size") == 100]
-            if _any_put_two_sided(put_rows):
+            if put_rows:
                 only_put = cycle_result(ticker, monthly.expiry.isoformat(),
                     (monthly.expiry-today).days, spot, [], currency=currency, source=source,
                     provenance=provenance, rights=rights, stamp=stamp,
@@ -890,7 +932,8 @@ def _cycles_from_calls(calls: list[dict[str, Any]], ticker: str, spot: float, st
                 if "unavailable" not in only_put:
                     out[cycle] = only_put
                     health_records.append({"venue":venue,"underlying":und,"expiry":monthly.expiry.isoformat(),
-                        "cycle":cycle,"status":"READ","read":True,"two_sided":True})
+                        "cycle":cycle,"status":"READ","read":True,
+                        "two_sided":any(_is_two_sided(row.get("bid"), row.get("ask")) for row in put_rows)})
                     continue
         if not window:
             message, status = no_window(cycle, low, high) if no_window else (_missing_text(missing, cycle, low, high), "NO_EXPIRY")
@@ -914,13 +957,10 @@ def _cycles_from_calls(calls: list[dict[str, Any]], ticker: str, spot: float, st
         health_records.append({"venue": venue, "underlying": und, "expiry": chosen_expiry, "cycle": cycle,
                                "status": "READ", "read": True, "two_sided": two_sided, "eligible_rows": len(eligible)})
         chosen_puts = None if puts is None else [r for r in puts if r.get("expiry") == chosen_expiry and r.get("size") == 100]
-        if not two_sided and not _any_put_two_sided(chosen_puts):
-            out[cycle] = {"unavailable": _diag(f"本次回應有 {chosen_expiry}（{target}天）標準買權上市，但所選到期無有效雙邊報價（買賣價須為正且不倒掛）")}
-        else:
-            out[cycle] = cycle_result(ticker, chosen_expiry, target, spot, chosen, currency=currency, source=source,
-                                      provenance=provenance, rights=rights, stamp=stamp,
-                                      asof=today.isoformat() if today else None, week=week, identity=identity, puts=chosen_puts,
-                                      monthly_rule=monthly_rule)
+        out[cycle] = cycle_result(ticker, chosen_expiry, target, spot, chosen, currency=currency, source=source,
+                                  provenance=provenance, rights=rights, stamp=stamp,
+                                  asof=today.isoformat() if today else None, week=week, identity=identity, puts=chosen_puts,
+                                  monthly_rule=monthly_rule)
     return CyclesResult(out, health=health_records)
 
 
@@ -965,8 +1005,8 @@ def _nasdaq_us_quote(value: Any) -> float | None:
 
 
 def nasdaq_us_options(symbol: str, spot: float, today: date, stamp: str) -> CyclesResult:
-    """Fallback US chain from Nasdaq's public quote-page API: two-sided call quotes without implied volatility, so no
-    delta (as for Nasdaq Stockholm). Class shares use a dot there (BRK-B -> brk.b)."""
+    """Fallback US chain from Nasdaq's public quote-page API; without quoted IV, only two-sided quotes can imply delta.
+    Class shares use a dot there (BRK-B -> brk.b)."""
     low, high = min(window[0] for window in CYCLES.values()), max(window[1] for window in CYCLES.values())
     url = NASDAQ_US_CHAIN.format(symbol=urllib.parse.quote(symbol.replace("-", ".").lower()),
                                  start=(today + timedelta(days=low)).isoformat(), end=(today + timedelta(days=high)).isoformat())
@@ -1004,13 +1044,13 @@ def nasdaq_us_options(symbol: str, spot: float, today: date, stamp: str) -> Cycl
             if not _is_finite_positive(strike):
                 continue
             calls.append({"expiry": resolved.isoformat(), "dte": (resolved-today).days, "strike": strike,
-                          "bid": _nasdaq_us_quote(row.get("c_Bid")), "ask": _nasdaq_us_quote(row.get("c_Ask")),
+                          "bid": _quote_value(row.get("c_Bid"), _nasdaq_us_quote), "ask": _quote_value(row.get("c_Ask"), _nasdaq_us_quote),
                           "last": _nasdaq_us_quote(row.get("c_Last")), "iv": None, "delta": None,
                           "oi": _int(row.get("c_Openinterest")), "volume": _int(row.get("c_Volume")), "size": 100})
             if any(key in row for key in ("p_Bid","p_Ask")):
                 saw_put_side = True
                 puts.append({"expiry": resolved.isoformat(), "dte": (resolved-today).days, "strike":strike,
-                             "bid": _nasdaq_us_quote(row.get("p_Bid")), "ask": _nasdaq_us_quote(row.get("p_Ask")),
+                             "bid": _quote_value(row.get("p_Bid"), _nasdaq_us_quote), "ask": _quote_value(row.get("p_Ask"), _nasdaq_us_quote),
                              "iv": None, "oi": _int(row.get("p_Openinterest")),
                              "volume": _int(row.get("p_Volume")), "size": 100})
     decode_rows(rows)
@@ -1188,7 +1228,7 @@ def _yahoo_put_rows(option_chain: Any) -> list[dict[str, Any]] | None:
                 continue
             strike = _float(getattr(row, "strike", None))
             if strike is not None and _is_finite_positive(strike):
-                out.append({"strike": float(strike), "bid": _float(getattr(row, "bid", None)), "ask": _float(getattr(row, "ask", None)),
+                out.append({"strike": float(strike), "bid": _quote_value(getattr(row, "bid", None)), "ask": _quote_value(getattr(row, "ask", None)),
                             "iv": _float(getattr(row, "impliedVolatility", None)), "oi": _int(getattr(row, "openInterest", None)),
                             "volume": _int(getattr(row, "volume", None))})
         return out
@@ -1261,7 +1301,7 @@ def us_options(symbol: str, spot: float, today: date, stamp: str) -> CyclesResul
                         continue
                     iv = _float(getattr(call, "impliedVolatility", None))
                     all_calls.append({"expiry": month_expiry, "dte": month_dte, "strike": strike,
-                        "bid": _float(getattr(call, "bid", None)), "ask": _float(getattr(call, "ask", None)),
+                        "bid": _quote_value(getattr(call, "bid", None)), "ask": _quote_value(getattr(call, "ask", None)),
                         "last": _float(getattr(call, "lastPrice", None)), "iv": iv,
                         "delta": bs_call_delta(spot, strike, rules.effective_days(month_dte)/365, iv),
                         "oi": _int(getattr(call, "openInterest", None)),
@@ -1310,8 +1350,8 @@ def us_options(symbol: str, spot: float, today: date, stamp: str) -> CyclesResul
             if not _standard_yahoo_us_contract(row):
                 continue
             strike = _float(getattr(row, "strike", None))
-            bid = _float(getattr(row, "bid", None))
-            ask = _float(getattr(row, "ask", None))
+            bid = _quote_value(getattr(row, "bid", None))
+            ask = _quote_value(getattr(row, "ask", None))
             iv = _float(getattr(row, "impliedVolatility", None))
             oi = _int(getattr(row, "openInterest", None))
             vol = _int(getattr(row, "volume", None))
@@ -1330,9 +1370,6 @@ def us_options(symbol: str, spot: float, today: date, stamp: str) -> CyclesResul
             two_sided = any(_is_two_sided(r["bid"], r["ask"]) for r in eligible_rows)
             health_records.append({"venue": "US", "underlying": symbol, "expiry": expiry, "cycle": cycle,
                                    "status": "READ", "read": True, "two_sided": two_sided, "eligible_rows": len(eligible_rows)})
-        if eligible_rows and not two_sided and not _any_put_two_sided(put_rows):  # read chain, no usable quote: say so, not a strategy-yield failure
-            out[cycle] = {"unavailable": _diag(f"本次回應有 {expiry}（{dte}天）買權，但{carry_forward.NO_TWO_SIDED_REASON}（買賣價須為正且不倒掛）")}
-            continue
         out[cycle] = cycle_result(symbol, expiry, dte, spot, rows, currency="USD",
                                   source="Yahoo Finance option chain (unofficial, delayed)",
                                   provenance=f"https://finance.yahoo.com/quote/{symbol}/options?date={expiry}; delta=Black-Scholes(quoted IV)",
@@ -1475,7 +1512,7 @@ def _nordic_row_evidence(row: Any, root: str, today: date) -> tuple[str, dict[st
     strike = float(strike_exact)
     return "CALL", {"expiry": expiry_text, "dte": (expiry - today).days, "strike": strike,
                     "ccy": _nordic_contract_currency(row.get("currency", _ABSENT)), "size": _typed_size(row.get("contractSize")),
-                    "bid": _nordic_price(row.get("bidPrice")), "ask": _nordic_price(row.get("askPrice")),
+                    "bid": _quote_value(row.get("bidPrice"), _nordic_price), "ask": _quote_value(row.get("askPrice"), _nordic_price),
                     "last": _nordic_price(row.get("lastPrice") or row.get("lastSalePrice")),
                     "oi": _int(row.get("openInterest")), "volume": _int(row.get("volume"))}
 
@@ -1514,7 +1551,7 @@ def _nordic_put_evidence(row: Any, root: str, today: date) -> str | dict[str, An
         return "MALFORMED"
     return {"expiry": expiry_text, "dte": (expiry - today).days, "strike": float(strike_exact),
             "ccy": _nordic_contract_currency(row.get("currency", _ABSENT)), "size": _typed_size(row.get("contractSize")),
-            "bid": _nordic_price(row.get("bidPrice")), "ask": _nordic_price(row.get("askPrice")),
+            "bid": _quote_value(row.get("bidPrice"), _nordic_price), "ask": _quote_value(row.get("askPrice"), _nordic_price),
             "oi": _int(row.get("openInterest")), "volume": _int(row.get("volume"))}
 
 

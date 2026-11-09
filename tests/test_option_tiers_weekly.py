@@ -164,7 +164,7 @@ class TierProducerTests(unittest.TestCase):
         for tier in (*suggestions, middle):  # the middle follows the same limit rule: on the tick and inside bid..mid
             self.assertTrue(tier["bid"] <= tier["limit_price"] <= tier["mid"], tier)
             self.assertEqual(tier["limit_price"], round(tier["limit_price"], 2))
-        self.assertEqual(middle["limit_price"], 0.37)  # mid 0.375, spread 13% <= 25%: mid rounded DOWN to the tick
+        self.assertEqual(middle["limit_price"], 0.37)  # midpoint 0.375 rounded DOWN to the tick
 
     def test_no_middle_when_no_strike_lies_between_and_never_a_duplicate_strike(self):
         rows = [q(112.0, 0.10, 0.12, 0.08), q(106.0, 0.60, 0.66, 0.28)]

@@ -33,6 +33,7 @@ from validate_v213_market_products import (
     CARRIED_MAX_AGE_SECONDS,
     CARRIED_QUOTE_BASIS,
     MarketProductValidationError,
+    has_two_sided_recommendations,
     validate_covered_call_cycle,
     validate_strategies,
 )
@@ -107,6 +108,9 @@ def _stored_cycle_ok(ticker: str, period: str, cycle: Any, now: datetime) -> boo
         if expiry < today or (expiry == today and not rules.expiry_day_open(now, "US")):
             return False
         validate_covered_call_cycle(cycle, evaluated_at=captured, document_at=cycle["timestamp"], period=period)
+        # Recommendation usability no longer implies two-sided capture evidence.
+        if not has_two_sided_recommendations(cycle):
+            return False
         return True
     except (MarketProductValidationError, KeyError, TypeError, ValueError, AttributeError, OverflowError):
         return False
@@ -237,7 +241,7 @@ class CarryForward:
                 and live.get("suggestions") == []
                 and no_live_strategy)
             if not (ordinary_absence or observational_absence):
-                continue  # live valid two-sided quote or verified put strategy always wins
+                continue  # any valid live recommendation (including one-sided) always wins
             replacement = self._carried(ticker, period, item["expiry"], now)
             if replacement is not None:
                 per_period[period] = replacement
