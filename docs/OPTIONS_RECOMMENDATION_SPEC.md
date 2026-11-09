@@ -4,7 +4,7 @@
 > **Scope:** Contractual safety/evidence boundary; retain exact normative markers and validate against runtime configuration. Current acceptance and unresolved issues: [STATUS](../state/STATUS.md). The document itself does not authorize Production changes.
 <!-- /DOCS-R1 scope -->
 
-_Monthly expiry and yield policy reconciled: 2026-11-09_
+_Monthly expiry, quote-bounded recommendations and source evidence reconciled: 2026-11-09_
 
 ## Normative boundary
 
@@ -29,7 +29,7 @@ The project provides weekly and monthly option BID/ASK research in two separate 
 1. **Shared LINE/public mode** — public quote observations only, with no position-dependent eligibility;
 2. **Local owner mode** — optional local-only read-only position analysis that never enters LINE, Worker, public KV or shared model context.
 
-The module is project-authored. It is not attributed to Serenity or Leopold Aschenbrenner, does not place orders, does not infer holdings from chat/examples and never describes a stale or one-sided quote as executable.
+The module is project-authored. It is not attributed to Serenity or Leopold Aschenbrenner, does not place orders, does not infer holdings from chat/examples and never describes a delayed limit reference as a guaranteed executable price. A one-sided quote may support a side-specific recommendation only under the rules below.
 
 ## Shared LINE/public mode
 
@@ -118,7 +118,7 @@ Operator 2026-11-03: list the monthly of the month the viewer is looking at, at 
 - only standard monthlies up to 60 DTE are considered (the validators' outer bound, `MONTHLY_DTE_BUCKET` = 0–60). A source-verified dated quote observation may be shown separately from a strategy when conservative eligibility fails; a missing quote is never invented and a later expiry is never borrowed;
 - the producer records `monthly_rule` as `THIRD_FRIDAY` or source-proven `HOLIDAY_SHIFT`. Existing sealed `LATER_LISTED` evidence remains subject to strict date/rule validation; it does not authorize the current producer to skip a missing nearest chain. Both validators reject legacy weekly-in-monthly rows instead of relabelling them;
 - the Worker admits standard monthly DTE 0–60 and rejects values outside that range. DTE 0–2 carries an amplified-annualization warning, including observation-only cards; annualization uses at least one day. A rule marker does not replace source, rights, freshness or seal checks;
-- there is no annualized-yield floor on any strike (covered call `HIGH_STRIKE`, cash-secured put, either cycle); the annualized yield stays displayed as a fact and the other filters stay (out of the money, valid two-sided quote, spread, delta caps and bands, two-decimal display).
+- there is no annualized-yield floor on any strike (covered call `HIGH_STRIKE`, cash-secured put, either cycle); yield stays displayed. OTM, verified identity, cent-exact strikes, executable-side quotes, delta caps/bands, expiry, freshness, rights and seals remain binding. Wide spread is a warning, not a selection refusal.
 
 The shared definitions are `scripts/option_recommendation_rules.py` and `cloud/src/v213/option-recommendation-rules.ts`; the cross-language behavioral test consumes `tests/fixtures/monthly_expiry_cases.json` for selection and `tests/fixtures/options_window_cases.json` for executable collector/Python-validator/Worker admission parity. Collection/fetch bounds, sealed-product validators, selected-row Worker admission and manual/generic quote labels use those definitions. Selection never fabricates an expiration or quote and adds no Black-Scholes price fallback; pre-existing Greek estimation is unchanged.
 
@@ -149,6 +149,20 @@ Public mode may show hypothetical cash obligation, put break-even or effective s
 
 No default Delta, quote or option chain is invented.
 
+### Contract identity and response meaning
+
+Nasdaq Nordic contracts must agree across full name, native symbol, call/put type, expiration and exact strike, with SEK and standard 100-share terms. The underlying is bound to its verified orderbook id; the chain's sole fully verified exchange root supplies contract identity, not a normalized equity ticker or a guessed mapping. Roots from an initial response and a bounded monthly refetch must agree. Conflicting roots fail closed even if the conflicting row would later fail quote, currency, size or expiry selection. Adjusted `-X`/trailing-X series do not establish or inherit a standard identity.
+
+Strike identity uses exact decimal parsing, separate from quote-price locale parsing. Strict source grouping such as `1,460.00` is accepted; ambiguous `1,460`, malformed grouping and rounded substitutions are rejected. Subcent identity cannot be rounded into a different cent-exact recommendation.
+
+US empty responses, nonempty but untyped rows, and unreadable response shapes have separate causes. Nordic `NO_INST_FOUND` means the source reports no instrument, not independently proven absence of a listing; a readable search without a verified underlying is distinct from an unreadable chain. Contradictory status and nonempty chain content fail closed. Missing legacy metadata never proves that puts or listed options do not exist.
+
+### Observation date versus acquisition date
+
+An optional sealed `source_quote_date` records the actual Nasdaq US response's calendar date for the selected expiry, including its bounded exact-date response when used. Absence remains unknown. Invalid, conflicting, future or stale dates are not replaced with fetch time. `timestamp` remains acquisition time; `asof_date` remains the exchange-local expiry-rule date.
+
+Text and Flex label the source-page observation date, including observation-only cards. Nasdaq `lastTrade` describes the underlying and `asOf` the quote table: neither establishes every option leg's observation time, nor the date of a separately supplied calculation spot. Carry preserves an existing source date without restamping; Nasdaq US remains ineligible for prior-session carry.
+
 ## Strategy observations
 
 ### Covered call
@@ -166,11 +180,11 @@ Local owner mode may label coverage only from authenticated local whole-share da
 
 Per underlying and cycle the sealed `v213:options:v2` row carries up to three strike tiers (operator 2026-09-26 and 2026-10-11):
 
-- `HIGH_STRIKE` (title "建議一：高履約價（不易被賣掉）"): the highest out-of-the-money strike with a valid two-sided quote and model Delta at most 0.20; there is no annualized-yield floor, so a strike paying little is still listed with its annualized yield shown. The monthly cycle applies the same rule: low yield alone never changes an eligible strike into an observation or advances the expiry.
+- `HIGH_STRIKE` (title "建議一：高履約價（不易被賣掉）"): the highest out-of-the-money cent-exact strike with a positive sell Bid and verified Delta at most 0.20. No annualized-yield floor applies. Low yield or a wide spread alone never converts an eligible strike into an observation or advances the expiry.
 - `MIDDLE` (optional, "中間型（權利金與被指派機率居中）"): a strike strictly between the two others, the one whose Delta is nearest 0.25 (the strike nearest 2.5% out of the money when a Delta is missing); absent when no listed strike lies between, never padded or duplicated;
 - `BALANCED` ("平衡型（收較多權利金）"): the lower strike whose Delta is nearest 0.30.
 
-Strikes are strictly descending HIGH > MIDDLE > BALANCED. Titles are numbered by display position (一, 二, 三) without gaps, so a row without a middle shows exactly the two earlier titles. Every tier carries its own sell limit (mid rounded down to the 0.01 tick when the spread is within 25% of mid, otherwise Bid plus a quarter of the spread, never below Bid or above mid); limit prices are not required to be ordered across tiers, only the strikes are.
+Strikes are strictly descending HIGH > MIDDLE > BALANCED. Titles are numbered by display position (一, 二, 三) without gaps. Each sell LIMIT starts at midpoint rounded down to 0.01 and clamped within the actual quote; with only a valid Bid it uses Bid. A rounding step must never move the LIMIT below Bid or above midpoint, so a subcent boundary retains its actual precision. Sell instructions describe walking down by 0.01 without crossing Bid and explicitly do not guarantee a fill. Limits need not be ordered across tiers; strikes must be.
 
 Compatibility: `suggestions` keeps one or two entries with the roles `HIGH_STRIKE` or `HIGH_STRIKE`,`BALANCED`, so a Worker that predates the middle tier ignores the additive `middle_suggestion` key and renders the two original tiers; rows sealed before the change simply have no middle tier and render two. The Python publish gate and the Worker validator both reject a malformed middle tier (wrong role, not strictly between, fewer than two neighbours, any failed per-item check) for that cycle only. The shared definition lives in `scripts/option_recommendation_rules.py` and its TypeScript twin `cloud/src/v213/option-recommendation-rules.ts`.
 
@@ -179,16 +193,16 @@ Compatibility: `suggestions` keeps one or two entries with the roles `HIGH_STRIK
 Every weekly and monthly cycle carries a covered call, a cash-secured put (CSP) and a collar, conservative first, in the additive optional `strategies` object of the same sealed row (no new KV key; a row without it is an older row and shows the covered call only):
 
 - `cc`: present only as `{"unavailable": reason}` when the cycle has no covered-call strike (`suggestions` is then `[]`, allowed beside a real `csp`/`collar` block or an independently validated dated monthly quote observation);
-- `csp`: out-of-the-money puts with a two-sided quote, absolute Delta 0.20-0.30 (shared `CONSERVATIVE_DELTA_BAND`), no annualized-yield floor (removed 2026-11-03; yield is shown on the cash, strike x 100); `CONSERVATIVE` = Delta nearest 0.20, optional `BALANCED` = Delta nearest 0.30 at a higher strike; sell limit as for the covered call; carries cash required, break-even and downside buffer;
-- `collar`: long stock, a protective put (absolute Delta nearest 0.15 inside 0.05-0.25, buy limit = mid rounded up, never above Ask) and the short call in the same 0.20-0.30 band (nearest 0.20 first); net premium (credit positive), maximum loss, maximum gain, break-even and the worst-case net from Bid and Ask; no yield floor.
+- `csp`: out-of-the-money puts with a positive sell Bid, absolute Delta 0.20–0.30 (`CONSERVATIVE_DELTA_BAND`), and no yield floor. `CONSERVATIVE` is nearest 0.20; optional `BALANCED` is nearest 0.30 at a higher strike. LIMIT follows the covered call; cash required, break-even and downside buffer remain contract-derived.
+- `collar`: long stock, a protective put (absolute Delta nearest 0.15 inside 0.05–0.25, positive buy Ask) and a short call in the same 0.20–0.30 band as CSP (nearest 0.20 first). Buy LIMIT is midpoint rounded up to 0.01 and bounded by Ask, or Ask alone without Bid. Net premium, maximum loss/gain and break-even are LIMIT-based; the conservative quote-side net is Call Bid minus Put Ask. Its annualization is net-premium annualization, not total return or a guaranteed outcome.
 
-Each of `csp` and `collar` is `{"unavailable": reason}` or a block with `rights_status`, `provider_id`, `quote_basis` and `timestamp` equal to the cycle's. A strategy whose leg lacks a valid two-sided quote or a Delta is unavailable on its own; nothing is modelled. The put side of Yahoo, Nasdaq US and Nasdaq Nordic is covered by the same `operator_accepted_unlicensed` label and decision as their calls; puts do not count towards `OPTION_TWO_SIDED_COVERAGE_LOW`. The Python publish gate degrades a failing `csp` or `collar` block to `{"unavailable": ...}` without dropping a good covered call, and drops the strategies first when the options object would exceed its size cap.
+Each `csp`/`collar` block retains cycle-matched `rights_status`, `provider_id`, `quote_basis` and `timestamp`. A missing required executable side or verified Delta makes that strategy unavailable independently. A missing opposite side is null, never a fabricated zero/equal quote; midpoint and spread then remain unavailable. One-sided recommendations require source Delta or source IV, never midpoint-implied Greeks. Two-sided quote-derived Greeks remain explicitly model-labelled; call Delta is never reinterpreted as put Delta. The put rights label is unchanged, and puts do not count towards `OPTION_TWO_SIDED_COVERAGE_LOW`. The publish gate still degrades a failing strategy independently and drops strategies first under its size cap.
 
-The Worker mirrors those checks in `cloud/src/v213/covered-call.ts` (`validateCoveredCallCycle`): a failing `csp` or `collar` block becomes "no data" alone. Empty `suggestions` needs a real block or a validated monthly quote observation; an all-unavailable strategies object alone is insufficient. The LINE card is one flex message of at most four bubbles (overview, covered call, cash-secured put, collar; a strategy without data has no detail bubble), every bubble carrying the source and rights label, quote basis and capture time in its single disclosure line.
+The Worker mirrors those checks in `cloud/src/v213/covered-call.ts`. Empty `suggestions` needs a real put strategy or a validated monthly observation; diagnostic-only blocks alone are insufficient. US and Stockholm share one renderer: overview, available CC/CSP/collar detail cards and source disclosure, at most five Flex bubbles. Even when a call observation is retained, any qualified put strategy takes this recommendation layout, not the observation-only layout. Every displayed tier exposes its actual Bid/Ask/midpoint, LIMIT instructions, spread or missing-side warning, LIMIT economics and Bid/conservative-side economics in both Text and Flex. Text is split within LINE bounds, not truncated to hide disclosures.
 
-Validated monthly observation cycles retain separate source-backed CC, CSP and collar refusal reasons, even when all three are unavailable. Reasons distinguish eligible-side strike precision, missing two-sided quotes, spread wider than midpoint, delta exclusion and genuinely absent same-expiry put rows. Missing legacy strategy metadata or an unreadable put source cannot establish that a put chain is absent. Text and Flex expose the retained reasons without manufacturing quotes, relaxing eligibility or borrowing another expiry.
+Pure monthly observations retain separate source-backed CC, CSP and collar reasons. Reasons distinguish strike precision, missing required Bid/Ask, unavailable Greek evidence, delta exclusion and genuinely absent same-expiry puts. Wide spread is not a refusal. Missing metadata or an unreadable source does not prove an absent put chain.
 
-Diagnostic-only strategy blocks are not usable strategies for carry-forward. A current no-two-sided monthly observation may still use an otherwise eligible same-expiry prior-session capture under the existing rights, expiry and freshness limits. A current usable put strategy or malformed strategy evidence is not hidden by that replacement.
+Diagnostic-only blocks are not usable strategies for carry-forward. Existing capture eligibility remains explicitly two-sided; a one-sided live recommendation cannot create a two-sided carry capture. A current usable strategy or malformed evidence is not hidden by replacement. An otherwise eligible same-expiry prior capture remains subject to the existing rights, expiry and freshness limits.
 
 ### Cash-secured put
 
@@ -202,29 +216,19 @@ Public mode may explain protection cost and payoff mechanics without claiming th
 
 Local owner mode may relate the observation to an authenticated local position while keeping all results local.
 
-## Liquidity gate
+## Quote eligibility and liquidity warnings
 
-A candidate normally requires:
+A recommendation requires a verified standard contract, cent-exact OTM strike, eligible expiry and Delta, finite positive Bid for a sale or Ask for a purchase, and the existing freshness/rights/seal checks. Two positive sides must not be crossed. Missing/zero optional sides may normalize to null; they do not supply a midpoint or quote-implied Greek.
 
-- BID greater than zero;
-- ASK greater than or equal to BID;
-- spread within the configured maximum percentage of midpoint;
-- minimum open interest or a documented override;
-- quote age within the configured maximum;
-- no invalid or missing critical fields.
-
-Illiquid contracts may appear only as clearly labelled raw observations, not as recommended candidates.
+Wide spreads, missing opposite sides, and unavailable OI/volume are disclosed honestly, not converted into invented liquidity. Spread above 25% of midpoint gets a visible warning, including spreads wider than midpoint. Such quotes can support non-binding LIMIT references but never a fill guarantee. Unknown OI/volume stays "未提供", not zero.
 
 ## Limit-reference observation
 
-For a valid two-sided quote:
+Recommendation cards use the midpoint-based bounded LIMIT rules above, with both LIMIT and conservative quote-side economics. A sell walks down by 0.01 without crossing Bid; a protective put uses its bounded buy LIMIT, with Ask as the conservative cost.
 
-- seller reference: one-quarter spread above BID through midpoint;
-- buyer reference: midpoint through ASK.
+The separate manual quote-navigation calculator retains its two-sided seller range (one-quarter spread above Bid through midpoint), buyer range (midpoint through Ask), and bounded middle-of-range value (`limit_middle` / `limitMiddle`). That educational range is not the recommendation-card LIMIT formula. Its public DTO (`sell_limit_observation`) remains a range; this stage does not change its closed field allowlist.
 
-The manual calculator additionally shows a middle price of the seller range: `(low + high) / 2` rounded to the 0.01 tick and clamped into the range, so low ≤ middle ≤ high always holds (`limit_middle` / `limitMiddle` in the shared rules modules). The local report and the public candidate DTO (`sell_limit_observation`) keep the two-value range until the closed field allowlists are changed together.
-
-This is quote navigation, not an order instruction, fill guarantee or authorization to trade. Market/order submission paths do not exist.
+All are non-binding references, not trade authorization or fill guarantees. No order-submission path exists.
 
 ## Ranking
 
@@ -292,8 +296,8 @@ Local owner position questions belong only to the separate local interface and a
 1. Weekly selection uses the calendar-week rule and monthly selection the nearest standard monthly (third Friday), both on actual DTE.
 2. BID, ASK, midpoint and spread are calculated correctly.
 3. Last trade is never substituted for current BID/ASK.
-4. One-sided and stale quotes fail liquidity gates.
-5. Missing Delta remains missing.
+4. Missing required quote sides, unsupported one-sided Greeks, crossed quotes and stale data fail the applicable gates; a valid one-sided reference never qualifies two-sided carry.
+5. Missing Delta stays missing unless derived from supported, explicitly labelled inputs. Wide spread alone does not refuse a strategy.
 6. Public output rejects all position, account and broker lineage.
 7. `TENANT_POSITION_REQUIRED` never triggers a private LINE lookup.
 8. LINE/Worker cannot import or call the IBKR provider.

@@ -1,6 +1,6 @@
 # Current state / 目前狀態
 
-**As of 2026-11-09 (Asia/Taipei).** Branch **`integ/r2`** is the isolated Stage 1B integration candidate based on **`65e8f5b`**, not an accepted release or deployment. Round-two **ACCEPT_WITH_FIXES** is not release acceptance; status remains **IMPLEMENTED_UNVERIFIED** pending master re-review of the fixed snapshot and evidence. Release **`v3.3.0`** remains the earlier dual-accepted source snapshot **`8ff4b0722f71f983716b2accc1fadeb301e848e4`**, not the installed Worker version.
+**As of 2026-11-09 (Asia/Taipei).** Branch **`integ/r2`** is the isolated Stage 1C integration candidate, continuing from Stage 1B **`29fe31eb7bc5e8b7aa00fc6c38d30b35017cf091`** on base **`65e8f5b`**, not an accepted release or deployment. Independent **ACCEPT_WITH_FIXES** is not release acceptance; status remains **IMPLEMENTED_UNVERIFIED** pending master re-review of the fixed snapshot and evidence. Release **`v3.3.0`** remains the earlier dual-accepted source snapshot **`8ff4b0722f71f983716b2accc1fadeb301e848e4`**, not the installed Worker version.
 
 ## Production and rollout
 
@@ -32,6 +32,13 @@
 - m1 restores positive localized refusal assertions for corrupted snapshots; m3 applies currency-aware quote precision to Top20 cross-check lines without changing source values.
 - `REPORT-STAGE1B.txt` records the separate commits, bounded public acquisition, offline whole-universe function/sealer/Worker evidence and committed-tree gates. Fresh recordings, synthetic regressions and unchanged historical-corpus checks remain distinct populations; function replay is not producer-main, publication-gate or Production acceptance.
 - M3 and Stage 2 remain outside this stage; no push, tag, merge, deployment or real LINE delivery is authorized by these changes.
+
+### Stage 1C follow-through
+
+- US/Stockholm CC, CSP and collar share quote-bounded midpoint LIMIT recommendations, liquidity warnings and visible LIMIT/conservative-side economics. Wide spread is no longer a refusal; delta, OTM, exact identity/strikes, expiry, freshness, rights, seals and no yield floor remain binding. One-sided references do not qualify two-sided carry.
+- Findings 1–3 distinguish empty/untyped/unreadable/no-instrument sources, verify one consistent Nordic exchange root and exact grouped strikes, and seal/display actual US source observation dates without assigning acquisition dates to prices or option legs.
+- `REPORT-STAGE1C.txt` is the lane handoff for immutable Stage 1B replay, all 28 original observations, all 13 Nordic findings, SIVE Text/Flex, the separately authorized regular-session recollection and committed-tree gates. Counts and execution HEADs belong to their recorded inputs; a new input set is not an equal-input improvement claim.
+- Only one bounded, read-only public recollection is authorized by the Stage 1C addendum. This does not authorize Stage 2, producer-main/publication acceptance, push, tag, merge, deployment, Production mutation or real LINE delivery.
 
 
 ## Release acceptance (v3.3.0)
