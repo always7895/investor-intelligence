@@ -31,7 +31,7 @@
   "publication_scope": "public_line_quote",
   "strategies": {
     "cc": {
-      "unavailable": "低於6%門檻，買權僅作報價觀察；不構成備兌買權建議"
+      "unavailable": "2026-11-20 到期的價外買權中，沒有 Delta 不超過 0.20 且有雙邊報價的履約價"
     },
     "csp": {
       "suggestions": [

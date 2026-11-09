@@ -8,27 +8,27 @@
   "multiplier": 100,
   "quote_basis": "delayed",
   "timestamp": "2026-11-08T14:16:09Z",
-  "source": "Synthetic typed delayed observations",
-  "provenance": "https://example.org/test-only",
+  "source": "synthetic test observations",
+  "provenance": "https://example.org/typed-public-chain",
   "rights_status": "operator_accepted_unlicensed",
   "suggestions": [
     {
       "role": "HIGH_STRIKE",
       "strike": 120,
-      "bid": 0.8,
-      "ask": 0.85,
-      "mid": 0.825,
-      "limit_price": 0.82,
-      "premium_per_contract": 82.0,
-      "period_yield": 0.0082,
-      "annualized_yield": 0.249417,
+      "bid": 0.01,
+      "ask": 0.02,
+      "mid": 0.015,
+      "limit_price": 0.01,
+      "premium_per_contract": 1.0,
+      "period_yield": 0.0001,
+      "annualized_yield": 0.003042,
       "upside_to_strike": 0.2,
       "delta": 0.026,
       "delta_basis": "QUOTED_IV",
       "iv": 0.5,
       "oi": 200,
       "volume": 10,
-      "spread_pct": 0.0606
+      "spread_pct": 0.6667
     }
   ],
   "strategies": {

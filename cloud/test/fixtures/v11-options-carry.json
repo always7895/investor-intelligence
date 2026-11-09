@@ -86,8 +86,8 @@
         "monthly": {
           "ticker": "T00",
           "strategy": "COVERED_CALL",
-          "expiry": "2026-11-20",
-          "dte": 38,
+          "expiry": "2026-10-16",
+          "dte": 3,
           "spot": 100.0,
           "currency": "USD",
           "multiplier": 100,
@@ -106,9 +106,9 @@
               "limit_price": 0.95,
               "premium_per_contract": 95.0,
               "period_yield": 0.0095,
-              "annualized_yield": 0.09125,
+              "annualized_yield": 1.155833,
               "upside_to_strike": 0.15,
-              "delta": 0.126,
+              "delta": 0.0,
               "delta_basis": "QUOTED_IV",
               "iv": 0.35,
               "oi": 120,
@@ -124,9 +124,9 @@
               "limit_price": 2.45,
               "premium_per_contract": 245.0,
               "period_yield": 0.0245,
-              "annualized_yield": 0.235329,
+              "annualized_yield": 2.980833,
               "upside_to_strike": 0.05,
-              "delta": 0.367,
+              "delta": 0.065,
               "delta_basis": "QUOTED_IV",
               "iv": 0.35,
               "oi": 300,
@@ -148,9 +148,9 @@
             "limit_price": 1.45,
             "premium_per_contract": 145.0,
             "period_yield": 0.0145,
-            "annualized_yield": 0.139276,
+            "annualized_yield": 1.764167,
             "upside_to_strike": 0.1,
-            "delta": 0.226,
+            "delta": 0.001,
             "delta_basis": "QUOTED_IV",
             "iv": 0.35,
             "oi": 200,
@@ -158,7 +158,7 @@
             "spread_pct": 0.069
           },
           "asof_date": "2026-10-13",
-          "monthly_rule": "LATER_LISTED"
+          "monthly_rule": "THIRD_FRIDAY"
         }
       },
       "T01": {
@@ -242,8 +242,8 @@
         "monthly": {
           "ticker": "T01",
           "strategy": "COVERED_CALL",
-          "expiry": "2026-11-20",
-          "dte": 38,
+          "expiry": "2026-10-16",
+          "dte": 3,
           "spot": 100.0,
           "currency": "USD",
           "multiplier": 100,
@@ -262,9 +262,9 @@
               "limit_price": 0.95,
               "premium_per_contract": 95.0,
               "period_yield": 0.0095,
-              "annualized_yield": 0.09125,
+              "annualized_yield": 1.155833,
               "upside_to_strike": 0.15,
-              "delta": 0.126,
+              "delta": 0.0,
               "delta_basis": "QUOTED_IV",
               "iv": 0.35,
               "oi": 120,
@@ -280,9 +280,9 @@
               "limit_price": 2.45,
               "premium_per_contract": 245.0,
               "period_yield": 0.0245,
-              "annualized_yield": 0.235329,
+              "annualized_yield": 2.980833,
               "upside_to_strike": 0.05,
-              "delta": 0.367,
+              "delta": 0.065,
               "delta_basis": "QUOTED_IV",
               "iv": 0.35,
               "oi": 300,
@@ -304,9 +304,9 @@
             "limit_price": 1.45,
             "premium_per_contract": 145.0,
             "period_yield": 0.0145,
-            "annualized_yield": 0.139276,
+            "annualized_yield": 1.764167,
             "upside_to_strike": 0.1,
-            "delta": 0.226,
+            "delta": 0.001,
             "delta_basis": "QUOTED_IV",
             "iv": 0.35,
             "oi": 200,
@@ -314,7 +314,7 @@
             "spread_pct": 0.069
           },
           "asof_date": "2026-10-13",
-          "monthly_rule": "LATER_LISTED"
+          "monthly_rule": "THIRD_FRIDAY"
         }
       },
       "GOOD0": {
@@ -398,8 +398,8 @@
         "monthly": {
           "ticker": "GOOD0",
           "strategy": "COVERED_CALL",
-          "expiry": "2026-11-20",
-          "dte": 38,
+          "expiry": "2026-10-16",
+          "dte": 3,
           "spot": 100.0,
           "currency": "USD",
           "multiplier": 100,
@@ -418,9 +418,9 @@
               "limit_price": 0.95,
               "premium_per_contract": 95.0,
               "period_yield": 0.0095,
-              "annualized_yield": 0.09125,
+              "annualized_yield": 1.155833,
               "upside_to_strike": 0.15,
-              "delta": 0.126,
+              "delta": 0.0,
               "delta_basis": "QUOTED_IV",
               "iv": 0.35,
               "oi": 120,
@@ -436,9 +436,9 @@
               "limit_price": 2.45,
               "premium_per_contract": 245.0,
               "period_yield": 0.0245,
-              "annualized_yield": 0.235329,
+              "annualized_yield": 2.980833,
               "upside_to_strike": 0.05,
-              "delta": 0.367,
+              "delta": 0.065,
               "delta_basis": "QUOTED_IV",
               "iv": 0.35,
               "oi": 300,
@@ -460,9 +460,9 @@
             "limit_price": 1.45,
             "premium_per_contract": 145.0,
             "period_yield": 0.0145,
-            "annualized_yield": 0.139276,
+            "annualized_yield": 1.764167,
             "upside_to_strike": 0.1,
-            "delta": 0.226,
+            "delta": 0.001,
             "delta_basis": "QUOTED_IV",
             "iv": 0.35,
             "oi": 200,
@@ -470,7 +470,7 @@
             "spread_pct": 0.069
           },
           "asof_date": "2026-10-13",
-          "monthly_rule": "LATER_LISTED"
+          "monthly_rule": "THIRD_FRIDAY"
         }
       }
     }
@@ -559,8 +559,8 @@
         "monthly": {
           "ticker": "T00",
           "strategy": "COVERED_CALL",
-          "expiry": "2026-11-20",
-          "dte": 38,
+          "expiry": "2026-10-16",
+          "dte": 3,
           "spot": 100.0,
           "currency": "USD",
           "multiplier": 100,
@@ -579,9 +579,9 @@
               "limit_price": 0.95,
               "premium_per_contract": 95.0,
               "period_yield": 0.0095,
-              "annualized_yield": 0.09125,
+              "annualized_yield": 1.155833,
               "upside_to_strike": 0.15,
-              "delta": 0.126,
+              "delta": 0.0,
               "delta_basis": "QUOTED_IV",
               "iv": 0.35,
               "oi": 120,
@@ -597,9 +597,9 @@
               "limit_price": 2.45,
               "premium_per_contract": 245.0,
               "period_yield": 0.0245,
-              "annualized_yield": 0.235329,
+              "annualized_yield": 2.980833,
               "upside_to_strike": 0.05,
-              "delta": 0.367,
+              "delta": 0.065,
               "delta_basis": "QUOTED_IV",
               "iv": 0.35,
               "oi": 300,
@@ -621,9 +621,9 @@
             "limit_price": 1.45,
             "premium_per_contract": 145.0,
             "period_yield": 0.0145,
-            "annualized_yield": 0.139276,
+            "annualized_yield": 1.764167,
             "upside_to_strike": 0.1,
-            "delta": 0.226,
+            "delta": 0.001,
             "delta_basis": "QUOTED_IV",
             "iv": 0.35,
             "oi": 200,
@@ -631,7 +631,7 @@
             "spread_pct": 0.069
           },
           "asof_date": "2026-10-13",
-          "monthly_rule": "LATER_LISTED"
+          "monthly_rule": "THIRD_FRIDAY"
         }
       },
       "T01": {
@@ -715,8 +715,8 @@
         "monthly": {
           "ticker": "T01",
           "strategy": "COVERED_CALL",
-          "expiry": "2026-11-20",
-          "dte": 38,
+          "expiry": "2026-10-16",
+          "dte": 3,
           "spot": 100.0,
           "currency": "USD",
           "multiplier": 100,
@@ -735,9 +735,9 @@
               "limit_price": 0.95,
               "premium_per_contract": 95.0,
               "period_yield": 0.0095,
-              "annualized_yield": 0.09125,
+              "annualized_yield": 1.155833,
               "upside_to_strike": 0.15,
-              "delta": 0.126,
+              "delta": 0.0,
               "delta_basis": "QUOTED_IV",
               "iv": 0.35,
               "oi": 120,
@@ -753,9 +753,9 @@
               "limit_price": 2.45,
               "premium_per_contract": 245.0,
               "period_yield": 0.0245,
-              "annualized_yield": 0.235329,
+              "annualized_yield": 2.980833,
               "upside_to_strike": 0.05,
-              "delta": 0.367,
+              "delta": 0.065,
               "delta_basis": "QUOTED_IV",
               "iv": 0.35,
               "oi": 300,
@@ -777,9 +777,9 @@
             "limit_price": 1.45,
             "premium_per_contract": 145.0,
             "period_yield": 0.0145,
-            "annualized_yield": 0.139276,
+            "annualized_yield": 1.764167,
             "upside_to_strike": 0.1,
-            "delta": 0.226,
+            "delta": 0.001,
             "delta_basis": "QUOTED_IV",
             "iv": 0.35,
             "oi": 200,
@@ -787,7 +787,7 @@
             "spread_pct": 0.069
           },
           "asof_date": "2026-10-13",
-          "monthly_rule": "LATER_LISTED"
+          "monthly_rule": "THIRD_FRIDAY"
         }
       },
       "GOOD0": {
@@ -795,7 +795,7 @@
           "unavailable": "2026-10-16 到期的價外買權中，沒有 Delta 不超過 0.20 且有雙邊報價的履約價"
         },
         "monthly": {
-          "unavailable": "2026-11-20 到期的價外買權中，沒有 Delta 不超過 0.20 且有雙邊報價的履約價"
+          "unavailable": "2026-10-16 到期的價外買權中，沒有 Delta 不超過 0.20 且有雙邊報價的履約價"
         }
       }
     }
