@@ -112,7 +112,7 @@ describe("data-driven potential ranking", () => {
     expect(messages.every((m: any) => m.contents.contents.length === 5)).toBe(true);
   });
 
-  it("shows order coverage per horizon and ranks only fully disclosed companies by 2Y", async () => {
+  it("shows partial order horizons without imputing missing periods", async () => {
     const orders = (m6: number | null, m12: number | null, m24: number | null) => ({ as_of: "2026-06-30", form: "10-Q", filed: "2026-07-29",
       coverage_pct: { m6, m12, m24 }, floor_growth_pct: { m6: m6 !== null && m6 > 100 ? +(m6 - 100).toFixed(1) : null,
         m12: m12 !== null && m12 > 100 ? +(m12 - 100).toFixed(1) : null, m24: m24 !== null && m24 > 100 ? +(m24 - 100).toFixed(1) : null } });
@@ -120,7 +120,7 @@ describe("data-driven potential ranking", () => {
       [ticker, { ...REPORT, ticker, name: `Synthetic ${ticker} Corp.` }])), records: [
       { ...row(1, "SYNA"), orders: orders(103, 103, 89.7) },
       { ...row(2, "SYNB"), orders: orders(206.3, 206.3, 206.3) },
-      { ...row(3, "SYNC"), orders: orders(45.9, 91.8, null) },       // 2Y not disclosed: excluded from the order view
+      { ...row(3, "SYNC"), orders: orders(45.9, 91.8, null) },       // 2Y not disclosed: comparable 1Y group
       { ...row(4, "SYND"), orders: { ...orders(1, 1, 1), form: "8-K" } }, // malformed: dropped, never rendered
     ] };
     const card = visibleText(JSON.parse(await actualReply("潛力榜", await sealedEnv(ranking))));
@@ -132,13 +132,18 @@ describe("data-driven potential ranking", () => {
     const view = JSON.parse(await actualReply("訂單實現榜", await sealedEnv(ranking)));
     const text = visibleText(view);
     expect(text.indexOf("SYNB")).toBeLessThan(text.indexOf("SYNA"));
-    expect(text).not.toContain("SYNC");
+    expect(text).toContain("SYNC");
+    expect(text).toContain("2Y 未揭露");
+    expect(text.indexOf("SYNC")).toBeGreaterThan(text.indexOf("SYNA"));
     expect(text).not.toContain("SYND");
     expect(text).toContain("2Y 206%");
     const plain = JSON.parse(await actualReply("訂單實現榜 文字", await sealedEnv(ranking)));
     expect(plain.every((m: any) => m.type === "text")).toBe(true);
     const none = { ...RANKING, records: [{ ...row(1, "SYNA"), orders: orders(40, 80, null) }] };
-    expect(await actualReply("訂單實現榜", await sealedEnv(none))).toContain("沒有同時揭露 6M、1Y、2Y 認列時程");
+    const partial = visibleText(JSON.parse(await actualReply("訂單實現榜", await sealedEnv(none))));
+    expect(partial).toContain("SYNA");
+    expect(partial).toContain("1Y 80%");
+    expect(partial).toContain("2Y 未揭露");
   });
 
   it("fails closed when the ranking is missing or malformed", async () => {

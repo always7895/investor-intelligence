@@ -73,22 +73,21 @@ def _finite_positive(value: Any) -> bool:
 
 
 def _filing_url(value: Any) -> bool:
-    if not isinstance(value, str) or len(value) > 400 or any(ord(c) < 32 for c in value):
+    if not isinstance(value, str) or len(value) > 400 or any(ord(c) < 33 for c in value):
         return False
     try:
         parsed = urlparse(value)
+        return (parsed.scheme == "https" and parsed.hostname == "www.sec.gov"
+                and not parsed.username and not parsed.password and parsed.port is None
+                and not parsed.query and not parsed.fragment
+                and re.fullmatch(r"/Archives/edgar/data/\d{1,10}/\d{18}/[A-Za-z0-9_.-]+\.html?", parsed.path) is not None)
     except ValueError:
         return False
-    # The public Worker accepts only primary SEC archive exhibits; issuer IR and
-    # other SEC endpoints would invalidate the entire sealed Top20 payload.
-    return (parsed.scheme == "https" and parsed.hostname == "www.sec.gov"
-            and not parsed.username and not parsed.password and parsed.port is None
-            and not parsed.query and not parsed.fragment and parsed.path.startswith("/Archives/"))
 
 
-def load_actions(path: Path = DEFAULT_CONFIG, *, today: date | None = None) -> dict[str, Any]:
-    """Standalone loader for independently installed reviewed registries."""
-    return load_actions_bytes(Path(path).read_bytes(), today=today)
+def load_actions(path: Path | None = None, *, today: date | None = None) -> dict[str, Any]:
+    """Load the selected installed registry; resolve its default at the time of the read."""
+    return load_actions_bytes(Path(DEFAULT_CONFIG if path is None else path).read_bytes(), today=today)
 
 
 def load_actions_bytes(raw: bytes, *, today: date | None = None) -> dict[str, Any]:
@@ -96,7 +95,7 @@ def load_actions_bytes(raw: bytes, *, today: date | None = None) -> dict[str, An
     if type(raw) is not bytes:
         raise ValueError("CORPORATE_ACTION_BYTES_REQUIRED")
     doc = _json(raw, MAX_FILE)
-    if not isinstance(doc, dict) or set(doc) != REGISTRY_FIELDS or doc["schema_version"] != 1 or not isinstance(doc["entries"], list):
+    if not isinstance(doc, dict) or set(doc) != REGISTRY_FIELDS or type(doc["schema_version"]) is not int or doc["schema_version"] != 1 or not isinstance(doc["entries"], list):
         raise ValueError("CORPORATE_ACTION_SCHEMA")
     if len(doc["entries"]) > 200:
         raise ValueError("CORPORATE_ACTION_LIMIT")
@@ -110,7 +109,7 @@ def load_actions_bytes(raw: bytes, *, today: date | None = None) -> dict[str, An
         if not isinstance(raw, dict):
             raise ValueError("CORPORATE_ACTION_ENTRY_FIELDS")
         if raw.get("kind") == "DISTRIBUTION":
-            if set(raw) != DISTRIBUTION_FIELDS:
+            if set(raw) not in (DISTRIBUTION_FIELDS, DISTRIBUTION_FIELDS | {"entitlement_receipts"}):
                 raise ValueError("CORPORATE_ACTION_DISTRIBUTION_FIELDS")
             if raw["status"] != "CLOSED":
                 raise ValueError("CORPORATE_ACTION_DISTRIBUTION_NOT_CLOSED")
@@ -129,8 +128,15 @@ def load_actions_bytes(raw: bytes, *, today: date | None = None) -> dict[str, An
             distribution_day = _day(raw["distribution_date"])
             source_day = _day(raw["source_date"])
             review_day = _day(raw["review_by"]) if raw["review_by"] is not None else None
-            if source_day < distribution_day or (review_day is not None and review_day < distribution_day):
+            if source_day < distribution_day or source_day > today or (review_day is not None and review_day < distribution_day):
                 raise ValueError("CORPORATE_ACTION_DISTRIBUTION_CHRONOLOGY")
+            if "entitlement_receipts" in raw:
+                # Authority comes only from these controlled captured registry bytes,
+                # not an evidence catalog's approval flags or self-computed checksum.
+                from distribution_adjusted_returns import validate_entitlement_receipts
+                validate_entitlement_receipts(raw["entitlement_receipts"])
+                if any(not source_day <= _day(r["approved_on"]) <= today for r in raw["entitlement_receipts"]):
+                    raise ValueError("CORPORATE_ACTION_ENTITLEMENT_REVIEW_DATE")
             key = (raw["target_symbol"], raw["distribution_date"], raw["related_symbol"])
             if key in distribution_keys:
                 raise ValueError("CORPORATE_ACTION_DUPLICATE_DISTRIBUTION")
@@ -155,7 +161,7 @@ def load_actions_bytes(raw: bytes, *, today: date | None = None) -> dict[str, An
         announced = _day(raw["announced_on"])
         status_on, source_on = (_day(raw[key]) for key in ("status_on", "source_date"))
         review_on = _day(raw["review_by"]) if raw["review_by"] is not None else None
-        if status_on < announced or source_on < status_on or (review_on is not None and review_on < announced):
+        if status_on < announced or source_on < status_on or source_on > today or (review_on is not None and review_on < announced):
             raise ValueError("CORPORATE_ACTION_CHRONOLOGY")
         close = raw["expected_close"]
         if not (isinstance(close, str) and (CLOSE.fullmatch(close) or _valid_close_day(close))):

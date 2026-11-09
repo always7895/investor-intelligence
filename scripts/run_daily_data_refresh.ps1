@@ -11,12 +11,12 @@
 # B2-ORCH-01: the daily body is Invoke-DailyDataRefresh. Dot-sourcing this script defines functions only: no contact
 # lookup, environment changes, native launches, cwd changes or exit. The normal entry below constructs the current
 # native/contact adapters, invokes the same function with disabled-by-default feature switches, and
-# exits with its returned ExitCode. The revenue-guidance pair (release check 0.9h + bottleneck v3 3h) is owned by
+# exits with its returned ExitCode. The revenue-guidance pair (release check 0.9h + ranking every refresh) is owned by
 # scripts/revenue_guidance_orchestration.psm1 when GuidanceAutoUpdateEnabled is set; both feature options default to
 # $false and the default GuidanceProvider is $null. Explicit normal-entry opt-in builds the protected
 # private-pipe backend/P1 provider and same-owner ranking adapter; prerequisite absence is nonzero.
 # The default-off -D2ForceGuidanceRankingPair switch (D2 rebuild) runs that legacy pair with --if-older-than-hours 0
-# (never skip) in disabled mode only; every other step and argument is unchanged.
+# (never skip) in disabled mode only; the hourly ranking already runs unconditionally.
 [CmdletBinding()]
 param(
     [double]$IfOlderThanHours = 20,
@@ -53,8 +53,8 @@ function Invoke-DailyDataRefresh {
         # Narrowly documented provider object (Acquire scriptblock member) or $null (the shipped default, unavailable).
         [AllowNull()][object]$GuidanceProvider = $null,
         # D2 rebuild only, default off. Disabled-orchestration mode only: runs the legacy guidance_release_check and
-        # bottleneck_v3 steps with --if-older-than-hours 0 (never skip) instead of 0.9 and 3. No effect when
-        # GuidanceAutoUpdateEnabled is set (that branch owns the pair); no other step or argument changes.
+        # bottleneck_v3 steps with --if-older-than-hours 0 (never skip). Ranking already runs each refresh.
+        # No effect when GuidanceAutoUpdateEnabled is set (that branch owns the pair).
         [bool]$ForceGuidanceRankingPair = $false
     )
 
@@ -86,7 +86,7 @@ function Invoke-DailyDataRefresh {
         # Steps without the SEC contact. Chinese names (weekly, sourced, never translated) feed the identity shards.
         Invoke-DailyStep 'zh_names' @('scripts\build_zh_names.py', '--if-older-than-hours', '168') | Out-Null
         Invoke-DailyStep 'identity_shards' @('scripts\build_identity_shards.py', '--if-older-than-hours', "$IfOlderThanHours") | Out-Null
-        Invoke-DailyStep 'serenity_signals' @('scripts\serenity_signals.py', '--refresh', '--if-older-than-hours', '6') | Out-Null
+        Invoke-DailyStep 'serenity_signals' @('scripts\serenity_signals.py', '--refresh', '--if-older-than-hours', '0.9') | Out-Null
         # Analyst quarterly revenue consensus (Yahoo, unofficial; operator 2026-10-13) for the registry's NOT_DISCLOSED
         # issuers; needs no SEC contact. The collector reads the registry's consensus_enabled gate itself and does
         # nothing (exit 0, no provider request) while it is not true. The sealer binds the newest capture at or before
@@ -101,9 +101,12 @@ function Invoke-DailyDataRefresh {
                 # Company reports use the rotation just written; a failure keeps the last good file.
                 Invoke-DailyStep 'industry_rotation' @('scripts\industry_rotation.py', '--refresh', '--if-older-than-hours', "$IfOlderThanHours") | Out-Null
                 Invoke-DailyStep 'company_reports' @('scripts\company_deep_report.py', '--refresh', '--if-older-than-hours', "$IfOlderThanHours") | Out-Null
-                Invoke-DailyStep 'leopold_13f' @('scripts\leopold_positions.py', '--if-older-than-hours', '24') | Out-Null
-                # Revenue-guidance pair (B2-ORCH-01). Disabled mode: the legacy release-check 0.9h and ranking 3h steps
-                # run exactly once, in the old location (receipts captured before the v3 build, ORDERS-V3-01). Enabled
+                Invoke-DailyStep 'leopold_13f' @('scripts\leopold_positions.py', '--if-older-than-hours', '0.9') | Out-Null
+                # Free SEC 8-K/425/S-4 event metadata, including reviewed deal notices.
+                # Only official-source URLs enter the research feed; raw headlines do not score.
+                Invoke-DailyStep 'public_events' @('scripts\public_event_research.py', '--refresh-sec', '--if-older-than-hours', '0.9') | Out-Null
+                # Revenue-guidance pair (B2-ORCH-01). Disabled mode: release-check 0.9h and ranking every refresh
+                # run exactly once (receipts captured before the v3 build, ORDERS-V3-01). Enabled
                 # mode owns this pair exclusively: no duplicate checker/ranking after the module returns, a missing
                 # provider is an explicit blocked (never a silent legacy fallback), other independent daily steps
                 # still proceed.
@@ -117,12 +120,11 @@ function Invoke-DailyDataRefresh {
                         -DirtyRebuildEnabled $GuidanceDirtyRebuildEnabled
                 }
                 else {
-                    # Disabled mode: the legacy release-check 0.9h and ranking 3h steps run exactly once, in the old
-                    # location. The B2 result stays the DISABLED default (neither a provider is acquired nor any
-                    # automatic state examined). The default cadences are 0.9h and 3h; the default-off D2 force switch
-                    # makes both '0' (never skip; both Python steps test the hours value > 0 before skipping).
+                    # The ranking runs at each hourly sealed refresh, not an independent 3h cadence.
+                    # Source collectors retain their own bounded caches; unchanged membership is
+                    # recorded as unchanged rather than reported as a fresh rotation.
                     $guidanceCheckHours = '0.9'
-                    $rankingHours = '3'
+                    $rankingHours = '0'
                     if ($ForceGuidanceRankingPair) {
                         $guidanceCheckHours = '0'
                         $rankingHours = '0'
@@ -206,7 +208,7 @@ else {
     $ErrorActionPreference = 'Continue'
     $env:PYTHONUTF8 = '1'
     $secContactState = [pscustomobject]@{ Issue = $null; ExceptionType = '' }
-    $ordinaryStepsLeft=[pscustomobject]@{Count=9} # enabled normal-entry independent steps, no duplicate legacy pair
+    $ordinaryStepsLeft=[pscustomobject]@{Count=10} # enabled normal-entry independent steps, no duplicate legacy pair
     $realRunStep = {
         param([string]$Name, [string[]]$Arguments)
         if ($GuidanceAutoUpdateEnabled) {
@@ -254,6 +256,16 @@ else {
                 $secContactState.ExceptionType = $_.Exception.GetType().Name
                 $available = $false
             }
+        }
+        else {
+            # Approved Windows User SEC identity, process-only; no output or persistent copy.
+            $userContact = [Environment]::GetEnvironmentVariable('SEC_CONTACT_EMAIL', 'User')
+            if (-not [string]::IsNullOrWhiteSpace($userContact) -and
+                $userContact.Length -le 256 -and $userContact -cnotmatch '[\x00-\x1f]') {
+                $env:SEC_CONTACT_EMAIL = $userContact
+                $available = $true
+            }
+            $userContact = $null
         }
         try {
             & $Work $available

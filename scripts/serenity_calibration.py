@@ -27,10 +27,16 @@ HORIZONS = (5, 20, 60)
 
 
 def _day(value: Any) -> date | None:
-    try:
-        return date.fromisoformat(str(value)[:10])
-    except (TypeError, ValueError):
+    if not isinstance(value, str):
         return None
+    if len(value) == 10:
+        try:
+            day = date.fromisoformat(value)
+            return day if day.isoformat() == value else None
+        except ValueError:
+            return None
+    moment = serenity.parse_time(value)
+    return moment.date() if moment is not None else None
 
 
 def cached_price_reader(symbol: str, *, cache_root: Path | None = None, captured: Any = None) -> list[tuple[date, float]]:
@@ -101,25 +107,38 @@ def _validation_record(symbol: str, after: date, evidence: Iterable[dict[str, An
 def build_calibration(signals: dict[str, Any], price_reader: Callable[[str], Any] | None = None, *,
                       evidence_records: Iterable[dict[str, Any]] = ()) -> dict[str, Any]:
     """NEW_THESIS date; forward returns; independent validation event and trading-session lag."""
-    if not isinstance(signals, dict) or signals.get("schema_version") != 3:
-        raise ValueError("SCHEMA_3_REQUIRED")
+    if not isinstance(signals, dict) or signals.get("schema_version") != serenity.SCHEMA_VERSION:
+        raise ValueError("CURRENT_SERENITY_SCHEMA_REQUIRED")
+    observed = serenity.parse_time(signals.get("generated_at"))
+    if observed is None or not isinstance(signals.get("post_types"), list) or not isinstance(signals.get("signals"), list):
+        raise ValueError("SERENITY_PROVENANCE_REQUIRED")
     reader = price_reader or cached_price_reader
     records = list(evidence_records)
     events: dict[str, set[str]] = {}
-    for item in signals.get("post_types", []):
+    source_kinds: dict[str, set[str]] = {}
+    seen_sources: set[tuple[str, str]] = set()
+    for item in signals["post_types"]:
         if not isinstance(item, dict) or item.get("post_type") != "NEW_THESIS":
             continue
-        day = _day(item.get("created_at"))
-        if day and isinstance(item.get("symbol"), str):
-            events.setdefault(item["symbol"], set()).add(day.isoformat())
+        created = serenity.parse_time(item.get("created_at"))
+        symbol, identity = item.get("symbol"), item.get("post_id")
+        if (created is None or created > observed or not isinstance(symbol, str)
+                or not isinstance(identity, str) or not identity
+                or item.get("source_kind") not in {"ORIGINAL", "REPLY", "QUOTE"}
+                or item.get("evidence_family") != "SERENITY_AUTHOR"
+                or (symbol, identity) in seen_sources):
+            continue
+        seen_sources.add((symbol, identity))
+        events.setdefault(symbol, set()).add(created.date().isoformat())
+        source_kinds.setdefault(symbol, set()).add(item["source_kind"])
     result = []
     for sig in signals.get("signals", []):
         if not isinstance(sig, dict) or not isinstance(sig.get("symbol"), str):
             continue
         symbol = sig["symbol"]
         thesis_dates = sorted(events.get(symbol, set()))
-        if not thesis_dates and _day(sig.get("first_thesis_at")):
-            thesis_dates = [_day(sig["first_thesis_at"]).isoformat()]
+        # Current-schema chronology is authoritative; a loose row timestamp must
+        # not resurrect a removed/reposted/unparseable source as a new thesis.
         if not thesis_dates:
             continue
         thesis = date.fromisoformat(thesis_dates[0])
@@ -130,7 +149,12 @@ def build_calibration(signals: dict[str, Any], price_reader: Callable[[str], Any
         anchor = next((i for i, (d, _) in enumerate(points) if d >= thesis), None)
         record = _validation_record(symbol, thesis, records)
         row: dict[str, Any] = {"symbol": symbol, "new_thesis_dates": thesis_dates,
-                                "first_thesis_at": sig.get("first_thesis_at"),
+                                "first_thesis_at": thesis.isoformat(),
+                                "source_kinds": sorted(source_kinds.get(symbol, set())),
+                                "evidence_family": "SERENITY_AUTHOR", "independent_source_count": 1,
+                                "source_freshness": sig.get("source_freshness", "UNKNOWN"),
+                                "mirror_status": sig.get("mirror_status", "MIRROR_ONLY"),
+                                "source_content_sha256": sig.get("latest_content_sha256"),
                                 "price_anchor_date": points[anchor][0].isoformat() if anchor is not None else None}
         for horizon in HORIZONS:
             ret = None
@@ -159,7 +183,10 @@ def build_calibration(signals: dict[str, Any], price_reader: Callable[[str], Any
         summary[f"{horizon}d"] = {"count_used": known, "unknown_count": len(result)-known,
                                   "hit_count": hits, "hit_share": hits / known if known else None,
                                   "median": statistics.median(values) if values else None}
-    return {"schema_version": 1, "research_only": True, "source_authority": "LEAD_ONLY_NOT_COMPANY_FACT",
+    return {"schema_version": 1, "source_schema_version": serenity.SCHEMA_VERSION,
+            "research_only": True, "source_authority": "LEAD_ONLY_NOT_COMPANY_FACT",
+            "source_freshness": (signals.get("source") or {}).get("source_freshness", "UNKNOWN"),
+            "mirror_status": (signals.get("source") or {}).get("mirror_status", "UNKNOWN"),
             "count_new_thesis_symbols": len(result),
             "count_with_dated_validation_event": sum(bool(row["validation_event"]) for row in result),
             "count_known_validation_lag": sum(row["validation_lag_trading_days"] is not None for row in result),
@@ -175,7 +202,7 @@ def build_calibration(signals: dict[str, Any], price_reader: Callable[[str], Any
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--signals", type=Path, default=DEFAULT_SIGNALS, help="Schema-3 signal JSON; read-only")
+    parser.add_argument("--signals", type=Path, default=DEFAULT_SIGNALS, help="Current Serenity signal/provenance JSON; read-only")
     parser.add_argument("--archive", type=Path, help="Existing archive JSON; read-only, no refresh")
     parser.add_argument("--evidence", type=Path, help="Independent dated evidence JSON list; read-only")
     parser.add_argument("--capture-root", type=Path, default=DEFAULT_CACHE,

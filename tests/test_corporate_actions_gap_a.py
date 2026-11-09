@@ -1,4 +1,4 @@
-"""Gap-A: offline, deliberately RED at f2d65dd until corporate-action guard exists."""
+"""Offline pending-deal registry, target admission and independent acquirer scoring."""
 from __future__ import annotations
 
 import copy
@@ -50,6 +50,9 @@ class CorporateActionLoaderTests(unittest.TestCase):
             ("ratio", lambda d: d["entries"][0].update(exchange_ratio=0)),
             ("duplicate", lambda d: d["entries"].append(copy.deepcopy(d["entries"][0]))),
             ("url", lambda d: d["entries"][0].update(source_url="https://untrusted.invalid/a")),
+            ("URL shape only", lambda d: d["entries"][0].update(source_url="https://www.sec.gov/Archives/not-a-filing")),
+            ("bad port", lambda d: d["entries"][0].update(source_url="https://www.sec.gov:bad/Archives/edgar/data/1/000119312526442758/a.htm")),
+            ("future source", lambda d: d["entries"][0].update(source_date="2026-11-08")),
             ("field", lambda d: d["entries"][0].update(unreviewed=True)),
         ):
             with self.subTest(label=label), tempfile.TemporaryDirectory() as tmp:
@@ -142,6 +145,15 @@ class CorporateActionLoaderTests(unittest.TestCase):
             self.assertIsNone(entry["review_by"])
             self.assertIn("REVIEW_DATE_UNSET", entry["flags"])
 
+    def test_generic_registered_pending_target_is_not_lite_specific(self):
+        import corporate_actions as m
+        doc = seed()
+        doc["entries"][0].update(target_symbol="TEST", acquirer_symbol="OTHER")
+        loaded = m.load_actions_bytes(json.dumps(doc).encode(), today=date(2026, 11, 7))
+        self.assertEqual(set(m.pending_targets(loaded)), {"TEST"})
+        self.assertEqual(set(m.pending_acquirers(loaded)), {"OTHER"})
+        self.assertEqual(m.pending_targets(loaded)["TEST"]["status"], "PENDING")
+
     def test_top20_excludes_target_and_keeps_acquirer_score_with_note(self):
         import bottleneck_top20_v3 as engine
         # Exercise the real build scorer and exclusion list with its market/fundamental shapes.
@@ -166,6 +178,8 @@ class CorporateActionLoaderTests(unittest.TestCase):
                    nasdaq_consensus=lambda *a, **k:None), \
                  patch.object(engine.listing_lineage,"load",lambda *a,**k:{}):
                 result = engine.build(None, datetime(2026,11,7,tzinfo=timezone.utc), with_news=False)
+                with patch.object(engine.corporate_actions, "load_actions", return_value={"schema_version": 1, "entries": []}):
+                    without_deal = engine.build(None, datetime(2026, 11, 7, tzinfo=timezone.utc), with_news=False)
             self.assertNotIn("LITE", [r["symbol"] for r in result["top"]])
             exclusion = next(r for r in result["excluded"] if r["symbol"]=="LITE")
             self.assertIn("DEAL_PENDING_TARGET", exclusion["reasons"])
@@ -173,6 +187,10 @@ class CorporateActionLoaderTests(unittest.TestCase):
             mrvl = next(r for r in result["top"] if r["symbol"]=="MRVL")
             self.assertEqual(mrvl["corporate_action"]["exchange_ratio"],4.5)
             self.assertGreater(mrvl["score"],0)
+            baseline = next(row for row in without_deal["top"] if row["symbol"] == "MRVL")
+            self.assertEqual(mrvl["score"], baseline["score"])
+            self.assertNotIn("corporate_action", baseline)
+            self.assertIn("併購", exclusion["reason_zh"])
 
     def test_option_candidates_are_withheld_before_provider_call(self):
         import build_line_public_options as pub

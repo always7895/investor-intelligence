@@ -84,25 +84,26 @@ class DistributionRegistryTest(unittest.TestCase):
 
     def test_returns_span_event_null_with_explicit_reason_and_after_window_recover(self):
         import bottleneck_top20_v3 as m
+        import distribution_adjusted_returns as entitlement
         event = distribution()
         def market(day):
             return {
                 "asof": day, "ret_6m": 0.2, "ret_1y": 0.3, "cagr_2y": 0.4,
                 "cagr_listed": None, "long_term_basis": "TWO_YEAR",
             }
-        crossed = m.suppress_unproven_distribution_returns(market("2026-11-08"), [event])
+        crossed = entitlement.suppress_unproven_distribution_returns(market("2026-11-08"), [event])
         for key in ("ret_6m", "ret_1y", "cagr_2y"):
             self.assertIsNone(crossed[key], key)
             self.assertEqual(crossed["return_reasons"][key], "DISTRIBUTION_IN_WINDOW")
         self.assertEqual(crossed["long_term_basis"], "UNAVAILABLE")
         self.assertEqual(m.long_term_gate(crossed), (None, ["DISTRIBUTION_IN_WINDOW"]))
         # Jan 2027 still crosses all three; May 2027 no longer crosses the 182-day window.
-        after_six = m.suppress_unproven_distribution_returns(market("2027-05-01"), [event])
+        after_six = entitlement.suppress_unproven_distribution_returns(market("2027-05-01"), [event])
         self.assertEqual(after_six["ret_6m"], 0.2)
         self.assertEqual(after_six["return_reasons"], {"ret_1y": "DISTRIBUTION_IN_WINDOW", "cagr_2y": "DISTRIBUTION_IN_WINDOW"})
-        self.assertEqual(m.suppress_unproven_distribution_returns(market("2026-09-30"), [event])["cagr_2y"], 0.4)
-        self.assertEqual(m.suppress_unproven_distribution_returns(market("2029-01-01"), [event])["cagr_2y"], 0.4)
-        self.assertNotIn("return_reasons", m.suppress_unproven_distribution_returns(market("2026-11-08"), []))
+        self.assertEqual(entitlement.suppress_unproven_distribution_returns(market("2026-09-30"), [event])["cagr_2y"], 0.4)
+        self.assertEqual(entitlement.suppress_unproven_distribution_returns(market("2029-01-01"), [event])["cagr_2y"], 0.4)
+        self.assertNotIn("return_reasons", entitlement.suppress_unproven_distribution_returns(market("2026-11-08"), []))
 
     def test_scoring_refuses_mod_but_preserves_pending_lite_and_mrvl(self):
         import bottleneck_top20_v3 as m

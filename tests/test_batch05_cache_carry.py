@@ -191,7 +191,11 @@ class CacheCarryBatch05Tests(unittest.TestCase):
                 cdr.ticker_ciks(mock.Mock(return_value=BODY), today=NOW.date(), cache=path)
             capture = object.__new__(host._Capture)
             configs = {"config/" + p: b"{}" for p in host.CONFIG_FILES.values()}
+            configs["config/" + host.CONFIG_FILES["corporate_actions"]] = b'{"schema_version":1,"entries":[]}'
+            configs["config/" + host.CONFIG_FILES["open_candidates"]] = b"[]"
+            configs["config/" + host.CONFIG_FILES["reviewed_events"]] = b"[]"
             configs["config/" + host.CONFIG_FILES["layers"]] = json.dumps({"layers": [{
+                "id": "synthetic-layer",
                 "capturers": [{"symbol": "CACHE"}, {"symbol": "CACHED"}], "filing_terms": []
             }]}).encode()
             capture.origin = SimpleNamespace(files=configs)

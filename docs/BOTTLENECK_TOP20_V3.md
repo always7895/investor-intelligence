@@ -19,10 +19,10 @@ Aschenbrenner's logic must name the most explosive industries from current event
 
 | Step | Script | Source | Cadence |
 | --- | --- | --- | --- |
-| Serenity leads | `scripts/serenity_signals.py` | public archive `yan-labs/serenity-aleabitoreddit` (post URLs) | 6 h |
-| Leopold leads | `scripts/leopold_positions.py` | SEC 13F-HR of Situational Awareness LP (CIK 2045724) | 24 h |
+| Serenity leads | `scripts/serenity_signals.py` | public archive `yan-labs/serenity-aleabitoreddit` (post URLs) | 0.9 h source-target cadence; scheduler-dependent |
+| Leopold leads | `scripts/leopold_positions.py` | SEC 13F-HR of Situational Awareness LP (CIK 2045724) | 0.9 h source-target cadence; needs SEC contact |
 | Layers | `config/bottleneck-layers-v3.json` | structure only: company role in a scarce layer, dated source | reviewed |
-| Ranking | `scripts/bottleneck_top20_v3.py` | SEC XBRL companyfacts, Yahoo Finance (labelled unofficial), SEC full-text search | 3 h |
+| Ranking | `scripts/bottleneck_top20_v3.py` | SEC XBRL companyfacts, Yahoo Finance (labelled unofficial), SEC full-text search | every hourly refresh invocation; no independent 3h skip |
 | Seal | `publish_sealed_snapshot.py --bottleneck-v3` | lazy object `v213:bottleneck-top20:v3` | hourly |
 
 Leads weight conviction only; every figure users see comes from filings or market data with its source and date.
@@ -35,8 +35,8 @@ Leads weight conviction only; every figure users see comes from filings or marke
   `serenity_mirror_factor`, `serenity_excluded` in `scripts/bottleneck_top20_v3.py`): lead = 0.7 x clip(intensity_eff, 0,
   max_intensity / 2) (x0.3 when the stance is BEARISH) + the 13F part, times the archetype weight (30 EXPLOSION, 20
   COMPOUNDER). `max_intensity` is the maximum raw Serenity intensity; `intensity_eff` = intensity x the mirror factor m. m
-  is 1.0 while the mirror's newest post (`source.latest_post_at`) is at most 72 hours old or the field is absent, 0.5 up to
-  14 days, else 0. The 13F part is 0.3 x sqrt(min(w_eff, 0.30) / 0.30) (concave, same maximum 0.3 as before; the old 5 percent
+  is 1.0 while the mirror's newest valid post (`source.latest_post_at`) is at most 72 hours old, 0.5 up to
+  14 days, else 0; missing, malformed, naive or future timestamps give 0. The 13F part is 0.3 x sqrt(min(w_eff, 0.30) / 0.30) (concave, same maximum 0.3 as before; the old 5 percent
   cap scored a 0.05 and a 0.28 position alike, the new shape ranks 0.28 above 0.05), with w_eff = `long_weight` x `currency_factor` (1.0 when the
   field is absent; 0.25 after a recorded full-book sale dated after the 13F period, see the Aschenbrenner context
   reference) x an age factor (0, reason `STALE_13F`, when the filing period is more than 200 days before the build time,
@@ -72,9 +72,10 @@ chips/memory sit above datacenter); the same constants apply when the key is abs
 the layer's w_eff (see Lead conviction); the sealed `fund_13f_weight` stays the raw sum and `fund_13f_weight_effective`
 (not sealed) carries the one used in the heat and explosiveness clips.
 
-Deferred (DEFERRED_WITH_REASON, 2026-10-18): D4, dynamic admission of lead-only names into the universe, needs the capture
-host and a host contract (and under the currency rule would admit no 13F name); D5, non-SEC fund disclosures (for example
-a Japanese filing) are recorded as a dated note only and Serenity's own portfolio-state posts carry no signal.
+Dynamic admission now has a source implementation: additional US issuers require reviewed independent issuer/counterparty
+primary evidence and an SEC identity, then the unchanged fundamental/price-history/exclusion/per-layer gates.
+The protected host binds the expanded universe to its captured revision; no candidate is approved by default.
+Non-SEC fund disclosures remain dated references, not verified company facts.
 
 ## LINE
 
@@ -380,3 +381,56 @@ thousands; Q2 report p.42: 4,898,686 / 744,722, half-year 7,634,098 / 1,371,852)
   card) names the official report, quarters, note and page and links the Q1 report.
 - Rollout: the deployed reader predates these fields and would attribute the figure to Yahoo, so a Worker that knows
   them must serve before data carrying them is published.
+
+
+## FIX-R2B research-only provenance, screening and open event discovery (2026-11-09)
+
+Source implementation only: **IMPLEMENTED_UNVERIFIED**, not deployed or independently release-accepted.
+
+- `scripts/validated_rule_engine.py` implements the eleven actually defined R3 hypotheses (R01–R10 and R13).
+  Every condition is PASS/FAIL/UNKNOWN and visibly **未驗證**; `RULES_KEPT=0`.
+  Conditions never alter scores or override company, positive-return, rights or freshness gates.
+  R10 ATM terms and R13 independent institutional changes remain UNKNOWN without document-level evidence.
+  Relative momentum needs aligned QQQ/SOXX observations; missing benchmarks and incomplete drawdown windows remain UNKNOWN.
+- `scripts/top20_rotation_provenance.py` records the full candidate universe, per-family input hashes, per-symbol rule
+  evidence and membership/order differences in `top20-rotation-shadow-v2`. It verifies the full HMAC chain before an
+  exclusive hash-chained append. Missing candidate fingerprints, malformed old journals, stale writer locks and invalid clocks
+  fail closed. Missing process-only `II_R2B_SHADOW_SIGNING_KEY` yields UNCONFIGURED, never SIGNED.
+  The protected host additionally requires an explicit caller-owned `II_R2B_SHADOW_LOG` path; it never writes its immutable code tree.
+  Source-family changes are possible causes, not causal proof; failed refreshes never advance the last-good signed observation.
+  Source-change hashes exclude invocation dates, requested-history start, age/decay metadata and overdue-review flags;
+  the observation clock remains in the signed record. A clock-only replay does not claim new prices or filings.
+- Serenity schema 4 distinguishes original/reply/quote/repost, deduplicates source identity/content across scoring and
+  chronology, and records source/retrieval age and mirror status. An archive or oEmbed lookup does not authenticate
+  an author's claim or create an independent source. Current source fingerprints exclude clock-derived decay; older
+  captured operands are hashed in full and remain explicitly UNVERIFIED. Calibration consumes this schema directly.
+- 13F refresh checks submissions for a newly published filing even inside its cache cadence. Quarter-end and publication
+  dates stay distinct; restatements replace only their reporting period and NEW HOLDINGS additions preserve all lots.
+  Partial/identity-unresolved observations are explicitly PARTIAL, not fresh or current holdings.
+  Ranking gives a partial source no holding-based conviction; the existing 200-day age discount is not stacked.
+- `scripts/public_event_research.py --refresh-sec` includes free SEC daily-index discovery beyond fixed layer capturers,
+  TWSE/TPEx public notices and DART RSS. Metadata reads `SEC 公告（內容待查）` or `交易所公告（內容待查）`, never a verified
+  order/acquisition claim. Reviewed claims bind the dated primary-body/excerpt hashes in the controlled registry.
+  Selection validates controlled registration before choosing the latest event, so a fabricated later cache claim cannot
+  displace a registered event. Malformed relevant SEC index rows report INVALID_SOURCE, not successful empty coverage.
+  Unresolved Korean issuer identity remains open and cannot silently become a ticker. Extra US candidates need
+  independent, body-reviewed issuer/counterparty filings, an SEC ticker identity and an existing layer before ordinary gates.
+  Controlled candidate/review registries and all new dependencies are included in the protected source closure.
+  Ordinary and protected ranking read the controlled candidate registry; feed `admitted_candidates` is never authority.
+- Pending ALL_STOCK/CASH/MIXED merger targets are withheld with a zh-TW reason; an acquirer keeps an independently
+  calculated score. LITE/MRVL remains pending, 4.5 MRVL shares per LITE, not a completed conversion.
+- `scripts/distribution_adjusted_returns.py` owns MOD suppression and the Decimal shareholder-entitlement calculator.
+  MOD distributed 0.44619 THRM on October 1; due bills run September 28–October 1 and the reviewed ex-spin boundary is
+  October 2. Fractional cash means actual net proceeds, never a fraction times an endpoint price; distributed THRM
+  does not inherit the special dividend owed to prior holders. Research calculations alone authorize no publication.
+  Atomic restoration requires exact controlled-registry receipt pins, primary unadjusted prices, complete cash/split
+  ledgers, public-derived-return rights and settlement evidence for every crossing window. Ranking and publisher
+  independently calculate from the same captured bytes; Worker checks proof/value bindings, not original-source authenticity.
+  These real inputs remain unavailable: MOD returns stay NULL with an explicit zh-TW reason, not a guessed positive result.
+- Ordinary and guidance-enabled source orchestration run ranking on each hourly refresh, without a separate three-hour skip.
+  Same-owner clean-witness reuse requires a nonfuture cutoff less than one hour old; pending completion still requires readback.
+  No installed task, runtime or Production service was changed; a carry-forward seal is not evidence of a new ranking.
+- Order realization groups 2Y → 1Y → 6M, sorting coverage only within the same period. Text is losslessly paginated and Flex
+  bars use per-period maxima. Missing horizons remain null/未揭露, never zero or interpolation.
+- The macro growth tile reads **申報企業樣本營收年增（非總市場）**, not total-market growth or TAM CAGR.
+

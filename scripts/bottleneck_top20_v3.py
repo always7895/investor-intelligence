@@ -27,6 +27,7 @@ Usage: bottleneck_top20_v3.py [--if-older-than-hours H] [--output PATH] [--no-ne
 from __future__ import annotations
 
 import argparse
+import hashlib
 import html
 import json
 import math
@@ -41,12 +42,18 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
+from serenity_signals import source_input_sha256 as serenity_source_sha256
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 import listing_lineage  # noqa: E402
 import official_quarterly_revenue  # noqa: E402
 import revenue_trend  # noqa: E402
 import corporate_actions  # noqa: E402
+import validated_rule_engine  # noqa: E402
+import top20_rotation_provenance  # noqa: E402
+import public_event_research  # noqa: E402
+import distribution_adjusted_returns  # noqa: E402
 
 LAYERS = ROOT / "config" / "bottleneck-layers-v3.json"
 KOREA_ORDERS = ROOT / "config" / "korea-ir-orders-v1.json"
@@ -57,6 +64,7 @@ TICKERS = ROOT / "data" / "cache" / "v21" / "company_tickers_exchange.json"
 CACHE = ROOT / "data" / "cache" / "v3"
 OUTPUT = ROOT / "data" / "cache" / "bottleneck_top20_v3.json"
 CISION_CACHE = ROOT / "data" / "cache" / "cision_interim_revenue.json"
+DISTRIBUTION_EVIDENCE = ROOT / "data" / "cache" / "distribution_return_evidence_latest.json"
 COMPANYFACTS = "https://data.sec.gov/api/xbrl/companyfacts/CIK{cik:010d}.json"
 EFTS = "https://efts.sec.gov/LATEST/search-index?q={query}&dateRange=custom&startdt={start}&enddt={end}"
 REVENUE_TAGS = [("us-gaap", "Revenues"), ("us-gaap", "RevenueFromContractWithCustomerExcludingAssessedTax"),
@@ -1066,46 +1074,6 @@ def capture_score(fund: dict[str, Any] | None) -> tuple[float, dict[str, float]]
     return (30 * earned / available if available else 0.0), detail
 
 
-def suppress_unproven_distribution_returns(market: dict[str, Any],
-                                           distributions: list[dict[str, Any]]) -> dict[str, Any]:
-    """Fail closed for a corporate distribution not PROVEN adjusted in Yahoo's price series.
-
-    The live feed uses yfinance history(auto_adjust=True), captured mode uses chart.adjclose.
-    Neither feed's returned bars prove that the MOD/THRM RMT entitlement was included in
-    the adjustment factor, so a span crossing the event date must be unknown, not zero.
-    The exception path for proven adjustments is intentionally not implemented.
-    """
-    if not distributions:
-        return market
-    result = dict(market)
-    reasons: dict[str, str] = dict(result.get("return_reasons") or {})
-    try:
-        asof = date.fromisoformat(result["asof"])
-    except (ValueError, TypeError, KeyError) as exc:
-        raise ValueError("DISTRIBUTION_MARKET_ASOF") from exc
-    for entry in distributions:
-        event = date.fromisoformat(entry["distribution_date"])
-        if event > asof:
-            continue
-        for key, window in (("ret_6m", 182), ("ret_1y", 365),
-                            ("cagr_2y", listing_lineage.TWO_YEARS_DAYS)):
-            # Inclusive endpoint is deliberately conservative on the event day.
-            if asof - timedelta(days=window) <= event and result.get(key) is not None:
-                result[key] = None
-                reasons[key] = "DISTRIBUTION_IN_WINDOW"
-                if key == "cagr_2y" and result.get("long_term_basis") == "TWO_YEAR":
-                    result["long_term_basis"] = "UNAVAILABLE"
-        if result.get("cagr_listed") is not None:
-            since = result.get("cagr_listed_start")
-            if since is None or date.fromisoformat(since) <= event:
-                result["cagr_listed"] = None
-                result["cagr_listed_start"] = None
-                result["cagr_listed_span_days"] = None
-                result["long_term_basis"] = "UNAVAILABLE"
-                reasons["cagr_listed"] = "DISTRIBUTION_IN_WINDOW"
-    if reasons:
-        result["return_reasons"] = reasons
-    return result
 
 
 def long_term_gate(market: dict[str, Any] | None) -> tuple[float | None, list[str]]:
@@ -1197,17 +1165,19 @@ def fund_lead_part(w_eff: float) -> float:
 
 
 def serenity_mirror_factor(source: dict[str, Any] | None, now: datetime) -> float:
-    """1.0 while the mirror's newest post is at most 72 h old (or the field is absent or unreadable), 0.5 up to 14 days, else 0."""
+    """Fresh within 72h, discounted through 14d; absent, naive or future source times are unknown."""
     raw = (source or {}).get("latest_post_at")
     if not raw:
-        return 1.0
+        return 0.0  # missing mirror provenance must not silently count as fresh
     try:
         latest = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
         if latest.tzinfo is None:
-            latest = latest.replace(tzinfo=timezone.utc)
-    except ValueError:
-        return 1.0
+            return 0.0
+    except (ValueError, TypeError):
+        return 0.0
     age = now - latest
+    if age.total_seconds() < -300:
+        return 0.0  # future-dated mirrors must not silently produce full conviction
     if age <= timedelta(hours=MIRROR_FRESH_HOURS):
         return 1.0
     return 0.5 if age <= timedelta(days=MIRROR_STALE_DAYS) else 0.0
@@ -1282,7 +1252,13 @@ def build(fetch: Callable[[str], bytes] | None, now: datetime, with_news: bool =
     pending_targets = corporate_actions.pending_targets(action_doc)
     pending_acquirers = corporate_actions.pending_acquirers(action_doc)
     distributions = corporate_actions.completed_distributions(action_doc, asof=now.date())
+    entitlement_source = (captured.operand("entitlement_evidence")
+                          if captured is not None and "entitlement_evidence" in captured.manifest()
+                          else DISTRIBUTION_EVIDENCE if captured is None else None)
+    entitlement_evidence = distribution_adjusted_returns.load_evidence_document(entitlement_source)
     layers_doc = load_json(captured.operand("layers") if captured else LAYERS)
+    event_registry = load_json(captured.operand("reviewed_events") if captured is not None else
+                               ROOT / "config" / "public-reviewed-events-v1.json")
     layers = layers_doc["layers"]
     chain_weight_by = chain_weights(layers_doc)
     source_serenity = captured.operand("serenity") if captured else SERENITY
@@ -1290,12 +1266,53 @@ def build(fetch: Callable[[str], bytes] | None, now: datetime, with_news: bool =
     serenity = load_json(source_serenity) if source_serenity.exists() else {"signals": [], "source": None}
     leopold = load_json(source_leopold) if source_leopold.exists() else {"positions": [], "filing": None}
     serenity_by = {row["symbol"]: row for row in serenity["signals"]}
-    leopold_by = {row["ticker"]: row for row in leopold["positions"] if row.get("ticker")}
+    leopold_by = ({row["ticker"]: row for row in leopold["positions"] if row.get("ticker")}
+                  if leopold.get("refresh_status") != "PARTIAL" else {})
     ciks = cik_index(captured)
     members: dict[str, dict[str, Any]] = {}
     for layer in layers:
         for capturer in layer["capturers"]:
             members.setdefault(capturer["symbol"], {"layer": layer, "capturer": capturer})
+    # The new official event feed is collected before ranking, then either sealed
+    # in the protected capture or read as a versioned local public source. A
+    # free-form news headline never gains automatic score/admission authority.
+    reviewed_events = []
+    events_source = (captured.operand("event_feed")
+                     if captured is not None and "event_feed" in captured.manifest()
+                     else (ROOT / "data" / "cache" / "public_event_research_latest.json") if captured is None else None)
+    discovered_candidates = []
+    if events_source is not None and events_source.exists():
+        try:
+            public_doc = load_json(events_source)
+            if (public_doc.get("schema") != public_event_research.SCHEMA
+                    or public_doc.get("generated_for", "") > now.date().isoformat()
+                    or not isinstance(public_doc.get("events"), list)):
+                raise ValueError("PUBLIC_EVENT_FEED_INVALID")
+            reviewed_events = public_doc["events"]
+            discovered_candidates = public_event_research.open_discovery(
+                public_doc.get("discovered_candidates", []), cutoff=now.date())
+        except (OSError, ValueError, KeyError, AttributeError):
+            raise ValueError("PUBLIC_EVENT_FEED_INVALID") from None
+    # Reviewed new symbols may enter an *existing* scarce layer only after
+    # independent issuer/counterparty primary filings and SEC ticker admission.
+    # Their score is not guaranteed: the usual price-history, dilution,
+    # bearish, return and per-layer capacity gates still apply.
+    admitted_candidates = []
+    candidate_rows = load_json(captured.operand("open_candidates") if captured is not None else
+                               ROOT / "config" / "reviewed-open-candidates-v1.json")
+    admitted_candidates = public_event_research.admitted_candidate_rows(
+        candidate_rows, cutoff=now.date(), layer_ids={layer["id"] for layer in layers})
+    layer_by_id = {layer["id"]: layer for layer in layers}
+    for candidate in admitted_candidates:
+        symbol = candidate["symbol"]
+        if symbol in members or symbol not in ciks:
+            continue
+        members[symbol] = {"layer": layer_by_id[candidate["layer_id"]],
+                           "capturer": {
+                               "symbol": symbol, "role": candidate["role"],
+                               "role_zh": candidate["role_zh"],
+                               "source_url": candidate["source_url"],
+                               "source_date": candidate["source_date"]}}
     fx: dict[str, float | None] = {}
     companies: dict[str, dict[str, Any]] = {}
     if captured:
@@ -1323,7 +1340,8 @@ def build(fetch: Callable[[str], bytes] | None, now: datetime, with_news: bool =
             fund = {**fund, "cross_check": check}
         market = data.get("market")
         if market is not None and symbol in distributions:
-            market = suppress_unproven_distribution_returns(market, distributions[symbol])
+            market = distribution_adjusted_returns.apply_qualified_market(
+                market, distributions[symbol], entitlement_evidence.get(symbol))
             data["market"] = market
         cap = market.get("market_cap") if market else None
         rate = (captured_usd_rate(market.get("currency") if market else None, captured, fx) if captured else
@@ -1337,10 +1355,17 @@ def build(fetch: Callable[[str], bytes] | None, now: datetime, with_news: bool =
                                                  captured=captured),
                              "fundamentals": fund, "market": market, "market_cap_usd": cap * rate if cap and rate else None,
                              "serenity": serenity_by.get(symbol), "leopold": leopold_by.get(symbol),
+                             "latest_event": public_event_research.latest_event(
+                                 reviewed_events, symbol=symbol, cutoff=now.date(),
+                                 reviewed_events=event_registry),
                              **({"corporate_action": corporate_actions.distribution_note(distributions[symbol][-1])}
                                 if symbol in distributions else
                                 {"corporate_action": corporate_actions.acquirer_note(pending_acquirers[symbol])}
                                 if symbol in pending_acquirers else {})}
+    # Pure research-only rules for every candidate; never alter ranking scores or gates.
+    for company in companies.values():
+        company["screen_conditions"] = validated_rule_engine.evaluate(
+            company["fundamentals"], company["market"], cutoff=now.date(), symbol=company["symbol"])
     # Layer heat and the Leopold-led industry ranking.
     max_intensity = max((row["intensity"] for row in serenity["signals"]), default=1.0) or 1.0  # raw, not mirror-scaled
     mirror = serenity_mirror_factor(serenity.get("source"), now)
@@ -1373,12 +1398,54 @@ def build(fetch: Callable[[str], bytes] | None, now: datetime, with_news: bool =
     industry.sort(key=lambda row: -row["explosiveness"])
     for rank, row in enumerate(industry, start=1):
         row["rank"] = rank
+    # Rank-input provenance for *all* candidates, not only current Top20.
+    # Store only public-evidence hashes; private account/position data never enter this file.
+    def public_digest(value: Any) -> str:
+        raw = json.dumps(value, sort_keys=True, ensure_ascii=True, allow_nan=False, default=str,
+                         separators=(",", ":")).encode("utf-8")
+        return hashlib.sha256(raw).hexdigest()
+    action_source = {**action_doc, "entries": [
+        {key: value for key, value in entry.items() if key != "flags"}
+        for entry in action_doc["entries"]]}
+    candidate_fingerprints = []
+    for name, value in sorted(companies.items()):
+        market = value.get("market")
+        market_source = ({key: item for key, item in market.items()
+                          if key not in {"history_request_start", "history_truncated"}}
+                         if isinstance(market, dict) else market)
+        position = value.get("leopold")
+        position_source = ({key: item for key, item in position.items() if key != "stale_quarter_factor"}
+                           if isinstance(position, dict) else position)
+        pending_source = pending_targets.get(name)
+        if pending_source is not None:
+            pending_source = {key: item for key, item in pending_source.items() if key != "flags"}
+        candidate_fingerprints.append({
+            "symbol": name,
+            "prices": public_digest(market_source),
+            "filings": public_digest(value.get("fundamentals")),
+            "serenity": serenity_source_sha256(value.get("serenity")),
+            "leopold": public_digest(position_source),
+            "events": public_digest({"reviewed": value.get("latest_event"),
+                                     "corporate": value.get("corporate_action"),
+                                     "pending_target": pending_source}),
+        })
+    # Invocation age/decay belongs to the observation clock, not to changed source evidence.
+    leopold_source = {key: value for key, value in leopold.items()
+                      if key not in {"generated_at", "stale_quarter", "freshness_status", "caveat",
+                                     "regime_review_overdue"}}
+    leopold_source["positions"] = [
+        {key: value for key, value in row.items() if key != "stale_quarter_factor"}
+        for row in leopold.get("positions", [])]
+    if isinstance(leopold_source.get("regime"), dict):
+        leopold_source["regime"] = {key: value for key, value in leopold_source["regime"].items()
+                                    if key != "review_overdue"}
     # Company scores and filters.
     scored, excluded = [], []
     for company in companies.values():
         pending = pending_targets.get(company["symbol"])
         if pending is not None:
             excluded.append({"symbol": company["symbol"], "reasons": ["DEAL_PENDING_TARGET"],
+                             "reason_zh": "併購待完成，暫不納入排行",
                              "acquirer": pending["acquirer_symbol"], "kind": pending["kind"],
                              "ratio": pending["exchange_ratio"], "expected_close": pending["expected_close"],
                              "source_url": pending["source_url"]})
@@ -1426,6 +1493,24 @@ def build(fetch: Callable[[str], bytes] | None, now: datetime, with_news: bool =
             "layers_source": "config/bottleneck-layers-v3.json", "top": top, "industries": industry,
             "market_window": market_window_summary(scored),
             "watch": [{"symbol": c["symbol"], "score": c["score"], "layer": c["layer"]} for c in overflow[:10]],
+            "screener_shadow": [{"symbol": c["symbol"], "conditions": c["screen_conditions"]}
+                                for c in sorted(companies.values(), key=lambda item: item["symbol"])],
+            "candidate_fingerprints": candidate_fingerprints,
+            "discovered_candidates": discovered_candidates,  # research queue only, not admitted
+            "input_context": {
+                "prices": {row["symbol"]: row["prices"] for row in candidate_fingerprints},
+                "filings": {row["symbol"]: row["filings"] for row in candidate_fingerprints},
+                "serenity": serenity_source_sha256(serenity),
+                "leopold": public_digest(leopold_source),
+                "events": public_digest({"actions": action_source, "events": reviewed_events,
+                                         "reviewed_registry": event_registry, "candidates": candidate_rows}),
+                "context": {"layers": public_digest(layers_doc), "lineages": public_digest(lineages),
+                            "fx": public_digest(fx), "news": public_digest(
+                                {row["id"]: row["news"] for row in industry}),
+                            "serenity_source_provenance": (
+                                "ARCHIVE_ONLY_NOT_DIRECTLY_VERIFIED" if serenity.get("schema_version") == 4
+                                else "CAPTURED_OPERAND_UNVERIFIED")},
+            },
             "all_scores": [{"symbol": c["symbol"], "score": c["score"], "layer": c["layer"], "archetype": c["archetype"],
                             "parts": c["score_parts"]} for c in scored],
             "excluded": excluded}
@@ -1436,6 +1521,7 @@ def main(argv: Iterable[str] | None = None) -> int:
     parser.add_argument("--if-older-than-hours", type=float, default=0.0)
     parser.add_argument("--output", type=Path, default=OUTPUT)
     parser.add_argument("--no-news", action="store_true")
+    parser.add_argument("--shadow-log", type=Path, default=ROOT / "data" / "cache" / "bottleneck_v3_shadow.jsonl")
     args = parser.parse_args(list(argv) if argv is not None else None)
     now = utc_now()
     if args.if_older_than_hours > 0 and args.output.exists():
@@ -1454,7 +1540,8 @@ def main(argv: Iterable[str] | None = None) -> int:
     try:
         document = build(fetch, now, with_news=not args.no_news)
     except Exception as error:  # keep the last good ranking
-        print(json.dumps({"status": "FAILED", "error": type(error).__name__, "detail": str(error)[:160]}))
+        print(json.dumps({"status": "FAILED", "error": type(error).__name__,
+                          "reason_zh": "公開資料不完整或未通過核驗，保留上次有效排行"}, ensure_ascii=False))
         return 1
     if len(document["top"]) < 10:
         print(json.dumps({"status": "FAILED", "error": "TOO_FEW_QUALIFIED", "qualified": len(document["top"])}))
@@ -1467,8 +1554,17 @@ def main(argv: Iterable[str] | None = None) -> int:
         print(json.dumps({"status": "FAILED", "error": "NON_FINITE_VALUE"}))
         return 1
     temp.write_bytes(body.encode("utf-8"))
+    # The journal must be HMAC-authenticated when configured; never leak the signing value.
+    # If signing is not provisioned, emit a fixed honest status rather than an unsigned "signed" claim.
+    try:
+        shadow_state = top20_rotation_provenance.append_if_configured(
+            document, path=args.shadow_log, asof=iso(now))
+    except (OSError, ValueError):
+        temp.unlink(missing_ok=True)
+        print(json.dumps({"status": "FAILED", "error": "SHADOW_ATTESTATION_FAILED"}))
+        return 1
     temp.replace(args.output)
-    print(json.dumps({"status": "OK", "top": [(c["rank"], c["symbol"], c["score"], c["layer"]) for c in document["top"]],
+    print(json.dumps({"status": "OK", "shadow": shadow_state, "top": [(c["rank"], c["symbol"], c["score"], c["layer"]) for c in document["top"]],
                       "industries": [(i["rank"], i["id"], i["explosiveness"]) for i in document["industries"]],
                       "excluded": len(document["excluded"])}, ensure_ascii=False))
     return 0

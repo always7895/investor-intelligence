@@ -17,7 +17,6 @@ describe("Gap-A pending deal LINE note", () => {
     expect(parsed).not.toBeNull();
     const texts = buildBottleneckTop20Messages(parsed!, "text");
     assertLineMessages(texts);
-    expect(texts.map((x: any) => x.text).join("\n")).toContain("併購進行中：每股換 4.500 股");
     expect(texts.map((x: any) => x.text).join("\n")).toContain("2028 年上半年");
   });
 

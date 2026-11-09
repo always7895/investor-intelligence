@@ -9,7 +9,7 @@ the Top20 always come from company filings and market data.
 Per listing (cashtags validated against the official US directory, other tags and names through
 config/serenity-ticker-map-v1.json): original-post mentions in the last 120 days, recency- and engagement-weighted
 intensity (30-day half-life), stance counts, dilution/financing concerns, the latest mention and the most-engaged
-recent post. Retweets are excluded. Schema 3 (GAP-B, additive to V16 schema 2):
+recent post. Reposts are excluded. Schema 4 retains GAP-B chronology and adds source-bound provenance:
 
 * Relay: posts that only report a fund's filing ("Situational Awareness 13F holdings ...") give relay_mentions and no
   stance, intensity or mention. Replies keep full weight and are also counted in reply_mentions.
@@ -23,7 +23,10 @@ recent post. Retweets are excluded. Schema 3 (GAP-B, additive to V16 schema 2):
   and OTHER (remaining or barred mentions). Relay, satire, negation and third-party guards apply first.
   One type per counted original post and symbol; first_thesis_at, latest_post_type and victory_laps_60d are
   additive source-view fields, never an automatic ticker list, company evidence or score/phase signal.
-* source.mirror_lag_hours / mirror_status say how stale the public mirror is; the ranking recomputes them.
+* Originals, replies, quotes and skipped reposts have separate provenance. Mirror copies of the same source post
+  share one evidence family and are counted once in BOTH signal weights and display chronology.
+* source.mirror_lag_hours / mirror_status describe source-post lag, separately from archive retrieval freshness.
+  Unknown, naive, malformed or future timestamps are never fresh; a retrieval is not new author evidence.
 * Under --refresh the strongest symbols' posts are checked through X's public oEmbed endpoint (no login, no cookies);
   a post that is gone (404) is dropped for every ticker it names.
 
@@ -56,7 +59,7 @@ TICKER_MAP = ROOT / "config" / "serenity-ticker-map-v1.json"
 IDENTITY = ROOT / "data" / "cache" / "identity_shards_latest.json"
 WINDOW_DAYS = 120
 HALF_LIFE_DAYS = 30.0
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 TRIM_WEIGHT = 0.5
 BEARISH_SHARE = 0.5  # BEARISH when the newest stance is an exit and bearish_decayed >= this share of bullish_decayed
 MIRROR_FRESH_HOURS = 72.0
@@ -207,9 +210,12 @@ def listings_in(text: str, mapping: dict[str, Any], us: set[str]) -> dict[str, d
 
 
 def parse_time(value: Any) -> datetime | None:
+    if not isinstance(value, str):
+        return None
     try:
-        return datetime.fromisoformat(str(value).replace("Z", "+00:00")).astimezone(timezone.utc)
-    except ValueError:
+        moment = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        return moment.astimezone(timezone.utc) if moment.tzinfo is not None else None
+    except (ValueError, OverflowError):
         return None
 
 
@@ -387,13 +393,141 @@ def status_id(url: Any) -> str | None:
 
 
 def post_key(post: dict[str, Any]) -> str:
-    return status_id(post.get("sourceUrl")) or str(post.get("id"))
+    for name in ("originalSourceUrl", "originalUrl", "canonicalUrl"):
+        identity = status_id(post.get(name))
+        if identity:
+            return identity
+    for name in ("originalPostId", "originalTweetId"):
+        identity = post.get(name)
+        if isinstance(identity, (str, int)) and not isinstance(identity, bool) and str(identity):
+            return str(identity)
+    identity = status_id(post.get("sourceUrl")) or post.get("id")
+    if isinstance(identity, (str, int)) and not isinstance(identity, bool) and str(identity):
+        return str(identity)
+    # An unidentified mirror does not acquire a fresh identity on each archive load.
+    body = json.dumps([post.get("createdAtISO"), str(post.get("text") or "")],
+                      ensure_ascii=True, separators=(",", ":")).encode("utf-8")
+    return "content:" + hashlib.sha256(body).hexdigest()
+
+
+def source_kind(post: dict[str, Any]) -> str:
+    if post.get("isRetweet") or post.get("isRepost") or post.get("retweeted_status") or post.get("retweetedStatus"):
+        return "REPOST"
+    if (post.get("isReply") or post.get("inReplyToStatusId") or post.get("in_reply_to_status_id")
+            or str(post.get("text") or "").lstrip().startswith("@")):
+        return "REPLY"
+    return "QUOTE" if post.get("isQuote") or post.get("quoted_status_id") else "ORIGINAL"
+
+
+def _metric(post: dict[str, Any], name: str) -> float:
+    metrics = post.get("metrics")
+    value = metrics.get(name) if isinstance(metrics, dict) else None
+    if type(value) not in (int, float):
+        return 0.0
+    try:
+        return max(0.0, float(value)) if math.isfinite(value) else 0.0
+    except OverflowError:
+        return 0.0
+
+
+def source_input_sha256(document_or_signal: dict[str, Any] | None) -> str:
+    """Normalize current source evidence; bind older captured operands exactly as unverified.
+
+    Works on a full current signal document or one candidate row. Source references
+    are deduplicated and sorted, so archive/mirror order does not create input churn.
+    Legacy captured operands are bound in full as UNVERIFIED, not converted into source evidence.
+    """
+    if document_or_signal is None:
+        signals = []
+    elif not isinstance(document_or_signal, dict):
+        raise ValueError("SERENITY_SOURCE_PROVENANCE_REQUIRED")
+    else:
+        is_document = "signals" in document_or_signal
+        legacy = (document_or_signal.get("schema_version") != SCHEMA_VERSION if is_document else
+                  "source_posts" not in document_or_signal)
+        if legacy:
+            # This claims only an exact captured operand, not complete original-post coverage.
+            body = json.dumps({"provenance": "CAPTURED_OPERAND_UNVERIFIED", "captured_input": document_or_signal},
+                              ensure_ascii=True, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
+            return hashlib.sha256(body).hexdigest()
+        signals = document_or_signal["signals"] if is_document else [document_or_signal]
+        if not isinstance(signals, list):
+            raise ValueError("SERENITY_SOURCE_PROVENANCE_REQUIRED")
+    canonical_rows = set()
+    for signal in signals:
+        if not isinstance(signal, dict) or not isinstance(signal.get("symbol"), str):
+            raise ValueError("SERENITY_SOURCE_PROVENANCE_REQUIRED")
+        refs = signal.get("source_posts")
+        if not isinstance(refs, list) or not refs:
+            raise ValueError("SERENITY_SOURCE_PROVENANCE_REQUIRED")
+        sources = set()
+        for ref in refs:
+            if (not isinstance(ref, dict) or not isinstance(ref.get("post_id"), str)
+                    or not ref["post_id"] or parse_time(ref.get("created_at")) is None
+                    or ref.get("source_kind") not in {"ORIGINAL", "REPLY", "QUOTE"}
+                    or not isinstance(ref.get("content_sha256"), str)
+                    or re.fullmatch(r"[0-9a-f]{64}", ref["content_sha256"]) is None):
+                raise ValueError("SERENITY_SOURCE_PROVENANCE_REQUIRED")
+            item = {key: ref[key] for key in ("post_id", "created_at", "source_kind", "content_sha256")}
+            item.update({key: _metric({"metrics": ref}, key) for key in ("likes", "retweets")})
+            sources.add(json.dumps(item, ensure_ascii=True, sort_keys=True, separators=(",", ":")))
+        stable = {"symbol": signal["symbol"], "source_posts": sorted(sources)}
+        canonical_rows.add(json.dumps(stable, ensure_ascii=True, sort_keys=True, separators=(",", ":"), allow_nan=False))
+    body = json.dumps({"evidence_family": "SERENITY_AUTHOR", "source_records": sorted(canonical_rows)},
+                      ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(body).hexdigest()
+
+
+def _prepared_posts(archive: dict[str, Any], now: datetime, excluded: set[str]) -> tuple[list[dict[str, Any]], dict[str, int]]:
+    """One source-bound post for scoring AND chronology; conflicting copies fail closed."""
+    stats = {"duplicate_posts_skipped": 0, "reposts_skipped": 0, "invalid_dates_skipped": 0,
+             "future_dates_skipped": 0, "conflicting_source_posts_skipped": 0}
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for post in archive.get("posts", []):
+        if not isinstance(post, dict):
+            continue
+        if source_kind(post) == "REPOST":
+            stats["reposts_skipped"] += 1
+            continue
+        created = parse_time(post.get("createdAtISO"))
+        if created is None:
+            stats["invalid_dates_skipped"] += 1
+            continue
+        if created > now:
+            stats["future_dates_skipped"] += 1
+            continue
+        identity = post_key(post)
+        if identity in excluded:
+            continue
+        grouped.setdefault(identity, []).append(post)
+    selected = []
+    seen_content: set[str] = set()
+    for identity in sorted(grouped):
+        copies = grouped[identity]
+        signatures = {(iso(parse_time(post["createdAtISO"])), str(post.get("text") or "").strip(), source_kind(post))
+                      for post in copies}
+        if len(signatures) != 1:
+            stats["conflicting_source_posts_skipped"] += len(copies)
+            continue
+        created, text, kind = next(iter(signatures))
+        content_hash = hashlib.sha256(json.dumps([created, text], ensure_ascii=True,
+                                                 separators=(",", ":")).encode("utf-8")).hexdigest()
+        stats["duplicate_posts_skipped"] += len(copies) - 1
+        if content_hash in seen_content:
+            stats["duplicate_posts_skipped"] += 1
+            continue
+        seen_content.add(content_hash)
+        post = max(copies, key=lambda row: (_metric(row, "likes"), _metric(row, "retweets")))
+        selected.append({**post, "createdAtISO": created, "_source_key": identity,
+                         "_source_kind": kind, "_content_sha256": content_hash})
+    selected.sort(key=lambda post: (post["createdAtISO"], post["_source_key"]))
+    return selected, stats
 
 
 def mirror_state(now: datetime, latest_post: datetime | None) -> tuple[float | None, str]:
-    if latest_post is None:
-        return None, "DEAD"
-    hours = max(0.0, (now - latest_post).total_seconds() / 3600)
+    if latest_post is None or latest_post.tzinfo is None or latest_post > now:
+        return None, "UNKNOWN"
+    hours = (now - latest_post).total_seconds() / 3600
     return round(hours, 1), ("FRESH" if hours <= MIRROR_FRESH_HOURS else "STALE" if hours <= MIRROR_STALE_HOURS else "DEAD")
 
 
@@ -406,14 +540,11 @@ def build_signals(archive: dict[str, Any], mapping: dict[str, Any], us: set[str]
     relay_pending: dict[str, int] = {}
     relay_posts = 0
     latest_post: datetime | None = None
-    for post in archive["posts"]:
-        if post.get("isRetweet"):
-            continue
-        created = parse_time(post.get("createdAtISO"))
-        if created is None or post_key(post) in excluded:
-            continue
+    posts, provenance = _prepared_posts(archive, now, excluded)
+    for post in posts:
+        created = parse_time(post["createdAtISO"])
         latest_post = max(latest_post or created, created)
-        if created < start or created > now + timedelta(minutes=5):
+        if created < start:
             continue
         text = str(post.get("text") or "")
         reading = analyze_post(text, mapping, us)
@@ -427,19 +558,29 @@ def build_signals(archive: dict[str, Any], mapping: dict[str, Any], us: set[str]
         counted = {key: listing for key, listing in found.items() if key not in reading["relay_keys"]}
         if not counted:
             continue
-        is_reply = bool(post.get("isReply")) or text.lstrip().startswith("@")
-        metrics = post.get("metrics") or {}
-        engagement = math.log1p(float(metrics.get("likes") or 0) + 2 * float(metrics.get("retweets") or 0))
+        origin = post["_source_kind"]
+        is_reply = origin == "REPLY"
+        engagement = math.log1p(_metric(post, "likes") + 2 * _metric(post, "retweets"))
         decay = 0.5 ** ((now - created).total_seconds() / 86400 / HALF_LIFE_DAYS)
         financing = bool(FINANCING.search(text))
-        url = str(post.get("sourceUrl") or f"https://x.com/aleabitoreddit/status/{post.get('id')}")
+        url = (f"https://x.com/aleabitoreddit/status/{post['_source_key']}" if post["_source_key"].isdigit()
+               else str(post.get("sourceUrl") or ""))
         for key, listing in counted.items():
             row = signals.setdefault(key, {"symbol": listing["symbol"], "name": listing.get("name"), "exchange": listing.get("exchange"),
                                            "currency": listing.get("currency"), "mentions": 0, "bullish": 0, "bearish": 0,
                                            "financing_concerns": 0, "intensity": 0.0, "latest_at": None, "latest_url": None,
                                            "top_post": None, "thesis_mentions": 0, "reply_mentions": 0, "relay_mentions": 0,
-                                           "bullish_decayed": 0.0, "bearish_decayed": 0.0})
+                                           "bullish_decayed": 0.0, "bearish_decayed": 0.0,
+                                           "post_kinds": {"ORIGINAL": 0, "REPLY": 0, "QUOTE": 0, "REPOST": 0},
+                                           "latest_source_kind": None, "source_verification": "ARCHIVE_ONLY",
+                                           "evidence_family": "SERENITY_AUTHOR", "independent_source_count": 1,
+                                           "mirror_status": "MIRROR_ONLY", "latest_content_sha256": None,
+                                           "source_posts": []})
             row["mentions"] += 1
+            row["source_posts"].append({"post_id": post["_source_key"], "created_at": iso(created),
+                                        "source_kind": origin, "content_sha256": post["_content_sha256"],
+                                        "likes": _metric(post, "likes"), "retweets": _metric(post, "retweets")})
+            row["post_kinds"][origin] += 1
             row["reply_mentions"] += int(is_reply)
             row["financing_concerns"] += int(financing)
             row["thesis_mentions"] += int(key in reading["thesis"])
@@ -454,10 +595,12 @@ def build_signals(archive: dict[str, Any], mapping: dict[str, Any], us: set[str]
                 newest[key] = (created, kind)
             row["intensity"] += decay * (1.0 + engagement / 6.0) * (0.5 if len(found) > 4 else 1.0)
             if row["latest_at"] is None or created > parse_time(row["latest_at"]):
-                row["latest_at"], row["latest_url"] = iso(created), url
-            likes = int(metrics.get("likes") or 0)
+                row["latest_at"], row["latest_url"], row["latest_source_kind"] = iso(created), url, origin
+                row["latest_content_sha256"] = post["_content_sha256"]
+            likes = int(_metric(post, "likes"))
             if row["top_post"] is None or likes > row["top_post"]["likes"]:
-                row["top_post"] = {"url": url, "created_at": iso(created), "likes": likes, "excerpt": text[:160]}
+                row["top_post"] = {"url": url, "created_at": iso(created), "likes": likes, "excerpt": text[:160],
+                                   "source_kind": origin, "content_sha256": post["_content_sha256"]}
     for key, row in signals.items():
         row["intensity"] = round(row["intensity"], 3)
         row["bullish_decayed"] = round(row["bullish_decayed"], 4)
@@ -490,13 +633,24 @@ def build_signals(archive: dict[str, Any], mapping: dict[str, Any], us: set[str]
         row["first_thesis_at"] = first_thesis.get(key)
         row["latest_post_type"] = latest_type.get(key)
         row["victory_laps_60d"] = lap_counts.get(key, 0)
+        row["source_age_hours"], row["source_freshness"] = mirror_state(now, parse_time(row["latest_at"]))
+    retrieved = parse_time(archive.get("retrieved_at"))
+    retrieval_hours, retrieval_status = mirror_state(now, retrieved)
+    if retrieval_status == "UNKNOWN":
+        lag_status = "UNKNOWN"
     return {"schema_version": SCHEMA_VERSION, "generated_at": iso(now), "window_days": WINDOW_DAYS, "half_life_days": HALF_LIFE_DAYS,
             "source": {"url": archive["source_url"], "repository": archive["repository"], "retrieved_at": archive["retrieved_at"],
                        "sha256": archive["sha256"], "latest_post_at": iso(latest_post) if latest_post else None,
                        "mirror_lag_hours": lag_hours, "mirror_status": lag_status,
+                       "source_freshness": mirror_state(now, latest_post)[1],
+                       "retrieval_age_hours": retrieval_hours, "retrieval_status": retrieval_status,
+                       "evidence_family": "SERENITY_AUTHOR", "independent_source_count": 1 if posts else 0,
                        "oembed": {"enabled": False, "checked": 0, "ok": 0, "not_found": 0, "unavailable": 0},
                        "authority": "LEAD_ONLY_NOT_COMPANY_FACT"},
             "relay": {"posts": relay_posts, "mentions": sum(relay_pending.values())},
+            "provenance": {"post_types": ["ORIGINAL", "REPLY", "QUOTE", "REPOST"],
+                           "unique_posts_seen": len(posts), **provenance,
+                           "source_verification": "ARCHIVE_ONLY", "direct_content_verified": False},
             "signals": ranked, "post_types": types}
 
 
@@ -520,12 +674,11 @@ def post_type_timeline(archive: dict[str, Any], mapping: dict[str, Any], us: set
     """
     start = now - timedelta(days=WINDOW_DAYS)
     excluded = {str(item) for item in exclude_ids}
-    candidates: list[tuple[datetime, str, str, str, dict[str, Any], set[str], bool, bool, str]] = []
-    for post in archive["posts"]:
-        if post.get("isRetweet"):
-            continue
-        created = parse_time(post.get("createdAtISO"))
-        if created is None or created < start or created > now + timedelta(minutes=5) or post_key(post) in excluded:
+    candidates: list[tuple[datetime, str, str, str, dict[str, Any], set[str], bool, bool, str, str, str]] = []
+    posts, _ = _prepared_posts(archive, now, excluded)
+    for post in posts:
+        created = parse_time(post["createdAtISO"])
+        if created < start:
             continue
         body = str(post.get("text") or "")
         reading = analyze_post(body, mapping, us)
@@ -542,14 +695,16 @@ def post_type_timeline(archive: dict[str, Any], mapping: dict[str, Any], us: set
                 personal_keys.update(line_keys)
         impersonal_map = (len(counted) >= 3 and not reading["stance"] and not third_party_keys)
         satire = bool(SATIRE.search(body))
-        url = str(post.get("sourceUrl") or f"https://x.com/aleabitoreddit/status/{post.get('id')}")
+        url = (f"https://x.com/aleabitoreddit/status/{post['_source_key']}" if post["_source_key"].isdigit()
+               else str(post.get("sourceUrl") or ""))
         for key in counted:
-            candidates.append((created, post_key(post), key, url, reading,
-                               third_party_keys - personal_keys, impersonal_map, satire, body))
+            candidates.append((created, post["_source_key"], key, url, reading,
+                               third_party_keys - personal_keys, impersonal_map, satire, body,
+                               post["_source_kind"], post["_content_sha256"]))
     candidates.sort(key=lambda item: (item[0], item[1], item[2]))
     first_bullish: set[str] = set()
     result: list[dict[str, str]] = []
-    for created, post_id, key, url, reading, third_party_only, map_post, satire, body in candidates:
+    for created, post_id, key, url, reading, third_party_only, map_post, satire, body, origin, content_hash in candidates:
         stance = reading["stance"].get(key)
         if satire or key in third_party_only:
             kind = "OTHER"
@@ -565,7 +720,9 @@ def post_type_timeline(archive: dict[str, Any], mapping: dict[str, Any], us: set
             kind = "OTHER"
         assert kind in POST_TYPES
         result.append({"symbol": key, "post_id": post_id, "created_at": iso(created),
-                       "source_url": url, "post_type": kind})
+                       "source_url": url, "post_type": kind, "source_kind": origin,
+                       "content_sha256": content_hash, "evidence_family": "SERENITY_AUTHOR",
+                       "mirror_status": "MIRROR_ONLY", "source_freshness": mirror_state(now, created)[1]})
     return result
 
 
@@ -614,7 +771,8 @@ class OembedChecker:
         if entry.get("status") == "NOT_FOUND":
             return "NOT_FOUND"
         checked = parse_time(entry.get("checked_at"))
-        if entry.get("status") == "OK" and checked is not None and self.now - checked <= timedelta(days=OEMBED_OK_DAYS):
+        if (entry.get("status") == "OK" and checked is not None
+                and timedelta(0) <= self.now - checked <= timedelta(days=OEMBED_OK_DAYS)):
             return "OK"
         return None
 
@@ -668,6 +826,9 @@ def build_verified(archive: dict[str, Any], mapping: dict[str, Any], us: set[str
         document = build_signals(archive, mapping, us, now, exclude_ids=excluded)
     for row in document["signals"][:limit]:
         row["verified"] = {"latest": checker.status(row.get("latest_url")), "top": checker.status((row.get("top_post") or {}).get("url"))}
+        # An available oEmbed is only link availability, NOT independently verified original content.
+        row["source_verification"] = "LINK_AVAILABLE_UNVERIFIED" if row["verified"]["latest"] == "OK" else "ARCHIVE_ONLY"
+    document["provenance"]["link_availability_checked"] = checker.counts()["checked"]
     document["source"]["oembed"] = {"enabled": True, **checker.counts()}
     return document, checker
 

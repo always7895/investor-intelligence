@@ -1,6 +1,31 @@
 # Current state / 目前狀態
 
-**As of 2026-11-08 (Asia/Taipei).** Release **`v3.3.0`** is the dual-accepted source snapshot **`8ff4b0722f71f983716b2accc1fadeb301e848e4`** (`feat/v33-options-trend`), merged to `main`. The commit that adds this page is documentation-only on top of that snapshot. The release is a source release; it is **not** the installed Worker version. This page records the project, not a task log.
+**As of 2026-11-09 (Asia/Taipei).** Release **`v3.3.0`** is the dual-accepted source snapshot **`8ff4b0722f71f983716b2accc1fadeb301e848e4`** (`feat/v33-options-trend`), merged to `main`. The commit that adds this page is documentation-only on top of that snapshot. The release is a source release; it is **not** the installed Worker version. This page records the project, not a task log.
+
+## FIX-R2B research implementation (2026-11-09; isolated source branch only)
+
+- Status: **IMPLEMENTED_UNVERIFIED**, not deployed, not a release and not master/independent dual-accepted.
+- Pending merger targets are withheld with zh-TW reasons; LITE/MRVL remains a pending 4.5-share transaction.
+  MRVL retains its independently calculated score; no target gains or announced synergies are transferred.
+- MOD→THRM research calculation handles due bills, the October 2 ex-spin boundary and actual net fractional proceeds.
+  Publication restoration requires complete, rights-qualified, independently pinned primary inputs. They remain unavailable,
+  so real MOD crossing-window returns stay NULL with an explicit reason; synthetic calculation tests are not market evidence.
+- The exact eleven R3 hypotheses remain display/shadow-only, `RULES_KEPT=0`, visibly `未驗證`.
+  Complete-candidate v2 HMAC journals need a process-only signing key; the protected host also needs an explicit local log path.
+  Missing configuration is UNCONFIGURED, not SIGNED. Changed inputs are possible causes, never proof of rotation causality.
+  Source hashes exclude invocation-only clocks/decay; the signed observation time remains explicit.
+- Source orchestration rebuilds ranking at each hourly refresh; 13F polls for new publications inside its cache cadence.
+  Amendment periods and quarter-end/publication dates stay distinct; partial sources are not falsely fresh.
+  Serenity schema 4 retains original/reply/quote/repost/mirror provenance and calibrates without a schema mismatch.
+- Free SEC/TWSE/TPEx/DART discovery extends beyond fixed layers but does not admit a company. Independently reviewed
+  issuer/counterparty body evidence, canonical SEC identity and every ordinary gate remain required; default approvals are empty.
+  Both ranking paths use controlled registry bytes; an unregistered later cache event cannot replace a registered claim.
+  Malformed relevant SEC index rows remain INVALID_SOURCE rather than falsely complete empty discovery.
+  Unresolved Korean identity, primary-data rights and real MOD price/settlement evidence remain open.
+- G06 groups 2Y → 1Y → 6M and sorts only within comparable horizons; G13 labels reported-company sample growth, not total market.
+- Installed runtime, task registration and Production are intentionally unchanged. Master acceptance, complete H5 evidence
+  and separate current-session rollout authorization remain prerequisites for any deployment.
+  Copied-data evidence and failed/retried source-gate exits belong to the isolated lane's REPORT, not release approval.
 
 ## Production and rollout
 

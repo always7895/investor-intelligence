@@ -831,11 +831,18 @@ def captured_bottleneck_v3_body(raw: bytes, now: datetime, effective_inputs=None
                   and entry["announced_on"] <= generated.date().isoformat()]
         pending_targets = {entry["target_symbol"] for entry in active}
         distributions = corporate_actions.completed_distributions(actions, asof=generated.date())
+        # Independent recheck against the SAME frozen entitlement observations.
+        # A ranking's own claimed value/proof cannot authorize a public return.
+        import distribution_adjusted_returns as entitlement
+        from bottleneck_top20_v3 import DISTRIBUTION_EVIDENCE
+        source = (operand("entitlement_evidence") if operand and
+                  "entitlement_evidence" in captured.manifest() else
+                  DISTRIBUTION_EVIDENCE if not operand else None)
+        reviewed_entitlements = entitlement.load_evidence_document(source)
         # Do not seal a cached, pre-distribution ranking with misleading positive historical returns.
         # No Yahoo adjustment proof for the MOD/THRM RMT is available; reject instead of rescoring
         # an already selected Top20 behind the ranking gate.
         if distributions:
-            from bottleneck_top20_v3 import suppress_unproven_distribution_returns
             for ranked in doc["top"]:
                 events = distributions.get(ranked["symbol"], [])
                 if not events:
@@ -845,7 +852,8 @@ def captured_bottleneck_v3_body(raw: bytes, now: datetime, effective_inputs=None
                     if guidance_machine_enabled:
                         raise machine.MachinePublicationBlocked("DISTRIBUTION_MARKET")
                     return {}
-                guarded = suppress_unproven_distribution_returns(market, events)
+                guarded = entitlement.apply_qualified_market(
+                    market, events, reviewed_entitlements.get(ranked["symbol"]))
                 if guarded != market:
                     if guidance_machine_enabled:
                         raise machine.MachinePublicationBlocked("DISTRIBUTION_IN_WINDOW")
@@ -893,6 +901,10 @@ def captured_bottleneck_v3_body(raw: bytes, now: datetime, effective_inputs=None
         checks = _exchange_cross_checks([entry["symbol"] for entry in doc["top"]],
                                         {entry["symbol"]: entry.get("market") or {} for entry in doc["top"]},
                                         operand("prices") if operand else PRICE_SHARDS_PATH)
+        import validated_rule_engine
+        import public_event_research
+        reviewed_events = json.loads((operand("reviewed_events") if operand else
+            ROOT / "config" / "public-reviewed-events-v1.json").read_text(encoding="utf-8"))
         for entry in doc["top"]:
             parts = entry["score_parts"]
             sig, pos = entry.get("serenity"), entry.get("leopold")
@@ -960,10 +972,18 @@ def captured_bottleneck_v3_body(raw: bytes, now: datetime, effective_inputs=None
                 # The long-term fields travel validated and consistent (scripts/listing_lineage.py); malformed ones fail closed.
                 "market": {**pick(entry["market"], ("source", "source_url", "asof", "ret_6m", "ret_1y", "history_start", "currency")),
                            **listing_lineage.clean_market_lineage(entry["market"], generated.date()),
+                           **({"distribution_adjustment": dict(entry["market"]["distribution_adjustment"])}
+                              if isinstance(entry["market"].get("distribution_adjustment"), dict) else {}),
                            **({"return_reasons": dict(entry["market"]["return_reasons"])}
                               if isinstance(entry["market"].get("return_reasons"), dict) and entry["market"]["return_reasons"] else {}),
                            **({"cross_check": checks[entry["symbol"]]} if entry["symbol"] in checks else {})},
                 "market_cap_usd": entry.get("market_cap_usd"),
+                **({"latest_event": event} if (event := public_event_research.validate_latest_event(
+                    entry.get("latest_event"), cutoff=generated.date(), symbol=entry["symbol"],
+                    reviewed_events=reviewed_events)) is not None else {}),
+                **({"screen_conditions": validated_rule_engine.display_projection(
+                    validated_rule_engine.evaluate(fund, entry.get("market"), cutoff=generated.date(), symbol=entry["symbol"]))}
+                   if isinstance(doc.get("screener_shadow"), list) else {}),
                 "serenity": None if not sig else pick(sig, ("mentions", "bullish", "bearish", "stance", "latest_at", "latest_url")),
                 "leopold": None if not pos else {"long_weight": pos["long_weight"], "status": pos["status"]},
             })
@@ -979,6 +999,9 @@ def captured_bottleneck_v3_body(raw: bytes, now: datetime, effective_inputs=None
                   "serenity_source": {"url": serenity.get("url"), "latest_post_at": serenity.get("latest_post_at")} if serenity.get("url") else None,
                   "leopold_filing": pick(filing, ("period", "filed", "url")) if filing.get("url") else None,
                   "top": top, "industries": industries,
+                  **({"excluded_pending": [{"symbol": a["target_symbol"], "acquirer": a["acquirer_symbol"],
+                                           "reason_zh": "併購待完成，暫不納入排行", "source_url": a["source_url"]}
+                                          for a in active]} if active else {}),
                   **({"market_window": market_window} if market_window is not None else {})}
         body = (machine.compact(sealed, machine.REPORT_BYTES).decode("utf-8") if guidance_machine_enabled else
                 json.dumps(sealed, ensure_ascii=False, separators=(",", ":"), allow_nan=False))

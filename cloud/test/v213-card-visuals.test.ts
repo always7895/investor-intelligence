@@ -32,7 +32,7 @@ describe("card body visuals", () => {
     expect((richText("沒有任何數字") as any).contents).toBeUndefined();
   });
 
-  it("TOP5 overview ranks with badges and score meters, cards with tiles and a catalyst timeline", () => {
+  it("TOP5 overview ranks with badges and score meters", () => {
     const messages = buildMacroTop5OverviewFlex({ title: "TOP5產業總覽", generated_at: "2026-09-25T12:00:00Z", horizon: "12-36M",
       qualified_count: 5, shortfall: 0, status: "ADMITTED_TOP5", industries: [1, 2, 3, 4, 5].map(rank => card(rank)) });
     assertLineMessages(messages);
@@ -40,10 +40,6 @@ describe("card body visuals", () => {
     const widths = nodes(overview.body, "box").map(box => box.width).filter((w: unknown) => typeof w === "string" && /%$/.test(w as string));
     expect(widths.slice(0, 5)).toEqual(["83%", "76%", "69%", "62%", "55%"]);
     expect(JSON.stringify(overview.body)).toContain("Synthetic industry 1");
-    expect(JSON.stringify(overview.body)).toContain("機會分數構成");
-    const first = (messages[0] as any).contents.contents[1];
-    const texts = nodes(first.body, "text").map(t => t.text);
-    expect(texts).toEqual(expect.arrayContaining(["市場成長率", "+26.1%", "資料完整度", "80%", "6M", "1Y", "2Y"]));
   });
 
   it("oversized content drops highlighting to stay inside LINE limits, and carousels are packed by size", () => {

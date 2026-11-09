@@ -53,7 +53,7 @@
 #   DISABLED                         - auto flag false; the daily caller ran the legacy pair (module unused).
 #   BLOCKED_PREREQUISITE_UNAVAILABLE - provider unavailable; fixed reason token; nonzero; no automatic
 #                                      checker/updater/ranking or state fallback.
-#   NO_CHANGE                       - successful unchanged/clean refresh; ordinary ranking 3h ran once and
+#   NO_CHANGE                       - successful unchanged/clean refresh; ordinary hourly ranking ran once and
 #                                      succeeded. No forced rebuild is claimed.
 #   CHANGED_REBUILD_PENDING         - pending revision (new or retained) with rebuild flag false, or a
 #                                      completed rebuild whose acknowledgement reported incomplete/still
@@ -255,7 +255,7 @@ function Invoke-GuidanceOrchestration {
                                     $result = & $buildResult 'FAILED' 'FAILED_AT_FINISH_REFRESH' 1
                                 }
                                 else {
-                                    # Successful unchanged/clean refresh: run the ordinary 3h ranking once;
+                                    # Successful unchanged/clean refresh: run the ordinary hourly ranking once;
                                     # NO_CHANGE if that step succeeds.
                                     $stage = 'ranking'
                                     $rankingAttempted = $true

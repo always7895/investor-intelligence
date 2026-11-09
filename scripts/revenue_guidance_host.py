@@ -3,6 +3,7 @@
 Only bootstrap's protected -I -S -B entry may dispatch serve(). Std handles are
 invocation-local inherited pipes, never TCP/public named endpoints. Wire intents
 are NOT authority. Real lease/version/snapshot/consumption/witness stay here.
+Cadence reuse requires a same-owner consumption cutoff in the preceding hour.
 """
 from __future__ import annotations
 
@@ -21,6 +22,7 @@ import ssl
 import sys
 import time
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from urllib.parse import quote, urlsplit
 
 import revenue_guidance_provisioner as provisioner
@@ -40,6 +42,8 @@ PUBLIC_FILES = {
     "deep": "company_deep_reports_latest.json", "prices": "price_shards_latest.json",
     "consensus": "revenue_consensus_quarterly.json", "serenity": "serenity_signals_latest.json",
     "leopold": "leopold_positions_latest.json", "tickers": "v21/company_tickers_exchange.json",
+    "event_feed": "public_event_research_latest.json",
+    "entitlement_evidence": "distribution_return_evidence_latest.json",
     "cision": "cision_interim_revenue.json",
 }
 CONFIG_FILES = {
@@ -48,6 +52,8 @@ CONFIG_FILES = {
     "claims": "order-claims-v2.json", "korea_orders": "korea-ir-orders-v1.json",
     "korea_fundamentals": "korea-ir-fundamentals-v1.json",
     "corporate_actions": "corporate-actions-v1.json",
+    "open_candidates": "reviewed-open-candidates-v1.json",
+    "reviewed_events": "public-reviewed-events-v1.json",
 }
 
 
@@ -305,12 +311,17 @@ class _Capture:
             self.observations["cision"] = {"status": "HELD_CAPTURE", "sha256": digest(cision)}
         layers = strict_json(self.entries["layers"], 8 * 1024 * 1024)["layers"]
         members = sorted({entry["symbol"] for layer in layers for entry in layer["capturers"]})
-        if not members or len(members) > 256 or any(not SYMBOL.fullmatch(s) for s in members):
-            raise HostUnavailable("RANKING_SCOPE_UNAVAILABLE")
         tickers = strict_json(self.entries["tickers"], 8 * 1024 * 1024)
         ciks = {str(dict(zip(tickers["fields"], row))["ticker"]).upper(): int(dict(zip(tickers["fields"], row))["cik"])
                 for row in tickers["data"]}
         reference_day = now()
+        import public_event_research
+        reviewed = public_event_research.admitted_candidate_rows(
+            strict_json(self.entries["open_candidates"], 8 * 1024 * 1024),
+            cutoff=reference_day.date(), layer_ids={layer["id"] for layer in layers})
+        members = sorted(set(members) | {row["symbol"] for row in reviewed if row["symbol"] in ciks})
+        if not members or len(members) > 256 or any(not SYMBOL.fullmatch(s) for s in members):
+            raise HostUnavailable("RANKING_SCOPE_UNAVAILABLE")
         start = int(datetime.combine(reference_day.date() - timedelta(days=366 * 3), datetime.min.time(), timezone.utc).timestamp())
         end = int(datetime.combine(reference_day.date() + timedelta(days=1), datetime.min.time(), timezone.utc).timestamp())
         # Finite logical slots are stable across date-specific URL windows.
@@ -557,6 +568,11 @@ class _Session:
         try:
             layers = strict_json(origin.files["config/bottleneck-layers-v3.json"], 8 * 1024 * 1024)["layers"]
             self.symbols = sorted({row["symbol"] for layer in layers for row in layer["capturers"]})
+            import public_event_research
+            reviewed = public_event_research.admitted_candidate_rows(
+                strict_json(origin.files["config/reviewed-open-candidates-v1.json"], 8 * 1024 * 1024),
+                cutoff=now().date(), layer_ids={layer["id"] for layer in layers})
+            self.symbols = sorted(set(self.symbols) | {row["symbol"] for row in reviewed})
             if not self.symbols or len(self.symbols) > 256 or any(not SYMBOL.fullmatch(s) for s in self.symbols):
                 raise HostUnavailable("RANKING_SCOPE_UNAVAILABLE")
         finally:
@@ -683,7 +699,7 @@ class _Session:
             # Only an unchanged ALREADY-live witnessed result may meet cadence;
             # never claim a cached ranking consumed a newly acquired snapshot.
             if (args["Mode"] != "Cadence" or self.witness is None or not self.witness.acked or
-                    self.witness.owner is not self.guard or now() - datetime.fromisoformat(self.witness.snapshot.cutoff.replace("Z", "+00:00")) >= timedelta(hours=3)):
+                    self.witness.owner is not self.guard or not timedelta(0) <= now() - datetime.fromisoformat(self.witness.snapshot.cutoff.replace("Z", "+00:00")) < timedelta(hours=1)):
                 raise HostUnavailable("LIVE_REBUILD_REQUIRED")
             self._read_witness(self.witness, state)
             return {"Completed": True, "Revision": rev, "ReusedLiveConsumption": True}
@@ -741,10 +757,18 @@ class _Session:
                 binding = machine.make_public_binding(machine_inputs, body, rev, encoded(source))
                 machine.validate_public_bundle(body, binding, digest(body), digest(binding))
                 record_doc.update(public_binding_utf8=binding.decode("utf-8"), public_binding_sha256=digest(binding))
-            record = encoded(record_doc)  # bounded binding embedded; no new overlay artifact kind
             self.remaining()
             if self.lease.read_journal().state != state or self.input_revision() != rev:
                 raise HostUnavailable("COMPLETION_BINDING_CHANGED")
+            # The protected code root is immutable. A process-only explicit local
+            # journal path is required here; never redirect it into the code tree.
+            import top20_rotation_provenance
+            shadow_path = os.environ.get("II_R2B_SHADOW_LOG")
+            record_doc["shadow_attestation"] = (
+                top20_rotation_provenance.append_if_configured(
+                    ranking_doc, path=Path(shadow_path), asof=ranking_doc["generated_at"])
+                if shadow_path else "UNCONFIGURED")
+            record = encoded(record_doc)
             published = outputs.publish(ranking_bytes, body, record)
             if published != {"rank": digest(ranking_bytes), "body": digest(body), "record": digest(record)}:
                 raise HostUnavailable("OUTPUT_READBACK_UNAVAILABLE")

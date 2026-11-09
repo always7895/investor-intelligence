@@ -20,6 +20,7 @@ import revenue_guidance_provisioner as provisioner
 import build_line_public_options as base
 import build_v211_public_options as versioned
 from tests import test_batch08c_ranking as fixture
+from tests.test_bottleneck_top20_v3 import historical_actions
 
 ACTION_BYTES = (ROOT / "config/corporate-actions-v1.json").read_bytes()
 LAYERS = json.loads((ROOT / "config/bottleneck-layers-v3.json").read_text(encoding="utf-8"))
@@ -60,12 +61,16 @@ class ProtectedHostAndCaptureTests(unittest.TestCase):
     def test_captured_ranking_consumes_protected_bytes_not_installed_path(self):
         capture = fixture.captured()
         captured_keys = {key for key, _ in capture._entries}
-        self.assertIn("corporate_actions", captured_keys)
+        self.assertTrue({"corporate_actions", "open_candidates", "reviewed_events"} <= captured_keys)
+        self.assertEqual(actions.load_actions_bytes(capture.operand("corporate_actions").read_bytes(),
+                                                   today=fixture.NOW.date())["entries"], [])
+        for name in ("open_candidates", "reviewed_events"):
+            self.assertEqual(json.loads(capture.operand(name).read_text()), [])
         with patch.object(actions, "load_actions", side_effect=AssertionError("installed file accessed")):
             built = fixture.rank(capture)
             self.assertTrue(built["top"])
         entries = {key: value.read_bytes() if value.exists() else None for key, value in capture._entries}
-        for value in (b"{}", b'{"schema_version":1,"entries":[],"entries":[]}'):
+        for value in (b"{}", b'{"schema_version":1,"entries":[],"entries":[]}', ACTION_BYTES):
             with self.subTest(value=value):
                 entries["corporate_actions"] = value
                 with self.assertRaises(ValueError):
@@ -92,6 +97,18 @@ class ProtectedHostAndCaptureTests(unittest.TestCase):
 
 
 class CorporateActionSchemaTests(unittest.TestCase):
+    def test_historical_installed_registry_keeps_future_sources_fail_closed(self):
+        cutoff = fixture.NOW.date()
+        with historical_actions() as path:
+            self.assertEqual(actions.load_actions(today=cutoff),
+                             actions.load_actions_bytes(fixture.old.HISTORICAL_ACTION_BYTES, today=cutoff))
+            # The current real registry is not valid September evidence, through either path adapter.
+            path.write_bytes(ACTION_BYTES)
+            for selected in (None, path):
+                with self.subTest(default_path=selected is None):
+                    with self.assertRaisesRegex(ValueError, "CORPORATE_ACTION_CHRONOLOGY"):
+                        actions.load_actions(selected, today=cutoff)
+
     def test_sec_archives_only_rejects_issuer_ir_and_other_sec_urls(self):
         obj = json.loads(ACTION_BYTES)
         for url in (
