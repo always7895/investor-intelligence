@@ -287,11 +287,13 @@ const YAHOO_QUOTE_LABELS: ReadonlySet<string> = new Set([PRICE_SOURCE_LABEL["yah
 export function combineQuotes(official: ObservedQuote | null, observed: ObservedQuote | null):
   { primary: ObservedQuote | null; crossCheck?: { price: number; source: string; asOf: string; diffPct: number | null; officialReference?: boolean } } {
   if (!official || !observed) return { primary: official ?? observed };
-  // Source observation timestamps, never ingestion/UTC-now/seal timestamps. An invalid clock cannot
-  // outrank a valid one; an exact tie deterministically retains the listing shard.
+  // Date-only observations describe a whole source calendar day, not UTC midnight.
+  // Overlapping precision retains listing priority; precise clocks still compare instants.
   const listingAt = Date.parse(official.asof);
   const delayedAt = Date.parse(observed.asof);
-  const observedNewer = Number.isFinite(delayedAt) && (!Number.isFinite(listingAt) || delayedAt > listingAt);
+  const coarse = /^\d{4}-\d{2}-\d{2}$/.test(official.asof) || /^\d{4}-\d{2}-\d{2}$/.test(observed.asof);
+  const observedNewer = Number.isFinite(delayedAt) && (!Number.isFinite(listingAt)
+    || (coarse ? observed.asof.slice(0, 10) > official.asof.slice(0, 10) : delayedAt > listingAt));
   const primary = observedNewer ? observed : official;
   const secondary = observedNewer ? official : observed;
   const officialLabel = sourceZh(official.source);

@@ -27,6 +27,23 @@ describe("FIX-R2C quote observation precedence", () => {
     expect(combineQuotes(official, delayed).primary).toBe(official);
     expect(combineQuotes(official, { ...delayed, asof: official.asof }).primary).toBe(official);
   });
+  it.each([
+    ["2026-11-08", "2026-11-08T23:59:59Z", false],
+    ["2026-11-08", "2026-11-08T00:00:00+09:00", false],
+    ["2026-11-08T00:00:00Z", "2026-11-08", false],
+    ["2026-11-08", "2026-11-09T00:00:00Z", true],
+    ["2026-11-08", "2026-11-07T23:59:59Z", false],
+    ["2026-11-08T23:59:59Z", "2026-11-09", true],
+    ["2026-11-08T09:00:00Z", "2026-11-08T09:00:01Z", true],
+    ["2026-11-08T09:00:00Z", "2026-11-08T10:00:00+02:00", false],
+  ])("compares observation precision at %s / %s", (listing, delayed, newer) => {
+    const official = shard(100, listing);
+    const observed = watch(101, delayed);
+    const result = combineQuotes(official, observed);
+    expect(result.primary).toBe(newer ? observed : official);
+    expect(result.crossCheck?.asOf).toBe(newer ? listing : delayed);
+    expect(result.crossCheck?.price).toBe(newer ? 100 : 101);
+  });
   it("does not treat two aliases of one Yahoo provider as independent sources", () => {
     const official = shard(99, "2026-11-05", "Yahoo Finance（日線收盤）");
     const delayed = watch(101, "2026-11-08T12:00:00Z");
