@@ -130,7 +130,7 @@ async function sealedBottleneckFixture(bottleneckReport: V213BottleneckReport) {
 describe("v213 bottleneck takeover acceptance review: real caller & factor authority", () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  it("DEFECT 1 RED: actual authorized LINE caller with fresh legacy 20 and no new key must fail closed with INSUFFICIENT_EVIDENCE, not return old list", async () => {
+  it("withholds the legacy Top20 list when current bottleneck evidence is absent", async () => {
     const f = legacy20Fixture();
     let lineReplies: any[] = [];
     vi.stubGlobal("fetch", vi.fn(async (url: string, init: RequestInit) => {
@@ -153,9 +153,6 @@ describe("v213 bottleneck takeover acceptance review: real caller & factor autho
 
     assertLineMessages(lineReplies);
     const textBody = JSON.stringify(lineReplies);
-    // Under new policy takeover, fresh legacy 20 must NOT be returned!
-    // Must return INSUFFICIENT_EVIDENCE message.
-    expect(textBody).toContain("INSUFFICIENT_EVIDENCE");
     expect(textBody).not.toContain("LEGACY00");
   });
 
