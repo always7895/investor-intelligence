@@ -8,12 +8,14 @@
 // catalog decision (rights NONE).
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { createHash } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import adrMap from "../../config/option-adr-map-v1.json";
 import catalogJson from "../../config/public-options-provider-candidates.json";
 import { parseQuery } from "../src/core";
 import { assertLineMessages } from "../src/line-messages";
 import { buildOptionsCoverageMessages, loadOptionsCoverage, OPTIONS_COVERAGE_KEY, type OptionsCoverageResult } from "../src/v213/options-coverage";
+import { CURRENT_OPTIONS_CATALOG_VERSION } from "../src/v213/options-provider-catalog-version";
 import * as admission from "../src/v213/public-options-admission";
 import { pinPublicSnapshot } from "../src/v213/public-snapshot";
 import { v213PublicLineAnswer } from "../src/v213/rich-menu";
@@ -47,6 +49,11 @@ async function sha(text: string): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
   return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join("");
 }
+
+it("binds the coverage catalog version to the exact checked-out catalog bytes", () => {
+  const catalogBytes = readFileSync(resolve(__dirname, "../../config/public-options-provider-candidates.json"));
+  expect(CURRENT_OPTIONS_CATALOG_VERSION).toBe(`sha256:${createHash("sha256").update(catalogBytes).digest("hex")}`);
+});
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 const bytes = (text: string) => new TextEncoder().encode(text).byteLength;
 

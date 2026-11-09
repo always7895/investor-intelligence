@@ -3,7 +3,6 @@ import qualified from "./fixtures/fix-r2a-qualified.json";
 import observed from "./fixtures/fix-r2a-observation.json";
 import nonstandard from "./fixtures/fix-r2a-nonstandard.json";
 import {validateCoveredCallCycle,buildCoveredCallMessages} from "../src/v213/covered-call";
-import {normalizeOptionsUnavailableReason,optionsUnavailableReport} from "../src/v213/options-product";
 
 // Isolated renderer assertion only; canonical admission is covered by the full existing suite.
 vi.mock("../src/v213/public-options-admission",()=>({
@@ -70,17 +69,5 @@ describe("G02 covered call, CSP and protective collar require independently vali
    const forged=structuredClone(observed);
    forged.quote_observation!.annualized_yield=0.99;
    expect(validateCoveredCallCycle(forged,now,stamp,"monthly")).toBeNull();
- });
-});
-describe("G05 stale cached diagnostics, not falsely declared market absence",()=>{
- it("replaces obsolete 21-45 and 14-60 day windows, and keeps disclosure",()=>{
-   for(const reason of ["無 21–45 天到期的上市期權","無 14-60 天到期的上市期權"]){
-     const normalized=normalizeOptionsUnavailableReason(reason,"monthly");
-     expect(normalized).toContain("至少7天");
-     expect(normalized).not.toMatch(/21–45|14-60/u);
-     const displayed=msgText(optionsUnavailableReport("UNIT","monthly",reason,true));
-     expect(displayed).not.toMatch(/21–45|14-60/u);
-     expect(displayed).toContain("需重新核對");
-   }
  });
 });

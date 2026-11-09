@@ -6,3 +6,5 @@ tests/fixtures/ecb-fxref-usd.xml -text -whitespace
 patches/sol-pi-small-session-guard.patch -text -whitespace
 # Public filing captures for the revenue-guidance auto-update: gzip of exact HTTP entity bytes, named by their SHA-256.
 tests/fixtures/revenue-guidance-autoupdate/raw/** binary
+# The coverage publisher and Worker bind the public provider catalog by exact bytes.
+config/public-options-provider-candidates.json text eol=lf

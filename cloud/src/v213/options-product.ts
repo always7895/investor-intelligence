@@ -142,15 +142,6 @@ function clipDiagnostic(text: string, limit: number): string {
   return chars.length <= limit ? text : `${chars.slice(0, limit - 1).join("")}…`;
 }
 
-/** Old cached failure reasons are not valid statements about today's standard monthly screen.
- * Do not pretend to have refetched the chain; invalidate the obsolete diagnostic only. */
-export function normalizeOptionsUnavailableReason(reason: string, period: "weekly" | "monthly" | null): string {
-  if (period === "monthly" && /(?:21\s*[-–~至]\s*45|14\s*[-–~至]\s*60)\s*天/u.test(reason))
-    return "此封存資料按已淘汰的月份天數窗產製；需重新核對最近距到期至少7天、第三個星期五或交易所假期調整的標準月選；不能據此推定未上市";
-  if (/6\s*%\s*(?:年化|權利金|門檻)|年化[^。；]*6\s*%/u.test(reason))
-    return "此封存觀察以已淘汰的6%策略收益門檻拒絕；須重新取得有日期的實際買賣報價，低於門檻應標示報價觀察，不能推定無上市期權";
-  return reason;
-}
 
 export function optionsUnavailableReport(
   ticker: string,
@@ -159,16 +150,15 @@ export function optionsUnavailableReport(
   isText = false,
 ): LineOutboundMessage[] {
   const periodLabel = period === "weekly" ? "每週期權" : period === "monthly" ? "每月期權" : "期權";
-  const cleanReason = normalizeOptionsUnavailableReason(reason,period);
   // Only explicit expiry diagnostics; a date/age elsewhere is not an expiry.
-  const expiryContext = cleanReason.includes("最近到期") ? cleanReason.slice(cleanReason.indexOf("最近到期"))
-    : /本次回應有 \d{4}-\d{2}-\d{2}\s*[（(]\s*\d{1,4}\s*天\s*[）)](?:週選)?(?:上市)?買權/.exec(cleanReason)?.[0] ?? "";
+  const expiryContext = reason.includes("最近到期") ? reason.slice(reason.indexOf("最近到期"))
+    : /本次回應有 \d{4}-\d{2}-\d{2}\s*[（(]\s*\d{1,4}\s*天\s*[）)](?:週選)?(?:上市)?買權/.exec(reason)?.[0] ?? "";
   const listedExpiries = [...expiryContext.matchAll(/(\d{4}-\d{2}-\d{2})\s*[（(]\s*(\d{1,4})\s*天\s*[）)]/g)]
     .slice(0, 6).map(match => `${match[1]} · DTE ${match[2]}`);
   const title = `期權報價不可用 · ${ticker} ${periodLabel}`;
   const lines = [
     `【注意】查詢標的 ${ticker} 之 ${periodLabel} 目前無已封存驗收之公開報價。`,
-    `原因說明：${clipDiagnostic(humanizeStatusText(cleanReason), 9000)}`,
+    `原因說明：${clipDiagnostic(humanizeStatusText(reason), 9000)}`,
     "系統嚴格拒絕使用模型推估、Black-Scholes 定價模型猜測或舊殘留快照冒充市場即時行情。",
     "無合格真實雙邊報價時，Strike、Bid/Mid/Ask、Delta、OI、Volume 等欄位維持未提供。",
     "您可使用下方「期權教學」查看標準策略教學卡片，或使用「期權試算說明」進行無持倉算術試算。",
