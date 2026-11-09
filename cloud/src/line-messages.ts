@@ -1,17 +1,15 @@
 /** Bounded outbound messages; never log credentials or recipient identifiers. */
 import type { LineEnv } from "./line";
-import { localizeLineMessages } from "./v213/status-labels";
 export type LineOutboundMessage =
   | { type: "text"; text: string }
   | { type: "flex"; altText: string; contents: Record<string, unknown> };
 
 export async function replyMessages(env: LineEnv, replyToken: string, messages: readonly LineOutboundMessage[]): Promise<void> {
-  const localized = localizeLineMessages(messages);
-  assertLineMessages(localized);
+  assertLineMessages(messages);
   const response = await fetch("https://api.line.me/v2/bot/message/reply", {
     method: "POST",
     headers: { "content-type": "application/json", authorization: `Bearer ${env.LINE_CHANNEL_ACCESS_TOKEN}` },
-    body: JSON.stringify({ replyToken, messages: localized }),
+    body: JSON.stringify({ replyToken, messages }),
   });
   if (!response.ok) {
     const requestId = response.headers.get("x-line-request-id") ?? "unknown";

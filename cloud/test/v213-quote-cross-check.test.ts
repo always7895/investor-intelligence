@@ -1,4 +1,5 @@
-// Stock lookup source observations: newest observed timestamp leads; an older independent listing source remains visibly dated.
+// Stock lookup price sources (operator 2026-09-26: a lookup showed Yahoo only): the exchange feed leads and a second,
+// independent observation is shown beside it.
 import { describe, expect, it } from "vitest";
 import { buildGlobalEquityLookupMessages, combineQuotes, type EquityLookupResult } from "../src/v213/global-equity-lookup";
 
@@ -6,11 +7,10 @@ const exchange = { price: 32.78, change_pct: 0.012, currency: "SEK", asof: "2026
 const yahoo = { price: 32.9, change_pct: 0.015, currency: "SEK", asof: "2026-09-26T10:39:05Z", source: "Yahoo Finance (unofficial, delayed)", source_url: "https://finance.yahoo.com/quote/SIVE.ST" };
 
 describe("quote cross-check", () => {
-  it("leads with the newer observation and compares an older independent source in the same currency", () => {
+  it("leads with the exchange feed and compares a different source in the same currency", () => {
     const { primary, crossCheck } = combineQuotes(exchange, yahoo);
-    expect(primary).toBe(yahoo);
-    expect(crossCheck!.officialReference).toBe(true);
-    expect(crossCheck!.diffPct).toBeCloseTo(32.78 / 32.9 - 1, 6);
+    expect(primary).toBe(exchange);
+    expect(crossCheck!.diffPct).toBeCloseTo(32.9 / 32.78 - 1, 6);
     expect(combineQuotes(null, yahoo)).toEqual({ primary: yahoo });  // one source: shown as the only one
     expect(combineQuotes(exchange, { ...yahoo, source: exchange.source }).crossCheck).toBeUndefined();  // not independent
     expect(combineQuotes(exchange, { ...yahoo, currency: "GBp" }).crossCheck!.diffPct).toBeNull();  // no unit mixing
@@ -34,14 +34,12 @@ describe("quote cross-check", () => {
       },
     };
     const text = (buildGlobalEquityLookupMessages(result, "text") as { text: string }[])[0]!.text;
-    expect(text).toContain("最新觀察價 32.90 SEK（+1.50%），來源 Yahoo Finance（非官方，延遲）");
-    expect(text).toContain("掛牌來源參考：Nasdaq Nordic 斯德哥爾摩（延遲） 32.78 SEK，觀察時間 2026-09-25（與主價差 -0.36%");
+    expect(text).toContain("價格 32.78 SEK（+1.20%），來源 Nasdaq Nordic 斯德哥爾摩（延遲）");
+    expect(text).toContain("交叉比對：Yahoo Finance（非官方，延遲） 32.9（差 +0.37%");
     expect(text).not.toContain("差異超過 5%");
     expect(text).not.toContain("身分備援");
     const far = combineQuotes(exchange, { ...yahoo, price: 36.0 });
-    const farText = (buildGlobalEquityLookupMessages({ ...result, price: far.primary!.price,
-      changePct: far.primary!.change_pct ?? undefined, asOf: far.primary!.asof, priceSource: far.primary!.source,
-      crossCheck: far.crossCheck }, "text") as { text: string }[])[0]!.text;
-    expect(farText).toContain("差異超過 5%，請核對來源時間與交易所參考");
+    const farText = (buildGlobalEquityLookupMessages({ ...result, crossCheck: far.crossCheck }, "text") as { text: string }[])[0]!.text;
+    expect(farText).toContain("差異超過 5%，請以交易所價格為準");
   });
 });

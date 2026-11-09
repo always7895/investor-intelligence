@@ -2,7 +2,7 @@ import { adrRoute, marketHasOptions } from "./option-routes";
 import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
 import { LINE_THEME as T, bulletRow, disclosureLine, menuAction, menuBox, menuText, headerStyle, heroStat, noticeBanner, shortAltText } from "./line-theme";
 import { humanizeStatusText } from "./status-labels";
-import { formatPercent, formatQuotePrice, formatVisibleMoment } from "./line-formatters";
+import { formatCurrency, formatPercent, formatVisibleMoment } from "./line-formatters";
 import { pinPublicSnapshot, type PublicSnapshotView } from "./public-snapshot";
 import type { V213Top20Env } from "./top20-report";
 import type { ParsedQuery } from "../core";
@@ -170,7 +170,7 @@ export interface EquityLookupResult {
   asOf?: string;
   /** Where the shown price comes from (Chinese label) and a second, independent observation of the same listing. */
   priceSource?: string;
-  crossCheck?: { price: number; source: string; asOf: string; diffPct: number | null; officialReference?: boolean };
+  crossCheck?: { price: number; source: string; asOf: string; diffPct: number | null };
   source: string;
   disclaimer: string;
   resolution?: GlobalIdentityResolution;
@@ -280,27 +280,21 @@ type ObservedQuote = { price: number; change_pct: number | null; currency: strin
  * A CLOSED list of known labels, not a hostname, URL, substring or brand rule. */
 const YAHOO_QUOTE_LABELS: ReadonlySet<string> = new Set([PRICE_SOURCE_LABEL["yahoo-daily-close"]!, sourceZh("Yahoo Finance (unofficial, delayed)")]);
 
-/** FIX-R2C: select the latest valid *source observation* time for the primary display price.
- * A distinct provider's older listing price stays beside it as an explicitly dated reference,
- * with a comparison only when currency units agree. Equal provider labels and the known Yahoo
- * daily/hourly aliases are not independent confirmation. Ingestion and seal time do not rank prices. */
+/** Operator 2026-09-26 (a lookup showed Yahoo only): the listing's price shard leads (an exchange feed, or for Japan and Korea a
+ * Yahoo daily close); a second observation from a DIFFERENT provider is shown beside it, with the difference only when both are in
+ * the same currency. Not a second observation: an equal display label, or two known labels of the same Yahoo provider. The
+ * comparison is metadata only (labels), not proof of independent retrieval, price discovery or authenticity. */
 export function combineQuotes(official: ObservedQuote | null, observed: ObservedQuote | null):
-  { primary: ObservedQuote | null; crossCheck?: { price: number; source: string; asOf: string; diffPct: number | null; officialReference?: boolean } } {
-  if (!official || !observed) return { primary: official ?? observed };
-  // Source observation timestamps, never ingestion/UTC-now/seal timestamps. An invalid clock cannot
-  // outrank a valid one; an exact tie deterministically retains the listing shard.
-  const listingAt = Date.parse(official.asof);
-  const delayedAt = Date.parse(observed.asof);
-  const observedNewer = Number.isFinite(delayedAt) && (!Number.isFinite(listingAt) || delayedAt > listingAt);
-  const primary = observedNewer ? observed : official;
-  const secondary = observedNewer ? official : observed;
+  { primary: ObservedQuote | null; crossCheck?: { price: number; source: string; asOf: string; diffPct: number | null } } {
+  const primary = official ?? observed;
+  if (!official || !observed) return { primary };
   const officialLabel = sourceZh(official.source);
   const observedLabel = sourceZh(observed.source);
-  // Two labels of one provider do not become independent cross-checks, even when timestamps differ.
+  // One source, not two: an equal display label (as before) or two known labels of the same Yahoo provider.
   if (officialLabel === observedLabel || (YAHOO_QUOTE_LABELS.has(officialLabel) && YAHOO_QUOTE_LABELS.has(observedLabel))) return { primary };
-  const sameCurrency = (primary.currency ?? "").toUpperCase() === (secondary.currency ?? "").toUpperCase() && !!primary.currency;
-  const diffPct = sameCurrency && primary.price > 0 ? secondary.price / primary.price - 1 : null;
-  return { primary, crossCheck: { price: secondary.price, source: secondary.source, asOf: secondary.asof, diffPct, officialReference: observedNewer } };
+  const sameCurrency = (official.currency ?? "").toUpperCase() === (observed.currency ?? "").toUpperCase() && !!official.currency;
+  const diffPct = sameCurrency && official.price > 0 ? observed.price / official.price - 1 : null;
+  return { primary, crossCheck: { price: observed.price, source: observed.source, asOf: observed.asof, diffPct } };
 }
 
 /**
@@ -411,9 +405,9 @@ export function buildGlobalEquityLookupMessages(
       const change = typeof result.changePct === "number" ? `（${result.changePct >= 0 ? "+" : ""}${(result.changePct * 100).toFixed(2)}%）` : "";
       statusTitle = secFallback ? "備援身分（SEC 快取） · 延遲報價" : "已准入證券身分 · 延遲報價";
       const check = result.crossCheck;
-      const cross = check ? `；${check.officialReference ? "掛牌來源參考" : "交叉比對"}：${sourceZh(check.source)} ${formatQuotePrice(check.price, identity.currency)} ${identity.currency}，觀察時間 ${formatVisibleMoment(check.asOf)}${check.diffPct === null ? "（幣別或單位不同，不比較）"
-        : `（與主價差 ${check.diffPct >= 0 ? "+" : ""}${(check.diffPct * 100).toFixed(2)}%${Math.abs(check.diffPct) > 0.05 ? "；差異超過 5%，請核對來源時間與交易所參考" : ""}）`}` : "";
-      statusSub = `最新觀察價 ${formatQuotePrice(result.price, identity.currency)} ${identity.currency}${change}${result.priceSource ? `，來源 ${sourceZh(result.priceSource)}` : ""}，觀察時間 ${result.asOf ? formatVisibleMoment(result.asOf) : "未揭露"}${cross}；延遲公開報價，非即時可成交價。`;
+      const cross = check ? `；交叉比對：${sourceZh(check.source)} ${check.price}${check.diffPct === null ? "（幣別或單位不同，不比較）"
+        : `（差 ${check.diffPct >= 0 ? "+" : ""}${(check.diffPct * 100).toFixed(2)}%，${formatVisibleMoment(check.asOf)}；觀察時間不同時有差異屬正常${Math.abs(check.diffPct) > 0.05 ? "；差異超過 5%，請以交易所價格為準並留意資料時間" : ""}）`}` : "";
+      statusSub = `價格 ${result.price} ${identity.currency}${change}${result.priceSource ? `，來源 ${result.priceSource}` : ""}，觀察時間 ${result.asOf ? formatVisibleMoment(result.asOf) : "未揭露"}${cross}；延遲公開報價，非即時可成交價。`;
     } else if (resolution.status === "RESOLVED") {
       statusTitle = secFallback ? "備援身分（SEC 快取） · 報價未開放" : "已准入證券身分 · 報價未開放";
       statusSub = secFallback ? SEC_FALLBACK_UNAVAILABLE_SUB
@@ -526,7 +520,7 @@ export function buildGlobalEquityLookupMessages(
     ], { ...headerStyle }),
     body: menuBox([
       ...(quoteStatus === "AVAILABLE" && typeof result.price === "number"
-        ? [heroStat("最新觀察價", `${formatQuotePrice(result.price, identity.currency)} ${identity.currency}`,
+        ? [heroStat("最近報價", formatCurrency(result.price, identity.currency),
           typeof result.changePct === "number" ? formatPercent(result.changePct, true) : "漲跌未揭露")]
         : [heroStat("最近報價", "未取得")]),
       noticeBanner(resolution?.status === "UNAVAILABLE" ? "negative" : "info", statusTitle, statusSub),

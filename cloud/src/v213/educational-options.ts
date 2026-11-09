@@ -8,7 +8,6 @@
 import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
 import { LINE_THEME as T, altSummary, detailsButton, disclosureGroups, menuAction, menuBox, menuText, headerStyle, uiBox } from "./line-theme";
 import type { OptionEducationalStrategyCard } from "./market-product-schema";
-import { statusLabelZh } from "./status-labels";
 
 export const EDUCATIONAL_DISCLAIMER = "教學範例，非推薦" as const;
 export const EDUCATIONAL_STATUS = "SYNTHETIC_EDUCATIONAL" as const;
@@ -187,9 +186,9 @@ function riskDisclosure(card: OptionEducationalStrategyCard): string {
 function cardToBubble(card: OptionEducationalStrategyCard) {
   const net = card.payoff_reference.net_credit_debit;
   const profit = card.payoff_reference.max_profit_amount === "UNBOUNDED"
-    ? "無固定上限（理論無限）" : `$${card.payoff_reference.max_profit_amount.toFixed(2)}/口`;
+    ? "UNBOUNDED（理論無限）" : `$${card.payoff_reference.max_profit_amount.toFixed(2)}/口`;
   const architecture = `${card.strikes}${card.strategy_id === "bull_call_spread" ? "；每口100股" : ""}`;
-  const status = `${statusLabelZh(card.status)}（模擬基準日：${card.simulated_as_of}）；合成教學假設；非報價、非投資建議、不下單`;
+  const status = `${card.status}（模擬基準日：${card.simulated_as_of}）；合成教學假設；非報價、非投資建議、不下單`;
   const contract = card.strategy_id === "covered_call" ? "持有100股擔保；每口對應100股；費用與稅務細節見文字版"
     : card.strategy_id === "cash_secured_put" ? `${card.assumptions.collateral}；每口${card.payoff_reference.contract_multiplier}股；機會成本見文字版`
       : card.strategy_id === "bull_call_spread" ? "兩腿各1口、同月不同履約價；乘數100股；淨權利金為最大虧損"
@@ -259,12 +258,12 @@ export function buildEducationalStrategyText(
   for (const card of cards) {
     const lines = [
       `【${card.disclaimer}】${card.strategy_name}`,
-      `狀態：${statusLabelZh(card.status)}｜模擬基準日：${card.simulated_as_of}`,
+      `狀態：${card.status}｜模擬基準日：${card.simulated_as_of}`,
       `標的與週期：${card.illustrative_ticker}｜${card.expiry_dte}`,
       `架構：${card.strikes}`,
       `淨收支：${card.debit_credit}`,
       `損益平衡：${card.breakeven}`,
-      `最大獲利：${card.maxprofit.replace("UNBOUNDED", "無固定上限")}`,
+      `最大獲利：${card.maxprofit}`,
       `最大損失：${card.maxloss}`,
       `算術驗證參考：現股成本 $${card.payoff_reference.underlying_cost_basis.toFixed(2)}｜合約乘數 ${card.payoff_reference.contract_multiplier} 股｜損益平衡價 $${card.payoff_reference.breakeven_price.toFixed(2)}`,
       `履約與指派風險：${card.assignment_exercise_risk}`,

@@ -265,7 +265,7 @@ describe("sealed market observations", () => {
     const env = await sealedEnv({ observationGeneratedAt: expiredStamp, withPriceShard: true });
     // Even though combined observation is expired, fresh price shard supplies the quote
     const lookupAns = await handleGlobalEquityLookup(env as never, parseQuery("SIVE")) as { text: string }[];
-    expect(lookupAns[0]!.text).toContain("35.50 SEK");
+    expect(lookupAns[0]!.text).toContain("35.5 SEK");
     expect(lookupAns[0]!.text).not.toContain("32.78");
   });
 

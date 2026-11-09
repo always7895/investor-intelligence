@@ -35,7 +35,7 @@ const V25_AFTER_CEILINGS: Record<string, { texts: number; chars: number }> = {
   "covered-call (3 tiers)": { texts: 22, chars: 606 },
   "options-guidance order": { texts: 12, chars: 339 },
   "options-guidance sizing": { texts: 7, chars: 172 },
-  "educational-options": { texts: 9, chars: 344 },
+  "educational-options": { texts: 9, chars: 361 },
   "options-product contract": { texts: 8, chars: 296 },
   "options-product unavailable": { texts: 5, chars: 184 },
   // V25 integration: the stock-lookup hint, the past-returns caveat and the 七欄Top20 / 選單 文字 pointers stay on the panel.
@@ -62,8 +62,8 @@ const V25_FLOORS: Record<string, { texts: number | null; chars: number | null; r
   },
   "educational-options": {
     texts: 9,
-    chars: 344,
-    reason: "FIX-R2C: the displayed synthetic status is now localized as 教學模擬 (17 fewer characters than the old machine code). The compact bubble retains the exact contract legs and assignment clause, unit/collateral, fees, the simulated date and all non-recommendation and non-execution qualifiers.",
+    chars: 361,
+    reason: "The V25 pre-FIX3 capture was 7/411; target35 is 364 characters. The 9/361 bubble preserves the two exact contract legs and Pin Risk/assignment clause with unit basis, plus explicit non-recommendation, synthetic status/date, multiplier/cost/collateral, fees/slippage, early assignment/tax, capped upside/downside and no-quote/no-advice/no-order terms. Three labelled qualifier groups raise text nodes by two while reducing total characters by 50.",
   },
   "options-product contract": {
     texts: 8,

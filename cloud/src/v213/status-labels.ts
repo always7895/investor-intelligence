@@ -5,25 +5,6 @@
 const STATUS_ZH: Readonly<Record<string, string>> = Object.freeze({
   OK: "正常", PASS: "正常", FAIL: "未通過", UNKNOWN: "資料暫不可用",
   AVAILABLE: "可提供", UNAVAILABLE: "資料暫不可用", WITHHELD: "資料暫不提供",
-  // Public LINE presentation only. Raw data and audit enums are kept intact.
-  SYNTHETIC_EDUCATIONAL: "教學模擬",
-  HISTORY_YOY_V1: "歷史營收年增外推模型",
-  OFFICIAL_FISCAL_CALENDAR: "官方財季曆",
-  ISSUER_PRESENTATION: "發行人簡報",
-  SEC_8K_EXHIBIT: "美國證交會 8-K 申報附件",
-  SEC_6K_EXHIBIT: "美國證交會 6-K 申報附件",
-  OFFICIAL_FINANCIAL_STATEMENT: "官方財務報表",
-  ISSUER_EARNINGS_RELEASE: "公司財報新聞稿",
-  SEC_WIRE_IR: "美國證交會／新聞稿／公司投資人關係",
-  SUPPRESSED_BY_SEALED_PROMOTION: "封存發布時限制顯示",
-  RECOGNITION_24M: "24 個月認列時程",
-  SINGLE_SOURCE: "單一供應來源",
-  SEMI_MONOPOLY: "實質半寡占",
-  CURRENT_DATA_STALE: "公開資料已逾時",
-  NOT_CONFIGURED: "尚未設定",
-  NOT_CONNECTED: "未連線",
-  PUBLIC_SNAPSHOT_ONLY: "僅使用公開封存資料",
-  UNBOUNDED: "無固定上限",
   NO_UNDERLYING_PRICE: "暫無標的價格",
   NO_LISTED_OPTIONS: "無掛牌選擇權",
   NO_ELIGIBLE_LIQUID_QUOTE: "暫無流動性足夠的報價",
@@ -87,39 +68,7 @@ export function statusLabelZh(code: unknown): string {
 export function humanizeStatusText(input: string): string {
   return input
     .replace(/\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+){1,}\b/g, code => statusLabelZh(code))
-    .replace(/(?<![A-Za-z0-9/_-])(?:UNAVAILABLE|WITHHELD|AVAILABLE|SUPPORTED|INFERENCE|UNPROVEN|UNRANKED|UNKNOWN|INVALID|UNBOUNDED)(?![A-Za-z0-9/_-])/g,
+    .replace(/(?<![A-Za-z0-9/_-])(?:UNAVAILABLE|WITHHELD|AVAILABLE|SUPPORTED|INFERENCE|UNPROVEN|UNRANKED|UNKNOWN|INVALID)(?![A-Za-z0-9/_-])/g,
       code => statusLabelZh(code))
     .replace(/([\u3400-\u9fff]):[ \t]*/g, "$1：");
-}
-
-/** Last-mile display localization. Keep postback data, URI destinations, machine evidence and all input objects unchanged.
- * Applies to text, Flex altText, and nested visible label/title/text nodes only. */
-export function localizeLineMessages<T>(messages: readonly T[]): T[] {
-  const displayFields = new Set(["text", "altText", "label", "title"]);
-  const walk = (node: unknown): unknown => {
-    if (Array.isArray(node)) return node.map(walk);
-    if (node === null || typeof node !== "object") return node;
-    const out: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(node)) {
-      out[key] = typeof value === "string" && displayFields.has(key) ? localizeObservedStatusText(value) : walk(value);
-    }
-    return out;
-  };
-  return messages.map(message => walk(message) as T);
-}
-
-/** Known status tokens observed in public product render audits. Unlike the broad
- * humanizer, this last-mile guard does not rewrite opaque application/test codes
- * whose semantics require their own product-specific error handling. */
-const LINE_OBSERVED_CODES = new Set([
-  "SYNTHETIC_EDUCATIONAL", "HISTORY_YOY_V1", "OFFICIAL_FISCAL_CALENDAR",
-  "ISSUER_PRESENTATION", "SEC_8K_EXHIBIT", "SEC_6K_EXHIBIT",
-  "OFFICIAL_FINANCIAL_STATEMENT", "ISSUER_EARNINGS_RELEASE", "SEC_WIRE_IR",
-  "SUPPRESSED_BY_SEALED_PROMOTION", "RECOGNITION_24M", "CURRENT_DATA_STALE",
-  "NOT_CONFIGURED", "NOT_CONNECTED", "PUBLIC_SNAPSHOT_ONLY",
-  "SINGLE_SOURCE", "SEMI_MONOPOLY",
-]);
-export function localizeObservedStatusText(value: string): string {
-  return value.replace(/\b[A-Z][A-Z0-9]{2,}(?:_[A-Z0-9]+){1,}\b/g, code =>
-    LINE_OBSERVED_CODES.has(code) ? statusLabelZh(code) : code);
 }

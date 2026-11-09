@@ -129,7 +129,7 @@ describe("End-to-End Market Product Flow (Macro & Options)", () => {
     expect(body).toContain("Cash-Secured Put");
     expect(body).toContain("Bull Call Spread");
     expect(body).toContain("Protective Put");
-    expect(body).toContain("無固定上限（理論無限）");
+    expect(body).toContain("UNBOUNDED（理論無限）");
   });
 
   it("educational options in text mode returns text cards within 5 messages", async () => {
@@ -139,7 +139,7 @@ describe("End-to-End Market Product Flow (Macro & Options)", () => {
     expect(messages.length).toBeLessThanOrEqual(5);
     const body = JSON.stringify(messages);
     expect(body).toContain("教學範例，非推薦");
-    expect(body).toContain("無固定上限（理論無限）");
+    expect(body).toContain("UNBOUNDED（理論無限）");
   });
 
   it("educational options single strategy command returns a focused compact card and complete text", async () => {
