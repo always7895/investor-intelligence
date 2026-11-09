@@ -324,6 +324,25 @@ class CarryUnitTests(unittest.TestCase):
         state.apply(options, health, now)
         return options["T00"][period]
 
+    def test_source_date_survives_capture_storage_and_carry_without_using_evaluation_day(self) -> None:
+        captured_at = datetime(2026, 11, 6, 15, 0, tzinfo=UTC)
+        later = datetime(2026, 11, 9, 5, 50, 30, tzinfo=UTC)
+        cycle = self.capture("2026-11-20", 14, at=captured_at, period="monthly", week=None)
+        cycle["source_quote_date"] = "2026-11-05"
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "carry.json"
+            state = carry.CarryForward(path, policy=self.policy)
+            self.assertEqual(state.capture({"T00": {"monthly": cycle}}, captured_at), 1)
+            self.assertTrue(state.save(captured_at))
+            retained = carry.load_state(path, later)["T00"]["monthly"]
+        carried = self.apply(retained, later, "2026-11-20", "monthly")
+        self.assertEqual(carried["source_quote_date"], "2026-11-05")
+        self.assertEqual(carried["asof_date"], "2026-11-06")
+        self.assertEqual(carried["timestamp"], "2026-11-06T15:00:00Z")
+        self.assertEqual(carried["quote_basis"], "previous_session_last")
+        for bad_day in ("2026-11-09", "2026-02-30", None):
+            self.assertIn("unavailable", self.apply({**cycle, "source_quote_date": bad_day}, later, "2026-11-20", "monthly"))
+
     def test_an_expiry_day_capture_is_carried_until_the_close_and_never_after(self) -> None:
         cycle = self.capture("2026-10-13", 0)
         self.assertEqual(self.apply(cycle, IN_SESSION + timedelta(hours=4), "2026-10-13")["quote_basis"], "previous_session_last")  # 15:00 EDT, open

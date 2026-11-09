@@ -105,3 +105,103 @@ describe("covered-call suggestions", () => {
     expect(JSON.stringify(buildCoveredCallMessages(validateCoveredCallCycle(noDelta)!, "每月期權", "flex")).replaceAll("\\n", " ")).toContain("Delta 未提供");
   });
 });
+
+describe("source-page option date provenance", () => {
+  const fetched = "2026-11-09T05:50:30Z";
+  const now = Date.parse(fetched);
+  const sourceCycle = (overrides: Record<string, unknown> = {}): Record<string, unknown> => cycle({
+    expiry: "2026-11-20", dte: 11, spot: 186.64, timestamp: fetched, asof_date: "2026-11-09",
+    monthly_rule: "THIRD_FRIDAY", source_quote_date: "2026-11-06",
+    source: "Nasdaq US option chain (public quote page API, delayed; Yahoo fallback)",
+    provenance: "https://www.nasdaq.com/market-activity/stocks/nvda/option-chain",
+    suggestions: [suggestion("HIGH_STRIKE", 220, 0.05, 0.10, 0.07, 186.64, 11)], ...overrides,
+  });
+
+  it("keeps NVDA 186.64, the November 6 source day and November 9 acquisition separate in Text and Flex", () => {
+    admitSyntheticTickers("NVDA");
+    const valid = validateCoveredCallCycle(sourceCycle(), now, fetched, "monthly");
+    expect(valid).not.toBeNull();
+    expect(valid?.source_quote_date).toBe("2026-11-06");
+    expect(valid?.timestamp).toBe(fetched);
+    expect(valid?.asof_date).toBe("2026-11-09");
+    for (const style of ["text", "flex"] as const) {
+      const rendered = JSON.stringify(buildCoveredCallMessages(valid!, "每月期權", style));
+      expect(rendered).toContain("$186.64");
+      expect(rendered).toContain("來源頁報價觀察日期 2026-11-06");
+      expect(rendered).toContain("非本卡試算現價之觀察日期");
+      expect(rendered).toContain("lastTrade 指正股");
+      expect(rendered).toContain("不代表期權腿成交時間");
+      expect(rendered).toContain("各期權腿的觀察時間未提供");
+      expect(rendered).toContain("擷取時間");
+      expect(rendered).toContain("2026-11-09");
+      expect(rendered).not.toContain("2026-11-06T00:00");
+    }
+  });
+
+  it("shows the same source date and unknown leg timing on observation-only Text and Flex", () => {
+    admitSyntheticTickers("NVDA");
+    const valid = validateCoveredCallCycle(sourceCycle({
+      suggestions: [],
+      quote_observation: { kind: "NO_TWO_SIDED", strike: 220, bid: null, ask: null, last: 0.08,
+        annualized_yield: 0.08 / 186.64 * 365 / 11, oi: 100, volume: 10 },
+    }), now, fetched, "monthly");
+    expect(valid).not.toBeNull();
+    for (const style of ["text", "flex"] as const) {
+      const rendered = JSON.stringify(buildCoveredCallMessages(valid!, "每月期權", style));
+      expect(rendered).toContain("來源頁報價觀察日期 2026-11-06");
+      expect(rendered).toContain("各期權腿的觀察時間未提供");
+      expect(rendered).toContain("不代表期權腿成交時間");
+      expect(rendered).toContain("Last $0.08");
+      expect(rendered).toContain("2026-11-09");
+    }
+  });
+
+  it("rejects malformed, non-calendar, future and stale days without borrowing other clocks", () => {
+    for (const source_quote_date of [null, undefined, false, 20261106, [], {}, "", "2026-11-6",
+      "2026-02-30", "2026-02-29", "0000-11-06", "2026-11-06T00:00:00Z", "2026-11-10", "2026-11-04"]) {
+      expect(validateCoveredCallCycle(sourceCycle({ source_quote_date }), now, fetched, "monthly")).toBeNull();
+    }
+    const inconsistent = sourceCycle({
+      asof_date: "2026-11-08", dte: 12, source_quote_date: "2026-11-09",
+      suggestions: [suggestion("HIGH_STRIKE", 220, 0.05, 0.10, 0.07, 186.64, 12)],
+    });
+    expect(validateCoveredCallCycle(inconsistent, now, fetched, "monthly")).toBeNull();
+    expect(validateCoveredCallCycle(sourceCycle(), now + 6 * 3600_000 + 1, fetched, "monthly")).toBeNull();
+  });
+
+  it("keeps an absent legacy date unknown rather than deriving it from capture or expiry-rule date", () => {
+    admitSyntheticTickers("NVDA");
+    const { source_quote_date: _omitted, ...legacy } = sourceCycle();
+    const valid = validateCoveredCallCycle(legacy, now, fetched, "monthly");
+    expect(valid).not.toBeNull();
+    expect(valid).not.toHaveProperty("source_quote_date");
+    for (const style of ["text", "flex"] as const) {
+      const rendered = JSON.stringify(buildCoveredCallMessages(valid!, "每月期權", style));
+      expect(rendered).toContain("來源頁報價觀察日期 未提供");
+      expect(rendered).not.toContain("來源頁報價觀察日期 2026-11-09");
+    }
+  });
+
+  it("carries the original source day, not the current exchange date, and still rejects future-to-capture dates", () => {
+    admitSyntheticTickers("NVDA");
+    const captured = "2026-11-06T15:00:00Z";
+    const carryCycle = sourceCycle({
+      timestamp: captured, asof_date: "2026-11-06", dte: 14, source_quote_date: "2026-11-05",
+      source: "Yahoo Finance option chain (unofficial, delayed)",
+      provenance: "https://finance.yahoo.com/quote/NVDA/options", quote_basis: "previous_session_last",
+      suggestions: [suggestion("HIGH_STRIKE", 220, 0.05, 0.10, 0.07, 186.64, 14)],
+    });
+    const valid = validateCoveredCallCycle(carryCycle, now, fetched, "monthly", { allowPreviousSession: true });
+    expect(valid).not.toBeNull();
+    expect(valid?.source_quote_date).toBe("2026-11-05");
+    expect(valid?.timestamp).toBe(captured);
+    for (const style of ["text", "flex"] as const) {
+      const rendered = JSON.stringify(buildCoveredCallMessages(valid!, "每月期權", style));
+      expect(rendered).toContain("來源頁報價觀察日期 2026-11-05");
+      expect(rendered).toContain("前一交易時段擷取時間");
+      expect(rendered).not.toContain("來源頁報價觀察日期 2026-11-09");
+    }
+    expect(validateCoveredCallCycle({ ...carryCycle, source_quote_date: "2026-11-09" },
+      now, fetched, "monthly", { allowPreviousSession: true })).toBeNull();
+  });
+});

@@ -544,6 +544,23 @@ def validate_covered_call_cycle(cycle: dict, evaluated_at: str | datetime | None
         if doc_dt and (dt - doc_dt).total_seconds() > 300:
             raise MarketProductValidationError("ROW_TIMESTAMP_LATER_THAN_DOCUMENT")
 
+    # Date-only source-page evidence, separate from acquisition and expiry-rule clocks.
+    # Compare to the capture (also for carry), never re-stamp an old observation.
+    if "source_quote_date" in cycle:
+        raw_day = cycle["source_quote_date"]
+        try:
+            source_day = datetime.strptime(raw_day, "%Y-%m-%d").date() if isinstance(raw_day, str) else None
+        except ValueError:
+            source_day = None
+        if source_day is None or source_day.isoformat() != raw_day:
+            raise MarketProductValidationError("INVALID_SOURCE_QUOTE_DATE")
+        venue = "STOCKHOLM" if cycle.get("currency") == "SEK" else "US"
+        capture_day = rules.exchange_date(dt, venue)
+        if source_day > capture_day or source_day > rules.exchange_date(eval_dt, venue):
+            raise MarketProductValidationError("FUTURE_SOURCE_QUOTE_DATE")
+        if (capture_day - source_day).days > 4:
+            raise MarketProductValidationError("STALE_SOURCE_QUOTE_DATE")
+
     dte = cycle.get("dte")
     if not isinstance(dte, int) or isinstance(dte, bool) or not 0 <= dte <= 60:  # 0 is the expiry day
         raise MarketProductValidationError("INVALID_DTE")
@@ -584,6 +601,8 @@ def validate_covered_call_cycle(cycle: dict, evaluated_at: str | datetime | None
             raise MarketProductValidationError("ASOF_DTE_INCONSISTENT")
         if abs((asof - dt.date()).days) > 1:
             raise MarketProductValidationError("ASOF_DATE_NOT_NEAR_TIMESTAMP")
+        if "source_quote_date" in cycle and source_day > asof:
+            raise MarketProductValidationError("SOURCE_QUOTE_DATE_AFTER_ASOF")
         expected_week = rules.weekly_week_for(expiry.date(), asof)
         if period == "weekly" and expected_week is None:
             raise MarketProductValidationError("DTE_OUTSIDE_PERIOD_BUCKET")  # beyond next week's Sunday, or before the as-of date

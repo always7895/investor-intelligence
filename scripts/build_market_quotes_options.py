@@ -965,23 +965,34 @@ def _cycles_from_calls(calls: list[dict[str, Any]], ticker: str, spot: float, st
 
 
 def _nasdaq_us_asof(payload: Any) -> date | None:
-    """Source date only: lastTrade text or table.asOf date. NEVER substitute fetch/clock time."""
+    """Source-page observation day, not an option-leg clock or the caller's spot clock.
+    Multiple supplied clocks must agree; a malformed clock cannot hide behind a valid one."""
     try:
         data = payload["data"]
         candidates = (data.get("lastTrade"), (data.get("table") or {}).get("asOf"))
-        for text in candidates:
-            if not isinstance(text, str) or len(text) > 180:
+        days: set[date] = set()
+        for index, text in enumerate(candidates):
+            if text is None or text == "":
                 continue
-            match = _ASOF_RE.search(text)
-            if match:
+            if not isinstance(text, str) or len(text) > 180:
+                return None
+            markers = re.findall(r"\bAS OF\b", text, re.IGNORECASE)
+            if index == 0 and not markers and not re.match(r"^\d{4}-", text):
+                continue  # A price-only lastTrade has no clock; table.asOf may still provide one.
+            matches = list(_ASOF_RE.finditer(text))
+            if len(matches) == 1 and len(markers) == 1:
+                match = matches[0]
                 month = _ASOF_MONTHS.get(match.group(1).upper())
-                if month is not None:
-                    return date(int(match.group(3)), month, int(match.group(2)))
-            if re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", text):
-                return date.fromisoformat(text)
+                if month is None:
+                    return None
+                days.add(date(int(match.group(3)), month, int(match.group(2))))
+            elif _is_actual_date(text):
+                days.add(date.fromisoformat(text))
+            else:
+                return None
+        return next(iter(days)) if len(days) == 1 else None
     except (KeyError, TypeError, ValueError, AttributeError):
         return None
-    return None
 
 
 def _nasdaq_us_group_date(value: Any) -> date | None:
@@ -1022,7 +1033,8 @@ def nasdaq_us_options(symbol: str, spot: float, today: date, stamp: str) -> Cycl
                        "status": "READ_ERROR", "read": False, "two_sided": False} for c in CYCLES]
         return CyclesResult({cycle: {"unavailable": "Nasdaq 期權鏈讀取失敗"} for cycle in CYCLES}, health=err_health)
     asof = _nasdaq_us_asof(payload)
-    if rows and (asof is None or not 0 <= (today - asof).days <= NASDAQ_US_MAX_ASOF_AGE_DAYS):
+    capture_day = rules.exchange_date(rules.parse_utc_instant(stamp), "US")
+    if rows and (asof is None or asof > capture_day or not 0 <= (today - asof).days <= NASDAQ_US_MAX_ASOF_AGE_DAYS):
         stale_health = [{"venue": "US", "underlying": symbol, "expiry": None, "cycle": c,
                          "status": "STALE_ASOF", "read": False, "two_sided": False} for c in CYCLES]
         return CyclesResult({c: {"unavailable": NASDAQ_US_STALE_TEXT} for c in CYCLES}, health=stale_health)
@@ -1030,8 +1042,10 @@ def nasdaq_us_options(symbol: str, spot: float, today: date, stamp: str) -> Cycl
     puts: list[dict[str, Any]] = []
     saw_put_side = False
     saw_source_rows = bool(rows)
+    # Bind metadata to decoded contracts, not to whichever HTTP response happened last.
+    source_dates: dict[str, str] = {}
 
-    def decode_rows(source_rows: list, expected_expiry: str | None = None) -> None:
+    def decode_rows(source_rows: list, source_day: date | None, expected_expiry: str | None = None) -> None:
         nonlocal saw_put_side
         active: date | None = None
         for row in source_rows:
@@ -1046,6 +1060,8 @@ def nasdaq_us_options(symbol: str, spot: float, today: date, stamp: str) -> Cycl
             strike = _nasdaq_us_quote(row.get("strike"))
             if not _is_finite_positive(strike):
                 continue
+            if source_day is not None:
+                source_dates[resolved.isoformat()] = source_day.isoformat()
             calls.append({"expiry": resolved.isoformat(), "dte": (resolved-today).days, "strike": strike,
                           "bid": _quote_value(row.get("c_Bid"), _nasdaq_us_quote), "ask": _quote_value(row.get("c_Ask"), _nasdaq_us_quote),
                           "last": _nasdaq_us_quote(row.get("c_Last")), "iv": None, "delta": None,
@@ -1056,7 +1072,7 @@ def nasdaq_us_options(symbol: str, spot: float, today: date, stamp: str) -> Cycl
                              "bid": _quote_value(row.get("p_Bid"), _nasdaq_us_quote), "ask": _quote_value(row.get("p_Ask"), _nasdaq_us_quote),
                              "iv": None, "oi": _int(row.get("p_Openinterest")),
                              "volume": _int(row.get("p_Volume")), "size": 100})
-    decode_rows(rows)
+    decode_rows(rows, asof)
     # A broad response can omit the nearest standard; fetch that exact date once.
     # Only a typed contract with a valid source as-of can establish the listing.
     if not _monthly_candidates([row["expiry"] for row in calls+puts], today, stamp, "US"):
@@ -1073,9 +1089,10 @@ def nasdaq_us_options(symbol: str, spot: float, today: date, stamp: str) -> Cycl
                 if not isinstance(source_rows, list):
                     continue
                 saw_source_rows = saw_source_rows or bool(source_rows)
-                if source_asof is None or not 0 <= (today-source_asof).days <= NASDAQ_US_MAX_ASOF_AGE_DAYS:
+                if (source_asof is None or source_asof > capture_day
+                        or not 0 <= (today-source_asof).days <= NASDAQ_US_MAX_ASOF_AGE_DAYS):
                     continue
-                decode_rows(source_rows,expected_expiry=standard_day)
+                decode_rows(source_rows, source_asof, expected_expiry=standard_day)
             except (ValueError,TypeError,KeyError,AttributeError,OSError):
                 continue
             if any(row["expiry"] == standard_day for row in calls+puts):
@@ -1089,12 +1106,16 @@ def nasdaq_us_options(symbol: str, spot: float, today: date, stamp: str) -> Cycl
             _diag(f"{_missing_monthly_date(today, stamp, 'US')}；{msg}") if c == "monthly"
             else msg
             } for c in CYCLES},health=health)
-    return _cycles_from_calls(calls, symbol, spot, stamp, currency="USD",
+    result = _cycles_from_calls(calls, symbol, spot, stamp, currency="USD",
                               source="Nasdaq US option chain (public quote page API, delayed; Yahoo fallback)",
                               provenance=f"https://www.nasdaq.com/market-activity/stocks/{symbol.replace('-', '.').lower()}/option-chain",
                               rights=NASDAQ_US_RIGHTS_LABEL, missing="Nasdaq 無 {low}-{high} 天到期的上市期權",
                               venue="US", underlying=symbol, today=today, identity=NASDAQ_US_OPTION_IDENTITY,
                               puts=puts if saw_put_side else None)
+    for cycle in result.values():
+        if "unavailable" not in cycle and cycle.get("expiry") in source_dates:
+            cycle["source_quote_date"] = source_dates[cycle["expiry"]]
+    return result
 
 
 def _yahoo_unread(value: dict[str, Any] | None) -> bool:

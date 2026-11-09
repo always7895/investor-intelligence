@@ -28,6 +28,7 @@ import publish_sealed_snapshot as publisher  # noqa: E402
 from tests.fixtures import options_nonus_publisher_cases as nonus  # noqa: E402
 from tests.fixtures import v11_operator_accepted_options as support  # noqa: E402
 from tests.fixtures import v19_nasdaq_us_options_cases as cases  # noqa: E402
+from validate_v213_market_products import MarketProductValidationError, validate_covered_call_cycle  # noqa: E402
 
 TODAY = support.NASDAQ_TODAY
 NASDAQ_CLAIM = {**support.NASDAQ_IDENTITY, "quote_basis": "delayed"}
@@ -560,6 +561,129 @@ class NasdaqFreshnessAndTransportTests(unittest.TestCase):
         self.assertEqual(state.capture({"SYNTHNQ00": {"weekly": out["weekly"], "monthly": out["monthly"]}}, in_session), 0)
         self.assertEqual(state.cycles, {})
         self.assertEqual(carry.CARRIED_PROVIDER_ID, support.YAHOO_ID)
+
+
+class NasdaqSourceQuoteDateTests(unittest.TestCase):
+    """Source date survives decoding and sealing without becoming the caller's spot or leg clock."""
+
+    DAY = date(2026, 11, 9)
+    STAMP = "2026-11-09T05:50:30Z"
+    NOW = datetime(2026, 11, 9, 5, 50, 30, tzinfo=timezone.utc)
+
+    def payload(self, expiry="2026-11-20", observed="NOV 6, 2026", *, observation=False):
+        return {"data": {"lastTrade": f"$186.64 (AS OF {observed})", "table": {"rows": [
+            {"expirationDate": expiry, "strike": "220.00", "c_Bid": "--" if observation else "0.05",
+             "c_Ask": "--" if observation else "0.10", "c_Last": "0.08",
+             "c_Openinterest": "100", "c_Volume": "10"},
+        ]}}}
+
+    def produce(self, payload, *, spot=186.64):
+        with mock.patch.object(builder, "http_json", return_value=payload):
+            return builder.nasdaq_us_options("NVDA", spot, self.DAY, self.STAMP)
+
+    def seal(self, cycles):
+        document = {"schema": "v213-market-observations-v2", "generated_at": self.STAMP,
+                    "quotes": {}, "options": {"NVDA": cycles}}
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "market.json"
+            path.write_text(json.dumps(document), encoding="utf-8")
+            with mock.patch.object(gate, "load_public_option_policy", return_value=support.all_policy()):
+                bodies = publisher.lazy_market_bodies(path, self.NOW)
+        return json.loads(bodies["v213:options:v2"])["options"]["NVDA"]
+
+    def test_nvda_source_day_round_trips_strategy_and_observation_without_restamping(self):
+        for observation in (False, True):
+            with self.subTest(observation=observation):
+                cycles = self.produce(self.payload(observation=observation))
+                cycle = cycles["monthly"]
+                self.assertNotIn("unavailable", cycle)
+                self.assertEqual(cycle["source_quote_date"], "2026-11-06")
+                self.assertEqual((cycle["spot"], cycle["timestamp"], cycle["asof_date"]),
+                                 (186.64, self.STAMP, "2026-11-09"))
+                if observation:
+                    self.assertEqual(cycle["quote_observation"]["kind"], "NO_TWO_SIDED")
+                else:
+                    self.assertTrue(cycle["suggestions"])
+                validate_covered_call_cycle(cycle, self.STAMP, self.STAMP, "monthly")
+                self.assertEqual(self.seal(cycles)["monthly"], cycle)
+        # Source lastTrade is NOT the price used in this separate spot input.
+        different_spot = self.produce(self.payload(), spot=190.0)["monthly"]
+        self.assertEqual(different_spot["spot"], 190.0)
+        self.assertEqual(different_spot["source_quote_date"], "2026-11-06")
+
+    def test_exact_date_response_keeps_its_date_and_does_not_overwrite_weekly(self):
+        broad = self.payload("2026-11-13", "NOV 5, 2026")
+        exact = self.payload(observed="NOV 6, 2026")
+        with mock.patch.object(builder, "http_json", side_effect=[broad, exact]) as fetch:
+            cycles = builder.nasdaq_us_options("NVDA", 186.64, self.DAY, self.STAMP)
+        self.assertEqual(fetch.call_count, 2)
+        self.assertEqual(cycles["weekly"]["source_quote_date"], "2026-11-05")
+        self.assertEqual(cycles["monthly"]["source_quote_date"], "2026-11-06")
+        self.assertEqual(self.seal(cycles), cycles)
+        # An empty broad response does not supply the successful exact response's metadata.
+        broad["data"]["table"]["rows"] = []
+        broad["data"].pop("lastTrade")
+        with mock.patch.object(builder, "http_json", side_effect=[broad, exact]):
+            cycles = builder.nasdaq_us_options("NVDA", 186.64, self.DAY, self.STAMP)
+        self.assertEqual(cycles["monthly"]["source_quote_date"], "2026-11-06")
+
+    def test_table_date_only_and_consistent_dual_dates_are_supported(self):
+        payload = self.payload()
+        payload["data"].pop("lastTrade")
+        payload["data"]["table"]["asOf"] = "2026-11-06"
+        self.assertEqual(self.produce(payload)["monthly"]["source_quote_date"], "2026-11-06")
+        payload["data"]["lastTrade"] = "$186.64 (AS OF NOV 6, 2026)"
+        self.assertEqual(self.produce(payload)["monthly"]["source_quote_date"], "2026-11-06")
+        payload["data"]["lastTrade"] = "LAST TRADE: $186.64"
+        self.assertEqual(self.produce(payload)["monthly"]["source_quote_date"], "2026-11-06")
+
+    def test_unknown_malformed_future_and_conflicting_dates_never_become_observations(self):
+        for raw in (None, "", "AS OF FEB 30, 2026", "AS OF NOV 10, 2026", "AS OF NOV 4, 2026",
+                    "2026-11-6", "2026-11-06T00:00:00Z", "0000-11-06", False):
+            with self.subTest(raw=raw):
+                payload = self.payload()
+                payload["data"]["lastTrade"] = raw
+                cycles = self.produce(payload)
+                self.assertTrue(all(set(value) == {"unavailable"} for value in cycles.values()))
+        for table_day in ("2026-11-05", "2026-02-30", "2026-11-10", False):
+            payload = self.payload()
+            payload["data"]["table"]["asOf"] = table_day
+            self.assertIsNone(builder._nasdaq_us_asof(payload))
+            self.assertIn("unavailable", self.produce(payload)["monthly"])
+        payload = self.payload(observed="FEB 30, 2026")
+        payload["data"]["table"]["asOf"] = "2026-11-06"
+        self.assertIsNone(builder._nasdaq_us_asof(payload))
+        payload["data"]["lastTrade"] = "AS OF NOV 6, 2026; AS OF UNKNOWN"
+        self.assertIsNone(builder._nasdaq_us_asof(payload))
+
+    def test_bad_targeted_date_does_not_borrow_broad_date(self):
+        broad = self.payload("2026-11-13")
+        for raw in (None, "AS OF FEB 30, 2026", "AS OF NOV 10, 2026"):
+            exact = self.payload()
+            exact["data"]["lastTrade"] = raw
+            with mock.patch.object(builder, "http_json", side_effect=[broad, exact]):
+                cycles = builder.nasdaq_us_options("NVDA", 186.64, self.DAY, self.STAMP)
+            self.assertEqual(cycles["weekly"]["source_quote_date"], "2026-11-06")
+            self.assertEqual(set(cycles["monthly"]), {"unavailable"})
+
+    def test_sealer_rejects_invalid_source_dates_but_missing_legacy_date_stays_missing(self):
+        good = self.produce(self.payload())["monthly"]
+        for raw in (None, False, 20261106, [], "", "2026-2-06", "2026-02-30", "2026-11-06T00:00:00Z",
+                    "0000-11-06", "2026-11-10", "2026-11-04"):
+            bad = {**good, "source_quote_date": raw}
+            with self.subTest(raw=raw), self.assertRaises(MarketProductValidationError):
+                validate_covered_call_cycle(bad, self.STAMP, self.STAMP, "monthly")
+            self.assertEqual(set(self.seal({"monthly": bad})["monthly"]), {"unavailable"})
+        legacy = {key: value for key, value in good.items() if key != "source_quote_date"}
+        self.assertEqual(self.seal({"monthly": legacy})["monthly"], legacy)
+        # Still enforce acquisition age independently from the valid source day.
+        with self.assertRaises(MarketProductValidationError):
+            validate_covered_call_cycle(good, self.NOW + timedelta(hours=5, seconds=1), self.STAMP, "monthly")
+        with mock.patch.object(builder, "http_json", return_value=self.payload()):
+            inconsistent = builder.nasdaq_us_options("NVDA", 186.64, date(2026, 11, 8), self.STAMP)["monthly"]
+        inconsistent["source_quote_date"] = "2026-11-09"
+        with self.assertRaisesRegex(MarketProductValidationError, "SOURCE_QUOTE_DATE_AFTER_ASOF"):
+            validate_covered_call_cycle(inconsistent, self.STAMP, self.STAMP, "monthly")
 
 
 if __name__ == "__main__":

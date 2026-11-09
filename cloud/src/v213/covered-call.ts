@@ -77,6 +77,9 @@ export interface CoveredCallCycle {
   /** Exchange-local date (YYYY-MM-DD) the expiry rule was applied on, and for weekly cycles whether the expiry is in the
    * CURRENT calendar week or (only when this week has no remaining weekly) the NEXT; both absent in older sealed rows. */
   asof_date?: string; weekly_week?: WeeklyWeek;
+  /** Source-page observation DATE only (Nasdaq lastTrade is the underlying, table.asOf the table).
+   * Not the acquisition time, expiry-rule date, caller's spot clock, or any option leg's last-trade time. */
+  source_quote_date?: string;
   /** Monthly cycles only: which branch of the standard-monthly rule chose the expiry (THIRD_FRIDAY, HOLIDAY_SHIFT or LATER_LISTED); absent in older rows. */
   monthly_rule?: MonthlyRule;
 }
@@ -232,6 +235,17 @@ export function validateCoveredCallCycle(raw: unknown, now?: number, documentGen
     const expectedWeek = weeklyWeekFor(cycle.expiry, cycle.asof_date);
     if (period === "weekly" && expectedWeek === null) return null;
     if (cycle.weekly_week !== undefined && cycle.weekly_week !== null && cycle.weekly_week !== expectedWeek) return null;
+  }
+  // Date-only source evidence is bounded against the capture even when carried forward.
+  if (Object.hasOwn(cycle, "source_quote_date")) {
+    if (typeof cycle.source_quote_date !== "string" || !/^(?!0000)\d{4}-\d{2}-\d{2}$/.test(cycle.source_quote_date)) return null;
+    const sourceDay = parseCalendarDateUtcMidnight(cycle.source_quote_date);
+    const venue = cycle.currency === "SEK" ? "STOCKHOLM" : "US";
+    const captureDay = dayMs(exchangeDate(rowTime, venue));
+    if (sourceDay === null || captureDay === null || sourceDay > captureDay
+      || captureDay - sourceDay > 4 * 86_400_000
+      || (asofMs !== null && sourceDay > asofMs)
+      || (typeof now === "number" && Number.isFinite(now) && cycle.source_quote_date > exchangeDate(now, venue))) return null;
   }
   if (cycle.weekly_week !== undefined && cycle.weekly_week !== null
     && ((cycle.weekly_week !== "CURRENT" && cycle.weekly_week !== "NEXT") || period === "monthly")) return null;
@@ -416,6 +430,13 @@ function quoteMoney(value: number | null, currency: string, calculated = false):
   const shown = calculated ? Number(value.toPrecision(15)) : value;
   const amount = Math.round(shown * 100) / 100 === shown ? shown.toFixed(2) : String(shown);
   return currency === "USD" ? `$${amount}` : `${amount} ${currency}`;
+}
+
+/** The cycle spot may come from another feed; do not pair its price with Nasdaq's underlying date. */
+function sourceObservationZh(cycle: CoveredCallCycle): string {
+  const sourceKind = cycle.source_quote_date && cycle.source.startsWith("Nasdaq US option chain")
+    ? "來源 lastTrade 指正股／asOf 指報價表；不代表期權腿成交時間；" : "";
+  return `來源頁報價觀察日期 ${cycle.source_quote_date ?? "未提供"}（非本卡試算現價之觀察日期）；${sourceKind}本卡試算現價及各期權腿的觀察時間未提供`;
 }
 const quoteMid = (bid: number | null, ask: number | null) => bid === null || ask === null ? null : bid / 2 + ask / 2;
 
@@ -720,7 +741,7 @@ function disclosureBubble(ctx: CardContext) {
   const csp = cspShown(cycle);
   const collar = collarShown(cycle);
   const lines = [
-    `來源：${sourceZh(cycle.source)}，${ctx.carried ? "前一交易時段擷取時間" : "擷取時間"} ${formatVisibleMoment(cycle.timestamp)}（報價時間未提供）${cycle.provenance}`,
+    `來源：${sourceZh(cycle.source)}，${ctx.carried ? "前一交易時段擷取時間" : "擷取時間"} ${formatVisibleMoment(cycle.timestamp)}；${sourceObservationZh(cycle)}；${cycle.provenance}`,
     ...(ctx.operatorNotice ? [ctx.operatorNotice] : []),
     ...(ctx.carriedLabel ? [ctx.carriedLabel] : []),
     "公開延遲；非投資建議；年化非保證；不下單",
@@ -783,6 +804,7 @@ function monthlyObservationMessages(cycle:CoveredCallCycle,style:"flex"|"text",o
     "OI "+countZh(o.oi)+"｜成交量 "+countZh(o.volume),
     ...(shortNotice ? [shortNotice] : []),
     "來源 "+sourceZh(cycle.source)+"｜擷取 "+formatVisibleMoment(cycle.timestamp),
+    sourceObservationZh(cycle),
     "延遲來源觀察，非可執行報價；不自動下單。"
   ].concat(textStrategyLines(cycle),operatorAccepted?[OPERATOR_ACCEPTED_NOTICE_ZH]:[]);
   if(style==="text"){
@@ -801,6 +823,7 @@ function monthlyObservationMessages(cycle:CoveredCallCycle,style:"flex"|"text",o
       ...(shortNotice ? [uiText(shortNotice,"xs",T.muted)] : []),
       uiText("OI "+countZh(o.oi)+"｜成交量 "+countZh(o.volume),"xs",T.subtle),
       uiText("擷取 "+formatVisibleMoment(cycle.timestamp)+"｜"+sourceZh(cycle.source),"xxs",T.subtle),
+      uiText(sourceObservationZh(cycle),"xxs",T.subtle),
       uiText("備兌買權："+ccNone(cycle),"xs",T.subtle),
       uiText("現金擔保賣權："+("none" in csp ? csp.none : "已核驗獨立策略報價"),"xs",T.subtle),
       uiText("領口策略："+("none" in collar ? collar.none : "已核驗獨立策略報價"),"xs",T.subtle),
@@ -838,7 +861,7 @@ export function buildCoveredCallMessages(cycle: CoveredCallCycle, periodLabel: s
       ...(cycle.suggestions.length > 0 ? [`【${CC_TITLE}】前提：持有 100 股、賣出 1 口買權；股價超過履約價時可能被指派，上漲收益封頂於履約價。`, "期間收益＝限價÷現價；年化收益＝期間收益×365÷DTE"] : []),
       ...displayTiers(cycle).map((item, index) => ccTierLines(cycle, item, index).join("\n")),
       ...textStrategyLines(cycle),
-      `來源：${sourceZh(cycle.source)}（延遲報價，${carried ? "前一交易時段擷取時間" : "擷取時間"} ${formatVisibleMoment(cycle.timestamp)}；來源報價時間未提供）${cycle.provenance}`,
+      `來源：${sourceZh(cycle.source)}（延遲報價，${carried ? "前一交易時段擷取時間" : "擷取時間"} ${formatVisibleMoment(cycle.timestamp)}；${sourceObservationZh(cycle)}）${cycle.provenance}`,
       ...(operatorNotice ? [operatorNotice] : []),
       "公開行情觀察，非個人化投資建議；延遲／非即時可執行；年化收益非保證報酬；正股仍承擔下跌風險；賣出賣權可能被指派買進正股；本服務不下單。",
     ];
