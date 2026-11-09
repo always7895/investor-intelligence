@@ -95,6 +95,42 @@ describe("shared LINE free-only push admission (no real transport)", () => {
     for (const [, request] of network.mock.calls) { expect(request!.redirect).toBe("manual"); expect(request!.signal).toBeInstanceOf(AbortSignal); }
   });
 
+  it("localizes every displayed push field before reserving the exact transported body", async () => {
+    const { env, h, network } = setup();
+    const code = "SYNTHETIC_EDUCATIONAL";
+    const messages = [
+      { type: "text" as const, text: code },
+      { type: "flex" as const, altText: code, contents: { type: "bubble",
+        body: { type: "box", layout: "vertical", contents: [{ type: "text", text: code }] },
+        footer: { type: "box", layout: "vertical", contents: [{ type: "button",
+          action: { type: "postback", label: code, title: code, displayText: code, data: code } }] } } },
+    ];
+    const before = JSON.stringify(messages);
+    await pushMessages(env, TARGET, messages);
+    const body = String(network.mock.calls[3]![1]!.body);
+    const sent = JSON.parse(body).messages;
+    const action = sent[1].contents.footer.contents[0].action;
+    for (const value of [sent[0].text, sent[1].altText, sent[1].contents.body.contents[0].text,
+      action.label, action.title, action.displayText]) {
+      expect(value).not.toContain(code);
+      expect(value).toMatch(/[\u3400-\u9fff]/);
+    }
+    expect(action.data).toBe(code);
+    expect(JSON.stringify(messages)).toBe(before);
+    // A localized retry must resolve to the same reservation, not consume another push.
+    await expect(pushMessages(env, TARGET, sent)).rejects.toThrow("LINE_PUSH_ALREADY_ATTEMPTED");
+    expect(network.mock.calls.filter(([url]) => String(url).endsWith("/message/push"))).toHaveLength(1);
+    expect([...h.stores.values()][0]!.get("push:ledger")).toMatchObject({ reserved_day: 1 });
+  });
+
+  it("validates localized size rather than rejecting an oversized untranslated text", async () => {
+    const { env, network } = setup();
+    await pushMessages(env, TARGET, [{ type: "text", text: "SYNTHETIC_EDUCATIONAL ".repeat(240) }]);
+    const text = JSON.parse(String(network.mock.calls[3]![1]!.body)).messages[0].text;
+    expect(text.length).toBeLessThan(4900);
+    expect(text).not.toContain("SYNTHETIC_EDUCATIONAL");
+  });
+
   it("captures exact message bytes before asynchronous preflight", async () => {
     const { env } = setup(); const messages = [{ type: "text" as const, text: "original public message" }];
     const post = vi.fn(async (_url, init) => { expect(JSON.parse(init.body).messages[0].text).toBe("original public message"); return new Response("{}"); });

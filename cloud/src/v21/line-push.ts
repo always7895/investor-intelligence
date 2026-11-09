@@ -1,5 +1,6 @@
 import { splitLineText } from "../core";
 import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
+import { localizeLineMessages, localizeObservedStatusText } from "../v213/status-labels";
 import { LinePushGateError, localDate, parseFlatPushObject, parseFreePushPolicy, pushDigest, reservePush, validateQuota, PUSH_DEADLINE_MS, type PushSlot } from "./line-push-policy";
 
 export interface V21LinePushEnv {
@@ -16,7 +17,7 @@ const MAX_LINE_TEXT = 4900;
 const MAX_LINE_MESSAGES = 5;
 
 export async function pushText(env: V21LinePushEnv, lineUserId: string, text: string, slot?: PushSlot): Promise<void> {
-  const chunks = splitLineText(text, MAX_LINE_TEXT, MAX_LINE_MESSAGES);
+  const chunks = splitLineText(localizeObservedStatusText(text), MAX_LINE_TEXT, MAX_LINE_MESSAGES);
   await pushMessages(env, lineUserId, chunks.map(chunk => ({ type: "text", text: chunk })), slot);
 }
 
@@ -46,7 +47,8 @@ async function boundedJson(response: Response): Promise<Record<string, unknown>>
  * Reservations are not refunded; retries and paid fallbacks are not performed. */
 export async function pushMessages(env: V21LinePushEnv, lineUserId: string, messages: readonly LineOutboundMessage[], slot?: PushSlot): Promise<void> {
   if (typeof lineUserId !== "string" || !LINE_USER_ID_RE.test(lineUserId)) throw new LinePushGateError("V21_LINE_PUSH_TARGET_INVALID");
-  assertLineMessages(messages);
+  const localized = localizeLineMessages(messages);
+  assertLineMessages(localized);
   const policy = parseFreePushPolicy(env.LINE_FREE_PUSH_POLICY);
   if ((env.FREE_ONLY_MODE !== undefined && env.FREE_ONLY_MODE !== "true") ||
       (env.PAID_FALLBACK_ENABLED !== undefined && env.PAID_FALLBACK_ENABLED !== "false")) throw new LinePushGateError("LINE_FREE_ONLY_REQUIRED");
@@ -55,7 +57,7 @@ export async function pushMessages(env: V21LinePushEnv, lineUserId: string, mess
   const credential = env.LINE_CHANNEL_ACCESS_TOKEN;
   if (typeof credential !== "string" || credential.length > 8192 || !/^[\x21-\x7e]+$/.test(credential)) throw new LinePushGateError("LINE_PUSH_CREDENTIAL_UNAVAILABLE");
   // Capture the exact recipient/message bytes before asynchronous admission.
-  const body = JSON.stringify({ to: lineUserId, messages, notificationDisabled: false });
+  const body = JSON.stringify({ to: lineUserId, messages: localized, notificationDisabled: false });
   const controller = new AbortController(); let phase = "PREFLIGHT";
   const alive = () => { if (controller.signal.aborted) throw new LinePushGateError("LINE_PUSH_DEADLINE_EXCEEDED"); };
   let timer: ReturnType<typeof setTimeout>;

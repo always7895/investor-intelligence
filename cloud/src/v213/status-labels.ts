@@ -92,16 +92,18 @@ export function humanizeStatusText(input: string): string {
     .replace(/([\u3400-\u9fff]):[ \t]*/g, "$1：");
 }
 
+const LINE_DISPLAY_FIELDS: Readonly<Record<string, true>> = { text: true, altText: true, label: true, title: true, displayText: true };
+
 /** Last-mile display localization. Keep postback data, URI destinations, machine evidence and all input objects unchanged.
- * Applies to text, Flex altText, and nested visible label/title/text nodes only. */
+ * Applies to text, Flex altText, and nested visible label/title/text/displayText nodes only. */
 export function localizeLineMessages<T>(messages: readonly T[]): T[] {
-  const displayFields = new Set(["text", "altText", "label", "title"]);
   const walk = (node: unknown): unknown => {
     if (Array.isArray(node)) return node.map(walk);
     if (node === null || typeof node !== "object") return node;
     const out: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(node)) {
-      out[key] = typeof value === "string" && displayFields.has(key) ? localizeObservedStatusText(value) : walk(value);
+      out[key] = key === "data" || key === "postback" ? value
+        : typeof value === "string" && Object.hasOwn(LINE_DISPLAY_FIELDS, key) ? localizeObservedStatusText(value) : walk(value);
     }
     return out;
   };
