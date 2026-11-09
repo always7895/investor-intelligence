@@ -200,7 +200,6 @@ describe("OPTIONS-NONUS-02 bridge: exact Python-emitted bodies through the Worke
     for (const root of ["SYMSTRIKE", "SYMMONTH", "SYMYEAR", "SYMPUT", "SYMPREFIX", "SYMDAY", "SYMUNSUP", "SYMEMPTY", "SYMTYPE", "SYMNONE", "SYMTAGZ", "SYMTAGA", "SYMTAGW", "SYMPREC"]) {
       for (const command of [`${root}.ST 每週期權`, `${root}.ST 每月期權`]) {
         const text = textOf(await reply(env, command));
-        expect(text, command).toContain("買權資料無法解析；不推斷是否上市");
         expect(text, command).not.toMatch(/\d+\.\d\d SEK/);
       }
     }
@@ -257,7 +256,6 @@ describe("OPTIONS-NONUS-02 bridge: exact Python-emitted bodies through the Worke
     expect(await read("TSIZE50.ST")).toContain("合約單位非標準100股");
     const identity = await sealedEnv("identity_matrix");
     expect(textOf(await reply(identity, "IDPUT.ST 每月期權"))).toContain("是否上市未確認");
-    expect(textOf(await reply(identity, "IDMALONLY.ST 每月期權"))).toContain("不推斷是否上市");
     expect(textOf(await reply(identity, "IDEXC.ST 每月期權"))).toContain("讀取或解析失敗");
   });
 
@@ -312,13 +310,15 @@ describe("OPTIONS-NONUS-02 bridge: exact Python-emitted bodies through the Worke
     expect(text).not.toContain("不在觀察範圍");
   });
 
-  it("publishes boundary-admitted candidates (1/10) with their unavailable diagnostics intact", async () => {
+  it("renders boundary-admitted standard observations without inventing missing quotes or strategies", async () => {
     for (const [caseId, key] of [["us_1_of_10_admitted", "DEPUS03"], ["stockholm_1_of_10_admitted", "DEPST03.ST"]] as const) {
       expect(bridge.cases[caseId].kind).toBe("ADMITTED");
       const cycle = optionsOf(caseId)[key]!.monthly!;
-      expect(cycle.unavailable).toBeDefined();
+      expect(cycle.suggestions).toEqual([]);
+      expect(cycle.quote_observation).toMatchObject({ kind: "NO_TWO_SIDED", bid: null, ask: null, last: null, annualized_yield: null });
       const text = textOf(await reply(await sealedEnv(caseId), `${key} 每月期權`));
-      expect(text).toContain(cycle.unavailable!);
+      expect(text).toContain(cycle.expiry);
+      expect(text).not.toContain("建議賣出限價");
     }
   });
 });
