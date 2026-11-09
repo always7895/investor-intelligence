@@ -62,7 +62,7 @@ export interface CoveredCallCycle {
   multiplier: 100; quote_basis: "delayed" | typeof PREVIOUS_SESSION_BASIS; timestamp: string; source: string; provenance: string; rights_status: string;
   /** Producer-CLAIMED join identity for public admission (never authority; absent on local candidates). */
   provider_id?: string; jurisdiction?: string; venue?: string; instrument_kind?: string; publication_scope?: string;
-  /** One or two covered-call tiers; EMPTY only beside a validated real `strategies.csp` or `strategies.collar` block. */
+  /** One or two covered-call tiers; EMPTY only beside a validated monthly observation or real csp/collar block. */
   suggestions: CoveredCallSuggestion[];
   /** V21 additive; absent on older sealed rows (the card then shows the cash-secured put and the collar as no data). A block that failed
    * validation has already been replaced by {unavailable} by validateCoveredCallCycle. */
@@ -256,7 +256,7 @@ export function validateCoveredCallCycle(raw: unknown, now?: number, documentGen
     if(period!=="monthly" || cycle.suggestions.length!==0 ||
       cycle.middle_suggestion!==undefined || !validMonthlyQuoteObservation(cycle.quote_observation,cycle)) return null;
     if(cycle.strategies===undefined) return cycle as CoveredCallCycle;
-    const kept=sanitizeStrategies(cycle);
+    const kept=sanitizeStrategies(cycle, true);
     return kept===null || kept===undefined ? null : {...cycle,strategies:kept} as CoveredCallCycle;
   }
   const strategies = sanitizeStrategies(cycle);
@@ -351,11 +351,12 @@ function strategyBlockValid(name: "csp" | "collar", block: unknown, cycle: Recor
 
 /** The cycle's strategies after block-level degradation: undefined when there is none (absent, not an object, or nothing left), null when
  * the CYCLE is invalid (a covered call beside a `cc` block, no covered call without a valid `cc` unavailable block, or no covered call and
- * no real csp/collar block). A failing csp or collar block becomes {unavailable} alone; unknown names are dropped. */
-function sanitizeStrategies(cycle: Record<string, any>): CycleStrategies | null | undefined {
+ * no real csp/collar block unless a monthly observation has already validated). Bad csp/collar blocks degrade independently. */
+function sanitizeStrategies(cycle: Record<string, unknown>, validatedObservation = false): CycleStrategies | null | undefined {
   const raw = cycle.strategies;
   if (!isRecord(raw)) return undefined;
-  const kept: Record<string, any> = {};
+  if (!Array.isArray(cycle.suggestions)) return null;
+  const kept: Record<string, unknown> = {};
   for (const name of STRATEGY_NAMES) {
     if (!Object.hasOwn(raw, name)) continue;
     const block = raw[name];
@@ -367,7 +368,7 @@ function sanitizeStrategies(cycle: Record<string, any>): CycleStrategies | null 
   if (noCoveredCall && !isRecord(kept.cc)) return null;
   if (!noCoveredCall && "cc" in kept) return null;
   const real = (name: "csp" | "collar") => isRecord(kept[name]) && !("unavailable" in kept[name]);
-  if (noCoveredCall && !real("csp") && !real("collar")) return null;
+  if (noCoveredCall && !validatedObservation && !real("csp") && !real("collar")) return null;
   return kept as CycleStrategies;
 }
 
@@ -434,8 +435,7 @@ export const OPERATOR_ACCEPTED_NOTICE_ZH = "依營運者決定顯示；本資料
 // ---- V21 (operator 2026-10-19): three conservative strategies on one card -----------------------------------------------------------------
 // Overview, then the available strategy details and a single final disclosure. A strategy without data keeps its overview row
 // ("無資料") and has no detail bubble. Everything shown is a quote or a figure recomputed by the validator; nothing is advice.
-const NO_STRATEGIES_REASON = "封存的此到期日資料未包含可核驗賣權鏈；無法計算，並不代表未上市";
-const NO_SOURCE_PUT_REASON = "本輪來源沒有可驗證的賣權雙邊報價或契約條件；不可推算權利金";
+const NO_STRATEGIES_REASON = "封存資料未提供此策略的篩選結果；無法判定賣權鏈或報價是否可用";
 const CSP_TITLE = "現金擔保賣權（備足現金賣出賣權）";
 const COLLAR_TITLE = "領口策略（持股＋買保護賣權＋賣買權）";
 const CC_TITLE = "備兌買權（持股賣出買權）";
@@ -447,13 +447,13 @@ type Shown<T> = { block: T } | { none: string };
 function cspShown(cycle: CoveredCallCycle): Shown<CspData> {
   if (!cycle.strategies) return { none: NO_STRATEGIES_REASON };
   const block = cycle.strategies.csp;
-  if (!block) return { none: NO_SOURCE_PUT_REASON };
+  if (!block) return { none: NO_STRATEGIES_REASON };
   return "unavailable" in block ? { none: block.unavailable } : { block };
 }
 function collarShown(cycle: CoveredCallCycle): Shown<CollarData> {
   if (!cycle.strategies) return { none: NO_STRATEGIES_REASON };
   const block = cycle.strategies.collar;
-  if (!block) return { none: NO_SOURCE_PUT_REASON };
+  if (!block) return { none: NO_STRATEGIES_REASON };
   return "unavailable" in block ? { none: block.unavailable } : { block };
 }
 const ccNone = (cycle: CoveredCallCycle) => cycle.strategies?.cc?.unavailable ?? "本輪沒有符合條件的備兌買權";
@@ -763,6 +763,7 @@ function monthlyObservationMessages(cycle:CoveredCallCycle,style:"flex"|"text",o
       ...(shortNotice ? [uiText(shortNotice,"xs",T.muted)] : []),
       uiText("OI "+countZh(o.oi)+"｜成交量 "+countZh(o.volume),"xs",T.subtle),
       uiText("擷取 "+formatVisibleMoment(cycle.timestamp)+"｜"+sourceZh(cycle.source),"xxs",T.subtle),
+      uiText("備兌買權："+ccNone(cycle),"xs",T.subtle),
       uiText("現金擔保賣權："+("none" in csp ? csp.none : "已核驗獨立策略報價"),"xs",T.subtle),
       uiText("領口策略："+("none" in collar ? collar.none : "已核驗獨立策略報價"),"xs",T.subtle),
       ...(operatorAccepted?[uiText(OPERATOR_ACCEPTED_NOTICE_ZH,"xxs",T.subtle)]:[])

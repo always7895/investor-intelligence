@@ -34,6 +34,7 @@ from validate_v213_market_products import (
     CARRIED_QUOTE_BASIS,
     MarketProductValidationError,
     validate_covered_call_cycle,
+    validate_strategies,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -217,6 +218,15 @@ class CarryForward:
             if not isinstance(live,dict):
                 continue
             ordinary_absence = set(live) == {"unavailable"} and NO_TWO_SIDED_REASON in str(live["unavailable"])
+            strategies = live.get("strategies")
+            no_live_strategy = not strategies
+            if isinstance(strategies, dict) and strategies and all(
+                    isinstance(block, dict) and "unavailable" in block for block in strategies.values()):
+                try:
+                    validate_strategies(live)
+                except MarketProductValidationError:
+                    continue  # Do not hide malformed current evidence behind a prior capture.
+                no_live_strategy = True
             # G02 observation-only quote with no valid two-sided bid/ask: a genuinely
             # captured, same-expiry prior-session cycle is still preferable; otherwise
             # keep the honest live observation intact (never fabricate a recommendation).
@@ -225,7 +235,7 @@ class CarryForward:
                 and isinstance(live.get("quote_observation"),dict)
                 and live["quote_observation"].get("kind") == "NO_TWO_SIDED"
                 and live.get("suggestions") == []
-                and not live.get("strategies"))
+                and no_live_strategy)
             if not (ordinary_absence or observational_absence):
                 continue  # live valid two-sided quote or verified put strategy always wins
             replacement = self._carried(ticker, period, item["expiry"], now)

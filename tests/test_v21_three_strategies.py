@@ -364,11 +364,99 @@ class FailClosedTests(unittest.TestCase):
                     self.assertEqual((observed["bid"], observed["ask"]), (1.83, 1.87))
                     self.assertAlmostEqual(observed["annualized_yield"], 1.83 / SPOT * 365 / chains.DTE, places=6)
                 for name in ("cc", "csp", "collar"):
-                    block = cycle.get("strategies", {}).get(name)
-                    if block is not None:
-                        self.assertTrue(block.get("unavailable"), name)
-                        self.assertFalse(block.get("suggestions"), name)
-                        self.assertFalse(block.get("items"), name)
+                    block = cycle["strategies"][name]
+                    self.assertTrue(block.get("unavailable"), name)
+                    self.assertFalse(block.get("suggestions"), name)
+                    self.assertFalse(block.get("items"), name)
+
+
+class ObservationReasonTests(unittest.TestCase):
+    def test_all_unavailable_reasons_survive_producer_and_validation(self) -> None:
+        from tests.fixtures.v21_worker_cases import generate_fixture_document
+        cases = generate_fixture_document()["observations"]
+        expected = {
+            "wide_all": ("買權買賣價差大於中價", "賣權買賣價差大於中價", "賣權買賣價差大於中價"),
+            "no_two_sided_put": ("買權買賣價差大於中價", "賣權無有效雙邊報價", "賣權無有效雙邊報價"),
+            "absent_puts": ("買權買賣價差大於中價", "無該到期的賣權報價", "無該到期的賣權報價"),
+            "unknown_puts": ("買權買賣價差大於中價", "無法判定賣權鏈是否缺漏", "無法判定賣權鏈是否缺漏"),
+        }
+        for name, reasons in expected.items():
+            with self.subTest(name=name):
+                cycle = cases[name]
+                validate(cycle)
+                self.assertEqual(cycle["expiry"], EXPIRY)
+                self.assertEqual(cycle["suggestions"], [])
+                self.assertEqual(cycle["quote_observation"]["kind"], "TWO_SIDED")
+                self.assertEqual(set(cycle["strategies"]), {"cc", "csp", "collar"})
+                for strategy, reason in zip(("cc", "csp", "collar"), reasons):
+                    self.assertIn(reason, cycle["strategies"][strategy]["unavailable"])
+                self.assertEqual(degrade_bad_strategy_blocks(cycle), cycle)
+
+    def test_independent_put_strategies_and_call_delta_reasons(self) -> None:
+        from tests.fixtures.v21_worker_cases import generate_fixture_document
+        cases = generate_fixture_document()["observations"]
+        healthy = yahoo_cycle()
+        wide = cases["wide_calls"]
+        validate(wide)
+        self.assertEqual(wide["strategies"]["csp"], healthy["strategies"]["csp"])
+        self.assertIn("買權買賣價差大於中價", wide["strategies"]["collar"]["unavailable"])
+        delta = cases["delta_call"]
+        validate(delta)
+        self.assertIn("Delta 不超過 0.20", delta["strategies"]["cc"]["unavailable"])
+        self.assertIn("delta 介於 0.20–0.30", delta["strategies"]["collar"]["unavailable"])
+        self.assertEqual(delta["strategies"]["csp"], healthy["strategies"]["csp"])
+        collar = cases["collar_only"]
+        validate(collar)
+        self.assertIn("0.20–0.30", collar["strategies"]["csp"]["unavailable"])
+        self.assertEqual(collar["strategies"]["collar"]["put"], healthy["strategies"]["collar"]["put"])
+        self.assertEqual([item["call"]["strike"] for item in collar["strategies"]["collar"]["items"]], [107.0])
+
+    def test_synthetic_nordic_299_wide_puts_are_not_reported_as_an_absent_chain(self) -> None:
+        puts = [(round(13 + index / 100, 2), 0.01, 0.50) for index in range(299)]
+        cycle = nordic_cycle(chains.nordic_rows(calls=[(16.4, 0.01, 0.50)], puts=puts), spot=16.2)["monthly"]
+        validate(cycle)
+        self.assertEqual(cycle["ticker"], "SIVE.ST")
+        for name in ("cc", "csp", "collar"):
+            self.assertIn("買賣價差大於中價", cycle["strategies"][name]["unavailable"])
+            self.assertNotIn("無該到期", cycle["strategies"][name]["unavailable"])
+
+    def test_later_expiry_puts_never_supply_the_nearest_months_strategy_or_reason(self) -> None:
+        later = "2026-12-18"
+        calls = [{"expiry": EXPIRY, "dte": chains.DTE, "size": 100, "strike": 110.0, "bid": 0.01, "ask": 0.50}]
+        puts = [{"expiry": later, "dte": (date.fromisoformat(later) - TODAY).days, "size": 100,
+                 "strike": k, "bid": b, "ask": a, "iv": chains.IV} for k, b, a in chains.PUTS]
+        cycle = builder._cycles_from_calls(calls, "AAA", SPOT, STAMP, currency="USD", source="synthetic",
+            provenance="https://example.com/options", rights=builder.YAHOO_RIGHTS_LABEL, missing="無到期資料",
+            today=TODAY, identity=builder.YAHOO_OPTION_IDENTITY, puts=puts)["monthly"]
+        validate(cycle)
+        self.assertEqual(cycle["expiry"], EXPIRY)
+        self.assertIn("買權買賣價差大於中價", cycle["strategies"]["cc"]["unavailable"])
+        for name in ("csp", "collar"):
+            self.assertIn("無該到期的賣權報價", cycle["strategies"][name]["unavailable"])
+
+    def test_ineligible_itm_quotes_do_not_hide_otm_spread_or_missing_quote_failures(self) -> None:
+        for bid, ask, expected in ((0.01, 0.50, "買賣價差大於中價"), (None, 0.50, "無有效雙邊報價")):
+            puts = [{"strike": 90.0, "bid": bid, "ask": ask}, {"strike": 101.0, "bid": 1.0, "ask": 1.04}]
+            calls = [{"strike": 110.0, "bid": bid, "ask": ask}, {"strike": 99.0, "bid": 1.0, "ask": 1.04}]
+            self.assertIn(expected, builder.cash_secured_put_tiers(puts, SPOT, chains.DTE)[1])
+            self.assertIn(expected, builder.collar_tiers(calls, puts, SPOT, chains.DTE)[1])
+            self.assertIn(expected, builder._covered_call_unavailable(calls, SPOT, chains.DTE, EXPIRY))
+
+    def test_all_unavailable_requires_a_valid_observation_and_cc_reason(self) -> None:
+        cycle = yahoo_cycle(chains.yahoo_chain(calls=[(104.0, 1.83, 1.87)], puts=[]))
+        validate(cycle)
+        for mutation in ("no_observation", "bad_observation", "missing_cc", "empty_cc", "oversized_cc"):
+            bad = copy.deepcopy(cycle)
+            if mutation == "no_observation":
+                del bad["quote_observation"]
+            elif mutation == "bad_observation":
+                bad["quote_observation"]["annualized_yield"] = 99
+            elif mutation == "missing_cc":
+                del bad["strategies"]["cc"]
+            else:
+                bad["strategies"]["cc"]["unavailable"] = "" if mutation == "empty_cc" else "x" * 201
+            with self.assertRaises(MarketProductValidationError, msg=mutation):
+                validate(bad)
 
 
 class ValidatorTests(unittest.TestCase):
@@ -564,13 +652,26 @@ class SealingTests(unittest.TestCase):
         self.assertEqual(sealed["AAA"]["monthly"], good)
         self.assertEqual(sealed["BBB"]["monthly"], plain)
 
-    def test_a_cycle_without_a_covered_call_whose_strategies_all_fail_is_dropped_as_a_cycle(self) -> None:
+    def test_bad_put_blocks_preserve_a_valid_observation_but_not_a_strategy_only_cycle(self) -> None:
         cycle = yahoo_cycle(chains.yahoo_chain(calls=[(k, None, a) for k, b, a in chains.CALLS]))
         cycle["strategies"]["csp"]["suggestions"][0]["cash_required"] = 1.0
         self.assertEqual(list(cycle["strategies"]["collar"]), ["unavailable"])  # no call quote, so no collar either
         sealed = json.loads(self.seal({"AAA": {"monthly": cycle}}, {"AAA"})["v213:options:v2"])["options"]["AAA"]["monthly"]
-        self.assertEqual(list(sealed), ["unavailable"])
-        self.assertIn("報價未通過驗證", sealed["unavailable"])
+        self.assertEqual(sealed["quote_observation"], cycle["quote_observation"])
+        self.assertEqual(sealed["strategies"]["csp"], {"unavailable": "報價未通過驗證"})
+        self.assertEqual(sealed["strategies"]["cc"], cycle["strategies"]["cc"])
+        self.assertEqual(sealed["strategies"]["collar"], cycle["strategies"]["collar"])
+        del cycle["quote_observation"]
+        refused = json.loads(self.seal({"AAA": {"monthly": cycle}}, {"AAA"})["v213:options:v2"])["options"]["AAA"]["monthly"]
+        self.assertEqual(list(refused), ["unavailable"])
+        self.assertIn("報價未通過驗證", refused["unavailable"])
+
+    def test_all_unavailable_observation_reasons_survive_the_sealer_unchanged(self) -> None:
+        from tests.fixtures.v21_worker_cases import generate_fixture_document
+        for name, cycle in generate_fixture_document()["observations"].items():
+            with self.subTest(name=name):
+                sealed = json.loads(self.seal({"AAA": {"monthly": cycle}}, {"AAA"})["v213:options:v2"])["options"]["AAA"]["monthly"]
+                self.assertEqual(sealed, cycle)
 
     def test_over_the_size_cap_the_strategies_are_dropped_before_the_covered_calls(self) -> None:
         good = yahoo_cycle()

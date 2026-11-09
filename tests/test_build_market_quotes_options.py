@@ -1990,7 +1990,7 @@ class NonUsTypedEvidenceTests(unittest.TestCase):
         self.assertTrue(cheap["monthly"]["suggestions"])
         self.assertAlmostEqual(cheap["monthly"]["suggestions"][0]["annualized_yield"], .01 / 100 * 365 / 16, places=6)
         miss = self.nordic([self.call(16, 90.0, bid="11.00", ask="11.20")])  # in the money: no out-of-the-money strike
-        self.assertIn("沒有 Delta 不超過 0.20 且有雙邊報價的履約價", miss["monthly"]["unavailable"])
+        self.assertIn("無有效履約價的價外買權", miss["monthly"]["unavailable"])
         self.assertNotIn("年化權利金", miss["monthly"]["unavailable"])
         self.assertEqual([(h["read"], h["two_sided"]) for h in miss.health if h["cycle"] == "monthly"], [(True, True)])
 

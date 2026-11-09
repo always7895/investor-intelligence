@@ -553,21 +553,42 @@ def _otm_calls(rows: list[dict[str, Any]], spot: float, dte: int, cent_exact_onl
     return [row for row in usable if row.get("delta_exact") is not None]
 
 
+def _leg_quote_unavailable(rows: list[dict[str, Any]], spot: float, *, put: bool, cent_exact_only: bool = True) -> str | None:
+    """Explain the first failed quote gate before testing delta, using only the eligible side of spot."""
+    side = "賣權" if put else "買權"
+    if not rows:
+        return f"本次回應無該到期的{side}報價"
+    otm = [row for row in rows if _is_finite_positive(row.get("strike"))
+           and (row["strike"] < spot if put else row["strike"] > spot)]
+    if not otm:
+        return f"所選到期無有效履約價的價外{side}"
+    exact = [row for row in otm if not cent_exact_only or _cent_exact(row["strike"])]
+    if not exact:
+        return f"所選到期價外{side}履約價含超過兩位小數，顯示無法如實呈現；不提供建議"
+    both = [row for row in exact if _is_two_sided(row.get("bid"), row.get("ask"))]
+    if not both:
+        return f"所選到期價外{side}無有效雙邊報價（買賣價須為正且不倒掛）"
+    if not any(_quote_usable(row) for row in both):
+        return f"所選到期價外{side}買賣價差大於中價，不符合保守流動性篩選"
+    return None
+
+
 def cash_secured_put_tiers(puts: list[dict[str, Any]], spot: float, dte: int, *,
                            cent_exact_only: bool = True) -> tuple[list[dict[str, Any]], str | None]:
     """(items, reason): out-of-the-money puts with a two-sided quote and an absolute delta inside CONSERVATIVE_DELTA_BAND (there is
     no yield floor); CONSERVATIVE = the delta nearest the band's lower edge, optional BALANCED =
     the delta nearest its upper edge among the higher strikes. Nothing is modelled: with no such strike the reason says which step failed."""
-    if dte < 0 or not puts:
-        return [], "本次回應無該到期的賣權報價"
+    if dte < 0:
+        return [], "所選到期已過期，不提供現金擔保賣權建議"
+    reason = _leg_quote_unavailable(puts, spot, put=True, cent_exact_only=cent_exact_only)
+    if reason:
+        return [], reason
     days = rules.effective_days(dte)
-    if not any(_quote_usable(row) for row in puts):
-        return [], "所選到期賣權無有效雙邊報價（買賣價須為正且不倒掛）"
     usable = _otm_puts(puts, spot, dte, cent_exact_only)
     band = [row for row in usable if _in_band(row, rules.CONSERVATIVE_DELTA_BAND)]
     if not band:
         low, high = rules.CONSERVATIVE_DELTA_BAND
-        return [], f"沒有 delta 絕對值介於 {low:.2f}–{high:.2f} 且有雙邊報價的價外賣權"
+        return [], f"通過價差篩選的價外賣權中，沒有 delta 絕對值介於 {low:.2f}–{high:.2f} 的履約價"
     first = _nearest(band, rules.CONSERVATIVE_DELTA_BAND[0])
     chosen = [("CONSERVATIVE", first)]
     higher = [row for row in band if row["strike"] > first["strike"]]
@@ -587,18 +608,22 @@ def collar_tiers(calls: list[dict[str, Any]], puts: list[dict[str, Any]], spot: 
     """({put, items}, reason): long stock + a protective put (absolute delta nearest PROTECTIVE_PUT_DELTA inside its window; buy limit = mid
     rounded up, never above the ask) + the short call in CONSERVATIVE_DELTA_BAND (the delta nearest the lower edge first, optional
     BALANCED nearest the upper edge). Every leg needs its own two-sided quote and a delta; there is no yield floor on a collar."""
-    if dte < 0 or not puts:
-        return None, "本次回應無該到期的賣權報價"
-    if not any(_quote_usable(row) for row in puts):
-        return None, "所選到期賣權無有效雙邊報價（買賣價須為正且不倒掛）"
+    if dte < 0:
+        return None, "所選到期已過期，不提供領口策略建議"
+    reason = _leg_quote_unavailable(puts, spot, put=True, cent_exact_only=cent_exact_only)
+    if reason:
+        return None, reason
     window = rules.PROTECTIVE_PUT_DELTA_BAND
     protective = [row for row in _otm_puts(puts, spot, dte, cent_exact_only) if _in_band(row, window)]
     if not protective:
-        return None, f"沒有 delta 絕對值約 {rules.PROTECTIVE_PUT_DELTA:.2f}（{window[0]:.2f}–{window[1]:.2f}）且有雙邊報價的價外賣權"
+        return None, f"通過價差篩選的價外賣權中，沒有 delta 絕對值約 {rules.PROTECTIVE_PUT_DELTA:.2f}（{window[0]:.2f}–{window[1]:.2f}）的履約價"
+    reason = _leg_quote_unavailable(calls, spot, put=False, cent_exact_only=cent_exact_only)
+    if reason:
+        return None, reason
     band = [row for row in _otm_calls(calls, spot, dte, cent_exact_only) if _in_band(row, rules.CONSERVATIVE_DELTA_BAND)]
     if not band:
         low, high = rules.CONSERVATIVE_DELTA_BAND
-        return None, f"沒有 delta 介於 {low:.2f}–{high:.2f} 且有雙邊報價的價外買權"
+        return None, f"通過價差篩選的價外買權中，沒有 delta 介於 {low:.2f}–{high:.2f} 的履約價"
     put_row = _nearest(protective, rules.PROTECTIVE_PUT_DELTA)
     put_leg = _leg(put_row, _buy_limit(put_row["bid"], put_row["ask"]))
     first = _nearest(band, rules.CONSERVATIVE_DELTA_BAND[0])
@@ -627,11 +652,16 @@ def strategy_blocks(calls: list[dict[str, Any]], puts: list[dict[str, Any]], spo
 
 def _covered_call_unavailable(rows: list[dict[str, Any]], spot: float, dte: int, expiry: str) -> str:
     """Explain a refused call using its actual quote and strategy evidence."""
+    if not rows:
+        return f"{expiry} 到期未取得可核驗買權報價，不提供備兌買權建議"
     if not any(_is_two_sided(row.get("bid"), row.get("ask")) for row in rows):
         return _diag(f"本次回應有 {expiry}（{dte}天）買權，但{carry_forward.NO_TWO_SIDED_REASON}（買賣價須為正且不倒掛）")
     if covered_call_suggestions(rows, spot, dte, cent_exact_only=False):
-        return _diag(f"本次回應有 {expiry}（{dte}天）有效雙邊報價，但符合條件之履約價含兩位以上小數，顯示無法如實呈現；不提供建議")
-    return f"{expiry} 到期的價外買權中，沒有 Delta 不超過 {MAX_HIGH_STRIKE_DELTA:.2f} 且有雙邊報價的履約價"
+        return _diag(f"本次回應有 {expiry}（{dte}天）有效雙邊報價，但符合條件之履約價含超過兩位小數，顯示無法如實呈現；不提供建議")
+    reason = _leg_quote_unavailable(rows, spot, put=False)
+    if reason:
+        return _diag(f"{expiry}：{reason}")
+    return f"{expiry} 到期通過價差篩選的價外買權中，沒有 Delta 不超過 {MAX_HIGH_STRIKE_DELTA:.2f} 的履約價"
 
 
 def cycle_result(ticker: str, expiry: str, dte: int, spot: float, rows: list[dict[str, Any]], *, currency: str, source: str,
@@ -780,14 +810,17 @@ def _monthly_quote_observation(ticker: str, spot: float, choices: list["rules.Mo
     # A call observation is not an eligible sell tier: preserve whether the cause
     # was missing quotes or strike/delta eligibility. Independently valid
     # put strategies from the same expiry retain their own source-backed evidence.
-    same_calls = [r for r in calls if r.get("expiry") == best["expiry"]]
+    same_calls = [r for r in calls if r.get("expiry") == best["expiry"] and r.get("size") == 100]
     same_puts = [r for r in (puts or []) if r.get("expiry") == best["expiry"] and r.get("size") == 100]
     if identity is not None and puts is not None:
         label = {"rights_status":rights,"provider_id":identity["provider_id"],
                  "quote_basis":"delayed","timestamp":stamp}
         blocks = strategy_blocks(same_calls,same_puts,spot,dte,label)
-        if any("unavailable" not in blocks.get(name, {"unavailable":""}) for name in ("csp","collar")):
-            result["strategies"] = {"cc": {"unavailable": cc_reason}, **blocks}
+    else:
+        reason = ("本輪來源未提供可核驗的賣權資料，無法判定賣權鏈是否缺漏" if puts is None
+                  else "本輪來源缺少策略報價身分標記，無法核驗賣權策略")
+        blocks = {name: {"unavailable": reason} for name in ("csp", "collar")}
+    result["strategies"] = {"cc": {"unavailable": cc_reason}, **blocks}
     return result
 
 

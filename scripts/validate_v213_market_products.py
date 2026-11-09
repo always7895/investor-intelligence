@@ -262,7 +262,7 @@ CARRIED_MAX_AGE_SECONDS = 4 * 86400  # four calendar days (a weekend or a holida
 # ---- V21 (operator 2026-10-19): the additive `strategies` object of a covered-call cycle -------------------------------------------------
 # Shape: strategies = {cc?: {unavailable}, csp: {suggestions[1..2], label} | {unavailable}, collar: {items[1..2], label} | {unavailable}}; the
 # label (rights_status, provider_id, quote_basis, timestamp) equals the cycle's own. cc appears only when the cycle has no covered call
-# (suggestions == []), and then only as {unavailable}. A cycle with no covered call needs at least one real csp or collar block.
+# (suggestions == []). Without a validated monthly quote observation, at least one real csp or collar block is required.
 STRATEGY_NAMES = ("cc", "csp", "collar")
 STRATEGY_LABEL_KEYS = ("rights_status", "provider_id", "quote_basis", "timestamp")
 STRATEGY_DELTA_BASES = (None, "QUOTED", "QUOTED_IV", "QUOTE_IMPLIED")
@@ -391,7 +391,8 @@ def validate_strategies(cycle: dict) -> None:
         raise MarketProductValidationError("STRATEGY_CC_PRESENT_WITH_SUGGESTIONS")
     for name, block in strategies.items():
         validate_strategy_block(name, block, cycle)
-    if suggestions == [] and all("unavailable" in strategies.get(name, {"unavailable": ""}) for name in ("csp", "collar")):
+    if (suggestions == [] and cycle.get("quote_observation") is None
+            and all("unavailable" in strategies.get(name, {"unavailable": ""}) for name in ("csp", "collar"))):
         raise MarketProductValidationError("COVERED_CALL_SUGGESTION_COUNT")
 
 
@@ -613,7 +614,7 @@ def validate_covered_call_cycle(cycle: dict, evaluated_at: str | datetime | None
             if abs(annual-expected) > max(1e-4,abs(expected)*1e-3):
                 raise MarketProductValidationError("MONTHLY_OBSERVATION_ANNUALIZED")
         if "strategies" in cycle:
-            validate_strategies(cycle)  # must have cc unavailable and a real validated put/collar
+            validate_strategies(cycle)  # cc reason required; the validated observation permits all strategies to be unavailable
         return
     suggestions = cycle.get("suggestions")
     # V21: no covered call (an empty list) is allowed only beside a `strategies` object that validates and holds a real csp or collar block.

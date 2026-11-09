@@ -343,7 +343,10 @@ def expect_observation(case: str, bodies: dict[str, str], symbol: str, *, curren
     expect_available(case, bodies, symbol, "monthly", currency=currency)
     value = cycle_of(bodies, symbol, "monthly")
     assert value["expiry"] == dte_date(dte) and value["dte"] == dte, (case, symbol, value)
-    assert value["suggestions"] == [] and not value.get("middle_suggestion") and not value.get("strategies"), (case, symbol, value)
+    assert value["suggestions"] == [] and not value.get("middle_suggestion"), (case, symbol, value)
+    assert set(value["strategies"]) == {"cc", "csp", "collar"}, (case, symbol, value)
+    assert all(set(block) == {"unavailable"} and block["unavailable"]
+               for block in value["strategies"].values()), (case, symbol, value)
     assert "monthly_nonstandard" not in value, (case, symbol, value)
     observation = value["quote_observation"]
     assert observation["kind"] == ("TWO_SIDED" if bid is not None and ask is not None else "NO_TWO_SIDED"), (case, symbol, observation)

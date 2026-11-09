@@ -306,12 +306,13 @@ describe("V21 card", () => {
     const overview = joined(list[0]);
     expect(overview.match(/無資料/g)).toHaveLength(2);
     const disclosure = joined(list.at(-1));
-    expect(disclosure).toContain("現金擔保賣權（備足現金賣出賣權）】無資料：封存的此到期日資料未包含可核驗賣權鏈；無法計算，並不代表未上市");
-    expect(disclosure).toContain("領口策略（持股＋買保護賣權＋賣買權）】無資料：封存的此到期日資料未包含可核驗賣權鏈；無法計算，並不代表未上市");
+    expect(disclosure).toContain("無法判定賣權鏈或報價是否可用");
+    expect(disclosure).not.toContain("未包含可核驗賣權鏈");
     expect(overview).toContain("備兌買權");
     expect(joined(list[1])).toContain("建議一：高履約價（不易被賣掉）");
     const text = joined(render(old, "text"));
-    expect(text.match(/無資料：封存的此到期日資料未包含可核驗賣權鏈；無法計算，並不代表未上市/g)).toHaveLength(2);
+    expect(text).toContain("無法判定賣權鏈或報價是否可用");
+    expect(text).not.toContain("未包含可核驗賣權鏈");
     expect(text).toContain("備兌買權（持股賣出買權）");
   });
 
@@ -364,5 +365,91 @@ describe("V21 card", () => {
     const text = JSON.stringify(full());
     expect(text).toContain("不設年化收益下限");
     for (const stale of ["至少 2%", "至少 6%", "年化權利金至少"]) expect(text).not.toContain(stale);
+  });
+});
+
+describe("M2 precise producer reasons on monthly observations", () => {
+  // Parent regenerates this producer bridge before executing the tests.
+  // Static synthetic JSON bridge; its cycles still pass the production validator below.
+  const observationFixture = fixture as unknown as { observations: Record<string, Json> };
+  const observations = observationFixture.observations;
+  const observed = (name: string): Json => structuredClone(observations[name]!);
+  const expected: [string, string, string, string][] = [
+    ["wide_all", "買權買賣價差大於中價", "賣權買賣價差大於中價", "賣權買賣價差大於中價"],
+    ["no_two_sided_put", "買權買賣價差大於中價", "賣權無有效雙邊報價", "賣權無有效雙邊報價"],
+    ["absent_puts", "買權買賣價差大於中價", "無該到期的賣權報價", "無該到期的賣權報價"],
+    ["unknown_puts", "買權買賣價差大於中價", "無法判定賣權鏈是否缺漏", "無法判定賣權鏈是否缺漏"],
+  ];
+  it.each(expected)("%s retains all three exact reasons in text and Flex", (name, cc, csp, collar) => {
+    const raw = observed(name);
+    const cycle = check(raw);
+    expect(cycle).not.toBeNull();
+    expect(cycle!.strategies).toEqual(raw.strategies);
+    expect(cycle!.suggestions).toEqual([]);
+    for (const [strategy, reason] of [["cc", cc], ["csp", csp], ["collar", collar]]) {
+      expect(raw.strategies[strategy!].unavailable).toContain(reason);
+    }
+    for (const style of ["text", "flex"] as const) {
+      const visible = joined(render(raw, style));
+      for (const strategy of ["cc", "csp", "collar"]) expect(visible).toContain(raw.strategies[strategy].unavailable);
+      expect(visible).toContain(raw.expiry);
+      expect(visible).not.toContain("未包含可核驗賣權鏈");
+    }
+    expect(bubbles(render(raw))).toHaveLength(1); // no executable strategy details
+  });
+
+  it.each(["wide_calls", "delta_call", "collar_only"])("%s keeps independently available strategies", name => {
+    const raw = observed(name);
+    expect(check(raw)?.strategies).toEqual(raw.strategies);
+    for (const style of ["text", "flex"] as const) {
+      const visible = joined(render(raw, style));
+      for (const strategy of ["cc", "csp", "collar"]) {
+        const reason = raw.strategies[strategy]?.unavailable;
+        if (reason) expect(visible).toContain(reason);
+      }
+      expect(visible).not.toContain("未包含可核驗賣權鏈");
+    }
+    expect(bubbles(render(raw))).toHaveLength(2); // observation plus the independently available CSP or collar
+  });
+
+  it("does not infer put-chain absence from omitted legacy metadata or an omitted block", () => {
+    for (const name of ["wide_all", "wide_calls"]) {
+      const raw = observed(name);
+      delete raw.strategies;
+      for (const style of ["text", "flex"] as const) {
+        const visible = joined(render(raw, style));
+        expect(visible).toContain("無法判定賣權鏈或報價是否可用");
+        expect(visible).not.toContain("未包含可核驗賣權鏈");
+      }
+      raw.strategies = { cc: { unavailable: "來源未提供備兌買權篩選結果" } };
+      expect(joined(render(raw, "text"))).toContain("無法判定賣權鏈或報價是否可用");
+    }
+  });
+
+  it("requires a valid monthly observation and a valid CC reason when all strategies are unavailable", () => {
+    for (const mutate of [
+      (raw: Json) => { delete raw.quote_observation; },
+      (raw: Json) => { raw.quote_observation.annualized_yield = 99; },
+      (raw: Json) => { delete raw.strategies.cc; },
+      (raw: Json) => { raw.strategies.cc.unavailable = ""; },
+      (raw: Json) => { raw.strategies.cc.unavailable = "x".repeat(201); },
+    ]) {
+      const raw = observed("wide_all");
+      mutate(raw);
+      expect(check(raw)).toBeNull();
+    }
+    const raw = observed("wide_all");
+    expect(validateCoveredCallCycle(raw, NOW, STAMP, "weekly")).toBeNull();
+    expect(validateCoveredCallCycle(raw, NOW + 7 * 3600_000, STAMP, "monthly")).toBeNull();
+  });
+
+  it("degrades a malformed put block without discarding the validated observation or another reason", () => {
+    const raw = observed("wide_all");
+    raw.strategies.csp = { unavailable: "x", suggestions: [] };
+    const kept = check(raw)!;
+    expect(kept).not.toBeNull();
+    expect(kept.strategies.csp).toEqual(unavailable);
+    expect(kept.strategies.cc).toEqual(raw.strategies.cc);
+    expect(kept.strategies.collar).toEqual(raw.strategies.collar);
   });
 });

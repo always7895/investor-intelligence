@@ -323,7 +323,7 @@ describe("W1 + W2 through the real LINE entry", () => {
       }
       // GOOD0 is a healthy live chain without a suggestion: the honest producer reason, not a carried quote
       const good = await lineReply(w, env, "GOOD0 每週期權", OFF_NOW);
-      expect(good).toContain("沒有 Delta 不超過 0.20 且有雙邊報價的履約價");
+      expect(good).toContain("無有效履約價的價外買權");
       expect(good).not.toContain("年化權利金");
       expect(good).not.toContain("前一交易時段最後報價");
     });
