@@ -131,7 +131,7 @@ describe("UI-R3 LINE mobile layout with synthetic largest fixtures", () => {
       for (const entry of parsed.top) {
         const detail = buildBottleneckDetail(parsed, entry.symbol, mode);
         const rendered = typeof detail === "string" ? [{ type: "text", text: detail }] : detail;
-        expect(displayCodeLeaks(localizeLineMessages(rendered)), `${mode}/${entry.symbol}`).toEqual([]);
+        expect(displayCodeLeaks(localizeLineMessages<unknown>(rendered)), `${mode}/${entry.symbol}`).toEqual([]);
       }
     }
   });
