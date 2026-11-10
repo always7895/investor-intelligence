@@ -85,29 +85,23 @@ def test_short_standard_monthly_keeps_source_evidence_and_finite_annualization(d
         missing="no listed monthly",today=today,venue="STOCKHOLM",
         identity=product.NORDIC_OPTION_IDENTITY)["monthly"]
     assert cycle["expiry"]==FIRST
-    # Stage1F M1 triggers HV only when the *per-leg Delta uncertainty* exceeds
-    # 0.10, not merely because the quote spread is large. Preserve an honest
-    # observation if that trigger fires with no verified HV; otherwise admit
-    # the two-sided Q leg if it has a valid out-of-money strategy.
+    # Pin exact Stage1G outcome; a relative spread alone is not an HV trigger.
+    # The 0.01/0.04 two-sided case stays QUOTE_IMPLIED at all seven DTEs.
     if bid is not None:
         uncertainty=side_math.quote_delta_uncertainty(
             {"strike":17.0,"bid":bid,"ask":ask},SPOT,dte,put=False)
-        if uncertainty is not None and uncertainty<=.10 and cycle.get("suggestions"):
-            assert "quote_observation" not in cycle
-            leg=cycle["suggestions"][0]
-            assert leg["bid"]==bid and leg["ask"]==ask
-            assert bid<=leg["limit_price"]<=(bid+ask)/2
-            assert math.isfinite(leg["annualized_yield"])
-            assert leg["annualized_yield"]>=0
-        else:
-            observation=cycle["quote_observation"]
-            assert cycle["suggestions"] == []
-            assert observation["kind"]=="TWO_SIDED"
-            assert observation["bid"]==bid and observation["ask"]==ask
-            assert observation["annualized_yield"] == round(bid/SPOT*365/max(dte,1),6)
+        assert uncertainty is not None and uncertainty<=.10
+        assert "quote_observation" not in cycle
+        assert len(cycle["suggestions"]) >= 1
+        leg=cycle["suggestions"][0]
+        assert leg["bid"]==bid and leg["ask"]==ask
+        assert leg["delta_basis"]=="QUOTE_IMPLIED"
+        assert bid<=leg["limit_price"]<=(bid+ask)/2
+        assert math.isfinite(leg["annualized_yield"]) and leg["annualized_yield"]>=0
     else:
         observation=cycle["quote_observation"]
-        assert cycle["suggestions"] == []
+        assert cycle["suggestions"]==[]
+        assert observation["kind"]=="NO_TWO_SIDED"
         assert observation["annualized_yield"] == (None if last is None else round(last/SPOT*365/max(dte,1),6))
     validate_covered_call_cycle(cycle,evaluated_at=stamp,document_at=stamp,period="monthly")
 

@@ -584,7 +584,11 @@ class RecommendationReasonTests(unittest.TestCase):
         cycle=nordic_cycle(chains.nordic_rows(calls=[(16.4,.5,2.5)],puts=puts),spot=16.2)["monthly"]
         validate(cycle)
         self.assertEqual(cycle["suggestions"],[])
-        self.assertIn("HV20/HV60",cycle["strategies"]["cc"]["unavailable"])
+        # N3: a CC strike-band refusal must not be labelled with the put-side
+        # HV or with a concatenation of unrelated strategy reasons.
+        self.assertIn("Delta 不超過 0.20",cycle["strategies"]["cc"]["unavailable"])
+        self.assertNotIn("賣權：",cycle["strategies"]["cc"]["unavailable"])
+        self.assertNotIn("領口：",cycle["strategies"]["cc"]["unavailable"])
         self.assertIn("unavailable",cycle["strategies"]["csp"])
         self.assertIn("unavailable",cycle["strategies"]["collar"])
 
@@ -971,6 +975,39 @@ class SizeAndSealKeyTests(unittest.TestCase):
         self.assertEqual(builder.MAX_HIGH_STRIKE_DELTA, 0.20)  # master ruling O1
         self.assertFalse(hasattr(builder, "MIN_ANNUALIZED_YIELD"))  # the floor was removed on 2026-11-03
 
+
+class Stage1GHistoryDedupeTests(unittest.TestCase):
+    def test_carried_and_current_periods_with_distinct_hv_do_not_abort(self):
+        import copy
+        import publish_sealed_snapshot as sealed
+        keys=sealed.STAGE1F_HISTORY_KEYS
+        baseline={"ticker":"AAA","currency":"USD","hv20":.30,"hv60":.31,
+                  "observations":61,"start_date_20":"2026-09-24",
+                  "start_date_60":"2026-07-28","asof_date":"2026-10-22",
+                  "source_url":"https://query1.finance.yahoo.com/v8/finance/chart/AAA?interval=1d&range=6mo",
+                  "source_sha256":"a"*64,"price_basis":"PROVIDER_ADJUSTED_CLOSE"}
+        earlier=[baseline[k] for k in keys]
+        later=copy.deepcopy(baseline)
+        later.update(asof_date="2026-10-23",source_sha256="b"*64)
+        current=[later[k] for k in keys]
+        options={"AAA":{"weekly":{"quote_basis":"previous_session_last",
+                    "historical_volatility":earlier.copy()},
+                        "monthly":{"quote_basis":"delayed",
+                    "historical_volatility":current.copy()}}}
+        sealed.dedupe_sealed_history(options)
+        self.assertNotIn("_hv", options["AAA"])
+        self.assertEqual(options["AAA"]["weekly"]["historical_volatility"], earlier)
+        self.assertEqual(options["AAA"]["monthly"]["historical_volatility"], current)
+        self.assertEqual(sealed.expand_sealed_cycle(
+            options["AAA"]["weekly"])["historical_volatility"], baseline)
+        self.assertEqual(sealed.expand_sealed_cycle(
+            options["AAA"]["monthly"])["historical_volatility"], later)
+        identical={"AAA":{"weekly":{"historical_volatility":earlier.copy()},
+                           "monthly":{"historical_volatility":earlier.copy()}}}
+        sealed.dedupe_sealed_history(identical)
+        self.assertEqual(identical["AAA"]["_hv"],earlier)
+        self.assertEqual(identical["AAA"]["weekly"]["historical_volatility"],"@")
+        self.assertEqual(identical["AAA"]["monthly"]["historical_volatility"],"@")
 
 if __name__ == "__main__":
     unittest.main()

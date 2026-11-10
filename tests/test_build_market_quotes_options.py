@@ -155,21 +155,30 @@ class SuggestionTests(unittest.TestCase):
         self.assertAlmostEqual(suggestions[0]["iv"], .30, places=4)
 
     def test_a_chain_without_delta_or_iv_is_capped_by_the_delta_its_quotes_imply(self):
-        # The tight side does NOT require a common-IV intersection: each
-        # independent Stage1C midpoint-inverted leg keeps its own Delta.
-        spot,dte=100.,30
-        years=dte/365
-        def fair(k,s):
-            price=delta_math.bs_call_price(spot,k,years,s)
-            return {**row(k,price*.99,price*1.01), "iv":None}
-        mixed=[fair(150,1.6),fair(130,.45),fair(120,.5)]
-        mixed_selection=builder.covered_call_suggestions(mixed,spot,dte)
-        self.assertTrue(mixed_selection)
-        self.assertEqual(mixed_selection[0]["delta_basis"],"QUOTE_IMPLIED")
-        coherent=self.coherent([105,108,110],spot,dte)
-        got=builder.covered_call_suggestions(coherent,spot,dte)
-        self.assertTrue(got)
-        self.assertTrue(all(item["delta"] <= .2 + 1e-3 for item in got[:1]))
+        # Restored eafa162 behavioural pins: 150C has too much Delta
+        # despite its premium, while 130C at ~45% IV qualifies at the
+        # highest eligible strike under the conservative <= 0.20 band.
+        spot, dte, years = 100.0, 30, 30 / 365
+        def fair(strike, vol):
+            return round(delta_math.bs_call_price(spot, strike, years, vol), 2)
+        rows = [
+            row(150, fair(150, 1.6) - .01, fair(150, 1.6) + .01),
+            row(130, fair(130, .45) - .01, fair(130, .45) + .01),
+            row(120, fair(120, .5) - .01, fair(120, .5) + .01),
+            row(110, fair(110, .5) - .01, fair(110, .5) + .01),
+        ]
+        selected = builder.covered_call_suggestions(rows, spot, dte)
+        self.assertTrue(selected)
+        by_strike = {leg["strike"]: leg for leg in selected}
+        self.assertNotIn(150, by_strike)
+        high = selected[0]
+        self.assertEqual(high["role"], "HIGH_STRIKE")
+        self.assertEqual(high["strike"], 130)
+        self.assertEqual(high["delta_basis"], "QUOTE_IMPLIED")
+        self.assertLessEqual(high["delta"], builder.MAX_HIGH_STRIKE_DELTA)
+        self.assertAlmostEqual(high["iv"], .45, delta=.02)
+        self.assertAlmostEqual(high["delta"], delta_math.bs_call_delta(
+            spot, high["strike"], years, high["iv"]), places=3)
 
     def test_implied_vol_inverts_the_price_and_rejects_impossible_quotes(self):
         price=delta_math.bs_call_price(100.0,115.0,.1,.6)

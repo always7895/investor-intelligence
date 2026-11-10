@@ -283,8 +283,8 @@ describe("LINE card: three tiers, week marker, tiny-DTE notice", () => {
   });
   it("marks which calendar week the expiry is in, only for rows that carry the marker", () => {
     expect(render(tierCycle(), "text")).toContain("本週到期（以交易所當地日期 2026-10-07 判斷）");
-    expect(render(tierCycle({ dte: 9, expiry: "2026-10-16", week: "NEXT" }), "text")).toContain("本週已無剩餘週選，顯示下週最早到期日");
-    expect(render(tierCycle({ dte: 9, expiry: "2026-10-16", week: "NEXT" }))).toContain("本週已無剩餘週選，顯示下週最早到期日");
+    expect(render(tierCycle({ dte: 9, expiry: "2026-10-16", week: "NEXT" }), "text")).toContain("本週已無剩餘週選；下週最早到期日即標準月選 2026-10-16，與每月期權為同一合約");
+    expect(render(tierCycle({ dte: 9, expiry: "2026-10-16", week: "NEXT" }))).toContain("本週已無剩餘週選；下週最早到期日即標準月選 2026-10-16，與每月期權為同一合約");
     const old = render(tierCycle({ asof: null, week: null }), "text");
     expect(old).not.toContain("本週到期");
     expect(old).not.toContain("下週");

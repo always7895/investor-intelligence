@@ -20,6 +20,12 @@ class SideScopedDeltaTests(unittest.TestCase):
     SPOT = 100.0
     DTE = 28
 
+    @staticmethod
+    def source_spread_above_old_threshold(value):
+        # Legacy 25%-of-mid spread is a *test diagnostic only*, not the
+        # Stage1G selection trigger (which is Delta uncertainty > 0.10).
+        return (value["ask"] - value["bid"]) / (value["bid"] / 2 + value["ask"] / 2) > .25
+
     def quote(self, strike: float, low_vol: float, high_vol: float, *, put: bool = False,
               given_iv: float | None = None, source_delta: float | None = None):
         t = self.DTE / 365
@@ -33,7 +39,7 @@ class SideScopedDeltaTests(unittest.TestCase):
 
     def test_all_tight_source_iv_wins_over_provider_delta_and_preserves_stage1c(self):
         row = self.quote(115.0, .30, .31, given_iv=.30, source_delta=.99)
-        self.assertFalse(side.wide(row))
+        self.assertFalse(self.source_spread_above_old_threshold(row))
         out = side.calculate_side([row], self.SPOT, self.DTE, None)
         self.assertEqual(out["basis"], "QUOTE_IMPLIED")
         self.assertEqual(len(out["computed"]), 1)
@@ -53,8 +59,8 @@ class SideScopedDeltaTests(unittest.TestCase):
     def test_all_tight_different_leg_iv_ranges_do_not_require_intersection(self):
         first = self.quote(110, .31, .32)
         second = self.quote(115, .55, .56)
-        self.assertFalse(side.wide(first))
-        self.assertFalse(side.wide(second))
+        self.assertFalse(self.source_spread_above_old_threshold(first))
+        self.assertFalse(self.source_spread_above_old_threshold(second))
         result = side.calculate_side([first, second], self.SPOT, self.DTE, None)
         self.assertEqual(result["basis"], "QUOTE_IMPLIED")
         self.assertEqual(len(result["computed"]), 2)
@@ -65,7 +71,7 @@ class SideScopedDeltaTests(unittest.TestCase):
         # High-IV closer strike, lower-IV farther strike: monotone delta is
         # maintained, despite the IV intervals being completely disjoint.
         calls = [self.quote(110, 1.4, 1.9), self.quote(115, .60, .95)]
-        self.assertTrue(all(side.wide(v) for v in calls))
+        self.assertTrue(all(self.source_spread_above_old_threshold(v) for v in calls))
         history = {"observations": 61, "hv20": .7, "hv60": 1.0}
         out = side.calculate_side(calls, self.SPOT, self.DTE, history)
         self.assertEqual(out["basis"], "HISTORICAL_VOL")
@@ -84,8 +90,8 @@ class SideScopedDeltaTests(unittest.TestCase):
     def test_missing_history_refuses_only_the_side_requiring_hv(self):
         wide_call = self.quote(120, .4, 1.2)
         tight_put = self.quote(95, .29, .30, put=True, given_iv=.30)
-        self.assertTrue(side.wide(wide_call))
-        self.assertFalse(side.wide(tight_put))
+        self.assertTrue(self.source_spread_above_old_threshold(wide_call))
+        self.assertFalse(self.source_spread_above_old_threshold(tight_put))
         calls = side.calculate_side([wide_call], self.SPOT, self.DTE, None)
         puts = side.calculate_side([tight_put], self.SPOT, self.DTE, None, put=True)
         self.assertEqual(calls["computed"], [])
@@ -140,6 +146,32 @@ class SideScopedDeltaTests(unittest.TestCase):
         tampered = {**leg, "delta": leg["delta"] + .01}
         self.assertFalse(side.model_leg_consistent(tampered, wire, h, 100., self.DTE, put=False))
         self.assertFalse(side.model_leg_consistent(leg, wire, None, 100., self.DTE, put=False))
+
+    def test_stage1g_decimal_tick_model_limits_snap_after_bounds(self):
+        from decimal import Decimal
+        cases = [
+            (.01, 1.35, 9.0, .68, .68),      # mid=.68
+            (.30, .37, 9.0, .33, .33),       # mid=.335: no .335 limit
+            (.31, .36, .335, .33, .33),     # mid=.335 => both cap at .33
+            (.01, 1.24, 5.0, .62, .62),    # mid=.625 => floor=.62
+            (.01, 2.50, .0565, .05, .06),
+            (.07, 2.50, .2717, .27, .28),
+            (.01, .40, 0.0, .01, .01),      # zero theoretical -> Bid
+        ]
+        for bid, ask, theoretical, sell, buy in cases:
+            with self.subTest(bid=bid,ask=ask,theoretical=theoretical):
+                for expected, direction in ((sell,False),(buy,True)):
+                    result=side.decimal_tick_limit(bid,ask,theoretical,buy=direction)
+                    self.assertEqual(result,expected)
+                    self.assertEqual(Decimal(str(result)) % Decimal(".01"),0)
+                    self.assertGreaterEqual(result,bid)
+                    self.assertLessEqual(Decimal(str(result)),
+                        ((Decimal(str(bid))+Decimal(str(ask)))/2).quantize(
+                        Decimal(".01"),rounding="ROUND_FLOOR"))
+        # If a source supplies a non-grid Bid with no executable cent between
+        # it and mid, fail closed rather than output a phantom off-tick order.
+        self.assertIsNone(side.decimal_tick_limit(.335,.335,.335,buy=False))
+        self.assertIsNone(side.decimal_tick_limit(.335,.335,.335,buy=True))
 
     def test_absurd_integer_is_invalid_not_an_abort(self):
         self.assertFalse(side.finite(10**309))
