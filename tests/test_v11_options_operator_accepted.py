@@ -79,6 +79,18 @@ class OperatorAcceptedPositiveTests(unittest.TestCase):
         self.assertEqual(scopes, gate.OPERATOR_ACCEPTED_PROVIDERS[support.YAHOO_ID]["scopes"])
         self.assertIn((CLAIM["jurisdiction"], CLAIM["venue"], CLAIM["instrument_kind"], "delayed", CLAIM["publication_scope"]), scopes)
 
+    def test_the_worker_constants_mirror_the_python_pins(self) -> None:
+        source = (ROOT / "cloud" / "src" / "v213" / "public-options-admission.ts").read_text(encoding="utf-8")
+        pinned = gate.OPERATOR_ACCEPTED_PROVIDERS[support.YAHOO_ID]
+        self.assertIn('yahoo_finance_option_chain: {', source)
+        for value in pinned["operator_decision"].values():
+            self.assertIn('"'+str(value)+'"', source)
+        for scope in pinned["scopes"]:
+            self.assertIn("JSON.stringify([" + ", ".join('"'+str(part)+'"' for part in scope) + "])", source)
+        self.assertIn('const OPERATOR_ACCEPTED_STATUS = "'+gate.OPERATOR_ACCEPTED_STATUS+'"', source)
+        self.assertIn('new Set(["delayed", "'+gate.CARRIED_QUOTE_BASIS+'"])', source)
+        self.assertEqual(gate.ALLOWED_QUOTE_BASES, {"delayed", "previous_session_last"})
+
     def test_the_repository_catalog_entry_equals_the_pinned_copy_when_it_is_present(self) -> None:
         repository = support.json.loads((ROOT / "config" / "public-options-provider-candidates.json").read_text(encoding="utf-8"))
         found = [item for item in repository["providers"] if item["id"] == support.YAHOO_ID]

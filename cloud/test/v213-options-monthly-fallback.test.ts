@@ -27,6 +27,20 @@ vi.mock("../src/v213/public-options-admission", async importOriginal => {
   return { ...real, admitPublicOption: vi.fn(real.admitPublicOption) };
 });
 
+describe("Stage1C restored nearest-standard monthly parity", () => {
+  it("never substitutes a weekly or successor month for a missing nearest standard", () => {
+    expect(rules.MONTHLY_DTE_BUCKET).toEqual([0,60]);
+    const asOf="2026-11-02";
+    const nearest=rules.selectMonthlyExpiry(
+      ["2026-11-06","2026-11-20","2026-12-18"],asOf);
+    expect(nearest).toBe("2026-11-20");
+    expect(rules.monthlyRuleConsistent("2026-11-06","THIRD_FRIDAY")).toBe(false);
+    expect(rules.monthlyRuleConsistent("2026-11-20","THIRD_FRIDAY")).toBe(true);
+    expect(rules.monthlyRuleConsistent("2026-12-18","THIRD_FRIDAY")).toBe(true);
+    expect(rules.selectWeeklyExpiry(["2026-12-18"],asOf)).toBeNull();
+  });
+});
+
 const NOW = Date.parse("2026-11-02T12:00:00Z");
 const STAMP = "2026-11-02T11:30:00Z";
 const RUN = "20261102T120000Z-abcdefabcde9";

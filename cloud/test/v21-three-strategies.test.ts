@@ -193,7 +193,7 @@ describe("V21 card", () => {
       "Bid $0.36", "中價 $0.38", "Ask $0.40", "Bid $0.98", "中價 $1.00", "Ask $1.02",
       "Bid $0.59", "中價 $0.61", "Ask $0.63", "Bid $1.05", "中價 $1.07", "Ask $1.09",
       "年化 13.9%（以備妥現金計）", "損益兩平 $93.00", `Delta ${clone("yahoo_monthly_full").strategies.csp.suggestions[0].delta.toFixed(2)}`, "Bid $0.98",
-      "Bid $0.59", "Bid $1.05", "$754.00", "$746.00", "$99.54", "買賣報價 IV 模型"]) {
+      "Bid $0.59", "Bid $1.05", "$754.00", "$746.00", "$99.54", "報價隱含模型"]) {
       expect(detail, expected).toContain(expected);
     }
     expect(JSON.stringify(list[0])).toContain("AAA 每月期權 文字");
@@ -203,7 +203,7 @@ describe("V21 card", () => {
     const cc = joined(list[1]);
     expect(cc).toContain("Bid $0.36");
     expect(joined(list[4])).toContain("年化收益＝期間收益×365÷DTE");
-    expect(joined(list)).toContain("買賣報價 IV 共同區間估算");
+    expect(joined(list)).toContain("各腿可使用不同波動率");
     const text = joined(render(clone("yahoo_monthly_full"), "text"));
     for (const expected of ["$94.00", "$96.00", "$9400.00", "$9600.00", "損益兩平 $93.00", "$92.00", "$107.00",
       "每口淨權利金（收入）$46.00", "最大損失 $754.00／口", "最大獲利 $746.00／口", "保護賣權（買進）履約價 $92.00"]) {
@@ -411,8 +411,8 @@ describe("Stage 1C producer bridge and observation boundaries", () => {
     expect(wide.strategies.csp.unavailable).toContain("HV20/HV60");
     expect(wide.strategies.collar.unavailable).toContain("HV20/HV60");
     const oneSided = check(observed("no_two_sided_put"))!;
-    expect(oneSided.strategies.csp.unavailable).toContain("HV20/HV60");
-    expect(oneSided.strategies.collar.unavailable).toContain("HV20/HV60");
+    expect(oneSided.strategies.csp.unavailable).toContain("雙邊");
+    expect(oneSided.strategies.collar.unavailable).toContain("雙邊");
     expect(oneSided.strategies.collar.put).toBeUndefined();
   });
 
@@ -477,63 +477,21 @@ describe("Stage 1C producer bridge and observation boundaries", () => {
  * All bid/ask updates enclose the original narrow quotes and thus its validated
  * Black-Scholes prices; the history and model change together, never ad hoc Greeks. */
 function coherentWideCycle(currency: "USD" | "SEK" = "USD"): CoveredCallCycle {
-  const cycle = clone("yahoo_monthly_full") as CoveredCallCycle;
-  const oldModel = cycle.delta_model!;
-  if (typeof oldModel === "string" || !("sigma" in oldModel)) throw new Error("Stage1D legacy fixture expected");
-  const sigma = oldModel.sigma;
-  cycle.currency = currency;
-  cycle.historical_volatility = {
-    ticker: cycle.ticker, currency, hv20: sigma, hv60: sigma * 0.9, observations: 61,
-    start_date_20: "2026-09-24", start_date_60: "2026-07-28", asof_date: "2026-10-22",
-    source_url: "https://query1.finance.yahoo.com/v8/finance/chart/" + cycle.ticker + "?interval=1d&range=6mo",
-    source_sha256: "a".repeat(64), price_basis: "PROVIDER_ADJUSTED_CLOSE",
-  };
-  cycle.delta_model = { basis: "HISTORICAL_VOL", sigma, iv_bid: sigma * 0.8, iv_ask: sigma * 1.2 };
-  const requote = (leg: any, buy: boolean) => {
-    const bid = leg.bid * 0.5, ask = leg.ask * 1.5;
-    const mid = bid / 2 + ask / 2;
-    const bounded = buy ? Math.min(ask, Math.max(mid, Math.ceil(mid * 100 - 1e-9) / 100))
-      : Math.max(bid, Math.min(mid, Math.floor(mid * 100 + 1e-9) / 100));
-    Object.assign(leg, { bid, ask, limit_price: bounded, delta_basis: "HISTORICAL_VOL" });
-    if ("mid" in leg) leg.mid = mid;
-    if ("iv" in leg) leg.iv = null;
-    if ("spread_pct" in leg) leg.spread_pct = (ask - bid) / mid;
-  };
-  for (const item of [...cycle.suggestions, ...(cycle.middle_suggestion ? [cycle.middle_suggestion] : [])]) {
-    requote(item, false);
-    item.premium_per_contract = Math.round(item.limit_price * 10000) / 100;
-    item.period_yield = item.limit_price / cycle.spot;
-    item.annualized_yield = item.period_yield * 365 / Math.max(cycle.dte, 1);
-  }
-  const csp = cycle.strategies?.csp;
-  if (csp && "suggestions" in csp) for (const item of csp.suggestions) {
-    requote(item, false);
-    item.premium_per_contract = Math.round(item.limit_price * 10000) / 100;
-    item.annualized_yield = item.limit_price / item.strike * 365 / Math.max(cycle.dte, 1);
-    item.breakeven = item.strike - item.limit_price;
-  }
-  const collar = cycle.strategies?.collar;
-  if (collar && "items" in collar) {
-    requote(collar.put, true);
-    for (const item of collar.items) {
-      requote(item.call, false);
-      const net = item.call.limit_price - collar.put.limit_price;
-      item.net_premium_per_share = net;
-      item.max_loss_per_share = cycle.spot - collar.put.strike - net;
-      item.max_gain_per_share = item.call.strike - cycle.spot + net;
-      item.break_even = cycle.spot - net;
-      item.worst_case_net_per_share = item.call.bid - collar.put.ask;
-    }
-  }
+  // Python-produced Stage1F fixture, not a hand-built legacy common-sigma
+  // dictionary or ad hoc mid-price quote mutation.
+  const cycle=clone("yahoo_monthly_hv") as CoveredCallCycle;
+  cycle.currency=currency;
+  if (cycle.historical_volatility) cycle.historical_volatility.currency=currency;
   return cycle;
 }
 
-describe("Stage 1D common-cohort historical Delta and strict two-sided LIMIT", () => {
+describe("Stage 1F per-side historical Delta, model LIMIT and strict two-sided quotes", () => {
   it.each(["USD", "SEK"] as const)("%s admits an entirely wide, coherent cohort with all three strategies", currency => {
     const cycle = coherentWideCycle(currency);
     const valid = check(cycle);
     expect(valid).not.toBeNull();
-    expect(valid!.delta_model.basis).toBe("HISTORICAL_VOL");
+    expect(typeof valid!.delta_model).toBe("string");
+    expect(valid!.delta_model).toMatch(/^E1\|H,/u);
     expect(valid!.suggestions.length).toBeGreaterThan(0);
     expect("suggestions" in valid!.strategies.csp).toBe(true);
     expect("items" in valid!.strategies.collar).toBe(true);
@@ -543,8 +501,8 @@ describe("Stage 1D common-cohort historical Delta and strict two-sided LIMIT", (
       assertLineMessages(messages);
       const visible = joined(messages);
       for (const phrase of ["現金擔保賣權", "領口策略", "LIMIT", "Bid情境",
-        "限價成交前不計入收益", "HV20", "HV60", "最後收盤日 2026-10-22",
-        "最終套用波動率", "未成交每15分鐘最多降0.01", "每交易時段最多4次",
+         "成交前不計收益", "HV20", "HV60", "截至 2026-10-22",
+        "歷史波動率模型", "未成交每15分鐘最多降0.01", "每時段最多4次",
         "不保證成交", "不下單"]) expect(visible).toContain(phrase);
       expect(visible).not.toContain("由買賣報價反推");
       expect(visible).not.toMatch(/NaN|Infinity/);
@@ -569,7 +527,7 @@ describe("Stage 1D common-cohort historical Delta and strict two-sided LIMIT", (
     const missingModel = structuredClone(raw); delete missingModel.delta_model;
     expect(check(missingModel)).toBeNull();
     const oldBasis = structuredClone(raw);
-    if (oldBasis.delta_model && typeof oldBasis.delta_model !== "string" && "basis" in oldBasis.delta_model) oldBasis.delta_model.basis = "QUOTE_IMPLIED";
+    oldBasis.delta_model = "E1|Q,0,-|Q,0,-";
     expect(check(oldBasis)).toBeNull();
   });
 
@@ -633,8 +591,8 @@ describe("Stage 1D common-cohort historical Delta and strict two-sided LIMIT", (
     badBasis.suggestions[0]!.delta_basis = "QUOTED" as never;
     expect(check(badBasis)).toBeNull();
     const inconsistentSigma = structuredClone(raw);
-    if (inconsistentSigma.delta_model && typeof inconsistentSigma.delta_model !== "string" && "sigma" in inconsistentSigma.delta_model)
-      inconsistentSigma.delta_model.sigma *= 1.1;
+    // Mutating the side wire without recomputing its quoted Greeks is refused.
+    inconsistentSigma.delta_model = "E1|Q,0,-|H,0,-";
     expect(check(inconsistentSigma)).toBeNull();
   });
 

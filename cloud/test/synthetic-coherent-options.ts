@@ -55,11 +55,14 @@ function quoteLimit(bid: number, ask: number, buy = false): number {
 }
 function callItem(role: CoveredCallSuggestion["role"], quote: QuoteSpec, spot: number, dte: number, model: DeltaModel): CoveredCallSuggestion {
   const { strike, bid, ask } = quote, limit = quoteLimit(bid, ask);
+  // Stage1F: each tight leg uses its own two-sided midpoint-IV inversion.
+  // No common cross-strike sigma is sealed or trusted by the Worker.
+  const ownSigma=syntheticIv((bid+ask)/2,spot,strike,dte,false);
   return { role, strike, bid, ask, mid: bid / 2 + ask / 2, limit_price: limit,
     premium_per_contract: Math.round(limit * 10_000) / 100, period_yield: limit / spot,
     annualized_yield: limit / spot * 365 / Math.max(dte, 1), upside_to_strike: strike / spot - 1,
-    delta: syntheticGreeks(spot, strike, dte, model.sigma).delta,
-    delta_basis: model.basis, iv: Number(model.sigma.toFixed(4)), oi: 1200, volume: 300,
+    delta: syntheticGreeks(spot, strike, dte, ownSigma).delta,
+    delta_basis: "QUOTE_IMPLIED" as const, iv: Number(ownSigma.toFixed(4)), oi: 1200, volume: 300,
     spread_pct: (ask - bid) / (bid / 2 + ask / 2) };
 }
 
@@ -72,7 +75,8 @@ export function syntheticCalls(spot: number, dte: number, highStrike: number, ba
   const suggestions = [callItem("HIGH_STRIKE", quotes[0]!, spot, dte, delta_model)];
   if (balancedStrike !== undefined) suggestions.push(callItem("BALANCED", quotes[1]!, spot, dte, delta_model));
   const middle_suggestion = middleStrike === undefined ? undefined : callItem("MIDDLE", quotes.at(-1)!, spot, dte, delta_model);
-  return { delta_model, suggestions, ...(middle_suggestion ? { middle_suggestion } : {}) };
+  return { delta_model: "E1|Q,0,-|-,0,-",
+    suggestions, ...(middle_suggestion ? { middle_suggestion } : {}) };
 }
 
 /** Only retime explicitly synthetic fixtures. Rebuild every leg and quote-derived

@@ -3,7 +3,7 @@
   "strategy": "COVERED_CALL",
   "expiry": "2026-11-20",
   "dte": 12,
-  "spot": 100.0,
+  "spot": 100,
   "currency": "USD",
   "multiplier": 100,
   "quote_basis": "delayed",
@@ -15,57 +15,52 @@
     {
       "role": "HIGH_STRIKE",
       "strike": 111.0,
-      "bid": 0.0622,
-      "ask": 0.0662,
-      "mid": 0.0642,
-      "limit_price": 0.0622,
-      "premium_per_contract": 6.22,
-      "period_yield": 0.000622,
-      "annualized_yield": 0.018919,
+      "bid": 0.062299,
+      "ask": 0.066154,
+      "mid": 0.0642265,
+      "limit_price": 0.062299,
+      "premium_per_contract": 6.23,
+      "period_yield": 0.000623,
+      "annualized_yield": 0.018949,
       "upside_to_strike": 0.11,
       "delta": 0.031,
-      "delta_basis": "QUOTE_IMPLIED",
+      "delta_basis": "QUOTED_IV",
       "iv": 0.3,
       "oi": 200,
       "volume": 10,
-      "spread_pct": 0.0623
+      "spread_pct": 0.06
     },
     {
       "role": "BALANCED",
       "strike": 104.0,
-      "bid": 0.7722,
-      "ask": 0.8201,
-      "mid": 0.79615,
+      "bid": 0.772259,
+      "ask": 0.820029,
+      "mid": 0.796144,
       "limit_price": 0.79,
       "premium_per_contract": 79.0,
       "period_yield": 0.0079,
       "annualized_yield": 0.240292,
       "upside_to_strike": 0.04,
       "delta": 0.252,
-      "delta_basis": "QUOTE_IMPLIED",
+      "delta_basis": "QUOTED_IV",
       "iv": 0.3,
       "oi": 200,
       "volume": 10,
-      "spread_pct": 0.0602
+      "spread_pct": 0.06
     }
   ],
-  "delta_model": {
-    "basis": "QUOTE_IMPLIED",
-    "sigma": 0.2999641659661671,
-    "iv_bid": 0.29838330973073546,
-    "iv_ask": 0.30154502220159873
-  },
+  "delta_model": "E1|Q,0,-|Q,0,-",
   "strategies": {
     "csp": {
       "suggestions": [
         {
           "role": "CONSERVATIVE",
           "strike": 96.0,
-          "bid": 0.6491,
-          "ask": 0.6893,
+          "bid": 0.649141,
+          "ask": 0.689295,
           "limit_price": 0.66,
           "delta": 0.211,
-          "delta_basis": "QUOTE_IMPLIED",
+          "delta_basis": "QUOTED_IV",
           "premium_per_contract": 66.0,
           "cash_required": 9600.0,
           "annualized_yield": 0.209115,
@@ -81,28 +76,28 @@
     "collar": {
       "put": {
         "strike": 94.0,
-        "bid": 0.31,
-        "ask": 0.3292,
+        "bid": 0.310018,
+        "ask": 0.329196,
         "limit_price": 0.32,
         "delta": 0.117,
-        "delta_basis": "QUOTE_IMPLIED"
+        "delta_basis": "QUOTED_IV"
       },
       "items": [
         {
           "role": "CONSERVATIVE",
           "call": {
             "strike": 104.0,
-            "bid": 0.7722,
-            "ask": 0.8201,
+            "bid": 0.772259,
+            "ask": 0.820029,
             "limit_price": 0.79,
             "delta": 0.252,
-            "delta_basis": "QUOTE_IMPLIED"
+            "delta_basis": "QUOTED_IV"
           },
           "net_premium_per_share": 0.47,
           "max_loss_per_share": 5.53,
           "max_gain_per_share": 4.47,
           "break_even": 99.53,
-          "worst_case_net_per_share": 0.443
+          "worst_case_net_per_share": 0.4431
         }
       ],
       "rights_status": "operator_accepted_unlicensed",
@@ -119,20 +114,20 @@
   "middle_suggestion": {
     "role": "MIDDLE",
     "strike": 105.0,
-    "bid": 0.5701,
-    "ask": 0.6054,
-    "mid": 0.58775,
+    "bid": 0.570131,
+    "ask": 0.605398,
+    "mid": 0.5877645,
     "limit_price": 0.58,
     "premium_per_contract": 58.0,
     "period_yield": 0.0058,
     "annualized_yield": 0.176417,
     "upside_to_strike": 0.05,
     "delta": 0.199,
-    "delta_basis": "QUOTE_IMPLIED",
+    "delta_basis": "QUOTED_IV",
     "iv": 0.3,
     "oi": 200,
     "volume": 10,
-    "spread_pct": 0.0601
+    "spread_pct": 0.06
   },
   "asof_date": "2026-11-08",
   "monthly_rule": "THIRD_FRIDAY"

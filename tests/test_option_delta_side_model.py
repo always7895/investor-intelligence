@@ -129,8 +129,9 @@ class SideScopedDeltaTests(unittest.TestCase):
         self.assertFalse(side.valid_side_model("E1|X,0,-|H,0,-", None))
 
     def test_history_model_validates_delta_against_both_real_quote_sides(self):
-        row = self.quote(115., 1.2, 1.8)
+        row = self.quote(115., .30, 1.8)
         h = {"hv20": 1.3, "hv60": 1.4, "observations": 61}
+        self.assertTrue(side.is_uncertain(row,100.,self.DTE,put=False))
         out = side.calculate_side([row], 100., self.DTE, h)
         self.assertEqual(len(out["computed"]), 1)
         leg = out["computed"][0]

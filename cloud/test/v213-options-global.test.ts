@@ -399,7 +399,7 @@ describe("OPTIONS-GLOBAL-01 acceptance regression tests", () => {
     expect(text).toContain("https://finance.yahoo.com/quote/TSM/options");
     const item = TSM_MONTHLY.suggestions[0]!;
     for (const field of [`Bid $${item.bid}`, `Ask $${item.ask}`, `OI ${item.oi}`, `成交量 ${item.volume}`,
-      "Delta 以買賣報價 IV 共同區間估算", "限價成交前不計入收益"]) expect(text).toContain(field);
+      "Delta 採報價隱含模型", "限價成交前不計入收益"]) expect(text).toContain(field);
     expect(text).not.toContain("NaN");
   });
 

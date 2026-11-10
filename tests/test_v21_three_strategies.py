@@ -82,7 +82,11 @@ class FloorTests(unittest.TestCase):
         if tiers:
             self.assertAlmostEqual(tiers[0]["annualized_yield"],tiers[0]["period_yield"]*365,delta=.0001)
         wide={"strike":105.,"bid":.3,"ask":.6,"delta":.1,"iv":None,"oi":1,"volume":1}
-        self.assertEqual(builder.covered_call_suggestions([wide],100.,30),[])
+        # A >25% *price spread* is not the uncertainty predicate.
+        # Here |delta_bid-delta_ask| is .062 < .10 so Stage1C Q path stays.
+        kept=builder.covered_call_suggestions([wide],100.,30)
+        self.assertTrue(kept)
+        self.assertEqual(kept[0]["delta_basis"],"QUOTED")
         self.assertEqual(builder.covered_call_suggestions([{**wide,"ask":.9}],100.,30),[])
 
 
@@ -248,42 +252,40 @@ class PutParsingTests(unittest.TestCase):
 
 
 class SelectionTests(unittest.TestCase):
-    TEST_MODEL={"basis":"QUOTE_IMPLIED","sigma":.3,"iv_bid":.29,"iv_ask":.31}
-
     @staticmethod
-    def with_deltas(deltas: dict[float,float]):
-        # Isolate strike/tier selection from IV estimation, which is independently
-        # tested end-to-end. Model still passed explicitly at the call site.
-        def fake(row, spot, dte, model, *, put=False):
-            delta=deltas[row["strike"]]
-            return {**row,"delta":round(delta,3),"delta_exact":delta,
-                    "delta_basis":model["basis"]}
-        return mock.patch.object(builder,"_with_model_delta",side_effect=fake)
+    def prepared(rows: list[dict], deltas: dict[float, float]) -> list[dict]:
+        """Inject computed Delta only at the *tier selection boundary*. This
+        is a pure selection fixture, not a producer/validator model bypass:
+        actual side-IV computations have dedicated end-to-end tests.
+        """
+        return [{**row, "delta": round(deltas[row["strike"]], 3),
+                 "delta_exact": deltas[row["strike"]], "delta_basis": "QUOTED"}
+                for row in rows]
 
     def test_the_csp_band_edges_are_inclusive_and_the_nearest_to_020_goes_first(self) -> None:
         puts=[{"strike":float(k),"bid":1.,"ask":1.04,"oi":1,"volume":1} for k in (90,91,92,93,94)]
         deltas={90.:.1999,91.:.20,92.:.25,93.:.30,94.:.3001}
-        with self.with_deltas(deltas):
-            items,reason=builder.cash_secured_put_tiers(puts,SPOT,28,model=self.TEST_MODEL)
+        items,reason=builder.cash_secured_put_tiers(puts,SPOT,28,
+                                                    prepared=self.prepared(puts,deltas))
         self.assertIsNone(reason)
         self.assertEqual([(i["role"],i["strike"]) for i in items],
                          [("CONSERVATIVE",91.),("BALANCED",93.)])
 
     def test_a_single_band_strike_yields_one_item_and_no_strike_in_band_says_so(self) -> None:
         puts=[{"strike":91.,"bid":1.,"ask":1.04,"oi":1,"volume":1}]
-        with self.with_deltas({91.:.25}):
-            items,_=builder.cash_secured_put_tiers(puts,SPOT,28,model=self.TEST_MODEL)
+        items,_=builder.cash_secured_put_tiers(puts,SPOT,28,
+                                               prepared=self.prepared(puts,{91.:.25}))
         self.assertEqual([i["role"] for i in items],["CONSERVATIVE"])
-        with self.with_deltas({91.:.45}):
-            items,reason=builder.cash_secured_put_tiers(puts,SPOT,28,model=self.TEST_MODEL)
+        items,reason=builder.cash_secured_put_tiers(puts,SPOT,28,
+                                                    prepared=self.prepared(puts,{91.:.45}))
         self.assertEqual(items,[])
         self.assertIn("0.20–0.30",reason)
 
     def test_the_csp_has_no_yield_floor(self) -> None:
         for bid in (.01,.05):
             puts=[{"strike":91.,"bid":bid,"ask":bid+.02,"oi":1,"volume":1}]
-            with self.with_deltas({91.:.25}):
-                items,reason=builder.cash_secured_put_tiers(puts,SPOT,28,model=self.TEST_MODEL)
+            items,reason=builder.cash_secured_put_tiers(puts,SPOT,28,
+                                                        prepared=self.prepared(puts,{91.:.25}))
             self.assertIsNone(reason,bid)
             self.assertEqual(len(items),1,bid)
             self.assertLess(items[0]["annualized_yield"],.02,bid)
@@ -291,8 +293,9 @@ class SelectionTests(unittest.TestCase):
     def test_collar_credit_and_debit_cases_are_signed_and_recomputable(self) -> None:
         calls=[{"strike":107.,"bid":.25,"ask":.29,"oi":1,"volume":1}]
         puts=[{"strike":92.,"bid":.80,"ask":.84,"oi":1,"volume":1}]
-        with self.with_deltas({92.:.15,107.:.22}):
-            block,reason=builder.collar_tiers(calls,puts,SPOT,28,model=self.TEST_MODEL)
+        block,reason=builder.collar_tiers(calls,puts,SPOT,28,
+                                           prepared_calls=self.prepared(calls,{107.:.22}),
+                                           prepared_puts=self.prepared(puts,{92.:.15}))
         self.assertIsNone(reason)
         item=block["items"][0]
         self.assertEqual(block["put"]["limit_price"],.82)
@@ -422,7 +425,7 @@ class FailClosedTests(unittest.TestCase):
         self.assertTrue(cycle["strategies"]["collar"]["unavailable"])
 
     def test_wide_low_premium_call_does_not_become_a_strategy_without_history(self) -> None:
-        cycle=yahoo_cycle(chains.yahoo_chain(calls=[(107.,.01,.02),(110.,.01,.02)]))
+        cycle=yahoo_cycle(chains.yahoo_chain(calls=[(107.,.01,.50),(110.,.01,.50)]))
         validate(cycle)
         self.assertEqual(cycle["suggestions"],[])
         self.assertEqual(cycle["quote_observation"]["kind"],"TWO_SIDED")
@@ -847,17 +850,18 @@ class SealingTests(unittest.TestCase):
                 sealed = json.loads(self.seal({"AAA": {"monthly": cycle}}, {"AAA"})["v213:options:v2"])["options"]["AAA"]["monthly"]
                 self.assertEqual(sealed, cycle)
 
-    def test_over_the_size_cap_the_strategies_are_dropped_before_the_covered_calls(self) -> None:
+    def test_over_the_size_cap_fails_loudly_without_stripping_strategies(self) -> None:
         good = yahoo_cycle()
         options = {f"T{i:03d}": {"monthly": dict(good, ticker=f"T{i:03d}")} for i in range(40)}
+        baseline = copy.deepcopy(options)
         compact = len(json.dumps(good, ensure_ascii=False, separators=(",", ":")))
-        with mock.patch.object(publisher, "LAZY_BODY_MAX_BYTES", 40 * compact - 20_000):  # fits only without the strategies (about 1.4 KB each)
-            bodies = self.seal(options, set(options))
-        sealed = json.loads(bodies["v213:options:v2"])["options"]
-        self.assertEqual(len(sealed), 40)
-        self.assertTrue(all("strategies" not in v["monthly"] and v["monthly"]["suggestions"] for v in sealed.values()))
-        with mock.patch.object(publisher, "LAZY_BODY_MAX_BYTES", 1000):
-            self.assertEqual(self.seal(options, set(options)), {})
+        with mock.patch.object(publisher,"LAZY_BODY_MAX_BYTES", 40 * compact - 20_000):
+            with self.assertRaisesRegex(RuntimeError,"STAGE1F_OPTIONS_CAP_EXCEEDED"):
+                self.seal(options,set(options))
+        self.assertEqual(options,baseline)
+        with mock.patch.object(publisher,"LAZY_BODY_MAX_BYTES",1000):
+            with self.assertRaisesRegex(RuntimeError,"STAGE1F_OPTIONS_CAP_EXCEEDED"):
+                self.seal(options,set(options))
 
 
 class CarryForwardTests(unittest.TestCase):

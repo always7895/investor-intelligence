@@ -39,6 +39,7 @@ if str(ROOT / "scripts") not in sys.path:
     sys.path.insert(0, str(ROOT / "scripts"))
 
 import option_delta_model as delta_math  # noqa: E402
+import option_delta_side_model as side_math  # noqa: E402
 
 FIXTURE_PATH = ROOT / "cloud" / "test" / "fixtures" / "options-global-publisher.json"
 BRIDGE_SCHEMA = "options-global-publisher-bridge-v1"
@@ -68,21 +69,21 @@ def _expiry(dte: int) -> str:
 
 def _cycle(ticker: str, dte: int, expiry: str, timestamp: str = BASE_ROW_STAMP) -> dict:
     # Synthetic fixed-price book: derive its one coherent model at this case's tenor.
-    model, reason = delta_math.build_delta_model(
-        [{"strike": STRIKE, "bid": 2.0, "ask": 2.1}], [], SPOT, max(dte, 0), None)
-    assert model is not None, reason
+    analysis = side_math.calculate_side(
+        [{"strike": STRIKE, "bid": 2.0, "ask": 2.1}], SPOT, max(dte, 0), None)
+    assert len(analysis["computed"]) == 1, analysis["reason"]
+    leg = analysis["computed"][0]
     return {
         "ticker": ticker, "strategy": "COVERED_CALL", "expiry": expiry, "dte": dte, "spot": SPOT,
         "currency": "USD", "multiplier": 100, "quote_basis": "delayed", "timestamp": timestamp,
         "source": "Yahoo Finance (unofficial, delayed)", "provenance": "https://finance.yahoo.com/quote/TSM/options",
         "rights_status": "unadmitted_third_party",
-        "delta_model": model,
+        "delta_model": "E1|Q,0,-|-,0,-",
         "suggestions": [{
             "role": "HIGH_STRIKE", "strike": STRIKE, "bid": 2.0, "ask": 2.1, "mid": 2.05, "limit_price": LIMIT,
             "premium_per_contract": LIMIT * 100, "period_yield": LIMIT / SPOT,
             "annualized_yield": LIMIT / SPOT * 365 / max(dte, 1), "upside_to_strike": STRIKE / SPOT - 1,
-            "delta": delta_math.bs_call_delta(SPOT, STRIKE, max(dte, 1) / 365, model["sigma"]),
-            "delta_basis": model["basis"], "iv": round(model["sigma"], 4), "oi": 900, "volume": 50, "spread_pct": 0.0488,
+             "delta": leg["delta"], "delta_basis": leg["delta_basis"], "iv": leg["iv"], "oi": 900, "volume": 50, "spread_pct": 0.0488,
         }],
     }
 

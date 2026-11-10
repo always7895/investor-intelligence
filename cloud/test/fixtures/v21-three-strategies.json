@@ -3,12 +3,7 @@
   "nordic_monthly_sek": {
    "asof_date": "2026-10-23",
    "currency": "SEK",
-   "delta_model": {
-    "basis": "QUOTE_IMPLIED",
-    "iv_ask": 0.3015991664232336,
-    "iv_bid": 0.2993619860091199,
-    "sigma": 0.30048057621617674
-   },
+   "delta_model": "E1|Q,0,-|Q,0,-",
    "dte": 28,
    "expiry": "2026-11-20",
    "instrument_kind": "equity_option",
@@ -80,7 +75,7 @@
      "put": {
       "ask": 0.63,
       "bid": 0.59,
-      "delta": 0.14,
+      "delta": 0.139,
       "delta_basis": "QUOTE_IMPLIED",
       "limit_price": 0.61,
       "strike": 92.0
@@ -100,7 +95,7 @@
        "bid": 0.98,
        "breakeven": 93.0,
        "cash_required": 9400.0,
-       "delta": 0.206,
+       "delta": 0.205,
        "delta_basis": "QUOTE_IMPLIED",
        "downside_buffer": 0.06,
        "limit_price": 1.0,
@@ -134,7 +129,7 @@
      "bid": 0.36,
      "delta": 0.1,
      "delta_basis": "QUOTE_IMPLIED",
-     "iv": 0.3005,
+     "iv": 0.3006,
      "limit_price": 0.38,
      "mid": 0.38,
      "oi": 40,
@@ -150,9 +145,9 @@
      "annualized_yield": 0.202054,
      "ask": 1.57,
      "bid": 1.53,
-     "delta": 0.306,
+     "delta": 0.305,
      "delta_basis": "QUOTE_IMPLIED",
-     "iv": 0.3005,
+     "iv": 0.2997,
      "limit_price": 1.55,
      "mid": 1.55,
      "oi": 40,
@@ -172,12 +167,7 @@
   "yahoo_monthly_full": {
    "asof_date": "2026-10-23",
    "currency": "USD",
-   "delta_model": {
-    "basis": "QUOTE_IMPLIED",
-    "iv_ask": 0.3015991664232336,
-    "iv_bid": 0.2993619860091199,
-    "sigma": 0.30048057621617674
-   },
+   "delta_model": "E1|Q,0,-|Q,0,-",
    "dte": 28,
    "expiry": "2026-11-20",
    "instrument_kind": "equity_option",
@@ -187,8 +177,8 @@
     "ask": 1.32,
     "bid": 1.28,
     "delta": 0.267,
-    "delta_basis": "QUOTE_IMPLIED",
-    "iv": 0.3005,
+    "delta_basis": "QUOTED_IV",
+    "iv": 0.3,
     "limit_price": 1.3,
     "mid": 1.3,
     "oi": 100,
@@ -218,7 +208,7 @@
         "ask": 1.09,
         "bid": 1.05,
         "delta": 0.231,
-        "delta_basis": "QUOTE_IMPLIED",
+        "delta_basis": "QUOTED_IV",
         "limit_price": 1.07,
         "strike": 107.0
        },
@@ -234,7 +224,7 @@
         "ask": 1.32,
         "bid": 1.28,
         "delta": 0.267,
-        "delta_basis": "QUOTE_IMPLIED",
+        "delta_basis": "QUOTED_IV",
         "limit_price": 1.3,
         "strike": 106.0
        },
@@ -250,7 +240,7 @@
       "ask": 0.63,
       "bid": 0.59,
       "delta": 0.14,
-      "delta_basis": "QUOTE_IMPLIED",
+      "delta_basis": "QUOTED_IV",
       "limit_price": 0.61,
       "strike": 92.0
      },
@@ -269,8 +259,8 @@
        "bid": 0.98,
        "breakeven": 93.0,
        "cash_required": 9400.0,
-       "delta": 0.206,
-       "delta_basis": "QUOTE_IMPLIED",
+       "delta": 0.205,
+       "delta_basis": "QUOTED_IV",
        "downside_buffer": 0.06,
        "limit_price": 1.0,
        "premium_per_contract": 100.0,
@@ -283,8 +273,8 @@
        "bid": 1.52,
        "breakeven": 94.46,
        "cash_required": 9600.0,
-       "delta": 0.285,
-       "delta_basis": "QUOTE_IMPLIED",
+       "delta": 0.284,
+       "delta_basis": "QUOTED_IV",
        "downside_buffer": 0.04,
        "limit_price": 1.54,
        "premium_per_contract": 154.0,
@@ -301,9 +291,9 @@
      "annualized_yield": 0.049536,
      "ask": 0.4,
      "bid": 0.36,
-     "delta": 0.1,
-     "delta_basis": "QUOTE_IMPLIED",
-     "iv": 0.3005,
+     "delta": 0.099,
+     "delta_basis": "QUOTED_IV",
+     "iv": 0.3,
      "limit_price": 0.38,
      "mid": 0.38,
      "oi": 100,
@@ -319,9 +309,9 @@
      "annualized_yield": 0.202054,
      "ask": 1.57,
      "bid": 1.53,
-     "delta": 0.306,
-     "delta_basis": "QUOTE_IMPLIED",
-     "iv": 0.3005,
+     "delta": 0.305,
+     "delta_basis": "QUOTED_IV",
+     "iv": 0.3,
      "limit_price": 1.55,
      "mid": 1.55,
      "oi": 100,
@@ -338,15 +328,187 @@
    "timestamp": "2026-10-23T17:00:00Z",
    "venue": "US_LISTED_OPTIONS"
   },
+  "yahoo_monthly_hv": {
+   "asof_date": "2026-10-23",
+   "currency": "USD",
+   "delta_model": "E1|H,0,-|H,0,-",
+   "dte": 28,
+   "expiry": "2026-11-20",
+   "historical_volatility": {
+    "asof_date": "2026-10-22",
+    "currency": "USD",
+    "hv20": 0.3,
+    "hv60": 0.31,
+    "observations": 61,
+    "price_basis": "PROVIDER_ADJUSTED_CLOSE",
+    "source_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "source_url": "https://query1.finance.yahoo.com/v8/finance/chart/AAA?interval=1d&range=6mo",
+    "start_date_20": "2026-09-24",
+    "start_date_60": "2026-07-28",
+    "ticker": "AAA"
+   },
+   "instrument_kind": "equity_option",
+   "jurisdiction": "US",
+   "middle_suggestion": {
+    "annualized_yield": 0.149911,
+    "ask": 2.18,
+    "bid": 0.2625,
+    "delta": 0.239,
+    "delta_basis": "HISTORICAL_VOL",
+    "iv": null,
+    "limit_price": 1.15,
+    "mid": 1.2212500000000002,
+    "oi": 100,
+    "period_yield": 0.0115,
+    "premium_per_contract": 115.0,
+    "role": "MIDDLE",
+    "spread_pct": 1.5701,
+    "strike": 107.0,
+    "upside_to_strike": 0.07,
+    "volume": 10
+   },
+   "monthly_rule": "THIRD_FRIDAY",
+   "multiplier": 100,
+   "provenance": "https://finance.yahoo.com/quote/AAA/options",
+   "provider_id": "yahoo_finance_option_chain",
+   "publication_scope": "public_line_quote",
+   "quote_basis": "delayed",
+   "rights_status": "operator_accepted_unlicensed",
+   "source": "Yahoo Finance option chain (unofficial, delayed)",
+   "spot": 100.0,
+   "strategies": {
+    "collar": {
+     "items": [
+      {
+       "break_even": 99.72,
+       "call": {
+        "ask": 1.8,
+        "bid": 0.215,
+        "delta": 0.207,
+        "delta_basis": "HISTORICAL_VOL",
+        "limit_price": 0.96,
+        "strike": 108.0
+       },
+       "max_gain_per_share": 8.28,
+       "max_loss_per_share": 7.72,
+       "net_premium_per_share": 0.28,
+       "role": "CONSERVATIVE",
+       "worst_case_net_per_share": -1.045
+      },
+      {
+       "break_even": 99.3,
+       "call": {
+        "ask": 2.64,
+        "bid": 0.32,
+        "delta": 0.274,
+        "delta_basis": "HISTORICAL_VOL",
+        "limit_price": 1.38,
+        "strike": 106.0
+       },
+       "max_gain_per_share": 6.7,
+       "max_loss_per_share": 7.3,
+       "net_premium_per_share": 0.7,
+       "role": "BALANCED",
+       "worst_case_net_per_share": -0.94
+      }
+     ],
+     "provider_id": "yahoo_finance_option_chain",
+     "put": {
+      "ask": 1.26,
+      "bid": 0.1475,
+      "delta": 0.147,
+      "delta_basis": "HISTORICAL_VOL",
+      "limit_price": 0.68,
+      "strike": 92.0
+     },
+     "quote_basis": "delayed",
+     "rights_status": "operator_accepted_unlicensed",
+     "timestamp": "2026-10-23T17:00:00Z"
+    },
+    "csp": {
+     "provider_id": "yahoo_finance_option_chain",
+     "quote_basis": "delayed",
+     "rights_status": "operator_accepted_unlicensed",
+     "suggestions": [
+      {
+       "annualized_yield": 0.148385,
+       "ask": 2.04,
+       "bid": 0.245,
+       "breakeven": 92.93,
+       "cash_required": 9400.0,
+       "delta": 0.212,
+       "delta_basis": "HISTORICAL_VOL",
+       "downside_buffer": 0.06,
+       "limit_price": 1.07,
+       "premium_per_contract": 107.0,
+       "role": "CONSERVATIVE",
+       "strike": 94.0
+      },
+      {
+       "annualized_yield": 0.221336,
+       "ask": 3.12,
+       "bid": 0.38,
+       "breakeven": 94.37,
+       "cash_required": 9600.0,
+       "delta": 0.29,
+       "delta_basis": "HISTORICAL_VOL",
+       "downside_buffer": 0.04,
+       "limit_price": 1.63,
+       "premium_per_contract": 163.0,
+       "role": "BALANCED",
+       "strike": 96.0
+      }
+     ],
+     "timestamp": "2026-10-23T17:00:00Z"
+    }
+   },
+   "strategy": "COVERED_CALL",
+   "suggestions": [
+    {
+     "annualized_yield": 0.05475,
+     "ask": 0.8,
+     "bid": 0.09,
+     "delta": 0.107,
+     "delta_basis": "HISTORICAL_VOL",
+     "iv": null,
+     "limit_price": 0.42,
+     "mid": 0.445,
+     "oi": 100,
+     "period_yield": 0.0042,
+     "premium_per_contract": 42.0,
+     "role": "HIGH_STRIKE",
+     "spread_pct": 1.5955,
+     "strike": 112.0,
+     "upside_to_strike": 0.12,
+     "volume": 10
+    },
+    {
+     "annualized_yield": 0.215089,
+     "ask": 3.14,
+     "bid": 0.3825,
+     "delta": 0.312,
+     "delta_basis": "HISTORICAL_VOL",
+     "iv": null,
+     "limit_price": 1.65,
+     "mid": 1.76125,
+     "oi": 100,
+     "period_yield": 0.0165,
+     "premium_per_contract": 165.0,
+     "role": "BALANCED",
+     "spread_pct": 1.5656,
+     "strike": 105.0,
+     "upside_to_strike": 0.05,
+     "volume": 10
+    }
+   ],
+   "ticker": "AAA",
+   "timestamp": "2026-10-23T17:00:00Z",
+   "venue": "US_LISTED_OPTIONS"
+  },
   "yahoo_monthly_no_covered_call": {
    "asof_date": "2026-10-23",
    "currency": "USD",
-   "delta_model": {
-    "basis": "QUOTE_IMPLIED",
-    "iv_ask": 0.3015991664232336,
-    "iv_bid": 0.2993619860091199,
-    "sigma": 0.30048057621617674
-   },
+   "delta_model": "E1|-,7,-|Q,0,-",
    "dte": 28,
    "expiry": "2026-11-20",
    "instrument_kind": "equity_option",
@@ -375,7 +537,7 @@
      "unavailable": "2026-11-20：所選到期價外買權僅有單邊報價，缺少買賣報價 IV 區間；不提供建議；所選到期無有效雙邊報價"
     },
     "collar": {
-     "unavailable": "所選到期價外買權僅有單邊報價，缺少買賣報價 IV 區間；不提供建議"
+     "unavailable": "本側沒有可核驗、價外、雙邊的完整合約"
     },
     "csp": {
      "provider_id": "yahoo_finance_option_chain",
@@ -388,8 +550,8 @@
        "bid": 0.98,
        "breakeven": 93.0,
        "cash_required": 9400.0,
-       "delta": 0.206,
-       "delta_basis": "QUOTE_IMPLIED",
+       "delta": 0.205,
+       "delta_basis": "QUOTED_IV",
        "downside_buffer": 0.06,
        "limit_price": 1.0,
        "premium_per_contract": 100.0,
@@ -402,8 +564,8 @@
        "bid": 1.52,
        "breakeven": 94.46,
        "cash_required": 9600.0,
-       "delta": 0.285,
-       "delta_basis": "QUOTE_IMPLIED",
+       "delta": 0.284,
+       "delta_basis": "QUOTED_IV",
        "downside_buffer": 0.04,
        "limit_price": 1.54,
        "premium_per_contract": 154.0,
@@ -451,13 +613,13 @@
    "spot": 100.0,
    "strategies": {
     "cc": {
-     "unavailable": "2026-11-20：寬價差共同 Delta 模型缺少經驗證的 61 筆調整後收盤價 HV20/HV60；不提供備兌買權建議"
+     "unavailable": "備兌：2026-11-20：寬價差側缺少經核驗的 61 筆調整後收盤價 HV20/HV；賣權：本側沒有可核驗、價外、雙邊的完整合約；領口：本側沒有可核驗、價外、雙邊的完整合約"
     },
     "collar": {
-     "unavailable": "寬價差共同 Delta 模型缺少經驗證的 61 筆調整後收盤價 HV20/HV60"
+     "unavailable": "本側沒有可核驗、價外、雙邊的完整合約"
     },
     "csp": {
-     "unavailable": "寬價差共同 Delta 模型缺少經驗證的 61 筆調整後收盤價 HV20/HV60"
+     "unavailable": "本側沒有可核驗、價外、雙邊的完整合約"
     }
    },
    "strategy": "COVERED_CALL",
@@ -469,12 +631,7 @@
   "collar_only": {
    "asof_date": "2026-10-23",
    "currency": "USD",
-   "delta_model": {
-    "basis": "QUOTE_IMPLIED",
-    "iv_ask": 0.3020256648947255,
-    "iv_bid": 0.2972767796907573,
-    "sigma": 0.2996512222927414
-   },
+   "delta_model": "E1|Q,0,-|Q,0,-",
    "dte": 28,
    "expiry": "2026-11-20",
    "instrument_kind": "equity_option",
@@ -510,7 +667,7 @@
         "ask": 1.09,
         "bid": 1.05,
         "delta": 0.231,
-        "delta_basis": "QUOTE_IMPLIED",
+        "delta_basis": "QUOTED_IV",
         "limit_price": 1.07,
         "strike": 107.0
        },
@@ -525,8 +682,8 @@
      "put": {
       "ask": 0.63,
       "bid": 0.59,
-      "delta": 0.139,
-      "delta_basis": "QUOTE_IMPLIED",
+      "delta": 0.14,
+      "delta_basis": "QUOTED_IV",
       "limit_price": 0.61,
       "strike": 92.0
      },
@@ -547,12 +704,7 @@
   "delta_call": {
    "asof_date": "2026-10-23",
    "currency": "USD",
-   "delta_model": {
-    "basis": "QUOTE_IMPLIED",
-    "iv_ask": 0.3015991664232336,
-    "iv_bid": 0.2993619860091199,
-    "sigma": 0.30048057621617674
-   },
+   "delta_model": "E1|Q,0,-|Q,0,-",
    "dte": 28,
    "expiry": "2026-11-20",
    "instrument_kind": "equity_option",
@@ -594,8 +746,8 @@
        "bid": 0.98,
        "breakeven": 93.0,
        "cash_required": 9400.0,
-       "delta": 0.206,
-       "delta_basis": "QUOTE_IMPLIED",
+       "delta": 0.205,
+       "delta_basis": "QUOTED_IV",
        "downside_buffer": 0.06,
        "limit_price": 1.0,
        "premium_per_contract": 100.0,
@@ -608,8 +760,8 @@
        "bid": 1.52,
        "breakeven": 94.46,
        "cash_required": 9600.0,
-       "delta": 0.285,
-       "delta_basis": "QUOTE_IMPLIED",
+       "delta": 0.284,
+       "delta_basis": "QUOTED_IV",
        "downside_buffer": 0.04,
        "limit_price": 1.54,
        "premium_per_contract": 154.0,
@@ -654,13 +806,13 @@
    "spot": 100.0,
    "strategies": {
     "cc": {
-     "unavailable": "2026-11-20：寬價差共同 Delta 模型缺少經驗證的 61 筆調整後收盤價 HV20/HV60；不提供備兌買權建議"
+     "unavailable": "備兌：2026-11-20：寬價差側缺少經核驗的 61 筆調整後收盤價 HV20/HV；賣權：本側沒有可核驗、價外、雙邊的完整合約；領口：本側沒有可核驗、價外、雙邊的完整合約"
     },
     "collar": {
-     "unavailable": "寬價差共同 Delta 模型缺少經驗證的 61 筆調整後收盤價 HV20/HV60"
+     "unavailable": "本側沒有可核驗、價外、雙邊的完整合約"
     },
     "csp": {
-     "unavailable": "寬價差共同 Delta 模型缺少經驗證的 61 筆調整後收盤價 HV20/HV60"
+     "unavailable": "本側沒有可核驗、價外、雙邊的完整合約"
     }
    },
    "strategy": "COVERED_CALL",
@@ -697,7 +849,7 @@
    "spot": 100.0,
    "strategies": {
     "cc": {
-     "unavailable": "2026-11-20：寬價差共同 Delta 模型缺少經驗證的 61 筆調整後收盤價 HV20/HV60；不提供備兌買權建議"
+     "unavailable": "2026-11-20：寬價差側缺少經核驗的 61 筆調整後收盤價 HV20/HV60，不提供該側策略；不提供備兌買權建議"
     },
     "collar": {
      "unavailable": "本輪來源未提供可核驗的賣權資料，無法判定賣權鏈是否缺漏"
@@ -740,13 +892,13 @@
    "spot": 100.0,
    "strategies": {
     "cc": {
-     "unavailable": "2026-11-20：寬價差共同 Delta 模型缺少經驗證的 61 筆調整後收盤價 HV20/HV60；不提供備兌買權建議"
+     "unavailable": "備兌：2026-11-20：寬價差側缺少經核驗的 61 筆調整後收盤價 HV20/HV；賣權：寬價差側缺少經核驗的 61 筆調整後收盤價 HV20/HV60，不提供該側策略；領口：寬價差側缺少經核驗的 61 筆調整後收盤價 HV20/HV60，不提供該側策略"
     },
     "collar": {
-     "unavailable": "寬價差共同 Delta 模型缺少經驗證的 61 筆調整後收盤價 HV20/HV60"
+     "unavailable": "寬價差側缺少經核驗的 61 筆調整後收盤價 HV20/HV60，不提供該側策略"
     },
     "csp": {
-     "unavailable": "寬價差共同 Delta 模型缺少經驗證的 61 筆調整後收盤價 HV20/HV60"
+     "unavailable": "寬價差側缺少經核驗的 61 筆調整後收盤價 HV20/HV60，不提供該側策略"
     }
    },
    "strategy": "COVERED_CALL",
@@ -758,6 +910,7 @@
   "wide_calls": {
    "asof_date": "2026-10-23",
    "currency": "USD",
+   "delta_model": "E1|H,0,-|Q,0,-",
    "dte": 28,
    "expiry": "2026-11-20",
    "instrument_kind": "equity_option",
@@ -783,13 +936,46 @@
    "spot": 100.0,
    "strategies": {
     "cc": {
-     "unavailable": "2026-11-20：共同 Delta 模型拒絕混合窄價差與寬價差合約，不刪除合資格合約以湊出結果；不提供備兌買權建議"
+     "unavailable": "2026-11-20：寬價差側缺少經核驗的 61 筆調整後收盤價 HV20/HV60，不提供該側策略；不提供備兌買權建議"
     },
     "collar": {
-     "unavailable": "共同 Delta 模型拒絕混合窄價差與寬價差合約，不刪除合資格合約以湊出結果"
+     "unavailable": "寬價差側缺少經核驗的 61 筆調整後收盤價 HV20/HV60，不提供該側策略"
     },
     "csp": {
-     "unavailable": "共同 Delta 模型拒絕混合窄價差與寬價差合約，不刪除合資格合約以湊出結果"
+     "provider_id": "yahoo_finance_option_chain",
+     "quote_basis": "delayed",
+     "rights_status": "operator_accepted_unlicensed",
+     "suggestions": [
+      {
+       "annualized_yield": 0.138678,
+       "ask": 1.02,
+       "bid": 0.98,
+       "breakeven": 93.0,
+       "cash_required": 9400.0,
+       "delta": 0.205,
+       "delta_basis": "QUOTED_IV",
+       "downside_buffer": 0.06,
+       "limit_price": 1.0,
+       "premium_per_contract": 100.0,
+       "role": "CONSERVATIVE",
+       "strike": 94.0
+      },
+      {
+       "annualized_yield": 0.209115,
+       "ask": 1.56,
+       "bid": 1.52,
+       "breakeven": 94.46,
+       "cash_required": 9600.0,
+       "delta": 0.284,
+       "delta_basis": "QUOTED_IV",
+       "downside_buffer": 0.04,
+       "limit_price": 1.54,
+       "premium_per_contract": 154.0,
+       "role": "BALANCED",
+       "strike": 96.0
+      }
+     ],
+     "timestamp": "2026-10-23T17:00:00Z"
     }
    },
    "strategy": "COVERED_CALL",

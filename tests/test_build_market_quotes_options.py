@@ -205,9 +205,12 @@ class SuggestionTests(unittest.TestCase):
 
     def test_wide_spread_uses_midpoint_without_refusing_a_valid_delta(self):
         wide=builder.covered_call_suggestions([row(120,1.0,1.6)],100.,20)
-        self.assertEqual(wide,[],"wide cohort without 61 adjusted closes MUST refuse")
+        # M1: bid/ask implied Delta range is .042 <= .10; the huge
+        # price spread alone does not poison an otherwise eligible leg.
+        self.assertTrue(wide)
+        self.assertEqual(wide[0]["delta_basis"],"QUOTE_IMPLIED")
         very_wide=builder.covered_call_suggestions([row(120,.2,2.)],100.,20)
-        self.assertEqual(very_wide,[])
+        self.assertEqual(very_wide,[])  # Delta uncertainty .154 > .10 without HV
         refused=builder.cycle_result("X","2026-11-20",20,100.,[row(120,.2,2.)],
             currency="USD",source="s",provenance="https://example.org/test",rights="unadmitted_third_party",
             stamp="2026-10-31T00:00:00Z")
@@ -2213,11 +2216,12 @@ class NonUsTypedEvidenceTests(unittest.TestCase):
             self.assertIsNone(out["monthly"]["quote_observation"]["bid"], label)
             monthly = [h for h in out.health if h["cycle"] == "monthly"][0]
             self.assertEqual((monthly["read"], monthly["two_sided"]), (True, False), label)
-        # no yield floor: a strike paying 0.01 is listed; a call with no out-of-the-money strike keeps the delta-cap reason
+        # M1: the penny quote can have <.10 Delta uncertainty and now
+        # retains its executable source quote instead of refusing by spread.
         cheap = self.nordic([self.call(16, bid="0.01", ask="0.02")])
         self.assertNotIn("unavailable", cheap["monthly"])
-        self.assertEqual(cheap["monthly"]["suggestions"], [])
-        self.assertEqual(cheap["monthly"]["quote_observation"]["kind"], "TWO_SIDED")
+        self.assertTrue(cheap["monthly"]["suggestions"])
+        self.assertEqual(cheap["monthly"]["suggestions"][0]["delta_basis"], "QUOTE_IMPLIED")
         miss = self.nordic([self.call(16, 90.0, bid="11.00", ask="11.20")])  # in the money: no out-of-the-money strike
         self.assertIn("無有效履約價的價外買權", miss["monthly"]["unavailable"])
         self.assertNotIn("年化權利金", miss["monthly"]["unavailable"])
@@ -2376,8 +2380,8 @@ class NonUsTypedEvidenceTests(unittest.TestCase):
         with mock.patch.dict(sys.modules, {"yfinance": types.SimpleNamespace(Ticker=lambda s: ticker)}):
             miss = builder.us_options("AAA", 100.0, self.TODAY, self.STAMP)
         self.assertNotIn("unavailable", miss["monthly"])
-        self.assertEqual(miss["monthly"]["suggestions"], [])
-        self.assertEqual(miss["monthly"]["quote_observation"]["kind"], "TWO_SIDED")
+        self.assertTrue(miss["monthly"]["suggestions"])
+        self.assertEqual(miss["monthly"]["suggestions"][0]["delta_basis"], "QUOTED_IV")
         self.assertEqual([(h["read"], h["two_sided"]) for h in miss.health if h["cycle"] == "monthly"], [(True, True)])
 
     def test_only_strikes_the_two_decimal_display_represents_exactly_are_recommended(self):

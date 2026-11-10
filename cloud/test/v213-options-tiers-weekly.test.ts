@@ -6,6 +6,8 @@ import { buildCoveredCallMessages, validateCoveredCallCycle } from "../src/v213/
 import {
   exchangeDate, exchangeLocal, expiryDayOpen, limitMiddle, pickMiddle, roundTick, selectWeeklyExpiry,
   weekEndMs, weeklyWeekFor, weeklyWindowEndMs, dayMs, isoDay,
+  WEEKLY_DTE_BUCKET, MONTHLY_DTE_BUCKET, MIN_ANNUALIZATION_DAYS, SHORT_DTE_NOTICE_MAX,
+  MIDDLE_DELTA, MIDDLE_MONEYNESS, EXPIRY_DAY_CLOSE_LOCAL_MINUTES, effectiveDays,
 } from "../src/v213/option-recommendation-rules";
 import { generateOptionsOrderGuidance, buildOptionsGuidanceText } from "../src/v213/options-guidance";
 import { admitSyntheticTickers, resetAdmissionToReal } from "./synthetic-option-admission";
@@ -20,6 +22,17 @@ beforeEach(() => { resetAdmissionToReal(); });
 const at = (text: string) => Date.parse(text);
 const LISTED = ["2026-10-09", "2026-10-16"];
 
+
+describe("shared rules: constants (Stage1C Python/Worker parity)", () => {
+  it("pins expiry bounds, 1-day annualization floor and middle tier without weakening 1F delta policy", () => {
+    expect(WEEKLY_DTE_BUCKET).toEqual([0,14]);
+    expect(MONTHLY_DTE_BUCKET).toEqual([0,60]);
+    expect([MIN_ANNUALIZATION_DAYS,SHORT_DTE_NOTICE_MAX,MIDDLE_DELTA,MIDDLE_MONEYNESS])
+      .toEqual([1,2,0.25,1.025]);
+    expect(EXPIRY_DAY_CLOSE_LOCAL_MINUTES).toEqual({US:960,STOCKHOLM:1050,TAIFEX:810});
+    expect([0,1,2,30].map(effectiveDays)).toEqual([1,1,2,30]);
+  });
+});
 
 describe("shared rules: exchange clock", () => {
   it("US date follows New York, not UTC, across both DST edges", () => {

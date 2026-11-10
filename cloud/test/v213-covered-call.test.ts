@@ -69,24 +69,30 @@ describe("covered-call suggestions", () => {
     // V25-FIX3 verifies optional liquidity detail through the existing text edition.
     expect(text).toContain("流動性：OI");
     expect(text).toContain(`建議賣出限價 $${valid.suggestions[0]!.limit_price}`);
-    expect(text).toContain("Delta 以買賣報價 IV 共同區間估算");
+    expect(text).toContain("Delta 採報價隱含模型");
     expect(text).toContain("限價成交前不計入收益");
     for (const required of ["Bid情境", "每15分鐘", "最多4次", "0.01", "不低於Bid"]) expect(text).toContain(required);
     expect(text).toContain("本服務不下單");
   });
 
-  it("discloses the common quote model and rejects obsolete, missing and one-sided Greeks", () => {
+  it("discloses per-leg quote model and rejects unbound, missing and one-sided Greeks", () => {
     admitSyntheticTickers("NVDA");
     const implied = cycle({ currency: "SEK", spot: 32.78, dte: 20, ...syntheticCalls(32.78, 20, 62) });
     const valid = validateCoveredCallCycle(implied)!;
     expect(valid).not.toBeNull();
     for (const style of ["text", "flex"] as const) {
       const rendered = JSON.stringify(buildCoveredCallMessages(valid, "每月期權", style));
-      expect(rendered).toContain("Delta 以買賣報價 IV 共同區間估算");
-      expect(rendered).toContain("共同波動率");
+      expect(rendered).toContain("Delta 採報價隱含模型");
+      expect(rendered).toContain("逐腿雙邊中價推算");
       expect(rendered).toContain("限價成交前不計入收益");
     }
-    for (const delta_basis of ["QUOTED", "QUOTED_IV", "GUESSED"]) {
+    // Quoted-IV is an allowed Stage1C per-leg source path, without a
+    // legacy common-sigma dictionary. Unknown or inconsistent source
+    // annotation is still refused. QUOTED requires an absent IV field.
+    const quotedIv = structuredClone(implied);
+    quotedIv.suggestions[0]!.delta_basis = "QUOTED_IV";
+    expect(validateCoveredCallCycle(quotedIv)).not.toBeNull();
+    for (const delta_basis of ["QUOTED", "GUESSED"]) {
       const unknown = structuredClone(implied); Object.assign(unknown.suggestions[0]!, { delta_basis });
       expect(validateCoveredCallCycle(unknown)).toBeNull();
     }

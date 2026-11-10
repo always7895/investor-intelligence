@@ -20,6 +20,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 import build_market_quotes_options as builder  # noqa: E402
 import option_delta_model as delta_math  # noqa: E402
+import option_delta_side_model as side_math  # noqa: E402
 import option_recommendation_rules as rules  # noqa: E402
 from validate_v213_market_products import MarketProductValidationError, validate_covered_call_cycle  # noqa: E402
 from tests.fixtures.options_global_publisher_cases import standard_monthly_expiry  # noqa: E402
@@ -288,23 +289,27 @@ class WeeklyProducerTests(unittest.TestCase):
 
 def tier_item(role, strike, spot, dte, model, quote=None):
     if quote is None:
-        price = delta_math.bs_call_price(spot, strike, max(dte, 1) / 365, model["sigma"])
+        synthetic_sigma = 1.35 * math.sqrt(2 / max(dte, 1))
+        price = delta_math.bs_call_price(spot, strike, max(dte, 1) / 365, synthetic_sigma)
         bid, ask = math.floor(price * 0.97 * 10000) / 10000, math.ceil(price * 1.03 * 10000) / 10000
     else:
         bid, ask = quote["bid"], quote["ask"]
     mid = (bid + ask) / 2
     limit = round(math.floor(mid / 0.01 + 1e-9) * 0.01, 2)
+    sigma = delta_math.implied_vol(mid, spot, strike, max(dte, 1) / 365)
+    assert sigma is not None and sigma > 0
     return {"role": role, "strike": strike, "bid": bid, "ask": ask, "mid": mid, "limit_price": limit, "premium_per_contract": round(limit * 100, 2),
             "period_yield": round(limit / spot, 6), "annualized_yield": round(limit / spot * 365 / max(dte, 1), 6),
             "upside_to_strike": round(strike / spot - 1, 6),
-            "delta": delta_math.bs_call_delta(spot, strike, max(dte, 1) / 365, model["sigma"]),
-            "delta_basis": model["basis"], "iv": round(model["sigma"], 4), "oi": 10, "volume": 1, "spread_pct": (ask - bid) / mid}
+            "delta": round(delta_math.bs_call_delta(spot, strike, max(dte, 1) / 365, sigma), 3),
+            "delta_basis": "QUOTE_IMPLIED", "iv": round(sigma, 4), "oi": 10, "volume": 1, "spread_pct": (ask - bid) / mid}
 
 
 def tier_cycle(*, dte=2, expiry="2026-10-09", asof="2026-10-07", week="CURRENT", middle=True, **override):
     rows = synthetic_chain(dte)
-    model, reason = delta_math.build_delta_model(rows, [], 100.0, dte, None)
-    assert model is not None, reason
+    # Synthetic quotes are independently inverted per leg; legacy common-sigma
+    # dictionaries are intentionally rejected at the producer/consumer boundary.
+    model = "E1|Q,0,-|-,0,-"
     by_strike = {row["strike"]: row for row in rows}
     cycle = {"ticker": "TSM", "strategy": "COVERED_CALL", "expiry": expiry, "dte": dte, "spot": 100.0, "currency": "USD", "multiplier": 100,
              "quote_basis": "delayed", "timestamp": "2026-10-07T14:00:00Z", "source": "Yahoo Finance (unofficial, delayed)",
