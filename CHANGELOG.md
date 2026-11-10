@@ -12,12 +12,13 @@ Changes here describe source history, not installed, downloadable or Production 
 - **Documents:** research and operational guidance rewritten and indexed, with status/acceptance boundaries separated from current deployment.
 
 This entry describes offline source integration only: **NOT released, installed, deployed, pushed or Production-approved**. Final integrated review, manifest/catalog alignment, release assets, and current-session operator authorization remain outstanding.
-## Unreleased — 2026-11-10 documentation candidate
+
+### Documentation changes included in v3.4.0
 
 - Current agent routing, independent review and safety boundaries clarified in source instructions and separately proposed installed control-plane files.
 - Owner decisions since November 8 audited; Stage 1D, R2B ranking cadence/freshness, screener calibration and remaining release work made explicit.
 - Existing safety and research contracts linked to immutable evidence; workspace minimization is a post-release plan, not a deletion.
-- Documentation changes only. No Worker, KV, broker, scheduled task, installed application, release asset or Production mutation.
+- This documentation subset makes no Worker, KV, broker, scheduled task, installed application, release asset or Production mutation.
 
 ## v3.3.0 — historical source release
 
