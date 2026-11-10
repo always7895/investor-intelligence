@@ -15,12 +15,19 @@ import { admitPublicOption, OptionRightsNotAdmittedError } from "./public-option
 import {
   validHistoricalVolatility, type HistoricalVolatility,
 } from "./historical-volatility";
-import type { DeltaModel } from "./option-delta-model";
 import { isSideCycleDeltaModel, validSideCycleDeltaModel, parseSideDeltaModel, sideModelLegConsistent,
   type SideCycleDeltaModel } from "./option-delta-side-model";
 import {
   LINE_THEME as T, accentHeading, altSummary, chip, detailsButton, footerStyle, menuAction, productHeader, uiBox, uiText,
 } from "./line-theme";
+
+/** Legacy input shape retained for compatibility/refusal fixtures, not model admission. */
+export interface DeltaModel {
+  basis: "QUOTE_IMPLIED" | "HISTORICAL_VOL";
+  sigma: number;
+  iv_bid: number;
+  iv_ask: number;
+}
 
 export interface CoveredCallSuggestion {
   role: "HIGH_STRIKE" | "MIDDLE" | "BALANCED"; strike: number; bid: number; ask: number | null; mid: number | null; limit_price: number;

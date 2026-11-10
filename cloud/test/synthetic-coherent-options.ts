@@ -1,5 +1,4 @@
-import type { CoveredCallCycle, CoveredCallSuggestion, StrategyLeg } from "../src/v213/covered-call";
-import type { DeltaModel } from "../src/v213/option-delta-model";
+import type { CoveredCallCycle, CoveredCallSuggestion, StrategyLeg, DeltaModel } from "../src/v213/covered-call";
 
 // Explicitly synthetic test data, never a replay/source repair. Independent analytic BS
 // prices use 4% and calendar days. Simpson integration avoids calling production math.

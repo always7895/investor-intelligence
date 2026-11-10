@@ -1,7 +1,7 @@
 // Synthetic offline metadata; not a market capture or admission override.
 import { describe, expect, it } from "vitest";
 import {
-  historicalDeltaBasisZh, validHistoricalVolatility, type HistoricalVolatility,
+  validHistoricalVolatility, type HistoricalVolatility,
 } from "../src/v213/historical-volatility";
 
 const CAPTURE = "2026-11-09";
@@ -19,21 +19,10 @@ function accepts(value: unknown, capture = CAPTURE): boolean {
 }
 
 describe("source-bound HV20/HV60 metadata", () => {
-  it("accepts both windows from 61 closes and discloses the applied model", () => {
+  it("accepts source-bound values for both windows from 61 closes", () => {
     const value = evidence();
     expect(accepts(value)).toBe(true);
-    const label = historicalDeltaBasisZh(value, 0.4);
-    expect(label).toContain("Delta 以標的歷史波動率估算");
-    expect(label).toMatch(/20\s*(?:個)?交易日/);
-    expect(label).toMatch(/60\s*(?:個)?交易日/);
-    expect(label).toMatch(/HV20\s*42(?:\.0+)?%/);
-    expect(label).toMatch(/HV60\s*38(?:\.0+)?%/);
-    expect(label).toMatch(/最終套用波動率\s*40(?:\.0+)?%/);
-    expect(label).toContain(value.asof_date);
-    expect(label).toContain("最後收盤日");
-    expect(label).toContain("模型估算");
-    expect(label).toContain("非報價中價反推");
-    expect(label).toContain("買賣報價隱含波動率區間約束");
+
   });
 
   it("retains true zero variance instead of treating it as missing history", () => {

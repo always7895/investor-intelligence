@@ -75,7 +75,3 @@ export function validHistoricalVolatility(
     return false;
   }
 }
-
-export function historicalDeltaBasisZh(value: HistoricalVolatility, sigma: number): string {
-  return `Delta 以標的歷史波動率估算（20 個交易日 HV20 ${(value.hv20 * 100).toFixed(2)}%；60 個交易日 HV60 ${(value.hv60 * 100).toFixed(2)}%；最終套用波動率 ${(sigma * 100).toFixed(2)}%；最後收盤日 ${value.asof_date}）；模型估算，非報價中價反推，最終波動率受買賣報價隱含波動率區間約束`;
-}
