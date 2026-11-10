@@ -5,6 +5,7 @@ above each row cites the code line it was designed from. Synthetic values only."
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 import unittest
 from pathlib import Path
@@ -302,7 +303,21 @@ class SyRows(KvTestCase):
         self.assertEqual(built.exit, 0)
         objects = json.loads((built.run_dir / "objects.json").read_text(encoding="utf-8"))
         ptr_text = (built.run_dir / "pointer.raw.json").read_text(encoding="utf-8").strip()  # SY 213 strips
-        r = run_sy(SY, self.kv, built.run_dir, self.ledger, {})
+        # A genuine insufficient golden seal may bootstrap only from verified
+        # absence, not this test class's invalid OLD_POINTER placeholder.
+        self.kv.store.pop(POINTER_KEY)
+        original = self.kv.fake_run
+
+        def explicit_absence(*args, **kwargs):
+            result = original(*args, **kwargs)
+            argv = args[0]
+            if "get" in argv and argv[argv.index("get") + 1] == POINTER_KEY and result.returncode:
+                return subprocess.CompletedProcess(argv, 1, "",
+                    "Failed to fetch https://synthetic.invalid/value - 404: missing")
+            return result
+
+        with mock.patch.object(self.kv, "fake_run", side_effect=explicit_absence):
+            r = run_sy(SY, self.kv, built.run_dir, self.ledger, {}, seam="B")
         objects_ok = all(key in self.kv.store and sha(self.kv.store[key].decode("utf-8")) == sha(body)
                          for key, body in objects.items())
         pointer_ok = self.kv.store.get(POINTER_KEY) == ptr_text.encode("utf-8")

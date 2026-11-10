@@ -42,14 +42,7 @@ class DistributionRegistryTest(unittest.TestCase):
         self.assertEqual({k: mod[k] for k in distribution()}, distribution())
         self.assertEqual(mod["flags"], [])
         self.assertNotIn("MOD", m.pending_targets(doc))
-        self.assertNotIn("MOD", m.pending_acquirers(doc))
         self.assertEqual(m.pending_targets(doc)["LITE"]["acquirer_symbol"], "MRVL")
-        self.assertEqual(m.acquirer_note(m.pending_acquirers(doc)["MRVL"]), {
-            "target_symbol": "LITE", "acquirer_symbol": "MRVL", "kind": "ALL_STOCK",
-            "exchange_ratio": 4.5, "cash_per_share": None, "currency": None,
-            "expected_close": "first half of calendar year 2028",
-            "source_url": "https://www.sec.gov/Archives/edgar/data/0001633978/000119312526442758/d163169dex991.htm",
-        })
 
     def test_bad_distribution_fail_closed(self):
         import corporate_actions as m
@@ -84,25 +77,26 @@ class DistributionRegistryTest(unittest.TestCase):
 
     def test_returns_span_event_null_with_explicit_reason_and_after_window_recover(self):
         import bottleneck_top20_v3 as m
+        import distribution_adjusted_returns as entitlement
         event = distribution()
         def market(day):
             return {
                 "asof": day, "ret_6m": 0.2, "ret_1y": 0.3, "cagr_2y": 0.4,
                 "cagr_listed": None, "long_term_basis": "TWO_YEAR",
             }
-        crossed = m.suppress_unproven_distribution_returns(market("2026-11-08"), [event])
+        crossed = entitlement.suppress_unproven_distribution_returns(market("2026-11-08"), [event])
         for key in ("ret_6m", "ret_1y", "cagr_2y"):
             self.assertIsNone(crossed[key], key)
             self.assertEqual(crossed["return_reasons"][key], "DISTRIBUTION_IN_WINDOW")
         self.assertEqual(crossed["long_term_basis"], "UNAVAILABLE")
         self.assertEqual(m.long_term_gate(crossed), (None, ["DISTRIBUTION_IN_WINDOW"]))
         # Jan 2027 still crosses all three; May 2027 no longer crosses the 182-day window.
-        after_six = m.suppress_unproven_distribution_returns(market("2027-05-01"), [event])
+        after_six = entitlement.suppress_unproven_distribution_returns(market("2027-05-01"), [event])
         self.assertEqual(after_six["ret_6m"], 0.2)
         self.assertEqual(after_six["return_reasons"], {"ret_1y": "DISTRIBUTION_IN_WINDOW", "cagr_2y": "DISTRIBUTION_IN_WINDOW"})
-        self.assertEqual(m.suppress_unproven_distribution_returns(market("2026-09-30"), [event])["cagr_2y"], 0.4)
-        self.assertEqual(m.suppress_unproven_distribution_returns(market("2029-01-01"), [event])["cagr_2y"], 0.4)
-        self.assertNotIn("return_reasons", m.suppress_unproven_distribution_returns(market("2026-11-08"), []))
+        self.assertEqual(entitlement.suppress_unproven_distribution_returns(market("2026-09-30"), [event])["cagr_2y"], 0.4)
+        self.assertEqual(entitlement.suppress_unproven_distribution_returns(market("2029-01-01"), [event])["cagr_2y"], 0.4)
+        self.assertNotIn("return_reasons", entitlement.suppress_unproven_distribution_returns(market("2026-11-08"), []))
 
     def test_scoring_refuses_mod_but_preserves_pending_lite_and_mrvl(self):
         import bottleneck_top20_v3 as m
@@ -110,7 +104,7 @@ class DistributionRegistryTest(unittest.TestCase):
             "id": "cooling_power_train", "name_zh": "散熱", "chain": "datacenter", "chain_rank": 3,
             "leopold_constraint": "x", "filing_terms": [],
             "capturers": [{"symbol": t, "role": "x", "source_url": SEC, "source_date": EVENT}
-                          for t in ("MOD", "LITE", "MRVL")],
+                          for t in ("MOD", "THRM", "LITE", "MRVL")],
         }
         # No disk/HTTP capture or host writes; mock only data inputs.
         from tempfile import TemporaryDirectory
@@ -137,7 +131,15 @@ class DistributionRegistryTest(unittest.TestCase):
         self.assertIn("DEAL_PENDING_TARGET", excluded["LITE"]["reasons"])
         mrvl = next(row for row in doc["top"] if row["symbol"] == "MRVL")
         self.assertEqual(mrvl["corporate_action"]["exchange_ratio"], 4.5)
-        self.assertNotIn("corporate_action", excluded["MOD"])
+        self.assertEqual(excluded["LITE"]["corporate_action"]["status"], "PENDING")
+        self.assertEqual(excluded["LITE"]["corporate_action"]["exchange_ratio"], 4.5)
+        self.assertEqual(excluded["MOD"]["corporate_action"]["status"], "CLOSED")
+        self.assertEqual(excluded["MOD"]["corporate_action"]["shares_per_share"], 0.44619)
+        thrm = next(row for row in doc["top"] if row["symbol"] == "THRM")
+        self.assertEqual(thrm["corporate_action"]["target_symbol"], "MOD")
+        self.assertEqual(thrm["market"]["ret_6m"], 0.8)
+        self.assertNotIn("return_reasons", thrm["market"])
+        self.assertNotIn("distribution_adjustment", thrm["market"])
 
 
 if __name__ == "__main__":

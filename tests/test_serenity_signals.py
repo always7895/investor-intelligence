@@ -114,7 +114,8 @@ class FixtureStanceTests(unittest.TestCase):
         self.assertEqual(self.rows["THRD"]["stance"], "MENTIONED")
 
     def test_schema_two_keeps_schema_one_keys(self):
-        self.assertEqual(self.document["schema_version"], 3)
+        self.assertEqual(self.document["schema_version"], 4)
+        self.assertEqual(self.document["provenance"]["source_verification"], "ARCHIVE_ONLY")
         for row in self.rows.values():
             self.assertLessEqual(REQUIRED_V1_KEYS, set(row))
             self.assertIn(row["stance"], {"BULLISH", "BEARISH", "MENTIONED"})
@@ -259,6 +260,96 @@ class MirrorTests(unittest.TestCase):
         self.assertEqual(self.mirror(14 * 24 + 1)["mirror_status"], "DEAD")
         self.assertEqual(self.mirror(5)["mirror_lag_hours"], 5.0)
 
+    def test_unknown_naive_and_future_dates_never_refresh_the_source_clock(self):
+        for stamp in ("not-a-date", "2026-10-18", "2026-10-18T00:00:01Z"):
+            with self.subTest(stamp=stamp):
+                post = make_post(5001, "I bought $XXXX", 0, createdAtISO=stamp)
+                rows, doc = build([post])
+                self.assertEqual(rows, {})
+                self.assertNotEqual(doc["source"]["mirror_status"], "FRESH")
+                self.assertIsNone(doc["source"]["latest_post_at"])
+        old = make_post(5002, "I bought $XXXX", 20)
+        future = make_post(5003, "I bought $YYYY", -3)
+        _, doc = build([old, future])
+        self.assertEqual(doc["source"]["latest_post_at"], old["createdAtISO"])
+        self.assertEqual(doc["source"]["mirror_status"], "DEAD")
+
+    def test_unknown_archive_retrieval_is_not_a_fresh_mirror(self):
+        for stamp in (None, "not-a-date", "2026-10-19T00:00:00Z"):
+            source = archive([make_post(5010, "I bought $XXXX", 0)])
+            source["retrieved_at"] = stamp
+            doc = serenity.build_signals(source, MAPPING, US, NOW)
+            self.assertEqual(doc["source"]["retrieval_status"], "UNKNOWN")
+            self.assertEqual(doc["source"]["mirror_status"], "UNKNOWN")
+
+
+class SourceProvenanceTests(unittest.TestCase):
+    def test_original_reply_quote_and_repost_are_separate_source_kinds(self):
+        rows, doc = build([make_post(5101, "I bought $XXXX", 5),
+                           make_post(5102, "I added $XXXX", 4, inReplyToStatusId="5101"),
+                           make_post(5103, "I added $XXXX", 3, isQuote=True),
+                           make_post(5104, "I bought $XXXX", 2, isRepost=True)])
+        row = rows["XXXX"]
+        self.assertEqual(row["mentions"], 3)
+        self.assertEqual(row["post_kinds"], {"ORIGINAL": 1, "REPLY": 1, "QUOTE": 1, "REPOST": 0})
+        self.assertEqual(row["reply_mentions"], 1)
+        self.assertEqual(row["latest_source_kind"], "QUOTE")
+        self.assertEqual(doc["provenance"]["reposts_skipped"], 1)
+        self.assertEqual({item["source_kind"] for item in doc["post_types"]}, {"ORIGINAL", "REPLY", "QUOTE"})
+        self.assertTrue(all(item["mirror_status"] == "MIRROR_ONLY" for item in doc["post_types"]))
+
+    def test_mirrors_dedupe_weight_and_chronology_without_independent_evidence(self):
+        original = make_post(5201, "I bought $XXXX", 3)
+        mirror = {**original, "id": "5202", "sourceUrl": "https://mirror.example/status/5202",
+                  "originalPostId": "5201"}
+        copied = {**original, "id": "5203", "sourceUrl": "https://mirror.example/status/5203"}
+        baseline, _ = build([original])
+        rows, doc = build([mirror, original, copied, original])
+        self.assertEqual(rows["XXXX"]["intensity"], baseline["XXXX"]["intensity"])
+        self.assertEqual(rows["XXXX"]["mentions"], 1)
+        self.assertEqual(rows["XXXX"]["independent_source_count"], 1)
+        self.assertEqual(doc["source"]["independent_source_count"], 1)
+        self.assertEqual(len(doc["post_types"]), 1)
+        self.assertEqual(doc["post_types"][0]["post_type"], "NEW_THESIS")
+        self.assertEqual(doc["provenance"]["duplicate_posts_skipped"], 3)
+        self.assertEqual(rows["XXXX"]["source_freshness"], "FRESH")
+        self.assertEqual(rows["XXXX"]["mirror_status"], "MIRROR_ONLY")
+        self.assertEqual(len(rows["XXXX"]["latest_content_sha256"]), 64)
+
+    def test_conflicting_mirror_content_fails_closed_and_input_order_does_not_choose_truth(self):
+        original = make_post(5301, "I bought $XXXX", 3)
+        conflict = {**original, "text": "I sold $XXXX"}
+        for posts in ([original, conflict], [conflict, original]):
+            rows, doc = build(posts)
+            self.assertEqual(rows, {})
+            self.assertEqual(doc["post_types"], [])
+            self.assertEqual(doc["provenance"]["conflicting_source_posts_skipped"], 2)
+
+    def test_distinct_source_dates_are_not_blanket_text_deduplicated(self):
+        rows, doc = build([make_post(5401, "I bought $XXXX", 8), make_post(5402, "I bought $XXXX", 3)])
+        self.assertEqual(rows["XXXX"]["mentions"], 2)
+        self.assertEqual([item["post_type"] for item in doc["post_types"]], ["NEW_THESIS", "REAFFIRMATION"])
+
+    def test_source_input_hash_tracks_sources_not_clocks_decay_or_mirror_duplicates(self):
+        original = make_post(5501, "I bought $XXXX", 3)
+        rows, first = build([original])
+        later_rows, later = build([original], now=NOW + timedelta(hours=1))
+        self.assertNotEqual(rows["XXXX"]["intensity"], later_rows["XXXX"]["intensity"])
+        self.assertEqual(serenity.source_input_sha256(first), serenity.source_input_sha256(later))
+        self.assertEqual(serenity.source_input_sha256(rows["XXXX"]), serenity.source_input_sha256(later_rows["XXXX"]))
+        _, mirrors = build([original, original])
+        self.assertEqual(serenity.source_input_sha256(first), serenity.source_input_sha256(mirrors))
+        changed, changed_doc = build([{**original, "text": "I sold $XXXX"}])
+        self.assertNotEqual(serenity.source_input_sha256(first), serenity.source_input_sha256(changed_doc))
+        self.assertNotEqual(serenity.source_input_sha256(rows["XXXX"]), serenity.source_input_sha256(changed["XXXX"]))
+        legacy = {"schema_version": 3, "signals": [{"symbol": "XXXX", "latest_at": original["createdAtISO"]}],
+                  "other_consumed_input": {"mentions": 1}}
+        changed_legacy = {**legacy, "other_consumed_input": {"mentions": 2}}
+        self.assertNotEqual(serenity.source_input_sha256(legacy), serenity.source_input_sha256(changed_legacy))
+        malformed = {**rows["XXXX"], "source_posts": [{"post_id": "5501"}]}
+        with self.assertRaises(ValueError):
+            serenity.source_input_sha256(malformed)
+
 
 class OembedTests(unittest.TestCase):
     def posts(self):
@@ -320,6 +411,14 @@ class OembedTests(unittest.TestCase):
         rows = {row["symbol"]: row for row in document["signals"]}
         self.assertEqual(rows["XXXX"]["mentions"], 1)  # 12 stays dropped without a request
         self.assertEqual(cache["13"]["checked_at"], serenity.iso(NOW))
+
+    def test_future_or_unparseable_ok_cache_does_not_skip_verification(self):
+        for stamp in ("2026-10-19T00:00:00Z", "invalid", "2026-10-18"):
+            calls = []
+            cache = {"11": {"status": "OK", "checked_at": stamp}}
+            checker = serenity.OembedChecker(lambda url, timeout: calls.append(url) or 200, cache, NOW)
+            self.assertEqual(checker.status("https://x.com/a/status/11"), "OK")
+            self.assertEqual(len(calls), 1)
 
     def test_oembed_url_and_status_mapping(self):
         seen = {}

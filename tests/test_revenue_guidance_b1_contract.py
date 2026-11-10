@@ -2069,6 +2069,9 @@ class HostAcquisitionTests(FakeLeaseCase):
         layers = (ROOT / "config" / "bottleneck-layers-v3.json").read_bytes()
         files = {"config/" + relative: b"{}" for relative in host.CONFIG_FILES.values()}
         files["config/" + host.CONFIG_FILES["layers"]] = layers
+        files["config/" + host.CONFIG_FILES["corporate_actions"]] = encode({"schema_version": 1, "entries": []})
+        files["config/" + host.CONFIG_FILES["open_candidates"]] = b"[]"
+        files["config/" + host.CONFIG_FILES["reviewed_events"]] = b"[]"
         origin = FakeOrigin(public={host.PUBLIC_FILES["tickers"]: encode({"fields": ["ticker", "cik"], "data": []})},
                             files=files)
         seen, real = [], host._Capture._acquire
@@ -2414,6 +2417,9 @@ class CompletePlanTests(FakeLeaseCase):
         layers = (ROOT / "config" / "bottleneck-layers-v3.json").read_bytes()
         files = {"config/" + relative: b"{}" for relative in host.CONFIG_FILES.values()}
         files["config/" + host.CONFIG_FILES["layers"]] = layers
+        files["config/" + host.CONFIG_FILES["corporate_actions"]] = encode({"schema_version": 1, "entries": []})
+        files["config/" + host.CONFIG_FILES["open_candidates"]] = b"[]"
+        files["config/" + host.CONFIG_FILES["reviewed_events"]] = b"[]"
         return FakeOrigin(public={host.PUBLIC_FILES["tickers"]: encode({"fields": ["ticker", "cik"], "data": []})}, files=files)
 
     def finish(self, feed_text, limit=8):

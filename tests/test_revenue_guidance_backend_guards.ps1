@@ -173,6 +173,53 @@ try {
     Assert-NotAttempted $g.Result 'NOT_ATTEMPTED_OWNER_RETAINED' 'row4 sixteen retained owners'
     Assert-Equal (Get-OwnerState).Count 16 'row4 owner list unchanged by the 16-owner guard'
     Assert-NoObserverType 'after the owner rows'
+
+    Write-Output 'ROW 5: strict historical suppression is exit zero without a machine witness or export'
+    & $mod {
+        function script:_GuidanceSend {
+            param($C, $Op, $Payload)
+            $script:SuppressionCalls.Add($Op)
+            if ($Op -cne 'RankAndComplete') { throw 'SYNTHETIC_UNEXPECTED_EXPORT' }
+            return $script:SuppressionReply
+        }
+        function script:_GuidanceRetain { param($C) $C.Uncertain = $true }
+    }
+    $baseReply = @{ Completed = $false; Revision = ('gir1:' + ('a' * 64))
+        PublicationSuppressed = $true; ServingLastGood = $true; Reason = 'NO_CHANGE' }
+    foreach ($variant in @('valid', 'truthy', 'missing', 'wrong-reason', 'false-retention', 'completed')) {
+        $reply = $baseReply.Clone()
+        switch ($variant) {
+            'truthy' { $reply.PublicationSuppressed = 'true' }
+            'missing' { $reply.Remove('ServingLastGood') }
+            'wrong-reason' { $reply.Reason = 'APPROVED' }
+            'false-retention' { $reply.ServingLastGood = $false }
+            'completed' { $reply.Completed = $true }
+        }
+        $observed = & $mod {
+            param($Reply)
+            $script:SuppressionReply = $Reply
+            $script:SuppressionCalls = New-Object System.Collections.Generic.List[string]
+            $context = @{ Closed = $false; MachineEnabled = $true; LastRankingRevision = $null; Uncertain = $false }
+            $result = $null
+            $threw = $false
+            try { $result = _GuidanceLeaseOperation $context 'RankAndComplete' 'Dirty' $Reply.Revision }
+            catch { $threw = $true }
+            [pscustomobject]@{ Threw = $threw; Result = $result; Retained = $context.Uncertain
+                LastRankingRevision = $context.LastRankingRevision; Calls = ($script:SuppressionCalls -join ',') }
+        } $reply
+        Assert-Equal $observed.Calls 'RankAndComplete' 'row5 no ExportPublicBundle or ACK'
+        Assert-True ($null -eq $observed.LastRankingRevision) 'row5 no new live revision'
+        if ($variant -ceq 'valid') {
+            Assert-True (-not $observed.Threw -and -not $observed.Retained) 'row5 valid suppression settled'
+            Assert-Equal $observed.Result.ExitCode 0 'row5 serving success'
+            Assert-True ($observed.Result.Completed -is [bool] -and -not $observed.Result.Completed) 'row5 no fresh completion'
+            Assert-True ($observed.Result.PublicationSuppressed -is [bool] -and $observed.Result.PublicationSuppressed) 'row5 strict suppression flag'
+            Assert-True ($observed.Result.ServingLastGood -is [bool] -and $observed.Result.ServingLastGood) 'row5 historical serving only'
+        } else {
+            Assert-True ($observed.Threw -and $observed.Retained) 'row5 malformed response retained, not accepted'
+        }
+    }
+    Assert-NoObserverType 'after the in-memory rank response cases'
 }
 finally {
     # Restore the module-scope state, then drop the module so nothing leaks into other tests.

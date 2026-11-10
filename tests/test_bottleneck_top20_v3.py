@@ -3,12 +3,14 @@ capture and size scoring, Serenity lead parsing and stance, Leopold issuer match
 Synthetic values only; no network."""
 from __future__ import annotations
 
+from contextlib import contextmanager
 import json
 import sys
 import tempfile
 import unittest
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -18,6 +20,23 @@ import listing_lineage as lineage  # noqa: E402
 import leopold_positions as leopold  # noqa: E402
 import publish_sealed_snapshot as publisher  # noqa: E402
 import serenity_signals as serenity  # noqa: E402
+
+
+HISTORICAL_ACTION_BYTES = b'{"schema_version":1,"entries":[]}'
+
+
+@contextmanager
+def historical_actions():
+    """Install synthetic as-of operands, never backdate the current public action registry.
+
+    Ordinary ranking/publisher fixtures still exercise the real file loader and
+    chronology validator; the synthetic universe has no corporate actions.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "corporate-actions-v1.json"
+        path.write_bytes(HISTORICAL_ACTION_BYTES)
+        with patch.object(engine.corporate_actions, "DEFAULT_CONFIG", path):
+            yield path
 
 
 def fixture_names_for(rows):
@@ -480,7 +499,7 @@ class LeadMathV16Tests(unittest.TestCase):
         self.assertEqual(engine.serenity_mirror_factor(at(14 * 24), self.NOW), 0.5)
         self.assertEqual(engine.serenity_mirror_factor(at(14 * 24 + 1), self.NOW), 0.0)
         for source in (None, {}, {"latest_post_at": None}, {"latest_post_at": "garbage"}):
-            self.assertEqual(engine.serenity_mirror_factor(source, self.NOW), 1.0)
+            self.assertEqual(engine.serenity_mirror_factor(source, self.NOW), 0.0)
 
     def test_layer_weight_keeps_the_raw_sum_and_adds_the_effective_sum(self):
         rows = [{"leopold": {"long_weight": 0.2, "currency_factor": 0.25}}, {"leopold": {"long_weight": 0.1}}, {"leopold": None}]
@@ -560,6 +579,7 @@ class SealedFormTests(unittest.TestCase):
         saved_registry = publisher.order_claims.REGISTRY_PATH
         publisher.order_claims.REGISTRY_PATH = registry
         self.addCleanup(setattr, publisher.order_claims, "REGISTRY_PATH", saved_registry)
+        self.enterContext(historical_actions())
 
     def test_compact_sealed_form_and_age_bound(self):
         now = datetime.now(timezone.utc).replace(microsecond=0)
@@ -1402,7 +1422,7 @@ class OfficialPreviousQuarterTests(unittest.TestCase):
                                  cik_index=cik_index, taiwan_monthly_revenue=lambda members: {},
                                  cision_interim_revenue=lambda members, now: {}, korea_ir_revenue=lambda *args: None,
                                  nasdaq_consensus=lambda *args: None, usd_rate=lambda currency, cache: 1 / 30), \
-                mock.patch.object(engine.listing_lineage, "load", load_lineages):
+                mock.patch.object(engine.listing_lineage, "load", load_lineages), historical_actions():
             document = engine.build(None, self.NOW, with_news=False)
         scores = {row["symbol"]: row["parts"] for row in document["all_scores"]}
         return document, scores
@@ -1435,7 +1455,8 @@ class OfficialPreviousQuarterTests(unittest.TestCase):
         from unittest import mock
         with tempfile.TemporaryDirectory() as tmp, \
                 mock.patch.object(publisher.build_zh_names, "names_for", fixture_names_for({})), \
-                mock.patch.object(publisher.company_deep_report, "load_order_scenarios", lambda *args, **kwargs: {}):
+                mock.patch.object(publisher.company_deep_report, "load_order_scenarios", lambda *args, **kwargs: {}), \
+                historical_actions():
             path = Path(tmp) / "v3.json"
             path.write_text(json.dumps(doc), encoding="utf-8")
             body = publisher.lazy_bottleneck_v3_body(path, self.NOW)

@@ -31,6 +31,7 @@ import revenue_guidance_overlay as overlay  # noqa: E402
 import revenue_guidance_release_check as checker  # noqa: E402
 from tests import test_revenue_guidance_autoupdate as a1  # noqa: E402
 from tests.test_order_forecast import recognition  # noqa: E402
+from tests.test_bottleneck_top20_v3 import historical_actions  # noqa: E402
 
 STAGES: dict[str, Path] = {}
 _TMP = None
@@ -139,7 +140,8 @@ class RealChainTests(Base):
         with tempfile.TemporaryDirectory() as tmp, \
                 mock.patch.object(publisher.revenue_consensus_quarterly, "select_for_cutoff", lambda *a, **k: {}), \
                 mock.patch.object(publisher.company_deep_report, "load_order_scenarios", lambda *a, **k: {}), \
-                mock.patch.object(publisher.company_deep_report, "load_reports", lambda *a, **k: {}):
+                mock.patch.object(publisher.company_deep_report, "load_reports", lambda *a, **k: {}), \
+                historical_actions():
             path = Path(tmp) / "v3.json"
             path.write_text(json.dumps(doc), encoding="utf-8")
             body = publisher.lazy_bottleneck_v3_body(path, moment(cutoff), effective_inputs=snapshot)

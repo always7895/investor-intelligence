@@ -53,7 +53,7 @@
 #   DISABLED                         - auto flag false; the daily caller ran the legacy pair (module unused).
 #   BLOCKED_PREREQUISITE_UNAVAILABLE - provider unavailable; fixed reason token; nonzero; no automatic
 #                                      checker/updater/ranking or state fallback.
-#   NO_CHANGE                       - successful unchanged/clean refresh; ordinary ranking 3h ran once and
+#   NO_CHANGE                       - successful unchanged/clean refresh; ordinary hourly ranking ran once and
 #                                      succeeded. No forced rebuild is claimed.
 #   CHANGED_REBUILD_PENDING         - pending revision (new or retained) with rebuild flag false, or a
 #                                      completed rebuild whose acknowledgement reported incomplete/still
@@ -140,6 +140,23 @@ function Get-GuidanceStateMember {
     return $State.$Member
 }
 
+# A retained historical result is success at serving, not rebuild completion.
+# Require explicit booleans and the bounded policy reason; truthy/missing fields
+# cannot authorize a skip or acknowledgement.
+function Test-GuidancePublicationSuppressed {
+    param([AllowNull()][object]$Ranked)
+    foreach ($name in @('Completed', 'PublicationSuppressed', 'ServingLastGood', 'Reason', 'ExitCode')) {
+        if (-not (Test-GuidanceStateMember $Ranked $name)) { return $false }
+    }
+    $completed = Get-GuidanceStateMember $Ranked 'Completed'
+    $suppressed = Get-GuidanceStateMember $Ranked 'PublicationSuppressed'
+    $retained = Get-GuidanceStateMember $Ranked 'ServingLastGood'
+    return ($completed -is [bool] -and -not $completed -and
+        $suppressed -is [bool] -and $suppressed -and $retained -is [bool] -and $retained -and
+        (Get-GuidanceStateMember $Ranked 'Reason') -ceq 'NO_CHANGE' -and
+        (Get-GuidanceStateMember $Ranked 'ExitCode') -eq 0)
+}
+
 function Invoke-GuidanceOrchestration {
     [CmdletBinding()]
     param(
@@ -170,11 +187,17 @@ function Invoke-GuidanceOrchestration {
 
     $buildResult = {
         param([string]$Disposition, [string]$Reason, [int]$ExitCode)
-        New-GuidanceOrchestrationResult -Disposition $Disposition -Reason $Reason -ExitCode $ExitCode `
+        $built = New-GuidanceOrchestrationResult -Disposition $Disposition -Reason $Reason -ExitCode $ExitCode `
             -Changed $changed -PendingRevision $pending -AttemptedSteps $steps `
             -ReleaseCheckAttempted $releaseCheckAttempted -UpdateAttempted $updateAttempted `
             -RankingAttempted $rankingAttempted -ForcedRebuildAttempted $forcedRebuildAttempted `
             -RebuildCompleted $rebuildCompleted
+        if ($Disposition -ceq 'PUBLICATION_SUPPRESSED') {
+            $built | Add-Member -NotePropertyName PublicationSuppressed -NotePropertyValue $true
+            $built | Add-Member -NotePropertyName ServingLastGood -NotePropertyValue $true
+            $built | Add-Member -NotePropertyName Completed -NotePropertyValue $false
+        }
+        return $built
     }
 
     try {
@@ -255,13 +278,16 @@ function Invoke-GuidanceOrchestration {
                                     $result = & $buildResult 'FAILED' 'FAILED_AT_FINISH_REFRESH' 1
                                 }
                                 else {
-                                    # Successful unchanged/clean refresh: run the ordinary 3h ranking once;
+                                    # Successful unchanged/clean refresh: run the ordinary hourly ranking once;
                                     # NO_CHANGE if that step succeeds.
                                     $stage = 'ranking'
                                     $rankingAttempted = $true
                                     $steps += 'ranking'
                                     $ranked = if ($null -ne $RunGuidanceRanking) { & $RunGuidanceRanking 'Cadence' $null } else { $null }
-                                    if ($null -eq $ranked -or $ranked.ExitCode -ne 0 -or $ranked.Completed -isnot [bool] -or $ranked.Completed -ne $true) {
+                                    if (Test-GuidancePublicationSuppressed $ranked) {
+                                        $result = & $buildResult 'PUBLICATION_SUPPRESSED' 'RETAINED_LAST_GOOD' 0
+                                    }
+                                    elseif ($null -eq $ranked -or $ranked.ExitCode -ne 0 -or $ranked.Completed -isnot [bool] -or $ranked.Completed -ne $true) {
                                         $result = & $buildResult 'FAILED' 'FAILED_AT_RANKING' 1
                                     }
                                     else {
@@ -280,7 +306,12 @@ function Invoke-GuidanceOrchestration {
                                 $forcedRebuildAttempted = $true
                                 $steps += 'forced_rebuild'
                                 $ranked = if ($null -ne $RunGuidanceRanking) { & $RunGuidanceRanking 'Dirty' $pending } else { $null }
-                                if ($null -eq $ranked -or $ranked.ExitCode -ne 0 -or $ranked.Completed -isnot [bool] -or
+                                if ((Test-GuidancePublicationSuppressed $ranked) -and $ranked.Revision -is [string] -and
+                                    [string]::Equals($ranked.Revision,[string]$pending,[StringComparison]::Ordinal)) {
+                                    # Pending input remains genuinely unconsumed. No ACK or fresh completion.
+                                    $result = & $buildResult 'PUBLICATION_SUPPRESSED' 'RETAINED_LAST_GOOD' 0
+                                }
+                                elseif ($null -eq $ranked -or $ranked.ExitCode -ne 0 -or $ranked.Completed -isnot [bool] -or
                                     $ranked.Completed -ne $true -or $ranked.Revision -isnot [string] -or
                                     -not [string]::Equals($ranked.Revision,[string]$pending,[StringComparison]::Ordinal)) {
                                     # Ranking failed: pending work is retained; the rebuild lifecycle is not complete.

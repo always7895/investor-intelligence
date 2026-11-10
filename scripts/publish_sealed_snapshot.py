@@ -389,7 +389,7 @@ def lazy_identity_bodies(path: Path, now: datetime) -> "dict[str, str]":
     try:
         document = json.loads(path.read_bytes().decode("utf-8"))
         generated = datetime.strptime(document["generated_at"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
-        if document.get("schema") != "v213-identity-shard-v2" or now - generated > IDENTITY_MAX_AGE:
+        if document.get("schema") != "v213-identity-shard-v2" or not timedelta(0) <= now - generated <= IDENTITY_MAX_AGE:
             return {}
         bodies = {f"v213:identity:v2:sym:{bucket}": _dumps(shard) for bucket, shard in sorted(document["symbol_shards"].items())}
         bodies.update({f"v213:identity:v2:name:{bucket}": _dumps(shard) for bucket, shard in sorted(document["name_shards"].items())})
@@ -824,6 +824,11 @@ def captured_bottleneck_v3_body(raw: bytes, now: datetime, effective_inputs=None
             if guidance_machine_enabled:
                 raise machine.MachinePublicationBlocked()
             return {}
+        rotation_provenance = doc.get("rotation_provenance")
+        if rotation_provenance is not None:
+            from top20_rotation_provenance import UNVERIFIED_NOTICE_ZH
+            if rotation_provenance != {"status": "UNVERIFIED", "notice_zh": UNVERIFIED_NOTICE_ZH}:
+                raise ValueError("ROTATION_PROVENANCE_INVALID")
         # Apply corporate-action state at the ranking's evidence cutoff, never before its announcement.
         actions = (corporate_actions.load_actions_bytes(operand("corporate_actions").read_bytes(), today=generated.date())
                    if operand else corporate_actions.load_actions(today=generated.date()))
@@ -831,11 +836,18 @@ def captured_bottleneck_v3_body(raw: bytes, now: datetime, effective_inputs=None
                   and entry["announced_on"] <= generated.date().isoformat()]
         pending_targets = {entry["target_symbol"] for entry in active}
         distributions = corporate_actions.completed_distributions(actions, asof=generated.date())
+        # Independent recheck against the SAME frozen entitlement observations.
+        # A ranking's own claimed value/proof cannot authorize a public return.
+        import distribution_adjusted_returns as entitlement
+        from bottleneck_top20_v3 import DISTRIBUTION_EVIDENCE
+        source = (operand("entitlement_evidence") if operand and
+                  "entitlement_evidence" in captured.manifest() else
+                  DISTRIBUTION_EVIDENCE if not operand else None)
+        reviewed_entitlements = entitlement.load_evidence_document(source)
         # Do not seal a cached, pre-distribution ranking with misleading positive historical returns.
         # No Yahoo adjustment proof for the MOD/THRM RMT is available; reject instead of rescoring
         # an already selected Top20 behind the ranking gate.
         if distributions:
-            from bottleneck_top20_v3 import suppress_unproven_distribution_returns
             for ranked in doc["top"]:
                 events = distributions.get(ranked["symbol"], [])
                 if not events:
@@ -845,7 +857,8 @@ def captured_bottleneck_v3_body(raw: bytes, now: datetime, effective_inputs=None
                     if guidance_machine_enabled:
                         raise machine.MachinePublicationBlocked("DISTRIBUTION_MARKET")
                     return {}
-                guarded = suppress_unproven_distribution_returns(market, events)
+                guarded = entitlement.apply_qualified_market(
+                    market, events, reviewed_entitlements.get(ranked["symbol"]))
                 if guarded != market:
                     if guidance_machine_enabled:
                         raise machine.MachinePublicationBlocked("DISTRIBUTION_IN_WINDOW")
@@ -854,7 +867,20 @@ def captured_bottleneck_v3_body(raw: bytes, now: datetime, effective_inputs=None
             if guidance_machine_enabled:
                 raise machine.MachinePublicationBlocked("DEAL_PENDING_TARGET")
             return {}  # do not seal an obsolete pre-deal target ranking into a newer report
-        acquirer_actions = {entry["acquirer_symbol"]: entry for entry in active}
+        action_notes = corporate_actions.public_notes(actions, asof=generated.date())
+        ranked_symbols = {entry["symbol"] for entry in doc["top"]}
+        excluded_actions = [
+            {"symbol": entry["target_symbol"], "reason_zh": "併購待完成，暫不納入排行",
+             "corporate_action": action_notes[entry["target_symbol"]]}
+            for entry in active if entry["target_symbol"] not in ranked_symbols]
+        excluded_symbols = {entry.get("symbol") for entry in doc.get("excluded", [])
+                            if isinstance(entry, dict)}
+        for symbol in sorted(excluded_symbols & distributions.keys() - ranked_symbols):
+            note = action_notes.get(symbol)
+            if note and note["kind"] == "DISTRIBUTION" and note["target_symbol"] == symbol:
+                excluded_actions.append({
+                    "symbol": symbol, "reason_zh": entitlement.UNAVAILABLE_REASON_ZH,
+                    "corporate_action": note})
         pick = lambda row, keys: {key: row.get(key) for key in keys}  # noqa: E731
         top = []
         zh = build_zh_names.names_for([entry["symbol"] for entry in doc["top"]],
@@ -893,6 +919,10 @@ def captured_bottleneck_v3_body(raw: bytes, now: datetime, effective_inputs=None
         checks = _exchange_cross_checks([entry["symbol"] for entry in doc["top"]],
                                         {entry["symbol"]: entry.get("market") or {} for entry in doc["top"]},
                                         operand("prices") if operand else PRICE_SHARDS_PATH)
+        import validated_rule_engine
+        import public_event_research
+        reviewed_events = json.loads((operand("reviewed_events") if operand else
+            ROOT / "config" / "public-reviewed-events-v1.json").read_text(encoding="utf-8"))
         for entry in doc["top"]:
             parts = entry["score_parts"]
             sig, pos = entry.get("serenity"), entry.get("leopold")
@@ -941,10 +971,7 @@ def captured_bottleneck_v3_body(raw: bytes, now: datetime, effective_inputs=None
                 "name_zh_source": zh[entry["symbol"]][1] if entry["symbol"] in zh else None,
                 "layer": entry["layer"], "archetype": entry["archetype"], "score": entry["score"],
                 "role": entry["role"][:200], "role_zh": str(role_zh)[:200] if role_zh else None,
-                **({"corporate_action": corporate_actions.distribution_note(distributions[entry["symbol"]][-1])}
-                   if entry["symbol"] in distributions else
-                   {"corporate_action": corporate_actions.acquirer_note(acquirer_actions[entry["symbol"]])}
-                   if entry["symbol"] in acquirer_actions else {}),
+                **({"corporate_action": action_notes[entry["symbol"]]} if entry["symbol"] in action_notes else {}),
                 "role_source": entry["role_source"], "outlook": _with_order_forecast(
                     entry["symbol"], _sealed_outlook(entry.get("outlook"), generated), (entry.get("outlook") or {}).get("orders"),
                     order_scenarios.get(entry["symbol"]), generated, order_claim_registry,
@@ -960,10 +987,18 @@ def captured_bottleneck_v3_body(raw: bytes, now: datetime, effective_inputs=None
                 # The long-term fields travel validated and consistent (scripts/listing_lineage.py); malformed ones fail closed.
                 "market": {**pick(entry["market"], ("source", "source_url", "asof", "ret_6m", "ret_1y", "history_start", "currency")),
                            **listing_lineage.clean_market_lineage(entry["market"], generated.date()),
+                           **({"distribution_adjustment": dict(entry["market"]["distribution_adjustment"])}
+                              if isinstance(entry["market"].get("distribution_adjustment"), dict) else {}),
                            **({"return_reasons": dict(entry["market"]["return_reasons"])}
                               if isinstance(entry["market"].get("return_reasons"), dict) and entry["market"]["return_reasons"] else {}),
                            **({"cross_check": checks[entry["symbol"]]} if entry["symbol"] in checks else {})},
                 "market_cap_usd": entry.get("market_cap_usd"),
+                **({"latest_event": event} if (event := public_event_research.validate_latest_event(
+                    entry.get("latest_event"), cutoff=generated.date(), symbol=entry["symbol"],
+                    reviewed_events=reviewed_events)) is not None else {}),
+                **({"screen_conditions": validated_rule_engine.display_projection(
+                    validated_rule_engine.evaluate(fund, entry.get("market"), cutoff=generated.date(), symbol=entry["symbol"]))}
+                   if isinstance(doc.get("screener_shadow"), list) else {}),
                 "serenity": None if not sig else pick(sig, ("mentions", "bullish", "bearish", "stance", "latest_at", "latest_url")),
                 "leopold": None if not pos else {"long_weight": pos["long_weight"], "status": pos["status"]},
             })
@@ -979,6 +1014,8 @@ def captured_bottleneck_v3_body(raw: bytes, now: datetime, effective_inputs=None
                   "serenity_source": {"url": serenity.get("url"), "latest_post_at": serenity.get("latest_post_at")} if serenity.get("url") else None,
                   "leopold_filing": pick(filing, ("period", "filed", "url")) if filing.get("url") else None,
                   "top": top, "industries": industries,
+                  **({"excluded_actions": excluded_actions} if excluded_actions else {}),
+                  **({"rotation_provenance": rotation_provenance} if rotation_provenance is not None else {}),
                   **({"market_window": market_window} if market_window is not None else {})}
         body = (machine.compact(sealed, machine.REPORT_BYTES).decode("utf-8") if guidance_machine_enabled else
                 json.dumps(sealed, ensure_ascii=False, separators=(",", ":"), allow_nan=False))
@@ -1304,6 +1341,8 @@ def pointer_text(meta, seal_sha: str) -> str:
     return _dumps(pointer)
 
 
+
+
 def main(argv=None) -> None:
     import argparse
     ap = argparse.ArgumentParser()
@@ -1315,6 +1354,8 @@ def main(argv=None) -> None:
                     help="Carry-forward mode, but seal an INSUFFICIENT Top20 with this reason (replay fallback).")
     ap.add_argument("--snapshot-root", type=Path, default=SNAPSHOT_ROOT,
                     help="Directory for sealed runs (default state/v213-snapshots).")
+    ap.add_argument("--reconcile-confirmed", action="store_true",
+                    help="Read-only remote reconciliation before live product selection when local confirmation is unavailable.")
     ap.add_argument("--identity-shards", nargs="?", const=str(IDENTITY_SHARDS_PATH), default=None, metavar="PATH",
                     help="Seal the global identity shards as lazy objects (no PATH: data/cache/identity_shards_latest.json).")
     ap.add_argument("--market-observations", nargs="?", const=str(MARKET_OBSERVATIONS_PATH), default=None, metavar="PATH",
@@ -1373,12 +1414,31 @@ def main(argv=None) -> None:
         lazy.update(lazy_bottleneck_v3_body(Path(args.bottleneck_v3), LIVE_NOW or datetime.now(timezone.utc)))
     seal_text, seal_sha = build_seal(bodies, meta, lazy)
     pointer = pointer_text(meta, seal_sha)
-    out_dir = args.snapshot_root / meta["run_id"]
+    args.snapshot_root = top20_carry_forward.plain_path(args.snapshot_root)
     prefix = f"snapshot:{meta['run_id']}:"
     objects = {prefix + key: bodies[key] for key in [*OBJECT_KEYS, MACRO_KEY]}
     objects[prefix + SEAL_KEY] = seal_text
     for body in lazy.values():
         objects[LAZY_BLOB_PREFIX + _sha(body)] = body
+    selection = None
+    selected_pointer = json.loads(pointer)
+    if args.live_clock:
+        import sealed_product_policy as products
+        selection = products.prepare_publication(args.snapshot_root, objects, pointer, LIVE_NOW,
+                                                  reconcile=args.reconcile_confirmed)
+        if "retained" in selection:
+            print(json.dumps(selection["retained"], indent=2))
+            return
+        objects, pointer = selection["objects"], selection["pointer"]
+        selected_pointer = json.loads(pointer)
+        selected_parts = products.parts(objects, selected_pointer)
+        lazy = selected_parts["lazy"]
+        selected_report = json.loads(selected_parts["core"]["v213:top20-report:latest"])
+        meta = {**meta, "run_id": selected_pointer["run_id"], "transaction_id": selected_pointer["transaction_id"],
+                "top20": selected_report, "report": selected_report}
+        seal_sha = selected_pointer["seal_sha256"]
+    out_dir = args.snapshot_root / meta["run_id"]
+    out_dir = top20_carry_forward.plain_path(out_dir)
     objects_path = out_dir / "objects.json"
     objects_bytes = _dumps(objects).encode("utf-8")
     pointer_path = out_dir / "pointer.raw.json"
@@ -1404,13 +1464,16 @@ def main(argv=None) -> None:
         "run_id": meta["run_id"],
         "transaction_id": meta["transaction_id"],
         "seal_sha256": seal_sha,
-        "promoted_at": PROMOTED_AT,
-        "public_data_as_of": PUBLISHED_DATA_AS_OF,
+        "promoted_at": selected_pointer["promoted_at"],
+        "public_data_as_of": selected_pointer["public_data_as_of"],
         "ranked": ranked,
         **counts,
         "objects_json": _display_path(objects_path),
         "pointer_raw_json": _display_path(pointer_path),
     }
+    if selection is not None:
+        summary.update({key: selection[key] for key in ("ranking_status", "ranking_reason", "writes_by_product")
+                        if key in selection})
     if lazy:
         summary["lazy_objects"] = len(lazy)
     if carry is not None:

@@ -188,7 +188,13 @@ def rank(facts, module=engine):
                  leopold_constraint="synthetic", filing_terms=[], capturers=[
                      dict(symbol="SYN", role="synthetic", source_url="https://issuer.example/f", source_date="2026-10")])
     market = dict(cagr_2y=0.2, ret_1y=0.3, ret_6m=0.2, price=10, currency="USD", market_cap=1e9)
-    with mock.patch.multiple(module, load_json=lambda p: {"layers": [layer]},
+    # This test supplies a synthetic layer only; the separate reviewed-open-
+    # candidates registry must keep its own list schema (empty for this fixture).
+    def fixture_json(path):
+        if Path(path).name == "reviewed-open-candidates-v1.json":
+            return []
+        return {"layers": [layer]}
+    with mock.patch.multiple(module, load_json=fixture_json,
             SERENITY=Path("missing-batch08b-serenity.json"), LEOPOLD=Path("missing-batch08b-leopold.json"),
             cik_index=lambda captured=None: {"SYN": 1}, companyfacts=lambda *a, **kw: copy.deepcopy(facts),
             yahoo_data=lambda *a, **kw: {"market": market, "name": "Synthetic"},

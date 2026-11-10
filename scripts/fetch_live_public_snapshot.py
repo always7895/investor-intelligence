@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Read-only copy of the Production public sealed snapshot for the deploy gate's reader replay.
 
-Copies `snapshot:current`, the run's seal and every sealed object from the PUBLIC_CACHE namespace as exact
+Copies `snapshot:current`, its global seal and every sealed object from the PUBLIC_CACHE namespace as exact
 bytes (PowerShell 5.1 decodes native output with the console code page and corrupts UTF-8), verifies each
-object against the seal's sha256 and writes `index.json` (KV key -> file). Wrangler 4 KV commands default to
-the local Miniflare store, so every read passes `--remote`. Nothing is written to any KV namespace.
+object against the seal's sha256 AND UTF-8 byte length and writes `index.json` (KV key -> file). Reused eager
+payloads stay under core_run_id; only the fixed pipeline-liveness control stays global. Lazy objects stay
+digest-addressed. Both identities are bound to the pointer-hashed root.
+Wrangler 4 KV commands default to the local Miniflare store, so every read passes `--remote`. Nothing is written to any KV namespace.
 """
 from __future__ import annotations
 
@@ -18,6 +20,8 @@ import time
 from pathlib import Path
 from typing import Callable
 
+from stage_sealed_replay import LIVENESS_KEY, _seal_context, _verified_root  # shared read-only root validation
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 import sync_sealed_snapshot_kv as sync  # noqa: E402  the sync's locked Wrangler CLI (no registry download)
@@ -28,6 +32,13 @@ LAZY_KEY = re.compile(r"^v213:(?:identity:v2:(?:sym:[A-Z0-9_]|name:(?:1[0-5]|[0-
 ATTEMPTS = 3
 RETRY_SECONDS = 5
 Getter = Callable[[str], bytes]
+EAGER_KEYS = frozenset((
+    "v21:top20:latest", "scores:latest", "source_views:latest", "source_plan:latest",
+    "reports:latest", "reports:morning:latest", "reports:evening:latest",
+    "last_successful_pipeline_timestamp", "v212:top20-report:latest", "v213:top20-report:latest",
+    "v213:source-federation:latest", "v213:source-independence:latest", "v213:activation-claim",
+    "v213:macro-industry:latest",
+))
 
 
 def remote_getter() -> Getter:
@@ -49,29 +60,59 @@ def remote_getter() -> Getter:
 
 
 def copy_snapshot(get: Getter, out: Path) -> dict:
-    """Copy pointer, seal and sealed objects; returns run id, object count and seal mismatches."""
-    out.mkdir(parents=True, exist_ok=True)
+    """Copy exact public bytes; return separately verified global and core identities plus any body mismatch."""
+    if out.is_dir() and any(out.iterdir()):
+        raise FileExistsError("snapshot copy directory is not empty")
     pointer = get("snapshot:current")
-    run = str(json.loads(pointer).get("run_id", ""))
-    if not RUN_ID.fullmatch(run):
+    pointer_meta = json.loads(pointer)
+    if not isinstance(pointer_meta, dict):
+        raise ValueError("LIVE_POINTER_INVALID")
+    run = pointer_meta.get("run_id")
+    if not isinstance(run, str) or not RUN_ID.fullmatch(run):
         raise ValueError("LIVE_POINTER_RUN_ID_INVALID")
     seal_key = f"snapshot:{run}:v213:snapshot-seal:v1"
     seal = get(seal_key)
+    if not 0 < len(seal) <= 32_768:
+        raise ValueError("LIVE_SEAL_SIZE_INVALID")
+    manifest = json.loads(seal)
+    if not isinstance(manifest, dict):
+        raise ValueError("LIVE_SEAL_INVALID")
+    _, core = _verified_root(pointer_meta, manifest, seal.decode("utf-8"))
+    definitions = manifest["objects"]
+    if not isinstance(definitions, dict):
+        raise ValueError("LIVE_OBJECT_DEFINITIONS_INVALID")
     files = {"snapshot:current": pointer, seal_key: seal}
     mismatches = []
-    for name, meta in json.loads(seal)["objects"].items():
-        # Lazy sealed objects live once under their content address (cloud/src/v213/snapshot-seal.ts).
-        key = f"blob:v1:{meta.get('sha256')}" if LAZY_KEY.fullmatch(name) else f"snapshot:{run}:{name}"
+    for name, meta in definitions.items():
+        if (name not in EAGER_KEYS and not LAZY_KEY.fullmatch(name)):
+            raise ValueError("LIVE_OBJECT_KEY_INVALID")
+        if (not isinstance(meta, dict) or set(meta) != {"sha256", "utf8_bytes"}
+                or not isinstance(meta["sha256"], str) or not re.fullmatch(r"[0-9a-f]{64}", meta["sha256"])
+                or type(meta["utf8_bytes"]) is not int or not 0 < meta["utf8_bytes"] <= 2_097_152):
+            raise ValueError("LIVE_OBJECT_DIGEST_INVALID")
+        eager_run = run if "core_run_id" in manifest and name == LIVENESS_KEY else core
+        key = f"blob:v1:{meta['sha256']}" if LAZY_KEY.fullmatch(name) else f"snapshot:{eager_run}:{name}"
         body = get(key)
         files[key] = body
-        if hashlib.sha256(body).hexdigest() != meta.get("sha256"):
+        if len(body) != meta["utf8_bytes"] or hashlib.sha256(body).hexdigest() != meta["sha256"]:
             mismatches.append(name)
+    if get("snapshot:current") != pointer:
+        raise ValueError("LIVE_POINTER_MOVED_DURING_COPY")
+    if not mismatches:
+        _seal_context({key: body.decode("utf-8") for key, body in files.items() if key != "snapshot:current"}, pointer_meta)
+        liveness_run = run if "core_run_id" in manifest else core
+        expected_liveness = manifest["generated_at"] if "core_run_id" in manifest else manifest["public_data_as_of"]
+        if files.get(f"snapshot:{liveness_run}:{LIVENESS_KEY}") != expected_liveness.encode("utf-8"):
+            raise ValueError("LIVE_PIPELINE_LIVENESS_INVALID")
+    out.mkdir(parents=True, exist_ok=True)
     index = {}
     for number, (key, body) in enumerate(files.items()):
         (out / f"k{number}.txt").write_bytes(body)
         index[key] = f"k{number}.txt"
     (out / "index.json").write_text(json.dumps(index), encoding="utf-8")
-    return {"run_id": run, "objects": len(files) - 2, "seal_mismatches": mismatches}
+    return {"run_id": run, "core_run_id": core, "seal_sha256": pointer_meta["seal_sha256"],
+            "pipeline_liveness_at": (manifest["generated_at"] if "core_run_id" in manifest else manifest["public_data_as_of"]) if not mismatches else None,
+            "objects": len(files) - 2, "seal_mismatches": mismatches}
 
 
 def main() -> int:
@@ -83,7 +124,7 @@ def main() -> int:
     except sync.CliUnavailable:
         print(json.dumps({"status": "FAIL", "error": "LOCKED_CLI_UNAVAILABLE wrangler"}))
         return 1
-    except (LookupError, ValueError, KeyError, json.JSONDecodeError) as error:
+    except (OSError, LookupError, ValueError, KeyError, json.JSONDecodeError) as error:
         print(json.dumps({"status": "FAIL", "error": str(error)[:120]}))
         return 1
     print(json.dumps({"status": "OK", **result}))

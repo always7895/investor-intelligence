@@ -41,6 +41,14 @@ export function formatGrowthRate(growth: MacroGrowthRate | null): string {
   return `${pct}（${growth.period}｜${typeStr}｜${srcId}發布者：${growth.publisher}｜日期：${growth.date}）`;
 }
 
+/** Only the producer's explicit actual revenue lineage establishes the SEC issuer sample basis. */
+function growthLabel(growth: MacroGrowthRate | null): string {
+  if (growth?.source_id === "sec-xbrl-frames-revenue" && growth.type === "actual" && growth.units === "% YoY") {
+    return "申報企業樣本營收年增";
+  }
+  return growth ? "來源成長率（口徑未確認）" : "成長率（口徑未提供）";
+}
+
 /** "中文名稱 (English name)" -> [Chinese, English]; names without that shape stay whole. */
 function splitName(name: string): [string, string | null] {
   const match = /^(.*?[一-鿿].*?)\s*[（(]([A-Za-z][^（）()]*)[）)]\s*$/.exec(name);
@@ -167,12 +175,12 @@ function industryCardBubble(card: MacroIndustryCard, rt: Rich) {
     ], { ...headerStyle }),
     body: uiBox([
       uiBox([
-        statTile("市場成長率", growthValue, undefined, card.growth?.period),
+        statTile(growthLabel(card.growth), growthValue, undefined, card.growth?.period),
         statTile("資料完整度", `${card.confidence.data_completeness}%`, card.confidence.data_completeness),
         statTile("來源獨立性", `${card.confidence.source_independence}%`, card.confidence.source_independence),
       ], { layout: "horizontal", spacing: "sm" }),
       uiBox([railTitle("當前狀態與 12–36M 展望"), rt(`現況：${card.current_state}`), rt(`展望：${card.outlook_12_36m}`)]),
-      uiBox([railTitle("可查證市場成長率（RATE）"), uiText(growthText, "xxs", card.growth ? T.muted : T.negative)]),
+      uiBox([railTitle(`${growthLabel(card.growth)}（非總市場／TAM）`), uiText(growthText, "xxs", card.growth ? T.muted : T.negative)]),
       divider(),
       uiBox([railTitle("需求驅動與供給瓶頸（Chokepoint）"),
         tagged("需求", card.demand_drivers.join("；"), rt), tagged("瓶頸", card.supply_constraint_chokepoint, rt), tagged("定價", card.pricing, rt)]),
@@ -285,7 +293,7 @@ export function buildMacroTop5OverviewText(overview: MacroTop5Overview): LineOut
         `── ${rk}：${ind.industry_name}（機會分：${ind.opportunity_score}）──`,
         `現況：${ind.current_state}`,
         `12-36M 展望：${ind.outlook_12_36m}`,
-        `市場成長率：${g}`,
+        `${growthLabel(ind.growth)}（非總市場／TAM）：${g}`,
         `需求驅動：${ind.demand_drivers.join("；")}`,
         `供給瓶頸：${ind.supply_constraint_chokepoint}`,
         `定價機制：${ind.pricing}`,
@@ -351,7 +359,7 @@ export function buildMacroIndustryCardText(card: MacroIndustryCard): LineOutboun
     "",
     `當前現況：${validated.current_state}`,
     `12–36M 展望：${validated.outlook_12_36m}`,
-    `市場成長率：${humanizeStatusText(growth)}`,
+    `${growthLabel(validated.growth)}（非總市場／TAM）：${humanizeStatusText(growth)}`,
     `需求驅動：${validated.demand_drivers.join("；")}`,
     `供給瓶頸：${validated.supply_constraint_chokepoint}`,
     `定價能力：${validated.pricing}`,

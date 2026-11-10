@@ -3,6 +3,13 @@
 Only bootstrap's protected -I -S -B entry may dispatch serve(). Std handles are
 invocation-local inherited pipes, never TCP/public named endpoints. Wire intents
 are NOT authority. Real lease/version/snapshot/consumption/witness stay here.
+Cadence reuse requires a same-owner consumption cutoff in the preceding hour.
+
+Publication cadence reads only top20_carry_forward.confirmed_snapshot(root)'s
+ranking through the runner-resolved absolute II_SNAPSHOT_ROOT. Its local receipt
+is written after remote pointer/all-object readback, not B1 model completion.
+Absent, ambiguous or invalid proof means unpublished; no remote client or private
+protocol field is involved. This does not mint a consumption witness or ACK.
 """
 from __future__ import annotations
 
@@ -21,6 +28,7 @@ import ssl
 import sys
 import time
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from urllib.parse import quote, urlsplit
 
 import revenue_guidance_provisioner as provisioner
@@ -40,6 +48,8 @@ PUBLIC_FILES = {
     "deep": "company_deep_reports_latest.json", "prices": "price_shards_latest.json",
     "consensus": "revenue_consensus_quarterly.json", "serenity": "serenity_signals_latest.json",
     "leopold": "leopold_positions_latest.json", "tickers": "v21/company_tickers_exchange.json",
+    "event_feed": "public_event_research_latest.json",
+    "entitlement_evidence": "distribution_return_evidence_latest.json",
     "cision": "cision_interim_revenue.json",
 }
 CONFIG_FILES = {
@@ -48,6 +58,8 @@ CONFIG_FILES = {
     "claims": "order-claims-v2.json", "korea_orders": "korea-ir-orders-v1.json",
     "korea_fundamentals": "korea-ir-fundamentals-v1.json",
     "corporate_actions": "corporate-actions-v1.json",
+    "open_candidates": "reviewed-open-candidates-v1.json",
+    "reviewed_events": "public-reviewed-events-v1.json",
 }
 
 
@@ -67,6 +79,20 @@ def encoded(value):
 def digest(raw):
     return hashlib.sha256(raw).hexdigest()
 
+
+
+def _confirmed_ranking():
+    """Read-only cadence evidence; never substitute local B1 completion bytes."""
+    import top20_carry_forward
+    root = os.environ.get("II_SNAPSHOT_ROOT")
+    if not root or not Path(root).is_absolute():
+        return None
+    try:
+        confirmed = top20_carry_forward.confirmed_snapshot(Path(root))
+        return None if confirmed is None else confirmed["ranking"]
+    except (OSError, ValueError, TypeError, AttributeError, KeyError):
+        # An unreadable/corrupt receipt is not permission to suppress a retry.
+        return None
 
 def strict_json(raw, cap=MAX_FRAME, *, max_nodes=65536):
     if type(raw) is not bytes or not raw or len(raw) > cap:
@@ -305,12 +331,17 @@ class _Capture:
             self.observations["cision"] = {"status": "HELD_CAPTURE", "sha256": digest(cision)}
         layers = strict_json(self.entries["layers"], 8 * 1024 * 1024)["layers"]
         members = sorted({entry["symbol"] for layer in layers for entry in layer["capturers"]})
-        if not members or len(members) > 256 or any(not SYMBOL.fullmatch(s) for s in members):
-            raise HostUnavailable("RANKING_SCOPE_UNAVAILABLE")
         tickers = strict_json(self.entries["tickers"], 8 * 1024 * 1024)
         ciks = {str(dict(zip(tickers["fields"], row))["ticker"]).upper(): int(dict(zip(tickers["fields"], row))["cik"])
                 for row in tickers["data"]}
         reference_day = now()
+        import public_event_research
+        reviewed = public_event_research.admitted_candidate_rows(
+            strict_json(self.entries["open_candidates"], 8 * 1024 * 1024),
+            cutoff=reference_day.date(), layer_ids={layer["id"] for layer in layers})
+        members = sorted(set(members) | {row["symbol"] for row in reviewed if row["symbol"] in ciks})
+        if not members or len(members) > 256 or any(not SYMBOL.fullmatch(s) for s in members):
+            raise HostUnavailable("RANKING_SCOPE_UNAVAILABLE")
         start = int(datetime.combine(reference_day.date() - timedelta(days=366 * 3), datetime.min.time(), timezone.utc).timestamp())
         end = int(datetime.combine(reference_day.date() + timedelta(days=1), datetime.min.time(), timezone.utc).timestamp())
         # Finite logical slots are stable across date-specific URL windows.
@@ -557,6 +588,11 @@ class _Session:
         try:
             layers = strict_json(origin.files["config/bottleneck-layers-v3.json"], 8 * 1024 * 1024)["layers"]
             self.symbols = sorted({row["symbol"] for layer in layers for row in layer["capturers"]})
+            import public_event_research
+            reviewed = public_event_research.admitted_candidate_rows(
+                strict_json(origin.files["config/reviewed-open-candidates-v1.json"], 8 * 1024 * 1024),
+                cutoff=now().date(), layer_ids={layer["id"] for layer in layers})
+            self.symbols = sorted(set(self.symbols) | {row["symbol"] for row in reviewed})
             if not self.symbols or len(self.symbols) > 256 or any(not SYMBOL.fullmatch(s) for s in self.symbols):
                 raise HostUnavailable("RANKING_SCOPE_UNAVAILABLE")
         finally:
@@ -683,7 +719,7 @@ class _Session:
             # Only an unchanged ALREADY-live witnessed result may meet cadence;
             # never claim a cached ranking consumed a newly acquired snapshot.
             if (args["Mode"] != "Cadence" or self.witness is None or not self.witness.acked or
-                    self.witness.owner is not self.guard or now() - datetime.fromisoformat(self.witness.snapshot.cutoff.replace("Z", "+00:00")) >= timedelta(hours=3)):
+                    self.witness.owner is not self.guard or not timedelta(0) <= now() - datetime.fromisoformat(self.witness.snapshot.cutoff.replace("Z", "+00:00")) < timedelta(hours=1)):
                 raise HostUnavailable("LIVE_REBUILD_REQUIRED")
             self._read_witness(self.witness, state)
             return {"Completed": True, "Revision": rev, "ReusedLiveConsumption": True}
@@ -693,7 +729,7 @@ class _Session:
         import publish_sealed_snapshot as publisher
         outputs = overlay.B1Outputs(overlay.B1Store(self.lease))
         captured = _Capture(self)
-        self.witness = None
+        self.witness = None  # Historical bytes remain last-good; no live proof survives a new evaluation.
         self.phase = "dispatching"
         try:
             planning_day = captured.collect(outputs)
@@ -704,7 +740,6 @@ class _Session:
             ranking_doc = ranking.build(captured.dynamic_fetch, cutoff, with_news=True,
                                         captured=captured.catalog(), cision_outputs=outputs)
             captured.flush()
-            ranking_bytes = encoded(ranking_doc)
             if ranking_doc["generated_at"] != cutoff.strftime("%Y-%m-%dT%H:%M:%SZ"):
                 raise HostUnavailable("RANKING_CUTOFF_MISMATCH")
             # Symbols resolve from the actual build, within the SAME canonical
@@ -713,6 +748,33 @@ class _Session:
             snapshot = self.snapshot(cutoff)
             if revision.compute_input_revision(snapshot) != rev or any(symbol not in snapshot.symbols() for symbol in actual_symbols):
                 raise HostUnavailable("MODEL_INPUT_REVISION_MISMATCH")
+            if not 10 <= len(actual_symbols) <= 20 or len(set(actual_symbols)) != len(actual_symbols):
+                raise HostUnavailable("SEALED_OUTPUT_UNAVAILABLE")
+            ranking_bytes = encoded(ranking_doc)  # Reject invalid raw data before any journal append.
+            import ranking_write_policy
+            previous_ranking = _confirmed_ranking()
+            due = ranking_write_policy.publication_due(previous_ranking, ranking_doc, cutoff)
+            if due == "NO_CHANGE":
+                captured.close()
+                self.remaining()
+                if self.lease.read_journal().state != state or self.input_revision() != rev:
+                    raise HostUnavailable("COMPLETION_BINDING_CHANGED")
+                # Serve the historical last-good output. A source-only evaluation
+                # is NOT model consumption, a new witness, completion or an ACK.
+                self.phase = "idle"
+                return {"Completed": False, "Revision": rev, "PublicationSuppressed": True,
+                        "ServingLastGood": True, "Reason": "NO_CHANGE"}
+            # This signed observation follows successful input validation, not
+            # publication/acceptance: a later seal failure may leave an observation.
+            # Never mutate raw/sealed bytes after their completion binding is made.
+            import top20_rotation_provenance
+            shadow_path = os.environ.get("II_R2B_SHADOW_LOG")
+            shadow_attestation = (
+                top20_rotation_provenance.append_if_configured(
+                    ranking_doc, path=Path(shadow_path), asof=ranking_doc["generated_at"])
+                if shadow_path else "UNCONFIGURED")
+            if shadow_attestation == "UNVERIFIED":
+                ranking_bytes = encoded(ranking_doc)
             consumption = publisher.ForecastConsumption(snapshot)
             machine_inputs = None
             if self.machine_enabled:
@@ -741,10 +803,11 @@ class _Session:
                 binding = machine.make_public_binding(machine_inputs, body, rev, encoded(source))
                 machine.validate_public_bundle(body, binding, digest(body), digest(binding))
                 record_doc.update(public_binding_utf8=binding.decode("utf-8"), public_binding_sha256=digest(binding))
-            record = encoded(record_doc)  # bounded binding embedded; no new overlay artifact kind
             self.remaining()
             if self.lease.read_journal().state != state or self.input_revision() != rev:
                 raise HostUnavailable("COMPLETION_BINDING_CHANGED")
+            record_doc["shadow_attestation"] = shadow_attestation
+            record = encoded(record_doc)
             published = outputs.publish(ranking_bytes, body, record)
             if published != {"rank": digest(ranking_bytes), "body": digest(body), "record": digest(record)}:
                 raise HostUnavailable("OUTPUT_READBACK_UNAVAILABLE")

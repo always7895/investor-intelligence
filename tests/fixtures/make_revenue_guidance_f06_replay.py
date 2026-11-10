@@ -1,8 +1,8 @@
 """Offline F06 producer -> wire -> Worker replay fixture (G7): the single source of truth for
 `cloud/test/fixtures/revenue-guidance-f06-sealed-replay.json`.
 
-Chain: the genuine AUTO producer/serializer bytes (tests/fixtures/revenue-guidance-machine-auto-functional.json, byte-
-checked against the real producer by tests/test_revenue_guidance_machine_auto_parity.py) are written as the same-owner
+Chain: frozen historical AUTO producer/serializer bytes (tests/fixtures/revenue-guidance-machine-auto-functional.json)
+remain consumer-contract inputs; current-source production is checked independently. They are written as the same-owner
 PUBLIC export (<id>.body.txt / <id>.binding.json) into a temporary stage root; the real
 scripts/publish_sealed_snapshot.py main() seals them with --guidance-machine through the real
 revenue_guidance_machine.read_staged_bundle, in the MACHINE_CARRIED tier shape of run_production_sealed_refresh.ps1

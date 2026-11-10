@@ -4,6 +4,9 @@ Objects -> all-object readback -> pointer LAST -> pointer readback. Failures
 never manufacture success; a failed pointer call/readback leaves its state
 unconfirmed, not "untouched". CLI streams stay in memory and only fixed safe
 categories/counters are emitted. No login, credential inspection or install.
+The complete non-reused-object + pointer plan reserves every bounded PUT attempt
+before any upload against 400/day (1000 free minus 600 for other products). A quota
+stop retains a confirmed historical ranking; UTC midnight admits the next due plan.
 """
 from __future__ import annotations
 
@@ -29,6 +32,9 @@ LAST_ERROR: list[str] = []
 LAST_CALL: dict = {"attempts": 0, "exit_code": None, "error_category": "NONE"}
 LAST_CALL_DETAIL: dict = {"http_status": None, "provider_code": None}
 TOTAL_ATTEMPTS = 0
+PUT_ATTEMPTS = 0
+ACTIVE_WRITE_BUDGET = None
+ACTIVE_WRITE_RESERVATION = None
 BLOB_PREFIX = "blob:v1:"
 RUN_KEY_TTL_SECONDS = 14 * 86400
 BLOB_TTL_SECONDS = 30 * 86400
@@ -45,9 +51,16 @@ KV_GET_HTTP_STATUS = re.compile(r"Failed to fetch \S+ - (\d{3}):")
 # refreshed the expired OAuth token, and the next invocation succeeded with the stored token. Same credential, no fallback.
 AUTH_RETRY_SECONDS = 15.0
 
+import ranking_write_policy as write_policy
+import top20_carry_forward as carry
+
 
 class CliUnavailable(RuntimeError):
     """A local locked CLI could not be selected; no CLI launch occurred."""
+
+
+class WriteBudgetUnavailable(RuntimeError):
+    """The next controlled PUT launch has no full remaining-plan authorization."""
 
 
 def _cli_command() -> list[str]:
@@ -71,8 +84,14 @@ def _cli_command() -> list[str]:
 
 
 def _run_cli(args: list[str]) -> subprocess.CompletedProcess:
+    command = _cli_command()
+    # Resolve local prerequisites FIRST, then check the day immediately before
+    # launching each PUT/retry. No additional Python/CLI retry wrapper is used.
+    if args[:3] == ["kv", "key", "put"] and ACTIVE_WRITE_RESERVATION is not None:
+        if not ACTIVE_WRITE_RESERVATION.launch(datetime.now(timezone.utc)):
+            raise WriteBudgetUnavailable()
     return subprocess.run(
-        [*_cli_command(), *args], cwd=str(CLOUD_DIR), capture_output=True,
+        [*command, *args], cwd=str(CLOUD_DIR), capture_output=True,
         text=True, encoding="utf-8", errors="replace", timeout=300,
     )
 
@@ -182,10 +201,13 @@ def _error_summary(p: subprocess.CompletedProcess) -> str:
 
 
 def _run_with_retry(args: list[str]) -> subprocess.CompletedProcess:
-    global TOTAL_ATTEMPTS
+    global TOTAL_ATTEMPTS, PUT_ATTEMPTS
     launched = 0
+    is_put = args[:3] == ["kv", "key", "put"]
+    authorized = 0
     LAST_ERROR.clear()
     for attempt in range(1, ATTEMPTS + 1):
+        remaining_before = ACTIVE_WRITE_RESERVATION.remaining if is_put and ACTIVE_WRITE_RESERVATION is not None else None
         try:
             p = _run_cli(args)
             launched += 1
@@ -193,6 +215,9 @@ def _run_with_retry(args: list[str]) -> subprocess.CompletedProcess:
         except CliUnavailable:
             p = subprocess.CompletedProcess(args, None, "", "")
             category = "CLI_UNAVAILABLE"
+        except WriteBudgetUnavailable:
+            p = subprocess.CompletedProcess(args, None, "", "")
+            category = "WRITE_BUDGET_UNAVAILABLE"
         except subprocess.TimeoutExpired as error:
             launched += 1
             out = error.stdout.decode("utf-8", "replace") if isinstance(error.stdout, bytes) else (error.stdout or "")
@@ -205,6 +230,8 @@ def _run_with_retry(args: list[str]) -> subprocess.CompletedProcess:
             launched += 1  # an attempted launch, not a fabricated native exit
             p = subprocess.CompletedProcess(args, None, "", "")
             category = "CLI_LAUNCH_FAILED"
+        if remaining_before is not None:
+            authorized += remaining_before - ACTIVE_WRITE_RESERVATION.remaining
         LAST_CALL.update(attempts=launched, exit_code=p.returncode, error_category=category)
         LAST_CALL_DETAIL.update(_cli_failure_detail(p.stdout, p.stderr) if p.returncode != 0 else
                                 {"http_status": None, "provider_code": None})
@@ -218,6 +245,12 @@ def _run_with_retry(args: list[str]) -> subprocess.CompletedProcess:
             break
         time.sleep((AUTH_RETRY_SECONDS if rejected else RETRY_SECONDS) * attempt)
     TOTAL_ATTEMPTS += launched
+    if is_put and ACTIVE_WRITE_RESERVATION is not None:
+        ACTIVE_WRITE_RESERVATION.retire(ATTEMPTS - authorized)
+    if is_put:
+        PUT_ATTEMPTS += launched
+    if LAST_CALL["error_category"] == KV_DAILY_LIMIT and ACTIVE_WRITE_BUDGET is not None:
+        ACTIVE_WRITE_BUDGET.stop_until_reset(datetime.now(timezone.utc))
     return p
 
 
@@ -235,14 +268,14 @@ def client_get(key: str) -> str | None:
 
 def load_ledger(path: Path | None = None) -> dict[str, float]:
     try:
-        value = json.loads((path or LEDGER).read_text(encoding="utf-8"))
+        value = json.loads(carry.plain_path(path or LEDGER).read_text(encoding="utf-8"))
         return {str(k): float(v) for k, v in value.items()} if isinstance(value, dict) else {}
     except (OSError, ValueError, TypeError):
         return {}
 
 
 def save_ledger(ledger: dict[str, float], path: Path | None = None) -> None:
-    path = path or LEDGER
+    path = carry.plain_path(path or LEDGER)
     horizon = time.time() - BLOB_TTL_SECONDS
     kept = {k: v for k, v in ledger.items() if v >= horizon}
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -255,18 +288,58 @@ def sha(raw: str) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
+_COMMON_ERRORS = frozenset({
+    "NONE", "AUTHENTICATION_ERROR", "DAILY_KV_LIMIT", "NETWORK_FAILURE", "TRANSIENT_HTTP",
+    "TIMEOUT", "UNKNOWN", "CLI_UNAVAILABLE", "CLI_LAUNCH_FAILED", "LOCAL_IO_FAILURE", "OUTCOME_WRITE_FAILED",
+})
+OUTCOME_WIRE_VALUES = {
+    "SYNC": {
+        "status": frozenset({"FAILED", "SUCCEEDED", "RETAINED_LAST_GOOD"}),
+        "phase": frozenset({"INPUT", "PREFLIGHT", "OBJECT_PUT", "OBJECT_READBACK", "POINTER_PUT",
+                            "POINTER_READBACK", "LOCAL_LEDGER", "COMPLETE"}),
+        "pointer_state": frozenset({"NOT_ATTEMPTED", "ATTEMPTED_UNCONFIRMED", "READBACK_CONFIRMED"}),
+        "error_category": _COMMON_ERRORS | {"READBACK_MISMATCH", "INPUT_INVALID", "BOOTSTRAP_REQUIRED", "WRITE_BUDGET_UNAVAILABLE"},
+        "retention_reason": frozenset({None, "NO_CHANGE", "WRITE_BUDGET", "DAILY_KV_LIMIT", "CANDIDATE_UNAVAILABLE"}),
+    },
+    "WATCHDOG": {
+        "status": frozenset({"FAILED", "SUCCEEDED"}),
+        "phase": frozenset({"INPUT", "POINTER_READ", "POINTER_PARSE", "REPORT_READ", "REPORT_PARSE", "COMPLETE"}),
+        "pointer_state": frozenset({"NOT_ATTEMPTED"}),
+        "error_category": _COMMON_ERRORS | {"PARSE_FAILED"},
+        "retention_reason": frozenset({None}),
+    },
+}
+
+
+def validate_outcome_wire(record: dict) -> None:
+    fields = OUTCOME_WIRE_VALUES.get(record.get("operation"))
+    if fields is None or any(record.get(field) not in values for field, values in fields.items()):
+        raise ValueError("OUTCOME_WIRE_INVALID")
+
+
 def _outcome(operation: str) -> dict:
     return {"schema_version": 1, "operation": operation, "status": "FAILED",
             "phase": "INPUT", "error_category": "UNKNOWN", "pointer_state": "NOT_ATTEMPTED",
             "run_id": "", "cli_attempts_total": 0, "last_cli_attempts": 0,
             "last_cli_exit_code": None, "objects_uploaded": 0, "objects_reused": 0,
-            "objects_verified": 0, "failed_objects": []}
+            "objects_verified": 0, "failed_objects": [], "writes_reserved": 0,
+            "writes_attempted": 0, "ranking_allowance": 400, "market_allowance": 600, "daily_limit": 1000,
+            "ranking_writes_reserved": 0, "market_writes_reserved": 0,
+            "ranking_writes_attempted": 0, "market_writes_attempted": 0,
+            "retention_reason": None, "retained_run_id": None}
 
 
 def _finish_call(record: dict, category: str | None = None) -> None:
     record.update(cli_attempts_total=TOTAL_ATTEMPTS, last_cli_attempts=LAST_CALL["attempts"],
                   last_cli_exit_code=LAST_CALL["exit_code"],
                   error_category=category or LAST_CALL["error_category"])
+    record["writes_attempted"] = PUT_ATTEMPTS
+    if ACTIVE_WRITE_RESERVATION is not None:
+        record["writes_reserved"] = ACTIVE_WRITE_RESERVATION.reserved
+        for product, count in ACTIVE_WRITE_RESERVATION.reserved_by_product.items():
+            record[product + "_writes_reserved"] = count
+        for product, count in ACTIVE_WRITE_RESERVATION.attempted.items():
+            record[product + "_writes_attempted"] = count
 
 
 
@@ -293,9 +366,104 @@ def _record_failed_object(record: dict, key: str) -> None:
     })
 
 
+def _retain(record: dict, previous: dict | None, reason: str) -> int:
+    if previous is None:
+        _finish_call(record, "BOOTSTRAP_REQUIRED")
+        record["retention_reason"] = reason
+        return 1
+    _finish_call(record, "NONE")
+    record.update(status="RETAINED_LAST_GOOD", phase="COMPLETE", retention_reason=reason,
+                  retained_run_id=previous["run_id"])
+    return 0
+
+
+def _discover_last_good(snapshot_root: Path) -> tuple[dict | None, bool]:
+    """Return (confirmed ranking, proved bootstrap-safe), never infer absence.
+
+    Bootstrap is safe only after an explicit pointer 404 or a stable pointer
+    whose complete sealed object set was read back and is genuinely insufficient.
+    """
+    from publish_sealed_snapshot import OBJECT_KEYS, MACRO_KEY
+    raw = client_get("snapshot:current")
+    if raw is None:
+        return None, LAST_CALL_DETAIL["http_status"] == 404
+    try:
+        pointer = json.loads(raw)
+        run = pointer["run_id"]
+        if not isinstance(run, str) or not RUN_ID.fullmatch(run):
+            return None, False
+        prefix = f"snapshot:{run}:"
+        seal_key = prefix + carry.SEALED_MANIFEST_KEY
+        seal_text = client_get(seal_key)
+        if seal_text is None or sha(seal_text) != pointer.get("seal_sha256"):
+            return None, False
+        manifest = json.loads(seal_text)
+        rows = manifest["objects"]
+        if manifest.get("run_id") != run or not isinstance(rows, dict) or not 1 <= len(rows) <= 4096:
+            return None, False
+        core_run = manifest.get("core_run_id", run)
+        if not isinstance(core_run, str) or not RUN_ID.fullmatch(core_run):
+            return None, False
+        core_prefix = f"snapshot:{core_run}:"
+        objects = {seal_key: seal_text}
+        for name, entry in rows.items():
+            if not isinstance(name, str) or not isinstance(entry, dict):
+                return None, False
+            digest = entry.get("sha256")
+            if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
+                return None, False
+            storage_prefix = (prefix if "core_run_id" in manifest and name == "last_successful_pipeline_timestamp"
+                              else core_prefix)
+            key = storage_prefix + name if name in (*OBJECT_KEYS, MACRO_KEY) else "blob:v1:" + digest
+            body = objects.get(key)
+            if body is None:
+                body = client_get(key)
+            if body is None or sha(body) != digest or len(body.encode("utf-8")) != entry.get("utf8_bytes"):
+                return None, False
+            objects[key] = body
+        ranking = carry.ranking_from_objects(objects, pointer)
+        # Re-read the pointer after the entire object set: a concurrent promotion
+        # cannot be mistaken for the captured serving set.
+        if client_get("snapshot:current") != raw:
+            return None, False
+        if ranking is None:
+            return None, True
+        target = carry.plain_path(snapshot_root / run)
+        object_raw = json.dumps(objects, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        pointer_raw = raw.encode("utf-8")
+        for name, data in (("objects.json", object_raw), ("pointer.raw.json", pointer_raw)):
+            path = carry.plain_path(target / name)
+            if path.exists():
+                existing = path.read_bytes()
+                # Objects' mapping order/spacing may differ; immutable local bytes
+                # must agree semantically and are never overwritten.
+                if (json.loads(existing) != objects if name == "objects.json" else existing != data):
+                    return None, False
+            else:
+                target.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(data)
+        carry.confirm_snapshot(target)
+        return carry.confirmed_snapshot(snapshot_root), False
+    except (ValueError, KeyError, TypeError):
+        return None, False
+
+
+def reconcile_confirmed_snapshot(snapshot_root: Path) -> dict | None:
+    """Repair local custody proof using actual readbacks; never issue a remote PUT.
+
+    None is not an absence claim. A genuine ranking requires every seal member
+    and a repeat identical serving pointer; only that proof clears ambiguity.
+    """
+    previous, _ = _discover_last_good(carry.plain_path(snapshot_root))
+    return previous
+
+
 def sync_run(run_dir: Path, record: dict) -> int:
-    objects = json.loads((run_dir / "objects.json").read_text(encoding="utf-8"))
-    ptr_raw = (run_dir / "pointer.raw.json").read_text(encoding="utf-8").strip()
+    global ACTIVE_WRITE_BUDGET, ACTIVE_WRITE_RESERVATION
+    import sealed_product_policy as products
+    run_dir = carry.plain_path(run_dir)
+    objects = json.loads(carry.plain_path(run_dir / "objects.json").read_text(encoding="utf-8"))
+    ptr_raw = carry.plain_path(run_dir / "pointer.raw.json").read_text(encoding="utf-8").strip()
     pointer = json.loads(ptr_raw)
     if not isinstance(objects, dict) or not objects or not all(isinstance(k, str) and isinstance(v, str) for k, v in objects.items()):
         raise ValueError()
@@ -303,6 +471,8 @@ def sync_run(run_dir: Path, record: dict) -> int:
         raise ValueError()
     record["run_id"] = pointer["run_id"]
     prefix = f"snapshot:{record['run_id']}:"
+    detail = products.parts(objects, pointer) if prefix + carry.SEALED_MANIFEST_KEY in objects else None
+    allowed = (set(detail["physical"]) | {prefix + carry.SEALED_MANIFEST_KEY}) if detail else None
     # Even malformed input must never smuggle the serving pointer into the
     # object-upload phase or cross a run boundary. Lazy blob bytes bind to key.
     for key, body in objects.items():
@@ -312,30 +482,79 @@ def sync_run(run_dir: Path, record: dict) -> int:
             digest = key[len(BLOB_PREFIX):]
             if not re.fullmatch(r"[0-9a-f]{64}", digest) or sha(body) != digest:
                 raise ValueError()
-        elif not key.startswith(prefix) or key == prefix:
+        elif (allowed is not None and "core_run_id" in detail["manifest"] and key not in allowed) or (
+                (allowed is None or "core_run_id" not in detail["manifest"]) and (not key.startswith(prefix) or key == prefix)):
             raise ValueError()
     entries = sorted(objects.items())
-    staged = run_dir / ".kv-stage"
+    record["phase"] = "PREFLIGHT"
+    candidate = carry.ranking_from_objects(objects, pointer)
+    previous = carry.confirmed_snapshot(run_dir.parent)
+    budget = write_policy.PublicationWriteBudget(LEDGER.with_name("ranking-kv-write-budget.json"))
+    ACTIVE_WRITE_BUDGET = budget
+    bootstrap_safe = False
+    # Discover before deciding whether ANY insufficient candidate can replace
+    # remote custody, regardless of whether a local receipt exists yet.
+    if previous is None and detail is not None:
+        previous, bootstrap_safe = _discover_last_good(run_dir.parent)
+    instant = datetime.now(timezone.utc)  # Discovery may have crossed 00:00 UTC.
+    if detail is not None and candidate is None and previous is not None:
+        return _retain(record, previous, "CANDIDATE_UNAVAILABLE")
+    if detail is not None and candidate is None and not bootstrap_safe:
+        return _retain(record, None, "CANDIDATE_UNAVAILABLE")
+    reused_core = detail is not None and detail["core_run_id"] != pointer["run_id"]
+    if reused_core:
+        if previous is None:
+            return _retain(record, None, "CANDIDATE_UNAVAILABLE")
+        prior = products.parts(previous["objects"], previous["pointer"])
+        if (detail["core_run_id"] != prior["core_run_id"]
+                or {key: body for key, body in detail["core"].items() if key != products.PIPELINE_KEY}
+                != {key: body for key, body in prior["core"].items() if key != products.PIPELINE_KEY}):
+            raise ValueError("UNCONFIRMED_CORE_REUSE")
+        rank_clock = detail["manifest"]["ranking_persisted_at"]
+        prior_clock = prior["manifest"].get("ranking_persisted_at", prior["manifest"]["generated_at"])
+        if products.instant(rank_clock) == products.instant(prior_clock):
+            if ({key: body for key, body in detail["lazy"].items() if key in products.RANKING_KEYS}
+                    != {key: body for key, body in prior["lazy"].items() if key in products.RANKING_KEYS}):
+                raise ValueError("UNCONFIRMED_RANKING_REUSE")
+        elif (products.instant(rank_clock) != products.instant(detail["manifest"]["generated_at"])
+              or candidate is None or write_policy.publication_due(previous["ranking"], candidate, instant) == "NO_CHANGE"):
+            raise ValueError("UNCONFIRMED_RANKING_CLOCK")
+    elif candidate is not None and write_policy.publication_due(
+            previous["ranking"] if previous else None, candidate, instant) == "NO_CHANGE":
+        return _retain(record, previous, "NO_CHANGE")
+    ledger = load_ledger()
+    now = time.time()
+    plan = products.write_plan(objects, pointer, ledger, instant, ATTEMPTS, BLOB_REUSE_SECONDS)
+    reused = plan["reused"]
+    reservation = write_policy.PublicationWriteReservation(budget, plan["counts"])
+    ACTIVE_WRITE_RESERVATION = reservation  # partial authorization still consumes and must report its partition
+    if not reservation.authorize(datetime.now(timezone.utc)):
+        return _retain(record, previous, "WRITE_BUDGET")
+    record["writes_reserved"] = reservation.reserved
+    record["objects_reused"] = len(reused)
+    staged = carry.plain_path(run_dir / ".kv-stage")
     staged.mkdir(exist_ok=True)
     staged_files = {}
     for index, (key, body) in enumerate(entries):
+        if key in reused:
+            continue
         fp = staged / f"object-{index}.bin"
         fp.write_bytes(body.encode("utf-8"))
         staged_files[key] = fp
     ptr_fp = staged / "__pointer.bin"
     ptr_fp.write_bytes(ptr_raw.encode("utf-8"))
-    ledger = load_ledger()
-    now = time.time()
-    reused = set()
+    # ``reused`` is fixed by the preflight plan and still requires live readback.
     record["phase"] = "OBJECT_PUT"
     for key, fp in staged_files.items():
         blob = key.startswith(BLOB_PREFIX)
-        if blob and 0 <= now - ledger.get(key[len(BLOB_PREFIX):], 0.0) < BLOB_REUSE_SECONDS:
-            reused.add(key)
-            record["objects_reused"] += 1
+        if key in reused:
             continue
+        reservation.select(plan["assignment"][key])
         if not client_put(key, fp, BLOB_TTL_SECONDS if blob else RUN_KEY_TTL_SECONDS):
             _finish_call(record)
+            if record["error_category"] in {KV_DAILY_LIMIT, "WRITE_BUDGET_UNAVAILABLE"}:
+                reason = KV_DAILY_LIMIT if record["error_category"] == KV_DAILY_LIMIT else "WRITE_BUDGET"
+                return _retain(record, previous, reason)
             _record_failed_object(record, key)
             return 1
         record["objects_uploaded"] += 1
@@ -347,12 +566,25 @@ def sync_run(run_dir: Path, record: dict) -> int:
         if live is None or sha(live) != sha(body):
             _finish_call(record, "READBACK_MISMATCH" if live is not None else None)
             _record_failed_object(record, key)
+            if record["error_category"] == KV_DAILY_LIMIT:
+                return _retain(record, previous, KV_DAILY_LIMIT)
             return 1
         record["objects_verified"] += 1
     print(f"READBACK_VERIFIED {record['objects_verified']}")
     record["phase"] = "POINTER_PUT"
-    record["pointer_state"] = "ATTEMPTED_UNCONFIRMED"
-    if not client_put("snapshot:current", ptr_fp):
+    # A durable marker invalidates old serving proof before even an uncertain
+    # pointer write. The old receipt/run bytes remain intact for history.
+    try:
+        carry.mark_pointer_pending(run_dir)
+    except (OSError, ValueError):
+        _finish_call(record, "LOCAL_IO_FAILURE")
+        return 1
+    put_before = PUT_ATTEMPTS
+    reservation.select(plan["assignment"]["snapshot:current"])
+    pointer_written = client_put("snapshot:current", ptr_fp)
+    if pointer_written or PUT_ATTEMPTS > put_before or LAST_CALL["error_category"] != "WRITE_BUDGET_UNAVAILABLE":
+        record["pointer_state"] = "ATTEMPTED_UNCONFIRMED"
+    if not pointer_written:
         _finish_call(record)
         _record_failed_object(record, "snapshot:current")
         return 1
@@ -369,6 +601,7 @@ def sync_run(run_dir: Path, record: dict) -> int:
         if key.startswith(BLOB_PREFIX) and key not in reused:
             ledger[key[len(BLOB_PREFIX):]] = now
     save_ledger(ledger)
+    carry.confirm_snapshot(run_dir)
     shutil.rmtree(staged, ignore_errors=True)
     _finish_call(record, "NONE")
     record.update(status="SUCCEEDED", phase="COMPLETE")
@@ -385,22 +618,70 @@ def _safe_instant(value) -> str | None:
 
 
 def read_freshness(record: dict) -> int:
-    """Read-only shared CLI adapter; export safe metadata, never raw KV bodies."""
+    """Read-only pointer-bound liveness and original report age; never raw bodies."""
     record["phase"] = "POINTER_READ"
-    raw = client_get("snapshot:current")
-    if raw is None:
+    pointer_raw = client_get("snapshot:current")
+    if pointer_raw is None:
         _finish_call(record)
         return 1
     record["phase"] = "POINTER_PARSE"
-    pointer = json.loads(raw)
-    if not isinstance(pointer, dict) or not RUN_ID.fullmatch(str(pointer.get("run_id", ""))):
+    pointer = json.loads(pointer_raw)
+    if (not isinstance(pointer, dict) or not isinstance(pointer.get("run_id"), str)
+            or not RUN_ID.fullmatch(pointer["run_id"])
+            or not isinstance(pointer.get("seal_sha256"), str)
+            or not re.fullmatch(r"[0-9a-f]{64}", pointer["seal_sha256"])):
         raise ValueError()
-    anchor = _safe_instant(pointer.get("public_data_as_of")) or _safe_instant(pointer.get("promoted_at"))
-    if anchor is None:
+    record["phase"] = "POINTER_READ"
+    seal_raw = client_get(f"snapshot:{pointer['run_id']}:v213:snapshot-seal:v1")
+    if seal_raw is None:
+        _finish_call(record)
+        return 1
+    record["phase"] = "POINTER_PARSE"
+    if len(seal_raw.encode("utf-8")) > 32768 or sha(seal_raw) != pointer["seal_sha256"]:
         raise ValueError()
-    record.update(run_id=pointer["run_id"], anchor=anchor, top20_state="UNKNOWN", report_generated_at=None)
+    seal = json.loads(seal_raw)
+    if (not isinstance(seal, dict) or type(seal.get("schema_version")) is not int
+            or seal["schema_version"] != 1 or seal.get("run_id") != pointer["run_id"]
+            or seal.get("transaction_id") != pointer.get("transaction_id")
+            or not isinstance(seal.get("objects"), dict)):
+        raise ValueError()
+    generated = _safe_instant(seal.get("generated_at"))
+    data_as_of = _safe_instant(seal.get("public_data_as_of"))
+    paired = "core_run_id" in seal
+    core_run = seal.get("core_run_id", pointer["run_id"])
+    if (paired != ("ranking_persisted_at" in seal)
+            or not isinstance(core_run, str) or not RUN_ID.fullmatch(core_run)
+            or generated is None or generated != _safe_instant(pointer.get("promoted_at"))
+            or data_as_of is None or data_as_of != _safe_instant(pointer.get("public_data_as_of"))):
+        raise ValueError()
+    if paired:
+        rank_at = _safe_instant(seal["ranking_persisted_at"])
+        if rank_at is None or datetime.fromisoformat(rank_at) > datetime.fromisoformat(generated):
+            raise ValueError()
+
+    def member(logical: str, run: str) -> str | None:
+        entry = seal["objects"].get(logical)
+        if (not isinstance(entry, dict) or type(entry.get("utf8_bytes")) is not int
+                or not 0 <= entry["utf8_bytes"] <= 2 * 1024 * 1024
+                or not isinstance(entry.get("sha256"), str)
+                or not re.fullmatch(r"[0-9a-f]{64}", entry["sha256"])):
+            raise ValueError()
+        body = client_get(f"snapshot:{run}:{logical}")
+        if body is not None and (len(body.encode("utf-8")) != entry["utf8_bytes"] or sha(body) != entry["sha256"]):
+            raise ValueError()
+        return body
+
+    record["phase"] = "POINTER_READ"
+    marker = member("last_successful_pipeline_timestamp", pointer["run_id"] if paired else core_run)
+    if marker is None:
+        _finish_call(record)
+        return 1
+    if marker != seal["generated_at" if paired else "public_data_as_of"]:
+        raise ValueError()
+    record.update(run_id=pointer["run_id"], core_run_id=core_run, anchor=_safe_instant(marker),
+                  public_data_as_of=data_as_of, top20_state="UNKNOWN", report_generated_at=None)
     record["phase"] = "REPORT_READ"
-    raw = client_get(f"snapshot:{record['run_id']}:v213:top20-report:latest")
+    raw = member("v213:top20-report:latest", core_run)
     if raw is None:
         _finish_call(record)
         record["top20_state"] = "REPORT_READ_FAILED"
@@ -413,18 +694,27 @@ def read_freshness(record: dict) -> int:
         record["top20_state"] = "INSUFFICIENT"
     else:
         rows = report.get("records")
-        generated = _safe_instant(report.get("generated_at"))
-        if not isinstance(rows, list) or generated is None:
+        report_time = _safe_instant(report.get("generated_at"))
+        if not isinstance(rows, list) or report_time is None:
             raise ValueError()
-        record.update(top20_state=f"RECORDS_{len(rows)}", report_generated_at=generated)
+        record.update(top20_state=f"RECORDS_{len(rows)}", report_generated_at=report_time)
+    record["phase"] = "POINTER_READ"
+    final_pointer = client_get("snapshot:current")
+    if final_pointer is None:
+        _finish_call(record)
+        return 1
+    if final_pointer != pointer_raw:
+        raise ValueError()
     _finish_call(record, "NONE")
     record.update(status="SUCCEEDED", phase="COMPLETE")
     return 0
 
 
 def main() -> int:
-    global TOTAL_ATTEMPTS
-    TOTAL_ATTEMPTS = 0
+    global TOTAL_ATTEMPTS, PUT_ATTEMPTS, ACTIVE_WRITE_BUDGET, ACTIVE_WRITE_RESERVATION
+    TOTAL_ATTEMPTS = PUT_ATTEMPTS = 0
+    ACTIVE_WRITE_BUDGET = None
+    ACTIVE_WRITE_RESERVATION = None
     LAST_CALL.update(attempts=0, exit_code=None, error_category="NONE")
     LAST_CALL_DETAIL.update(http_status=None, provider_code=None)
     ap = argparse.ArgumentParser()
@@ -445,7 +735,7 @@ def main() -> int:
     code = 1  # an outcome path that could not be reserved runs nothing
     try:
         if args.outcome_path is None or stream is not None:
-            code = read_freshness(record) if args.read_freshness else sync_run(Path(args.run_dir).resolve(), record)
+            code = read_freshness(record) if args.read_freshness else sync_run(Path(args.run_dir), record)
     except (ValueError, KeyError, TypeError):
         _finish_call(record, "PARSE_FAILED" if args.read_freshness else "INPUT_INVALID")
         code = 1
@@ -456,6 +746,9 @@ def main() -> int:
         # Fail closed without serializing exception messages, CLI arguments or streams.
         _finish_call(record, "UNKNOWN")
         code = 1
+    ACTIVE_WRITE_BUDGET = None
+    ACTIVE_WRITE_RESERVATION = None
+    validate_outcome_wire(record)  # actual emitter enforces the domains consumed by both callers
     if stream is not None:
         try:
             with stream:

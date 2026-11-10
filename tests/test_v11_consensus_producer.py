@@ -22,6 +22,7 @@ import order_forecast as ofc  # noqa: E402
 import publish_sealed_snapshot as publisher  # noqa: E402
 import revenue_consensus_quarterly as collector  # noqa: E402
 import revenue_guidance  # noqa: E402
+from tests.test_bottleneck_top20_v3 import historical_actions  # noqa: E402
 
 
 def load_generator():
@@ -267,7 +268,7 @@ class ConsensusRouteSealerCallerTests(unittest.TestCase):
             with mock.patch.object(collector, "DEFAULT_CACHE_PATH", cache), \
                     mock.patch.object(publisher.company_deep_report, "load_order_scenarios", lambda *a, **k: {}), \
                     mock.patch.object(publisher.company_deep_report, "load_reports", lambda *a, **k: {}), \
-                    mock.patch.object(publisher.order_claims, "REGISTRY_PATH", claims):
+                    mock.patch.object(publisher.order_claims, "REGISTRY_PATH", claims), historical_actions():
                 body = publisher.captured_bottleneck_v3_body(
                     json.dumps(doc).encode("utf-8"), generated,
                     effective_inputs=publisher.revenue_guidance_overlay.curated_snapshot(generated, registry, approval, {}))

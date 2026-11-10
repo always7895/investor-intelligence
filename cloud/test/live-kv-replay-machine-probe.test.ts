@@ -1,4 +1,4 @@
-// F06-REPLAY-GATE-BINDING (Worker half): the pre-KV replay gate's guidance_machine_probe (reader contract v4) over the
+// F06-REPLAY-GATE-BINDING (Worker half): the pre-KV replay gate's guidance_machine_probe (reader contract v5) over the
 // committed F06 staged run, loaded into a memory KV exactly as live-kv-replay.test.ts loads a staged run. The probe is
 // the shared helper the gate runs; the clock is pinned to the declared historical AUTO cutoff and restored. Good run:
 // ADMITTED. Tampered or missing binding or report: REFUSED. Run no longer sealed: ABSENT (the gate then fails on
@@ -55,20 +55,20 @@ const producerBinding = JSON.parse(auto.binding) as { report_sha256: string };
 const REPLAYED_BINDING = auto.binding.replace(`"report_sha256":"${producerBinding.report_sha256}"`,
   `"report_sha256":"${producerBinding.report_sha256.slice(0, -1)}${producerBinding.report_sha256.endsWith("0") ? "1" : "0"}"`);
 
-async function probeAt(edit?: (values: Map<string, string>) => void): Promise<{ probe: GuidanceMachineProbe; privateReads: number }> {
+async function probeAt(edit?: (values: Map<string, string>) => void, now = NOW): Promise<{ probe: GuidanceMachineProbe; datedFactsOnly: boolean; privateReads: number }> {
   const { env, privateKv, securityKv } = makeOfflineEnv(stagedKv(edit));
   const realNow = Date.now;
-  Date.now = () => NOW;
+  Date.now = () => now;
   try {
     const probe = await probeGuidanceMachine(await pinPublicSnapshot(env));
-    return { probe, privateReads: privateKv.reads + securityKv.reads };
+    return { probe: probe.status, datedFactsOnly: probe.datedFactsOnly, privateReads: privateKv.reads + securityKv.reads };
   } finally { Date.now = realNow; }
 }
 
 describe("F06 pre-KV replay: guidance_machine_probe over the staged F06 run", () => {
   it("reports the sealed machine binding ADMITTED at the cutoff without touching private or security KV", async () => {
     expect(REPLAYED_BINDING).not.toBe(auto.binding);
-    expect(await probeAt()).toEqual({ probe: "ADMITTED", privateReads: 0 });
+    expect(await probeAt()).toEqual({ probe: "ADMITTED", datedFactsOnly: false, privateReads: 0 });
   });
 
   it.each<[string, (values: Map<string, string>) => void, GuidanceMachineProbe]>([
@@ -78,7 +78,12 @@ describe("F06 pre-KV replay: guidance_machine_probe over the staged F06 run", ()
     ["binding-replayed-and-resealed", values => { resealBinding(values, REPLAYED_BINDING); }, "REFUSED"],
     ["pointer-missing", values => { values.delete("snapshot:current"); }, "ABSENT"],
   ])("reports %s as the expected non-admitted state", async (_name, edit, expected) => {
-    expect((await probeAt(edit)).probe).toBe(expected);
+    const result = await probeAt(edit);
+    expect(result.probe).toBe(expected); expect(result.datedFactsOnly).toBe(false);
+  });
+
+  it("never reports retained historical ranking facts as current machine admission", async () => {
+    expect(await probeAt(undefined, NOW + 48 * 3600_000)).toEqual({ probe: "REFUSED", datedFactsOnly: true, privateReads: 0 });
   });
 
   it("reports a sealed run without the machine binding as ABSENT (non-machine tiers unchanged)", async () => {
@@ -90,7 +95,7 @@ describe("F06 pre-KV replay: guidance_machine_probe over the staged F06 run", ()
     try {
       const view = await pinPublicSnapshot(env);
       expect(view.integrity).toBe("sealed");
-      expect(await probeGuidanceMachine(view)).toBe("ABSENT");
+      expect(await probeGuidanceMachine(view)).toEqual({ status: "ABSENT", datedFactsOnly: false });
     } finally { Date.now = realNow; }
     expect(privateKv.reads + securityKv.reads).toBe(0);
   });

@@ -23,8 +23,8 @@
 #
 # Scheduling: Windows Task Scheduler, every 60 minutes via
 #   schtasks /Create /TN "InvestorIntelligenceSealedFreshness" /SC MINUTE /MO 60 /TR "<this file>"
-# Kept well inside the V21_TOP20_MAX_AGE_SECONDS=7200 (2h) window: two consecutive
-# failures still fit one window if the previous run was <=0h50m old.
+# Evaluation remains hourly; ordered Top20 changes or a >=6 h heartbeat admit a seal/write plan.
+# Cadence/quota suppression serves the exact dated last-good set, never a fabricated freshness confirmation.
 param(
     [switch]$CarryForwardTop20,
     [int]$RefreshTimeoutSeconds = 1800,
@@ -75,7 +75,8 @@ try {
     if ($RefreshTimeoutSeconds -lt 1 -or $PostSealBudgetSeconds -lt 1 -or $KeepRuns -lt 0) { throw 'BUDGET_INVALID' }
     . (Join-Path $repo 'scripts\v213_operation_lock.ps1')
     if (-not (Test-Path -LiteralPath $logDir)) { New-Item -ItemType Directory -Path $logDir | Out-Null }
-    if (-not [string]::IsNullOrWhiteSpace($SnapshotRoot)) { $env:II_SNAPSHOT_ROOT = $runsRoot }
+    # Every protected-host launch inherits the resolved publication authority root.
+    $env:II_SNAPSHOT_ROOT = $runsRoot
 } catch {
     Write-Host 'SEALED_REFRESH_FAILED phase=ROOT_OR_PREREQUISITE pointer_state=NOT_ATTEMPTED maintenance=NOT_ADMITTED'
     exit 1
@@ -109,6 +110,18 @@ function Get-PrintedRunId([object]$Result) {
     $match = [regex]::Match(($Result.Lines -join "`n"), '"run_id":\s*"(\d{8}T\d{6}Z-[0-9a-f]{12})"')
     if ($match.Success) { return $match.Groups[1].Value }
     return $null
+}
+
+function Read-RetainedPublisherOutcome([object]$Result) {
+    $text = $Result.Lines -join "`n"
+    if ($text -notmatch '"status":\s*"RETAINED_LAST_GOOD"') { return $null }
+    $r = $text | ConvertFrom-Json
+    if ($Result.Code -ne 0 -or $r.status -cne 'RETAINED_LAST_GOOD' -or
+        $r.retention_reason -cnotin @('NO_CHANGE','WRITE_BUDGET','CANDIDATE_UNAVAILABLE') -or
+        $r.pointer_state -cne 'NOT_ATTEMPTED' -or $r.run_id -isnot [string] -or
+        $r.run_id -cnotmatch '^\d{8}T\d{6}Z-[0-9a-f]{12}$' -or
+        $r.retained_run_id -cne $r.run_id) { throw 'RETAINED_OUTCOME_INVALID' }
+    return $r
 }
 
 function Invoke-BoundedScript([string]$Label, [string]$File, [string[]]$Arguments, [int]$TimeoutSeconds) {
@@ -162,6 +175,26 @@ function Invoke-MachinePresealDaily {
         '-GuidancePublicRunId',$contextRun,'-GuidanceBudgetMilliseconds',[string]$left)
     $script:presealDaily=Invoke-GuidanceObservedProcess -Label 'DATA_REFRESH' -Executable 'C:\Program Files\PowerShell\7\pwsh.exe' `
         -Arguments $dailyArgs -WorkingDirectory $repo -RemainingMilliseconds $left -MachineRunId $contextRun
+    # A context-bound protected-host suppression is NOT a completed model/export.
+    # The backend independently observed the process and its settled private
+    # retained result. Require an actual previously readback-confirmed seal too.
+    if ($script:presealDaily.Completed -is [bool] -and $script:presealDaily.Completed -and
+        $script:presealDaily.Attempted -is [bool] -and $script:presealDaily.Attempted -and
+        $script:presealDaily.ExitCode -eq 0 -and
+        $script:presealDaily.PublicationSuppressed -is [bool] -and $script:presealDaily.PublicationSuppressed -and
+        $script:presealDaily.ServingLastGood -is [bool] -and $script:presealDaily.ServingLastGood -and
+        $script:presealDaily.Reason -ceq 'NO_CHANGE' -and $null -eq $script:presealDaily.MachineBundle) {
+        $heartbeat = Invoke-LoggedNative { & $py 'scripts\ranking_confirmed_heartbeat.py' --snapshot-root $runsRoot }
+        if ($heartbeat.Code -ne 0) { throw 'CONFIRMED_HEARTBEAT_UNAVAILABLE' }
+        $script:MachineRetainedOutcome=Read-RetainedPublisherOutcome $heartbeat
+        if ($null -eq $script:MachineRetainedOutcome) {
+            $script:MachineHeartbeatRunId=Get-PrintedRunId $heartbeat
+            if (-not $script:MachineHeartbeatRunId) { throw 'CONFIRMED_HEARTBEAT_UNAVAILABLE' }
+            $replayed=Invoke-LoggedNative { & $py 'scripts\stage_sealed_replay.py' --run-dir (Join-Path $runsRoot $script:MachineHeartbeatRunId) }
+            if ($replayed.Code -ne 0) { throw 'CONFIRMED_HEARTBEAT_REPLAY_FAILED' }
+        }
+        return
+    }
     if (-not $script:presealDaily.Completed -or $script:presealDaily.ExitCode -ne 0 -or
         $null -eq $script:presealDaily.MachineBundle -or $script:presealDaily.MachineBundle.RunId -cne $contextRun) {
         if ($script:presealDaily.PSObject.Properties['MachineReason'] -and
@@ -175,30 +208,113 @@ function Invoke-MachinePresealDaily {
         '--guidance-report-sha256',$public.BodySha256,'--guidance-binding-sha256',$public.BindingSha256)
 }
 
+function Invoke-IndependentProductsAfterMachineFailure {
+    # A typed machine export failure must not starve independent market/price/
+    # identity cadence. This is NOT a second ranking producer or a machine
+    # downgrade: it can only copy remote-readback-confirmed ranking + binding
+    # by digest, then stage/sync an independently due product root.
+    $receipt = [ordered]@{
+        status='NOT_PUBLISHED'; exit=1; pointer_state='NOT_ATTEMPTED'
+        run_id=$null; reason='INDEPENDENT_PRODUCTS_UNAVAILABLE'
+        cache_refresh='SKIPPED_BUDGET'; cache_refresh_exit=$null
+    }
+    try {
+        # This is the same independent zh-name/identity/price/quote collection
+        # as ordinary daily maintenance, without its SEC/guidance/ranking work.
+        # One bounded process tree, never beyond the actual remaining budget.
+        $remainingMs = [long][Math]::Floor([Math]::Max(0,
+            $PostSealBudgetSeconds * 1000.0 - ((Get-Date) - $runStarted).TotalMilliseconds))
+        $refreshSeconds = [int][Math]::Floor([Math]::Min([double]$RefreshTimeoutSeconds,
+            [Math]::Floor($remainingMs / 1000.0)))
+        if ($refreshSeconds -ge 1) {
+            try {
+                $receipt.cache_refresh_exit = Invoke-BoundedScript 'INDEPENDENT_PRODUCTS' `
+                    (Join-Path $repo 'scripts\run_independent_product_refresh.ps1') @() $refreshSeconds
+                $receipt.cache_refresh = if ($receipt.cache_refresh_exit -eq 0) {'COMPLETED'} else {'FAILED'}
+            } catch {
+                $receipt.cache_refresh='FAILED'; $receipt.cache_refresh_exit=1
+            }
+        }
+        # A failed/expired collector never restamps sources: the real sealer
+        # will use only cache bodies still inside each product's hard age bound.
+        $staged = Invoke-LoggedNative { & $py 'scripts\ranking_confirmed_heartbeat.py' --snapshot-root $runsRoot --products-only }
+        if ($staged.Code -ne 0) {
+            $receipt.status='STAGE_FAILED'; $receipt.exit=$staged.Code
+            return [pscustomobject]$receipt
+        }
+        $retained = Read-RetainedPublisherOutcome $staged
+        if ($null -ne $retained) {
+            $receipt.status='RETAINED_LAST_GOOD'; $receipt.exit=0
+            $receipt.reason=$retained.retention_reason
+            return [pscustomobject]$receipt
+        }
+        $productRun = Get-PrintedRunId $staged
+        if (-not $productRun) {
+            $receipt.status='STAGED_RUN_UNCONFIRMED'
+            return [pscustomobject]$receipt
+        }
+        $productDir = Join-Path $runsRoot $productRun
+        Assert-PlainLocalRefreshPath $productDir
+        $replayed = Invoke-LoggedNative { & $py 'scripts\stage_sealed_replay.py' --run-dir $productDir }
+        if ($replayed.Code -ne 0) {
+            $receipt.status='REPLAY_FAILED'; $receipt.exit=$replayed.Code
+            return [pscustomobject]$receipt
+        }
+        $outcomePath = Join-Path $logDir ('sealed-sync-' + [guid]::NewGuid().ToString('N') + '.json')
+        $receipt.pointer_state='UNKNOWN' # sync launched; pointer PUT/readback may have occurred
+        $synced = Invoke-LoggedNative { & $py 'scripts\sync_sealed_snapshot_kv.py' --run-dir $productDir --outcome-path $outcomePath }
+        $outcome = Read-SafeSyncOutcome $outcomePath $productRun
+        $receipt.exit = $synced.Code
+        $receipt.pointer_state = $outcome.pointer_state
+        if ($synced.Code -eq 0 -and $outcome.status -ceq 'SUCCEEDED' -and
+            $outcome.pointer_state -ceq 'READBACK_CONFIRMED' -and $outcome.error_category -ceq 'NONE') {
+            $receipt.status='PRODUCTS_PUBLISHED'; $receipt.exit=0
+            $receipt.run_id=$productRun
+            $receipt.reason='REMOTE_READBACK_CONFIRMED'
+        } elseif ($synced.Code -eq 0 -and $outcome.status -ceq 'RETAINED_LAST_GOOD' -and
+                  $outcome.pointer_state -ceq 'NOT_ATTEMPTED' -and $outcome.error_category -ceq 'NONE') {
+            $receipt.status='RETAINED_LAST_GOOD'; $receipt.exit=0
+            $receipt.reason=$outcome.retention_reason
+        } else {
+            $receipt.status='SYNC_UNCONFIRMED'
+            if ($receipt.exit -eq 0) { $receipt.exit=1 }
+            $receipt.reason='INDEPENDENT_PRODUCTS_SYNC_FAILED'
+        }
+    } catch {
+        # Do not turn an unproven pointer into retained/success or print CLI data.
+        $receipt.status='UNAVAILABLE'; $receipt.exit=1
+        $receipt.reason='INDEPENDENT_PRODUCTS_UNAVAILABLE'
+    }
+    return [pscustomobject]$receipt
+}
+
 function Invoke-CarryForwardSeal {
-    # Seal first, in tiers, each replayed through the real readers before any KV write: (1) the carried Top20 plus
-    # the identity shards, (2) the carried Top20 alone (an identity defect never costs the Top20), (3) an
-    # INSUFFICIENT Top20. The macro overview is sealed in every tier.
+    # Each fallback removes only the defective product; quotes/options/prices
+    # retain their own cadence even when ranking or identity input is unavailable.
     $tiers = @(
         [pscustomobject]@{ Stage = 'OK'; Args = @('--top20-bundle', '--identity-shards', '--bottleneck-v3', '--market-observations', '--price-shards') },
-        [pscustomobject]@{ Stage = 'WITHOUT_LAZY'; Args = @('--top20-bundle') },
-        [pscustomobject]@{ Stage = 'INSUFFICIENT_FALLBACK'; Args = @('--top20-insufficient', 'TOP20_STAGED_REPLAY_FAILED') }
+        [pscustomobject]@{ Stage = 'WITHOUT_IDENTITY'; Args = @('--top20-bundle','--bottleneck-v3','--market-observations','--price-shards') },
+        [pscustomobject]@{ Stage = 'INSUFFICIENT_FALLBACK'; Args = @('--top20-insufficient','TOP20_STAGED_REPLAY_FAILED','--market-observations','--price-shards') }
     )
     if ($GuidanceMachinePublicationEnabled) {
         # Requested machine body+binding are mandatory in EVERY candidate: no
-        # WITHOUT_LAZY/INSUFFICIENT tier may silently discard their unavailable state.
+        # Identity/INSUFFICIENT fallback may never discard the requested machine state.
         $tiers=@([pscustomobject]@{Stage='MACHINE_CARRIED';Args=@('--top20-bundle','--identity-shards','--market-observations','--price-shards')+$script:MachinePublisherArgs})
     }
     $last = [pscustomobject]@{ Code = 1; RunId = $null; Stage = 'REPLAY' }
     foreach ($tier in $tiers) {
         $tierArgs = $tier.Args
-        $published = Invoke-LoggedNative { & $py "scripts\publish_sealed_snapshot.py" --live-clock @tierArgs }
+        $published = Invoke-LoggedNative { & $py "scripts\publish_sealed_snapshot.py" --live-clock --reconcile-confirmed --snapshot-root $runsRoot @tierArgs }
         $runId = if ($published.Code -eq 0) { Get-PrintedRunId $published } else { $null }
         if (-not $runId) {
             # A crash caused by an optional input must not cost the seal: fall through to the next tier.
             Add-Content -Path $log -Value "[$(Get-Date -Format o)] GENERATE FAILED tier=$($tier.Stage) exit=$($published.Code); trying the next tier"
             $last = [pscustomobject]@{ Code = $(if ($published.Code) { $published.Code } else { 1 }); RunId = $null; Stage = 'GENERATE' }
             continue
+        }
+        $retained = Read-RetainedPublisherOutcome $published
+        if ($null -ne $retained) {
+            return [pscustomobject]@{Code=0;RunId=$runId;Stage='RETAINED_LAST_GOOD';Retained=$retained}
         }
         $replayed = Invoke-LoggedNative { & $py "scripts\stage_sealed_replay.py" --run-dir (Join-Path $runsRoot $runId) }
         if ($replayed.Code -eq 0) { return [pscustomobject]@{ Code = 0; RunId = $runId; Stage = $tier.Stage } }
@@ -266,12 +382,17 @@ function Test-OutcomeInteger([object]$Value, [long]$Minimum, [long]$Maximum) {
 function Read-SafeSyncOutcome([string]$Path, [string]$ExpectedRun) {
     Assert-PlainLocalRefreshPath $Path
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf) -or (Get-Item -LiteralPath $Path).Length -gt 8192) { throw 'SYNC_OUTCOME_UNAVAILABLE' }
-    $r = Get-Content -LiteralPath $Path -Raw -Encoding utf8 | ConvertFrom-Json
-    if (-not (Test-OutcomeInteger $r.schema_version 1 1) -or $r.operation -cne 'SYNC' -or $r.run_id -cne $ExpectedRun -or
-        $r.status -cnotin @('SUCCEEDED','FAILED') -or
+    $raw = Get-Content -LiteralPath $Path -Raw -Encoding utf8
+    if ($raw -notmatch '^\s*\{') { throw 'SYNC_OUTCOME_INVALID' }
+    $r = $raw | ConvertFrom-Json
+    if (-not (Test-OutcomeInteger $r.schema_version 1 1) -or
+        $r.operation -isnot [string] -or $r.run_id -isnot [string] -or $r.status -isnot [string] -or
+        $r.pointer_state -isnot [string] -or $r.error_category -isnot [string] -or $r.phase -isnot [string] -or
+        $r.operation -cne 'SYNC' -or $r.run_id -cne $ExpectedRun -or
+        $r.status -cnotin @('SUCCEEDED','FAILED','RETAINED_LAST_GOOD') -or
         $r.pointer_state -cnotin @('NOT_ATTEMPTED','ATTEMPTED_UNCONFIRMED','READBACK_CONFIRMED') -or
-        $r.error_category -cnotin @('NONE','AUTHENTICATION_ERROR','DAILY_KV_LIMIT','NETWORK_FAILURE','TRANSIENT_HTTP','TIMEOUT','UNKNOWN','CLI_UNAVAILABLE','CLI_LAUNCH_FAILED','READBACK_MISMATCH','INPUT_INVALID','LOCAL_IO_FAILURE','OUTCOME_WRITE_FAILED') -or
-        $r.phase -cnotin @('INPUT','OBJECT_PUT','OBJECT_READBACK','POINTER_PUT','POINTER_READBACK','LOCAL_LEDGER','COMPLETE') -or
+        $r.error_category -cnotin @('NONE','AUTHENTICATION_ERROR','DAILY_KV_LIMIT','NETWORK_FAILURE','TRANSIENT_HTTP','TIMEOUT','UNKNOWN','CLI_UNAVAILABLE','CLI_LAUNCH_FAILED','READBACK_MISMATCH','INPUT_INVALID','LOCAL_IO_FAILURE','OUTCOME_WRITE_FAILED','BOOTSTRAP_REQUIRED','WRITE_BUDGET_UNAVAILABLE') -or
+        $r.phase -cnotin @('INPUT','PREFLIGHT','OBJECT_PUT','OBJECT_READBACK','POINTER_PUT','POINTER_READBACK','LOCAL_LEDGER','COMPLETE') -or
         -not (Test-OutcomeInteger $r.cli_attempts_total 0 2147483647) -or
         -not (Test-OutcomeInteger $r.last_cli_attempts 0 3) -or
         $r.last_cli_attempts -gt $r.cli_attempts_total -or
@@ -279,6 +400,17 @@ function Read-SafeSyncOutcome([string]$Path, [string]$ExpectedRun) {
         -not (Test-OutcomeInteger $r.objects_reused 0 2147483647) -or
         -not (Test-OutcomeInteger $r.objects_verified 0 2147483647) -or
         ($null -ne $r.last_cli_exit_code -and -not (Test-OutcomeInteger $r.last_cli_exit_code -2147483648 4294967295))) { throw 'SYNC_OUTCOME_INVALID' }
+    if ($null -ne $r.retention_reason -and
+        ($r.retention_reason -isnot [string] -or
+         $r.retention_reason -cnotin @('NO_CHANGE','WRITE_BUDGET','DAILY_KV_LIMIT','CANDIDATE_UNAVAILABLE'))) {
+        throw 'SYNC_OUTCOME_INVALID'
+    }
+    if ($r.status -ceq 'RETAINED_LAST_GOOD' -and
+        ($r.pointer_state -cne 'NOT_ATTEMPTED' -or $r.error_category -cne 'NONE' -or $r.phase -cne 'COMPLETE' -or
+         $r.retention_reason -cnotin @('NO_CHANGE','WRITE_BUDGET','DAILY_KV_LIMIT','CANDIDATE_UNAVAILABLE') -or
+         $r.retained_run_id -isnot [string] -or $r.retained_run_id -cnotmatch '^\d{8}T\d{6}Z-[0-9a-f]{12}$')) {
+        throw 'SYNC_OUTCOME_INVALID'
+    }
     return $r
 }
 
@@ -317,6 +449,10 @@ function Invoke-AdmittedLocalMaintenance([bool]$PublicationConfirmed) {
             }
         } catch { $m.data_status='LOCAL_EXCEPTION' }
     } else { $m.data_status='SKIPPED_BUDGET' }
+    if ($null -ne $script:MachineRetainedOutcome -or $script:MachineHeartbeatRunId) {
+        $m.top20_status='RETAINED_LAST_GOOD'; $m.top20_exit=0
+        return $m # no second ranking/export/ACK after the protected host suppressed it
+    }
     # Data failure does not silently starve the separate due/backoff-admitted Top20 path.
     $elapsed = [int]((Get-Date) - $runStarted).TotalSeconds
     if ($elapsed -lt $PostSealBudgetSeconds) {
@@ -347,8 +483,12 @@ $pointerState = 'NOT_ATTEMPTED'
 $primaryCategory = 'NONE'
 $runId = ''
 $maintenance = $null
+$retainedOutcome = $null
 $presealDaily = $null
 $script:MachinePublisherArgs=@()
+$script:MachineRetainedOutcome=$null
+$script:MachineHeartbeatRunId=$null
+$script:IndependentProducts=$null
 $maintenanceAdmitted = $true
 $py = if ($env:PROJECT_PYTHON) { $env:PROJECT_PYTHON } else { 'python' }
 try {
@@ -358,13 +498,18 @@ try {
             $primaryPhase='MACHINE_PRESEAL'
             Invoke-MachinePresealDaily # BOTH branches, before any seal: one same-owner producer/export
             $primaryPhase='GENERATE'
+            $retainedOutcome=$script:MachineRetainedOutcome
+            if ($null -ne $retainedOutcome) { $runId=$retainedOutcome.run_id }
+            if ($script:MachineHeartbeatRunId) { $runId=$script:MachineHeartbeatRunId }
         }
-        if ($CarryForwardTop20) {
+        if ($script:MachineHeartbeatRunId) {
+            # Already replayed exact confirmed evidence; no second producer/export.
+        } elseif ($CarryForwardTop20 -and $null -eq $retainedOutcome) {
             Add-Content -Path $log -Value "[$stamp] CARRY_FORWARD_TOP20 seal first"
             $sealed = Invoke-CarryForwardSeal
             if ($sealed.Code -ne 0) { $primaryCode=$sealed.Code; $primaryPhase=$sealed.Stage; $primaryCategory='GENERATION_OR_REPLAY_FAILED' }
-            else { $runId=$sealed.RunId }
-        } else {
+            else { $runId=$sealed.RunId; $retainedOutcome=$sealed.Retained }
+        } elseif ($null -eq $retainedOutcome) {
             # Machine mode already observed ONE actual pre-seal daily above;
             # machine-off retains r3's original data-before-generation behavior.
             if (-not $GuidanceMachinePublicationEnabled) {
@@ -392,14 +537,20 @@ try {
             } catch { Add-Content -Path $log -Value "[$stamp] ROTATION FAILED (publication continues)" }
             }
             $machineArgs=$script:MachinePublisherArgs
-            $published = Invoke-LoggedNative { & $py 'scripts\publish_sealed_snapshot.py' --live-clock @machineArgs }
+            $productArgs=@('--identity-shards','--market-observations','--price-shards')
+            if (-not $GuidanceMachinePublicationEnabled) { $productArgs += '--bottleneck-v3' }
+            $published = Invoke-LoggedNative { & $py 'scripts\publish_sealed_snapshot.py' --live-clock --reconcile-confirmed --snapshot-root $runsRoot @productArgs @machineArgs }
             if ($published.Code -ne 0) { $primaryCode=$published.Code; $primaryCategory='GENERATION_FAILED' }
             else {
                 $runId=Get-PrintedRunId $published
                 if (-not $runId) { $primaryCode=1; $primaryCategory='GENERATED_RUN_UNCONFIRMED' }
+                if ($primaryCode -eq 0) { $retainedOutcome=Read-RetainedPublisherOutcome $published }
             }
         }
-        if ($primaryCode -eq 0) {
+        if ($primaryCode -eq 0 -and $null -ne $retainedOutcome) {
+            $primaryPhase='COMPLETE' # retained is successful, but no new publication/readback is claimed
+        }
+        if ($primaryCode -eq 0 -and $null -eq $retainedOutcome) {
             $primaryPhase = 'SYNC'
             $outcomePath = Join-Path $logDir ('sealed-sync-' + [guid]::NewGuid().ToString('N') + '.json')
             $runDir = Join-Path $runsRoot $runId
@@ -413,7 +564,9 @@ try {
                 $pointerState=$outcome.pointer_state
                 $primaryCategory=$outcome.error_category
                 $primaryPhase=$outcome.phase
-                if ($primaryCode -eq 0 -and ($outcome.status -cne 'SUCCEEDED' -or $pointerState -cne 'READBACK_CONFIRMED' -or $primaryCategory -cne 'NONE')) {
+                if ($primaryCode -eq 0 -and $outcome.status -ceq 'RETAINED_LAST_GOOD') {
+                    $retainedOutcome=$outcome
+                } elseif ($primaryCode -eq 0 -and ($outcome.status -cne 'SUCCEEDED' -or $pointerState -cne 'READBACK_CONFIRMED' -or $primaryCategory -cne 'NONE')) {
                     $primaryCode=1; $primaryCategory='SYNC_SUCCESS_UNPROVEN'
                 } elseif ($primaryCode -ne 0 -and $primaryCategory -eq 'NONE') {
                     $primaryCategory='SYNC_PROCESS_FAILED'
@@ -424,8 +577,25 @@ try {
             }
         }
     } catch {
-        if ($GuidanceMachinePublicationEnabled -and $_.Exception.Message -cin @('MACHINE_INPUTS_UNAVAILABLE','MACHINE_EVIDENCE_LIMIT','MACHINE_EXPORT_UNAVAILABLE','GUIDANCE_MACHINE_PROVIDER_UNAVAILABLE')) {
+        if ($GuidanceMachinePublicationEnabled -and $_.Exception.Message -cin @('MACHINE_INPUTS_UNAVAILABLE','MACHINE_EVIDENCE_LIMIT','MACHINE_EXPORT_UNAVAILABLE','GUIDANCE_MACHINE_PROVIDER_UNAVAILABLE','BOOTSTRAP_REQUIRED','CONFIRMED_HEARTBEAT_UNAVAILABLE')) {
             $primaryCode=2; $primaryCategory=$_.Exception.Message
+            if ($primaryPhase -eq 'MACHINE_PRESEAL' -and $primaryCategory -cin @(
+                'MACHINE_INPUTS_UNAVAILABLE','MACHINE_EVIDENCE_LIMIT',
+                'MACHINE_EXPORT_UNAVAILABLE','GUIDANCE_MACHINE_PROVIDER_UNAVAILABLE')) {
+                # Preserve the machine failure and its exit 2, but let a
+                # separate product-only seal retain its own independent clocks.
+                # No second model/ranking producer, local Top20 or fresh ACK.
+                $maintenanceAdmitted=$false
+                $script:IndependentProducts=Invoke-IndependentProductsAfterMachineFailure
+                # An attempted or confirmed product pointer remains visible
+                # even when the unrelated machine computation failed.
+                if ($script:IndependentProducts.pointer_state -cin @('READBACK_CONFIRMED','ATTEMPTED_UNCONFIRMED','UNKNOWN')) {
+                    $pointerState=$script:IndependentProducts.pointer_state
+                }
+                if ($script:IndependentProducts.status -ceq 'PRODUCTS_PUBLISHED') {
+                    $runId=$script:IndependentProducts.run_id
+                }
+            }
         } elseif ($primaryCode -eq 0) { $primaryCode=1; if ($primaryCategory -eq 'NONE') { $primaryCategory='PRIMARY_EXCEPTION' } }
     }
     # Preserve the first primary failure. This finally-shaped continuation has
@@ -435,10 +605,16 @@ try {
         catch { $maintenance=[ordered]@{data_status='UNKNOWN';top20_status='UNKNOWN';error_category='MAINTENANCE_EXCEPTION'} }
     } elseif (-not $maintenanceAdmitted) { $maintenance=[ordered]@{data_status='NOT_ADMITTED';top20_status='NOT_ADMITTED'} }
     $summary = [ordered]@{schema_version=1;primary_exit=$primaryCode;primary_phase=$primaryPhase;error_category=$primaryCategory;pointer_state=$pointerState;run_id=$runId;local_maintenance=$maintenance;secondary_log_failure=$script:OperationalLogFailed;publication_confirmed=($pointerState -eq 'READBACK_CONFIRMED');publication_operation_succeeded=($primaryCode -eq 0 -and $pointerState -eq 'READBACK_CONFIRMED')}
+    if ($null -ne $retainedOutcome) {
+        $summary['retained_last_good']=$true
+        $summary['retention_reason']=$retainedOutcome.retention_reason
+        $summary['retained_run_id']=$retainedOutcome.retained_run_id
+    }
     if ($GuidanceAutoUpdateEnabled -and $null -ne $presealDaily) {
         $summary['daily_observation']=[ordered]@{status=$presealDaily.Status;attempted=$presealDaily.Attempted;
             completed=$presealDaily.Completed;exit=$presealDaily.ExitCode}
     }
+    if ($null -ne $script:IndependentProducts) { $summary['independent_products']=$script:IndependentProducts }
     $line='SEALED_REFRESH_OUTCOME ' + ($summary | ConvertTo-Json -Depth 5 -Compress)
     Write-Host $line
     try { Add-Content -LiteralPath $log -Value $line -Encoding utf8 }

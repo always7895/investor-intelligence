@@ -1,8 +1,10 @@
-"""Synthetic BARRIER producer/serializer fixture, not AUTO/native/publication acceptance.
+"""Synthetic BARRIER producer/serializer coverage, not AUTO/native/publication acceptance.
 
 No model/serializer/resolver is mocked. Deliberately missing required state and
 invalid synthetic baselines must remain unavailable through the actual publisher.
 The historical clock and existing synthetic report shell are test inputs only.
+Historical Worker fixtures bind the consumer-visible contract after projecting
+only reviewed admission-source identity and its directly dependent digest fields.
 """
 from __future__ import annotations
 
@@ -15,13 +17,15 @@ from datetime import datetime, timezone
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT))
 import order_claims
 import publish_sealed_snapshot as publisher
 import revenue_guidance_machine as machine
 import revenue_guidance_overlay as overlay
+from tests.revenue_guidance_machine_parity_support import consumer_view
 
-FIXTURE = ROOT / "tests/fixtures/revenue-guidance-machine-barrier-functional.json"
 CUTOFF = datetime(2026, 9, 28, 15, tzinfo=timezone.utc)
+FIXTURE = ROOT / "tests/fixtures/revenue-guidance-machine-barrier-functional.json"
 
 
 def produce(root: Path) -> dict:
@@ -51,11 +55,12 @@ def produce(root: Path) -> dict:
 
 
 class MachineBarrierProducerTests(unittest.TestCase):
-    def test_real_producer_serializer_bytes_match_worker_fixture(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            result = produce(Path(tmp))
-            again = produce(Path(tmp))
+    def test_real_producer_preserves_frozen_parity_and_fresh_root_determinism(self):
+        with tempfile.TemporaryDirectory() as a, tempfile.TemporaryDirectory() as b:
+            result = produce(Path(a))
+            again = produce(Path(b))
         self.assertEqual(result, again)
+        self.assertEqual(consumer_view(result), consumer_view(json.loads(FIXTURE.read_bytes())))
         report = json.loads(result["report"])
         nvda = next(row for row in report["top"] if row["symbol"] == "NVDA")["outlook"]["order_forecast_v3"]
         self.assertEqual(nvda["schema"], machine.MACHINE_SCHEMA)
@@ -65,7 +70,6 @@ class MachineBarrierProducerTests(unittest.TestCase):
         self.assertIsNone(nvda["machine"]["record_canonical_json"])
         self.assertIsNone(nvda["machine"]["producer_canonical_json"])
         self.assertEqual(nvda["machine"]["receipt_history"], [])
-        self.assertEqual(result, json.loads(FIXTURE.read_text(encoding="utf-8")))
 
 
 if __name__ == "__main__":

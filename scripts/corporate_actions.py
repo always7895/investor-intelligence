@@ -73,22 +73,21 @@ def _finite_positive(value: Any) -> bool:
 
 
 def _filing_url(value: Any) -> bool:
-    if not isinstance(value, str) or len(value) > 400 or any(ord(c) < 32 for c in value):
+    if not isinstance(value, str) or len(value) > 400 or any(ord(c) < 33 for c in value):
         return False
     try:
         parsed = urlparse(value)
+        return (parsed.scheme == "https" and parsed.hostname == "www.sec.gov"
+                and not parsed.username and not parsed.password and parsed.port is None
+                and not parsed.query and not parsed.fragment
+                and re.fullmatch(r"/Archives/edgar/data/\d{1,10}/\d{18}/[A-Za-z0-9_.-]+\.html?", parsed.path) is not None)
     except ValueError:
         return False
-    # The public Worker accepts only primary SEC archive exhibits; issuer IR and
-    # other SEC endpoints would invalidate the entire sealed Top20 payload.
-    return (parsed.scheme == "https" and parsed.hostname == "www.sec.gov"
-            and not parsed.username and not parsed.password and parsed.port is None
-            and not parsed.query and not parsed.fragment and parsed.path.startswith("/Archives/"))
 
 
-def load_actions(path: Path = DEFAULT_CONFIG, *, today: date | None = None) -> dict[str, Any]:
-    """Standalone loader for independently installed reviewed registries."""
-    return load_actions_bytes(Path(path).read_bytes(), today=today)
+def load_actions(path: Path | None = None, *, today: date | None = None) -> dict[str, Any]:
+    """Load the selected installed registry; resolve its default at the time of the read."""
+    return load_actions_bytes(Path(DEFAULT_CONFIG if path is None else path).read_bytes(), today=today)
 
 
 def load_actions_bytes(raw: bytes, *, today: date | None = None) -> dict[str, Any]:
@@ -96,7 +95,7 @@ def load_actions_bytes(raw: bytes, *, today: date | None = None) -> dict[str, An
     if type(raw) is not bytes:
         raise ValueError("CORPORATE_ACTION_BYTES_REQUIRED")
     doc = _json(raw, MAX_FILE)
-    if not isinstance(doc, dict) or set(doc) != REGISTRY_FIELDS or doc["schema_version"] != 1 or not isinstance(doc["entries"], list):
+    if not isinstance(doc, dict) or set(doc) != REGISTRY_FIELDS or type(doc["schema_version"]) is not int or doc["schema_version"] != 1 or not isinstance(doc["entries"], list):
         raise ValueError("CORPORATE_ACTION_SCHEMA")
     if len(doc["entries"]) > 200:
         raise ValueError("CORPORATE_ACTION_LIMIT")
@@ -110,7 +109,7 @@ def load_actions_bytes(raw: bytes, *, today: date | None = None) -> dict[str, An
         if not isinstance(raw, dict):
             raise ValueError("CORPORATE_ACTION_ENTRY_FIELDS")
         if raw.get("kind") == "DISTRIBUTION":
-            if set(raw) != DISTRIBUTION_FIELDS:
+            if set(raw) not in (DISTRIBUTION_FIELDS, DISTRIBUTION_FIELDS | {"entitlement_receipts"}):
                 raise ValueError("CORPORATE_ACTION_DISTRIBUTION_FIELDS")
             if raw["status"] != "CLOSED":
                 raise ValueError("CORPORATE_ACTION_DISTRIBUTION_NOT_CLOSED")
@@ -131,6 +130,18 @@ def load_actions_bytes(raw: bytes, *, today: date | None = None) -> dict[str, An
             review_day = _day(raw["review_by"]) if raw["review_by"] is not None else None
             if source_day < distribution_day or (review_day is not None and review_day < distribution_day):
                 raise ValueError("CORPORATE_ACTION_DISTRIBUTION_CHRONOLOGY")
+            if "entitlement_receipts" in raw:
+                # Authority comes only from these controlled captured registry bytes,
+                # not an evidence catalog's approval flags or self-computed checksum.
+                from distribution_adjusted_returns import validate_entitlement_receipts
+                validate_entitlement_receipts(raw["entitlement_receipts"])
+                if any(_day(r["approved_on"]) < source_day for r in raw["entitlement_receipts"]):
+                    raise ValueError("CORPORATE_ACTION_ENTITLEMENT_REVIEW_DATE")
+            # Historical replays must not learn future filings or approvals.
+            # Validate the entire entry first; skip only well-formed future evidence.
+            if source_day > today or ("entitlement_receipts" in raw and
+                    any(_day(r["approved_on"]) > today for r in raw["entitlement_receipts"])):
+                continue
             key = (raw["target_symbol"], raw["distribution_date"], raw["related_symbol"])
             if key in distribution_keys:
                 raise ValueError("CORPORATE_ACTION_DUPLICATE_DISTRIBUTION")
@@ -171,6 +182,9 @@ def load_actions_bytes(raw: bytes, *, today: date | None = None) -> dict[str, An
                 raise ValueError("CORPORATE_ACTION_CASH")
         elif cash is not None or raw["currency"] is not None:
             raise ValueError("CORPORATE_ACTION_ALL_STOCK_CASH")
+        if source_on > today:
+            # Not yet publicly known at this point in time (no suppression or notice).
+            continue
         if raw["status"] == "PENDING":
             if raw["target_symbol"] in pending_targets:
                 raise ValueError("CORPORATE_ACTION_DUPLICATE_PENDING_TARGET")
@@ -193,15 +207,25 @@ def pending_targets(doc: dict[str, Any]) -> dict[str, dict[str, Any]]:
     return {entry["target_symbol"]: entry for entry in doc["entries"] if entry["status"] == "PENDING"}
 
 
-def pending_acquirers(doc: dict[str, Any]) -> dict[str, dict[str, Any]]:
-    """A display-only note; no effect on acquirer scoring, options, or recommendations."""
-    return {entry["acquirer_symbol"]: entry for entry in doc["entries"] if entry["status"] == "PENDING"}
-
-
-def acquirer_note(entry: dict[str, Any]) -> dict[str, Any]:
-    """Bounded, whitelist-only additive metadata for the sealed LINE reader."""
-    return {key: entry[key] for key in ("target_symbol", "acquirer_symbol", "kind",
-             "exchange_ratio", "cash_per_share", "currency", "expected_close", "source_url")}
+def public_notes(doc: dict[str, Any], *, asof: date) -> dict[str, dict[str, Any]]:
+    """Display both parties; conflicting single-slot terms fail closed rather than overwrite."""
+    notes: dict[str, dict[str, Any]] = {}
+    for entry in doc["entries"]:
+        if entry["status"] == "PENDING" and _day(entry["announced_on"]) <= asof:
+            note = {key: entry[key] for key in ("target_symbol", "acquirer_symbol", "kind", "status",
+                    "exchange_ratio", "cash_per_share", "currency", "expected_close", "source_url")}
+            for symbol in (entry["target_symbol"], entry["acquirer_symbol"]):
+                if symbol in notes and notes[symbol] != note:
+                    raise ValueError("CORPORATE_ACTION_NOTE_CONFLICT")
+                notes[symbol] = note
+    for entries in completed_distributions(doc, asof=asof).values():
+        for entry in entries:
+            note = distribution_note(entry)
+            for symbol in (entry["target_symbol"], entry["related_symbol"]):
+                if symbol in notes and notes[symbol] != note:
+                    raise ValueError("CORPORATE_ACTION_NOTE_CONFLICT")
+                notes[symbol] = note
+    return notes
 
 
 def completed_distributions(doc: dict[str, Any], *, asof: date | None = None) -> dict[str, list[dict[str, Any]]]:

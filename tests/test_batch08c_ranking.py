@@ -32,8 +32,10 @@ def captured(symbols=('6857.T',), quarters=5, shares=None, no_shares=False, mism
                   'source_date': '2026-09'} for symbol in symbols]}
     entries = {name: None for name in ('serenity', 'leopold', 'cision', 'official_quarters', 'korea_orders')}
     entries['official_quarters'] = official_quarters
-    # Protected host now supplies the strict corporate-action registry in the same capture catalog.
-    entries['corporate_actions'] = (f.ROOT / 'config/corporate-actions-v1.json').read_bytes()
+    # Synthetic September universe: never capture today's later public action facts.
+    entries['corporate_actions'] = old.HISTORICAL_ACTION_BYTES
+    entries['open_candidates'] = encoded([])
+    entries['reviewed_events'] = encoded([])
     entries['layers'] = encoded({'layers': [layer]})
     entries['lineage'] = (f.ROOT / 'config/listing-lineage-v1.json').read_bytes()
     entries['tickers'] = encoded({'fields': ['ticker', 'cik'], 'data': [[symbol, i + 1] for i, symbol in enumerate(symbols)]})

@@ -85,6 +85,8 @@ export function withAlphaVantageOwnerOnly(inner: PublicSnapshotView): PublicSnap
   if (inner.integrity === "invalid") return inner;
   return Object.freeze<PublicSnapshotView>({
     runId: inner.runId,
+    ...(inner.sealRunId === undefined ? {} : { sealRunId: inner.sealRunId }),
+    ...(inner.sealSha256 === undefined ? {} : { sealSha256: inner.sealSha256 }),
     kind: inner.kind,
     integrity: inner.integrity,
     ...(typeof inner.hasSealedObject === "function" ? { hasSealedObject: (key: string) => inner.hasSealedObject!(key) } : {}),

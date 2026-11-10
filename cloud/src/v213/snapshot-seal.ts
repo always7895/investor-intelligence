@@ -33,6 +33,12 @@ const CONTRACT = "v213-stored-snapshot-v1";
 export interface LazyObjectDigest { readonly sha256: string; readonly utf8_bytes: number; }
 export interface SnapshotSealMeta {
   run_id: string; transaction_id: string; generated_at: string; public_data_as_of: string;
+  /** Present together: retained eager-object/claim run and independent ranking publication clock.
+   * Ranking-only publication may advance its clock while keeping core authority and payload bytes unchanged.
+   * The sole global eager control is last_successful_pipeline_timestamp = actual assembly generated_at. */
+  core_run_id?: string; ranking_persisted_at?: string;
+  /** Independent publication clocks; a ranking-only assembly retains these unchanged. */
+  product_persisted_at?: Partial<Record<"market" | "prices" | "identity", string>>;
 }
 interface ObjectDigest { sha256: string; utf8_bytes: number; }
 interface SnapshotSeal extends SnapshotSealMeta {
@@ -98,17 +104,38 @@ function control(raw: string, limit: number): Record<string, unknown> {
   requireSeal(raw.trim() === JSON.stringify(value));
   return object(value);
 }
+function extensionKeys(value: Record<string, unknown>): readonly string[] {
+  const hasCore = Object.hasOwn(value, "core_run_id");
+  requireSeal(hasCore === Object.hasOwn(value, "ranking_persisted_at"));
+  return [...(hasCore ? ["core_run_id", "ranking_persisted_at"] : []),
+    ...(Object.hasOwn(value, "product_persisted_at") ? ["product_persisted_at"] : [])];
+}
 function meta(value: Record<string, unknown>): void {
   requireSeal(typeof value.run_id === "string" && SNAPSHOT_RUN_RE.test(value.run_id)
     && typeof value.transaction_id === "string" && TRANSACTION.test(value.transaction_id)
     && time(value.generated_at) && time(value.public_data_as_of)
     && Date.parse(value.public_data_as_of) <= Date.parse(value.generated_at) + 300_000);
+  if (Object.hasOwn(value, "core_run_id")) {
+    requireSeal(typeof value.core_run_id === "string" && value.core_run_id.length === 29 && SNAPSHOT_RUN_RE.test(value.core_run_id)
+      && time(value.ranking_persisted_at)
+      && Date.parse(value.ranking_persisted_at) <= Date.parse(value.generated_at as string)
+      && Date.parse(value.public_data_as_of as string) <= Date.parse(value.ranking_persisted_at) + 300_000);
+  }
+  if (Object.hasOwn(value, "product_persisted_at")) {
+    const clocks = object(value.product_persisted_at);
+    requireSeal(Object.keys(clocks).every(key => ["market", "prices", "identity"].includes(key)));
+    requireSeal(Object.values(clocks).every(stamp => time(stamp)
+      && Date.parse(stamp) <= Date.parse(value.generated_at as string)));
+  }
 }
 function claim(raw: string, expected: SnapshotSealMeta): void {
   const value = control(raw, 8192);
   keys(value, ["schema_version", "transaction_id", "run_id", "payload_digests", "claimed_at"]);
-  requireSeal(value.schema_version === 1 && value.run_id === expected.run_id
+  requireSeal(value.schema_version === 1 && value.run_id === (expected.core_run_id ?? expected.run_id)
     && value.transaction_id === expected.transaction_id && time(value.claimed_at));
+  if (expected.ranking_persisted_at !== undefined) {
+    requireSeal(Date.parse(value.claimed_at as string) <= Date.parse(expected.ranking_persisted_at) + 300_000);
+  }
   const digests = object(value.payload_digests); keys(digests, contract.payload_names);
   requireSeal(Object.values(digests).every(item => typeof item === "string" && HEX.test(item)));
 }
@@ -124,15 +151,18 @@ export function parseSealedPointer(raw: string): SealedPointer {
 }
 export async function buildSnapshotSeal(metadata: SnapshotSealMeta, supplied: readonly [string, string][]): Promise<{ text: string; sha256: string }> {
   const expected = { ...metadata };
-  keys(expected, ["run_id", "transaction_id", "generated_at", "public_data_as_of"]); meta(expected);
+  keys(expected, ["run_id", "transaction_id", "generated_at", "public_data_as_of", ...extensionKeys(expected)]); meta(expected);
+  if (expected.product_persisted_at !== undefined) expected.product_persisted_at = { ...expected.product_persisted_at };
   const entries = supplied.map(([key, body]) => [key, body] as [string, string]);
   const allowed: string[] = [...SNAPSHOT_OBJECT_KEYS, ...SNAPSHOT_OPTIONAL_KEYS];
   requireSeal(entries.length === SNAPSHOT_OBJECT_KEYS.length || entries.length === allowed.length);
   requireSeal(entries.every(([key]) => allowed.includes(key)));
-  const bodies = Object.fromEntries(entries); keys(bodies, SNAPSHOT_OBJECT_KEYS);
-  claim(bodies["v213:activation-claim"]!, expected);
-  requireSeal(bodies.last_successful_pipeline_timestamp === expected.public_data_as_of);
+  const bodies = Object.fromEntries(entries);
   const manifestKeys = SNAPSHOT_OPTIONAL_KEYS.filter((key) => key in bodies);
+  keys(bodies, [...SNAPSHOT_OBJECT_KEYS, ...manifestKeys]);
+  requireSeal(entries.length === Object.keys(bodies).length);
+  claim(bodies["v213:activation-claim"]!, expected);
+  requireSeal(bodies.last_successful_pipeline_timestamp === (expected.core_run_id === undefined ? expected.public_data_as_of : expected.generated_at));
   requireSeal(manifestKeys.length === 0 || manifestKeys.length === SNAPSHOT_OPTIONAL_KEYS.length);
   let total = 0;
   const digests: Record<string, ObjectDigest> = {};
@@ -147,19 +177,22 @@ export async function buildSnapshotSeal(metadata: SnapshotSealMeta, supplied: re
   return { text, sha256: await sha(text, 8192) };
 }
 export async function readSealedSnapshot(rawPointer: string, get: (key: string) => Promise<string | null>): Promise<{
-  pointer: SealedPointer; objects: ReadonlyMap<string, string>; lazy: ReadonlyMap<string, LazyObjectDigest>;
+  pointer: SealedPointer; coreRunId: string; objects: ReadonlyMap<string, string>; lazy: ReadonlyMap<string, LazyObjectDigest>;
 }> {
   const pointer = parseSealedPointer(rawPointer);
   const prefix = `snapshot:${pointer.run_id}:`;
   const raw = await get(prefix + SNAPSHOT_SEAL_KEY); requireSeal(raw !== null);
   requireSeal(await sha(raw, MAX_MANIFEST) === pointer.seal_sha256);
   const manifest = control(raw, MAX_MANIFEST);
-  keys(manifest, ["schema_version", "contract_id", "run_id", "transaction_id", "generated_at", "public_data_as_of", "provider_scope", "owner_watchlist_inherited", "objects"]);
+  keys(manifest, ["schema_version", "contract_id", "run_id", "transaction_id", "generated_at", "public_data_as_of",
+    "provider_scope", "owner_watchlist_inherited", "objects", ...extensionKeys(manifest)]);
   meta(manifest);
   requireSeal(manifest.schema_version === 1 && manifest.contract_id === CONTRACT
     && manifest.run_id === pointer.run_id && manifest.transaction_id === pointer.transaction_id
     && manifest.public_data_as_of === pointer.public_data_as_of
     && manifest.provider_scope === "public_only" && manifest.owner_watchlist_inherited === false);
+  const coreRunId = (manifest.core_run_id ?? pointer.run_id) as string;
+  const corePrefix = `snapshot:${coreRunId}:`;
   const allDefinitions = object(manifest.objects);
   const lazy = new Map<string, LazyObjectDigest>();
   let lazyTotal = 0;
@@ -195,14 +228,15 @@ export async function readSealedSnapshot(rawPointer: string, get: (key: string) 
   // Read/verify the whole bounded set before exposing any member. Keep these
   // exact bytes for this view; do not fetch them again while constructing an answer.
   for (const key of presentKeys) {
-    const body = await get(prefix + key); requireSeal(body !== null);
+    const globalLiveness = manifest.core_run_id !== undefined && key === "last_successful_pipeline_timestamp";
+    const body = await get((globalLiveness ? prefix : corePrefix) + key); requireSeal(body !== null);
     const entry = definitions[key] as unknown as ObjectDigest;
     requireSeal(await bodyMatchesSealed(body, MAX_OBJECT, entry));
     objects.set(key, body);
   }
   claim(objects.get("v213:activation-claim")!, manifest as unknown as SnapshotSealMeta);
-  requireSeal(objects.get("last_successful_pipeline_timestamp") === pointer.public_data_as_of);
-  return { pointer, objects, lazy };
+  requireSeal(objects.get("last_successful_pipeline_timestamp") === (manifest.core_run_id === undefined ? pointer.public_data_as_of : manifest.generated_at));
+  return { pointer, coreRunId, objects, lazy };
 }
 
 /** Exact bytes of one lazy sealed object, or null when absent, oversized or not matching its sealed digest. */

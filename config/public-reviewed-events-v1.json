@@ -1,0 +1,34 @@
+[
+  {
+    "symbol": "LITE",
+    "market": "US",
+    "published_on": "2026-11-02",
+    "source_url": "https://www.sec.gov/Archives/edgar/data/0001633978/000119312526442758/d163169dex991.htm",
+    "headline_zh": "LITE 與 MRVL 公布全股票合併計畫（待核准）",
+    "reviewed": true,
+    "rights": "PUBLIC_RESEARCH_ONLY",
+    "primary_body": {
+      "sha256": "0fd35faef12715fd83afbc3745e8d7db1cd47ae76ad72a2998d9c8dd774d11a7",
+      "excerpt_sha256": "2d3bd34e40c78beb81f28438b69ad808ac457b361e22c9aa1feb33c7b91b5a7d",
+      "source_url": "https://www.sec.gov/Archives/edgar/data/0001633978/000119312526442758/d163169dex991.htm",
+      "claim_reviewed": true,
+      "reviewed_on": "2026-11-09"
+    }
+  },
+  {
+    "symbol": "MRVL",
+    "market": "US",
+    "published_on": "2026-11-02",
+    "source_url": "https://www.sec.gov/Archives/edgar/data/0001633978/000119312526442758/d163169dex991.htm",
+    "headline_zh": "MRVL 擬收購 LITE，待監管與股東核准",
+    "reviewed": true,
+    "rights": "PUBLIC_RESEARCH_ONLY",
+    "primary_body": {
+      "sha256": "0fd35faef12715fd83afbc3745e8d7db1cd47ae76ad72a2998d9c8dd774d11a7",
+      "excerpt_sha256": "2d3bd34e40c78beb81f28438b69ad808ac457b361e22c9aa1feb33c7b91b5a7d",
+      "source_url": "https://www.sec.gov/Archives/edgar/data/0001633978/000119312526442758/d163169dex991.htm",
+      "claim_reviewed": true,
+      "reviewed_on": "2026-11-09"
+    }
+  }
+]

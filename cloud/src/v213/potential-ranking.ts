@@ -120,8 +120,8 @@ const ORDER_CALCULATION_UNAVAILABLE = "訂單計算資料已過期或無法驗�
 const withheldOrdersNotice = (ranking: PotentialRanking) => ranking.records.some(row => row.orders_freshness)
   ? `${ORDER_CALCULATION_UNAVAILABLE}的公司已略過；其餘排名仍依本輪產業資料。` : null;
 const noCompleteOrders = (ranking: PotentialRanking) => withheldOrdersNotice(ranking)
-  ? `${ORDER_CALCULATION_UNAVAILABLE}；目前沒有可驗證且完整的 6M、1Y、2Y 訂單計算資料。`
-  : "本輪潛力榜沒有同時揭露 6M、1Y、2Y 認列時程的公司；不以推估補足。";
+  ? `${ORDER_CALCULATION_UNAVAILABLE}；目前沒有任一可驗證的訂單認列期間。`
+  : "本輪潛力榜沒有任何已核驗的訂單認列期間；不以推估補足。";
 
 /** 6M/1Y/2Y: share of the current revenue run rate already signed, and the growth floor where it exceeds 100%. */
 function ordersSection(row: PotentialRecord) {
@@ -136,33 +136,65 @@ function ordersSection(row: PotentialRecord) {
   ], "detail");
 }
 
-/** Operator rule 2026-09-25: only companies with all three horizons computable, ordered by the 2Y figure. */
+function orderHorizonIndex(row: PotentialRecord): number {
+  if (!row.orders) return -1;
+  for (let index = HORIZONS.length - 1; index >= 0; index--) {
+    if (row.orders.coverage_pct[HORIZONS[index]![0]] !== null) return index;
+  }
+  return -1;
+}
+
+/** The strict all-three-horizons rule of 2026-09-25 is superseded by NO-EMPTY-NUMBERS 2026-11-08.
+ * Rank partial coverage only within the same disclosed period, grouping 2Y, 1Y, 6M.
+ * Missing periods never turn into zero, an interpolated number, or an order forecast. */
+export function orderRealizationBasis(row: PotentialRecord): { key: Horizon; label: string; value: number } | null {
+  const index = orderHorizonIndex(row);
+  if (index < 0) return null;
+  const [key, label] = HORIZONS[index]!;
+  return { key, label, value: row.orders!.coverage_pct[key]! };
+}
+
 export function orderRealizationRanking(ranking: PotentialRanking): PotentialRecord[] {
-  return ranking.records
-    .filter(row => row.orders && HORIZONS.every(([key]) => row.orders!.coverage_pct[key] !== null))
-    .sort((a, b) => b.orders!.coverage_pct.m24! - a.orders!.coverage_pct.m24! || a.rank - b.rank);
+  return ranking.records.filter(row => orderHorizonIndex(row) >= 0)
+    .sort((a, b) => {
+      const x = orderHorizonIndex(a), y = orderHorizonIndex(b);
+      return y - x || b.orders!.coverage_pct[HORIZONS[y]![0]]! - a.orders!.coverage_pct[HORIZONS[x]![0]]!
+        || a.rank - b.rank;
+    });
+}
+
+function orderDisclosureLabel(row: PotentialRecord): string {
+  const coverage = row.orders!.coverage_pct;
+  return coverage.m6 !== null && coverage.m12 !== null && coverage.m24 !== null
+    ? "6M／1Y／2Y 完整揭露" : "部分期間揭露";
 }
 
 export function buildOrderRealizationFlex(ranking: PotentialRanking): LineOutboundMessage[] | string {
   const rows = orderRealizationRanking(ranking);
   if (rows.length === 0) return noCompleteOrders(ranking);
-  const top = Math.max(100, ...rows.map(row => row.orders!.coverage_pct.m24!));
+  const groupMax = [100, 100, 100];
+  for (const row of rows) {
+    const index = orderHorizonIndex(row);
+    groupMax[index] = Math.max(groupMax[index]!, row.orders!.coverage_pct[HORIZONS[index]![0]]!);
+  }
   const bubble = {
     type: "bubble", size: "mega",
     header: uiBox([
-      uiBox([chip("訂單實現排序"), uiText(`依 2Y 已簽約覆蓋排序 · ${rows.length} 家`, "xxs", T.headerMuted, { gravity: "center", flex: 1 })],
+      uiBox([chip("訂單實現排序"), uiText(`依最長已揭露期間分組排序 · ${rows.length} 家`, "xxs", T.headerMuted, { gravity: "center", flex: 1 })],
         { layout: "horizontal", spacing: "md" }),
       uiText("若訂單如期實現", "xl", T.headerText, { weight: "bold" }),
-      uiText("只列 6M、1Y、2Y 認列時程都已揭露的公司", "xxs", T.headerSubtle),
+      uiText("可部分揭露；2Y／1Y／6M 分組，各組內按覆蓋率排序", "xxs", T.headerSubtle),
     ], { ...headerStyle, spacing: "sm" }),
     body: uiBox(rows.slice(0, 10).flatMap((row, index) => {
       const o = row.orders!;
+      const basis = orderRealizationBasis(row)!;
       const block = uiBox([
         rankBadge(index + 1, index === 0),
         uiBox([
           uiBox([uiText(row.ticker, "md", T.ink, { weight: "bold", flex: 0 }), uiText(row.name, "xxs", T.subtle, { gravity: "center" })],
             { layout: "horizontal", spacing: "sm" }),
-          uiBox([meter(o.coverage_pct.m24!, top, T.ink, true), uiText(`2Y ${coverageText(o.coverage_pct.m24)}`, "xs", T.ink, { weight: "bold", flex: 0 })],
+          uiText(orderDisclosureLabel(row), "xxs", T.subtle),
+          uiBox([meter(basis.value, groupMax[orderHorizonIndex(row)]!, T.ink, true), uiText(`${basis.label} ${coverageText(basis.value)}`, "xs", T.ink, { weight: "bold", flex: 0 })],
             { layout: "horizontal", spacing: "sm", alignItems: "center" }),
           uiText(HORIZONS.map(([key, label]) => `${label} ${coverageText(o.coverage_pct[key])}（${floorText(o.coverage_pct[key], o.floor_growth_pct[key])}）`).join("｜"),
             "xs", T.muted),
@@ -176,7 +208,7 @@ export function buildOrderRealizationFlex(ranking: PotentialRanking): LineOutbou
       menuAction("回潛力榜", "潛力榜"),
     ], { paddingAll: "lg", spacing: "sm", backgroundColor: T.paper }),
   };
-  const messages: LineOutboundMessage[] = [{ type: "flex", altText: `訂單實現排序（${rows.length} 家，依 2Y 已簽約覆蓋）`,
+  const messages: LineOutboundMessage[] = [{ type: "flex", altText: `訂單實現排序（${rows.length} 家，依最長已揭露期間分組）`,
     contents: { type: "carousel", contents: [bubble] } }];
   assertLineMessages(messages);
   return messages;
@@ -185,12 +217,12 @@ export function buildOrderRealizationFlex(ranking: PotentialRanking): LineOutbou
 export function buildOrderRealizationText(ranking: PotentialRanking): LineOutboundMessage[] | string {
   const rows = orderRealizationRanking(ranking);
   if (rows.length === 0) return noCompleteOrders(ranking);
-  const lines = ["【訂單實現排序】只列 6M、1Y、2Y 認列時程都已揭露的公司，依 2Y 已簽約覆蓋排序",
-    ...rows.map((row, index) => `${index + 1}. ${row.ticker} ${row.name}｜` + HORIZONS.map(([key, label]) =>
+  const lines = ["【訂單實現排序】部分期間准入；依最長已揭露期間（2Y／1Y／6M）分組，各組內按已簽約覆蓋率排序；不同期間不能直接比較",
+    ...rows.map((row, index) => `${index + 1}. ${row.ticker} ${row.name}｜${orderDisclosureLabel(row)}｜` + HORIZONS.map(([key, label]) =>
       `${label} ${coverageText(row.orders!.coverage_pct[key])}（${floorText(row.orders!.coverage_pct[key], row.orders!.floor_growth_pct[key])}）`).join("｜")),
     ...(withheldOrdersNotice(ranking) ? [withheldOrdersNotice(ranking)!] : []),
     "覆蓋＝已簽約訂單在期間內認列的營收 ÷（最近一季營收 × 期間季數）；超過 100% 才有成長下限（利潤率、股數、本益比不變，未計新接訂單）。非預測、非投資建議。"];
-  const messages: LineOutboundMessage[] = [{ type: "text", text: lines.join("\n").slice(0, 4900) }];
+  const messages = packCompleteLines(lines);
   assertLineMessages(messages);
   return messages;
 }

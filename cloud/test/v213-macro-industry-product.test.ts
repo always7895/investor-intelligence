@@ -11,6 +11,7 @@ import {
 } from "../src/v213/macro-industry-product";
 import type {
   MacroDeepAnalysis,
+  MacroGrowthRate,
   MacroIndustryCard,
   MacroTop5Overview,
 } from "../src/v213/market-product-schema";
@@ -156,6 +157,83 @@ describe("Macro Industry Product presentation and schemas", () => {
     assertLineMessages(text2);
     expect(JSON.stringify(text2)).toContain("資料暫不可用（無已驗收來源之獨立市場成長率）");
     expect(JSON.stringify(text2)).toContain("System Operationalization 量化評分，非機率");
+  });
+
+  it.each<{
+    name: string;
+    growth: Partial<MacroGrowthRate> | null;
+    label: string;
+    issuerRevenue: boolean;
+  }>([
+    {
+      name: "actual SEC XBRL revenue sample",
+      growth: {
+        source_id: "sec-xbrl-frames-revenue",
+        type: "actual",
+        publisher: "SEC EDGAR XBRL Frames",
+        url: "https://data.sec.gov/api/xbrl/frames/us-gaap/Revenues/USD/CY2026Q2.json",
+        raw_passage: "Summed quarterly revenue of 5 SIC 3674 issuers: 1000 -> 1255 USD",
+      },
+      label: "申報企業樣本營收年增",
+      issuerRevenue: true,
+    },
+    {
+      name: "non-SEC market forecast",
+      growth: {},
+      label: "來源成長率（口徑未確認）",
+      issuerRevenue: false,
+    },
+    {
+      name: "SEC non-revenue growth",
+      growth: { source_id: "sec-xbrl-frames-backlog", type: "actual", publisher: "SEC" },
+      label: "來源成長率（口徑未確認）",
+      issuerRevenue: false,
+    },
+    {
+      name: "unknown metric from SEC",
+      growth: { source_id: "unclassified-source", type: "actual", publisher: "SEC" },
+      label: "來源成長率（口徑未確認）",
+      issuerRevenue: false,
+    },
+    {
+      name: "revenue lineage with unsupported forecast basis",
+      growth: { source_id: "sec-xbrl-frames-revenue" },
+      label: "來源成長率（口徑未確認）",
+      issuerRevenue: false,
+    },
+    {
+      name: "revenue lineage without annual comparison units",
+      growth: { source_id: "sec-xbrl-frames-revenue", type: "actual", units: "%" },
+      label: "來源成長率（口徑未確認）",
+      issuerRevenue: false,
+    },
+    {
+      name: "absent growth",
+      growth: null,
+      label: "成長率（口徑未提供）",
+      issuerRevenue: false,
+    },
+  ])("labels $name conservatively across text and Flex", ({ growth, label, issuerRevenue }) => {
+    const fixture = mockCard(1, "growth_basis");
+    const card: MacroIndustryCard = {
+      ...fixture,
+      rank: growth === null ? null : fixture.rank,
+      growth: growth === null ? null : { ...fixture.growth!, ...growth },
+    };
+    const overview: MacroTop5Overview = { ...mockOverview(1), industries: [card] };
+    const surfaces = [
+      buildMacroIndustryCardText(card),
+      buildMacroIndustryCardFlex(card),
+      buildMacroTop5OverviewText(overview),
+      buildMacroTop5OverviewFlex(overview),
+    ];
+    for (const messages of surfaces) {
+      const rendered = JSON.stringify(messages);
+      expect(rendered).toContain(label);
+      expect(rendered).toContain("非總市場／TAM");
+      expect(rendered.includes("申報企業樣本營收年增")).toBe(issuerRevenue);
+      if (growth !== null) expect(rendered).toContain("+25.5");
+    }
   });
 
   it("strictly rejects company count percentage as market growth", () => {

@@ -1594,6 +1594,24 @@ class B1Outputs:
             # failed output compare/publication or original native UNKNOWN.
             raise B1OutputControlFault("OUTPUT_CISION_UNAVAILABLE") from None
 
+    def latest_ranking(self):
+        """Read the last admitted immutable bundle; never claim live consumption."""
+        entries = self._ledger()["entries"]
+        if not entries:
+            return None  # Genuine bootstrap: there has never been a published bundle.
+        record = self._output_json(self.read("record", entries[-1]))
+        if (type(record) is not dict or record.get("schema") != "guidance-local-completion-v1"
+                or not SHA_RE.fullmatch(str(record.get("ranking_sha256")))
+                or not SHA_RE.fullmatch(str(record.get("output_sha256")))):
+            raise StateError("OUTPUT_READBACK")
+        ranking = self._output_json(self.read("rank", record["ranking_sha256"]))
+        self.read("body", record["output_sha256"])  # Last-good includes actual sealed bytes.
+        import ranking_write_policy
+        ranking_write_policy.ordered_rank_digest(ranking)
+        if ranking.get("generated_at") != record.get("cutoff"):
+            raise StateError("OUTPUT_READBACK")
+        return ranking  # Original historical generated_at, no rewritten freshness/approval.
+
     def read(self, kind, digest):
         if kind not in ("rank", "body", "record") or type(digest) is not str or not SHA_RE.fullmatch(digest):
             raise StateError("OUTPUT_NAME")

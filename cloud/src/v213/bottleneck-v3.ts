@@ -10,6 +10,7 @@ import { TREND_CHIP, TREND_LABEL, trendBasisText, trendBlockLines, trendHorizonF
 import { assertLineMessages, type LineOutboundMessage } from "../line-messages";
 import type { PublicSnapshotView } from "./public-snapshot";
 import { v213ReportAgeFresh } from "./report-age";
+import { readRetainedRanking } from "./ranking-retention";
 import { unwrapTransportV1 } from "./revenue-guidance-wire";
 import { GUIDANCE_BINDING_KEY, MACHINE_SCHEMA, resolveSealedMachineBindings, type MachineBindings } from "./revenue-guidance-machine";
 import { sourceZh } from "./source-labels";
@@ -94,6 +95,12 @@ interface Market {
   cross_check?: { source_id: string; source_url: string; price: number; asof: string | null; currency: string; diff: number | null };
   /** Underlying adjustment for a completed shareholder distribution is not independently proved. */
   return_reasons?: Partial<Record<"ret_6m" | "ret_1y" | "cagr_2y" | "cagr_listed", "DISTRIBUTION_IN_WINDOW">>;
+  distribution_adjustment?: {
+    status: "REVIEWED_PRIMARY_INPUTS"; source_url: string; distribution_date: string;
+    related_symbol: string; shares_per_share: number; evidence_sha256: string;
+    values: Partial<Record<"ret_6m" | "ret_1y" | "cagr_2y", number>>;
+    method: "SHAREHOLDER_ENTITLEMENT_TOTAL_RETURN";
+  };
 }
 interface SerenityLead { mentions: number; bullish: number; bearish: number; stance: string; latest_at: string | null; latest_url: string | null; }
 /** Current orders, the consensus outlook and the price scenarios if it is realized (scripts/bottleneck_top20_v3.py). */
@@ -126,7 +133,7 @@ export interface Outlook {
 }
 interface LeopoldLead { long_weight: number; status: string; }
 interface MergerActionNote {
-  target_symbol: string; acquirer_symbol: string; kind: "ALL_STOCK" | "CASH" | "MIXED";
+  target_symbol: string; acquirer_symbol: string; kind: "ALL_STOCK" | "CASH" | "MIXED"; status: "PENDING";
   exchange_ratio: number | null; cash_per_share: number | null; currency: string | null;
   expected_close: string; source_url: string;
 }
@@ -136,6 +143,19 @@ interface DistributionActionNote {
   shares_per_share: number; source_url: string; source_date: string; review_by: string | null;
 }
 type CorporateActionNote = MergerActionNote | DistributionActionNote;
+interface CorporateActionDisplay {
+  symbol: string; corporate_action?: CorporateActionNote;
+  market?: Pick<Market, "distribution_adjustment">;
+}
+interface ExcludedCorporateAction {
+  symbol: string; reason_zh: string; corporate_action: CorporateActionNote;
+}
+const EXCLUDED_ACTION_REASONS: Record<"PENDING" | "DISTRIBUTION", string> = {
+  PENDING: "併購待完成，暫不納入排行",
+  DISTRIBUTION: "尚缺可核對的一手歷史收盤價、完整配息與拆股紀錄及衍生報酬公開使用權；零股另須實際淨現金證明，跨配發權益日報酬暫不顯示。",
+};
+const ROTATION_NOTICE_ZH = "本輪輪動來源鏈未驗證；排行仍依既有資料更新，請人工覆核。";
+interface RotationProvenanceNotice { status: "UNVERIFIED"; notice_zh: string; }
 export interface BottleneckEntry {
   rank: number; symbol: string; name: string; layer: string;
   /** Traditional Chinese name stated by the exchange, the company or Chinese Wikipedia; null when none exists. */
@@ -152,8 +172,11 @@ export interface BottleneckEntry {
   parts: { layer_heat: number; capture: number; lead: number; confirmation: number; size: number; penalty: number };
   fundamentals: Fundamentals | null; market: Market; market_cap_usd: number | null;
   serenity: SerenityLead | null; leopold: LeopoldLead | null;
-  /** Reviewed public merger term. Acquirer display only, never score-bearing. */
+  /** Controlled public terms for either party. Display only; no admission or entitlement transfer. */
   corporate_action?: CorporateActionNote;
+  /** Research-only hypotheses. All conditions remain unvalidated and score-neutral. */
+  screen_conditions?: { state: "UNVERIFIED"; rules: {rule_id: string; label_zh: string; status: "PASS" | "FAIL" | "UNKNOWN"}[] };
+  latest_event?: { published_on: string; source_url: string; headline_zh: string; status: "PRIMARY_REVIEWED" | "PRIMARY_METADATA_ONLY" };
 }
 export interface IndustryEntry {
   rank: number; id: string; name_zh: string; chain: string; leopold_constraint: string; leopold_constraint_zh?: string | null; explosiveness: number;
@@ -167,6 +190,11 @@ export interface BottleneckV3 {
   top: BottleneckEntry[]; industries: IndustryEntry[];
   /** Sealed company data reports (SEC filers), validated per ticker when a detail is opened. */
   deep_reports: Record<string, unknown>;
+  excluded_actions?: ExcludedCorporateAction[];
+  rotation_provenance?: RotationProvenanceNotice;
+  /** Runtime-only: derived by the verified sealed reader, never copied from wire metadata. */
+  historical_retention_notice?: string;
+  historical_forecasts_unavailable?: boolean;
 }
 
 const CHAIN_ZH: Record<string, string> = { compute: "算力", power: "電力", datacenter: "資料中心", chips_memory: "晶片與記憶體",
@@ -374,10 +402,12 @@ function validCorporateAction(raw: unknown, symbol: string, generatedAt: string)
   if (x.kind === "DISTRIBUTION") {
     const fields = ["target_market", "target_symbol", "kind", "status", "distribution_date",
       "related_market", "related_symbol", "shares_per_share", "source_url", "source_date", "review_by"];
-    return keysExactly(x, fields) && x.target_market === "US" && x.target_symbol === symbol
+    return keysExactly(x, fields) && x.target_market === "US"
+      && (x.target_symbol === symbol || x.related_symbol === symbol)
+      && str(x.target_symbol, 15) && /^[A-Z0-9][A-Z0-9.-]{0,14}$/.test(x.target_symbol as string)
       && x.related_market === "US" && x.status === "CLOSED"
       && str(x.related_symbol, 15) && /^[A-Z0-9][A-Z0-9.-]{0,14}$/.test(x.related_symbol as string)
-      && x.related_symbol !== symbol && num(x.shares_per_share)
+      && x.related_symbol !== x.target_symbol && num(x.shares_per_share)
       && (x.shares_per_share as number) > 0 && (x.shares_per_share as number) <= 10000
       && calendarDay(x.distribution_date) && calendarDay(x.source_date)
       && (x.source_date as string) >= (x.distribution_date as string)
@@ -387,9 +417,11 @@ function validCorporateAction(raw: unknown, symbol: string, generatedAt: string)
       && sourceText(x.source_url, 400)
       && /^https:\/\/www\.sec\.gov\/Archives\/[a-zA-Z0-9/_-]+\.[a-zA-Z0-9]+$/.test(x.source_url as string);
   }
-  const keys = ["target_symbol", "acquirer_symbol", "kind", "exchange_ratio", "cash_per_share", "currency", "expected_close", "source_url"];
+  const keys = ["target_symbol", "acquirer_symbol", "kind", "status", "exchange_ratio", "cash_per_share", "currency", "expected_close", "source_url"];
   if (!keysExactly(x, keys) || !str(x.target_symbol, 15) || !/^[A-Z0-9][A-Z0-9.-]{0,14}$/.test(x.target_symbol as string)
-    || x.target_symbol === symbol || x.acquirer_symbol !== symbol || !["ALL_STOCK", "CASH", "MIXED"].includes(String(x.kind))
+    || !str(x.acquirer_symbol, 15) || !/^[A-Z0-9][A-Z0-9.-]{0,14}$/.test(x.acquirer_symbol as string)
+    || x.target_symbol === x.acquirer_symbol || (x.target_symbol !== symbol && x.acquirer_symbol !== symbol)
+    || x.status !== "PENDING" || !["ALL_STOCK", "CASH", "MIXED"].includes(String(x.kind))
     || !str(x.expected_close, 70) || !/^(?:20\d{2}-(?:H[12]|Q[1-4])|(?:first|second) half of calendar year 20\d{2}|20\d{2}-\d{2}-\d{2})$/.test(x.expected_close as string)
     || !https(x.source_url) || !(x.source_url as string).startsWith("https://www.sec.gov/Archives/")) return false;
   const share = num(x.exchange_ratio) && (x.exchange_ratio as number) > 0 && (x.exchange_ratio as number) <= 10000;
@@ -399,11 +431,16 @@ function validCorporateAction(raw: unknown, symbol: string, generatedAt: string)
   return share && cash && typeof x.currency === "string" && /^[A-Z]{3}$/.test(x.currency);
 }
 
-function corporateActionText(entry: BottleneckEntry): string | null {
+function corporateActionText(entry: CorporateActionDisplay): string | null {
   const deal = entry.corporate_action;
   if (!deal) return null;
   if (deal.kind === "DISTRIBUTION") {
-    return `${deal.distribution_date} 完成分拆：每股配發 ${deal.shares_per_share.toFixed(5)} 股 ${deal.related_symbol}；分拆前後報酬不可直接比較`;
+    const terms = `${deal.distribution_date} 完成分拆：${deal.target_symbol} 每股配發 ${deal.shares_per_share.toFixed(5)} 股 ${deal.related_symbol}`;
+    if (entry.symbol !== deal.target_symbol) {
+      return `${terms}；${deal.related_symbol} 為配發標的，未套用 ${deal.target_symbol} 股東權益報酬`;
+    }
+    return `${terms}；${entry.market?.distribution_adjustment
+      ? "跨事件報酬依已覆核一手權益資料計算（非交易報酬）" : "未取得完整權益調整價格，跨事件報酬不顯示"}`;
   }
   const firstHalf = /^first half of calendar year (20\d{2})$/.exec(deal.expected_close);
   const secondHalf = /^second half of calendar year (20\d{2})$/.exec(deal.expected_close);
@@ -411,10 +448,10 @@ function corporateActionText(entry: BottleneckEntry): string | null {
   const terms = deal.kind === "ALL_STOCK" ? `每股換 ${deal.exchange_ratio!.toFixed(3)} 股 ${deal.acquirer_symbol}`
     : deal.kind === "CASH" ? `每股現金 ${deal.cash_per_share} ${deal.currency}`
     : `每股換 ${deal.exchange_ratio!.toFixed(3)} 股 ${deal.acquirer_symbol} 加現金 ${deal.cash_per_share} ${deal.currency}`;
-  return `併購進行中：${terms}，預計 ${expected}完成；股價主要跟隨 ${deal.acquirer_symbol}（完成仍待審核）`;
+  return `併購進行中：${deal.target_symbol} ${terms}，預計 ${expected}完成；收購方維持獨立評分，完成仍待審核`;
 }
 
-function corporateActionNotice(entry: BottleneckEntry): string | null {
+function corporateActionNotice(entry: CorporateActionDisplay): string | null {
   const text = corporateActionText(entry);
   if (!text) return null;
   return noticeText(entry.corporate_action?.kind === "DISTRIBUTION" ? "分拆已完成" : "併購進行中", text);
@@ -438,27 +475,142 @@ function validReturnReasons(market: any, action: CorporateActionNote | undefined
       ["ret_6m", "ret_1y", "cagr_2y", "cagr_listed"].includes(key)
         && reasons[key] === "DISTRIBUTION_IN_WINDOW" && market[key] === null)) return false;
   }
-  if (!action || action.kind !== "DISTRIBUTION") return true;
+  if (!action || action.kind !== "DISTRIBUTION") return market.distribution_adjustment === undefined;
   if (!calendarDay(market.asof)) return false;
-  const elapsed = daysBetween(action.distribution_date, market.asof);
+  const knownExDate = action.target_symbol === "MOD" && action.related_symbol === "THRM"
+    && action.distribution_date === "2026-10-01" && action.source_date === "2026-10-01"
+    && action.shares_per_share === 0.44619
+    && action.source_url === "https://www.sec.gov/Archives/edgar/data/67347/000110465926112870/tm2626618d1_8k.htm";
+  const elapsed = daysBetween(knownExDate ? "2026-10-02" : action.distribution_date, market.asof);
+  const boundaryOffset = knownExDate ? 1 : 0; // pre-ex holders only; unknown ex-dates stay conservative
+  if (market.distribution_adjustment !== undefined) {
+    const proof = market.distribution_adjustment;
+    if (!proof || !keysExactly(proof, ["status", "source_url", "distribution_date",
+      "related_symbol", "shares_per_share", "evidence_sha256", "values", "method"])
+      || proof.status !== "REVIEWED_PRIMARY_INPUTS" || proof.method !== "SHAREHOLDER_ENTITLEMENT_TOTAL_RETURN"
+      || proof.source_url !== action.source_url || proof.distribution_date !== action.distribution_date
+      || proof.related_symbol !== action.related_symbol || proof.shares_per_share !== action.shares_per_share
+      || typeof proof.evidence_sha256 !== "string" || !/^[0-9a-f]{64}$/.test(proof.evidence_sha256)
+      || !proof.values || typeof proof.values !== "object" || Array.isArray(proof.values)) return false;
+    const values = proof.values;
+    const allowed = ["ret_6m", "ret_1y", "cagr_2y"];
+    if (!Object.keys(values).length || Object.keys(values).some(key => !allowed.includes(key))) return false;
+    for (const [key, window] of [["ret_6m", 182], ["ret_1y", 365], ["cagr_2y", 730]] as const) {
+      const hasProof = Object.hasOwn(values, key);
+      const crossed = elapsed >= 0 && elapsed <= window - boundaryOffset;
+      if (hasProof && (!crossed || !num(values[key]) || values[key]! <= -1
+        || values[key]! > 1000 || market[key] !== values[key])) return false;
+      if (!hasProof && crossed && market[key] !== null) return false;
+    }
+    return true;
+  }
   if (elapsed < 0) return reasons === undefined;
-  if (elapsed <= 182 && market.ret_6m !== null) return false;
-  if (elapsed <= 365 && market.ret_1y !== null) return false;
-  if (elapsed <= 730 && market.cagr_2y !== null) return false;
+  if (elapsed <= 182 - boundaryOffset && market.ret_6m !== null) return false;
+  if (elapsed <= 365 - boundaryOffset && market.ret_1y !== null) return false;
+  if (elapsed <= 730 - boundaryOffset && market.cagr_2y !== null) return false;
   if (reasons !== undefined) {
     for (const key of Object.keys(reasons)) {
       const maxDays = key === "ret_6m" ? 182 : key === "ret_1y" ? 365 : key === "cagr_2y" ? 730 : null;
-      if (maxDays !== null && elapsed > maxDays) return false;
+      if (maxDays !== null && elapsed > maxDays - boundaryOffset) return false;
     }
   }
   return true;
 }
 
+const SCREEN_RULES: Record<string, string> = {
+  R01_REV_GROWTH_20: "營收年增至少20%",
+  R02_REV_ACCEL_10PP: "營收年增加速至少10個百分點",
+  R03_GM_EXPAND_2PP: "毛利率年增至少2個百分點",
+  R04_RPO_GROWTH_20: "剩餘履約義務年增至少20%",
+  R05_DILUTION_BELOW_5: "同季可比股數年增不超過5%",
+  R06_REL_MOMENTUM_6M: "近6個月報酬高於QQQ",
+  R07_PRICE_2Y_POSITIVE: "近2年調整後價格報酬為正",
+  R08_REL_MOMENTUM_SOXX_6M: "近6個月報酬高於SOXX",
+  R09_MAX_DRAWDOWN_12M: "近1年最大回撤不超過35%",
+  R10_ATM_MATERIAL_DILUTION: "已查證有效ATM及重大稀釋條款",
+  R13_INDEPENDENT_13F_POSITION_CHANGE: "已查證獨立機構13F持股變化",
+};
+function validScreenConditions(raw: any): boolean {
+  if (raw === undefined) return true;
+  if (!raw || !keysExactly(raw, ["state", "rules"]) || raw.state !== "UNVERIFIED"
+    || !Array.isArray(raw.rules) || raw.rules.length !== 11) return false;
+  const seen = new Set<string>();
+  return raw.rules.every((r: any) => {
+    if (!r || !keysExactly(r, ["rule_id", "label_zh", "status"])
+      || !Object.hasOwn(SCREEN_RULES, r.rule_id) || SCREEN_RULES[r.rule_id] !== r.label_zh
+      || seen.has(r.rule_id) || !["PASS", "FAIL", "UNKNOWN"].includes(r.status)
+      || ((r.rule_id.startsWith("R10_") || r.rule_id.startsWith("R13_")) && r.status !== "UNKNOWN")) return false;
+    seen.add(r.rule_id); return true;
+  });
+}
+function screenConditionsText(entry: BottleneckEntry): string {
+  const passed = (entry.screen_conditions?.rules ?? []).filter(r => r.status === "PASS");
+  return "符合的篩選條件（未驗證）：" + (passed.length
+    ? passed.slice(0, 3).map(r => r.label_zh).join("、") + (passed.length > 3 ? "等" : "")
+    : entry.screen_conditions?.rules.some(r => r.status === "FAIL") ? "已評估條件未符合；未揭露者仍為未知" : "資料不足，暫不判斷");
+}
+const EVENT_EXCHANGE_HOSTS: Readonly<Record<string, true>> = {
+  "mops.twse.com.tw": true, "mopsov.twse.com.tw": true, "www.twse.com.tw": true, "openapi.twse.com.tw": true,
+  "www.tpex.org.tw": true, "dart.fss.or.kr": true, "englishdart.fss.or.kr": true, "kind.krx.co.kr": true,
+};
+function validLatestEvent(raw: any, generatedAt: string): boolean {
+  if (raw === undefined) return true;
+  if (!raw || !keysExactly(raw, ["published_on", "source_url", "headline_zh", "status"])
+    || !calendarDay(raw.published_on) || raw.published_on > generatedAt.slice(0, 10)
+    || !str(raw.headline_zh, 70) || /[\r\n]/.test(raw.headline_zh)
+    || !str(raw.source_url, 500) || /[\r\n]/.test(raw.source_url)) return false;
+  let source: URL;
+  try { source = new URL(raw.source_url); } catch { return false; }
+  if (source.protocol !== "https:" || source.username || source.password || source.hash
+    || (source.port && source.port !== "443")) return false;
+  const sec = source.hostname === "www.sec.gov" && source.pathname.startsWith("/Archives/")
+    || source.hostname === "data.sec.gov" && source.pathname.startsWith("/submissions/");
+  if (!sec && EVENT_EXCHANGE_HOSTS[source.hostname] !== true) return false;
+  return raw.status === "PRIMARY_REVIEWED" || raw.status === "PRIMARY_METADATA_ONLY"
+    && raw.headline_zh === (sec ? "SEC 公告（內容待查）" : "交易所公告（內容待查）");
+}
+function validActionExclusions(raw: unknown, generatedAt: string, top: BottleneckEntry[]): boolean {
+  if (raw === undefined) return true;
+  if (!Array.isArray(raw) || raw.length > 30) return false;
+  const seen = new Set<string>();
+  for (const value of raw) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+    const row = value as Record<string, unknown>;
+    if (!keysExactly(row, ["symbol", "reason_zh", "corporate_action"])
+      || typeof row.symbol !== "string" || !/^[A-Z0-9][A-Z0-9.-]{0,14}$/.test(row.symbol)
+      || !row.corporate_action || !validCorporateAction(row.corporate_action, row.symbol, generatedAt)
+      || top.some(entry => entry.symbol === row.symbol) || seen.has(row.symbol)) return false;
+    const note = row.corporate_action as CorporateActionNote;
+    if (note.target_symbol !== row.symbol
+      || row.reason_zh !== EXCLUDED_ACTION_REASONS[note.kind === "DISTRIBUTION" ? "DISTRIBUTION" : "PENDING"]) return false;
+    seen.add(row.symbol);
+  }
+  return true;
+}
+function excludedActionText(row: ExcludedCorporateAction): string {
+  return `${row.symbol}：${row.reason_zh}\n${corporateActionNotice(row)}\n官方來源：${row.corporate_action.source_url}`;
+}
+function validRotationProvenance(raw: unknown): boolean {
+  if (raw === undefined) return true;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return false;
+  const value = raw as Record<string, unknown>;
+  return keysExactly(value, ["status", "notice_zh"]) && value.status === "UNVERIFIED"
+    && value.notice_zh === ROTATION_NOTICE_ZH;
+}
+function latestEventText(entry: BottleneckEntry): string {
+  const e = entry.latest_event;
+  return e ? `最新事件（${e.status === "PRIMARY_METADATA_ONLY" ? "申報紀錄，內容未核" : "官方公告"}）：${e.published_on} ${e.headline_zh}`
+    : "最新事件：未取得已核對之官方更新";
+}
 function validEntry(raw: any, generatedAt: string): raw is BottleneckEntry {
   return raw && Number.isInteger(raw.rank) && str(raw.symbol, 16) && str(raw.name, 160) && str(raw.layer, 40)
     && (raw.name_zh === undefined || raw.name_zh === null || (str(raw.name_zh, 40) && ZH_SOURCES.has(String(raw.name_zh_source))))
     && (raw.archetype === "EXPLOSION" || raw.archetype === "COMPOUNDER") && num(raw.score) && str(raw.role, 200)
-    && optStr(raw.role_zh, 200) && validOutlook(raw.outlook, generatedAt) && validCorporateAction(raw.corporate_action, raw.symbol, generatedAt)
+    && optStr(raw.role_zh, 200) && validOutlook(raw.outlook, generatedAt)
+    && validCorporateAction(raw.corporate_action, raw.symbol, generatedAt)
+    && (raw.corporate_action?.kind === "DISTRIBUTION" || raw.corporate_action?.target_symbol !== raw.symbol)
+    && validScreenConditions(raw.screen_conditions)
+    && validLatestEvent(raw.latest_event, generatedAt)
     && raw.role_source && https(raw.role_source.url) && str(raw.role_source.date, 20)
     && raw.parts && ["layer_heat", "capture", "lead", "confirmation", "size", "penalty"].every(key => num(raw.parts[key]))
     && (raw.fundamentals === null || (raw.fundamentals && str(raw.fundamentals.source, 80) && https(raw.fundamentals.source_url)
@@ -471,14 +623,16 @@ function validEntry(raw: any, generatedAt: string): raw is BottleneckEntry {
       && validRevenueCheck(raw.fundamentals.cross_check)))
     && raw.market && str(raw.market.source, 80) && https(raw.market.source_url) && str(raw.market.asof, 12)
     && ["ret_6m", "ret_1y", "cagr_2y", "cagr_listed"].every(key => optNum(raw.market[key])) && optNum(raw.market_cap_usd)
-    && validReturnReasons(raw.market, raw.corporate_action)
+    && validReturnReasons(raw.market,
+      raw.corporate_action?.kind === "DISTRIBUTION" && raw.corporate_action.target_symbol !== raw.symbol
+        ? undefined : raw.corporate_action)
     && (raw.market.cross_check === undefined || (raw.market.cross_check && str(raw.market.cross_check.source_id, 40)
       && https(raw.market.cross_check.source_url) && num(raw.market.cross_check.price) && raw.market.cross_check.price > 0
       && optStr(raw.market.cross_check.asof, 30) && str(raw.market.cross_check.currency, 8) && optNum(raw.market.cross_check.diff)))
     && (raw.market.history_start === undefined || raw.market.history_start === null || str(raw.market.history_start, 12))
     && (raw.serenity === null || (raw.serenity && Number.isInteger(raw.serenity.mentions) && str(raw.serenity.stance, 12)
       && (raw.serenity.latest_url === null || https(raw.serenity.latest_url))))
-    && (raw.leopold === null || (raw.leopold && num(raw.leopold.long_weight) && str(raw.leopold.status, 12)));
+    && (raw.leopold === null || (raw.leopold && num(raw.leopold.long_weight) && str(raw.leopold.status, 13)));
 }
 
 function validIndustry(raw: any): raw is IndustryEntry {
@@ -566,6 +720,8 @@ export function parseBottleneckV3(raw: unknown, now = Date.now(), options: Bottl
   if (doc.schema !== "v213-bottleneck-top20-v3-sealed" || !str(doc.generated_at, 30) || !v213ReportAgeFresh([doc.generated_at], now)) return null;
   if (!Array.isArray(doc.top) || doc.top.length < 10 || doc.top.length > 20 || !doc.top.every((entry: any) => validEntry(entry, doc.generated_at))) return null;
   if (!doc.top.every((entry: BottleneckEntry, index: number) => entry.rank === index + 1)) return null;
+  if ("excluded_pending" in doc || !validActionExclusions(doc.excluded_actions, doc.generated_at, doc.top)) return null;
+  if (!validRotationProvenance(doc.rotation_provenance)) return null;
   if (!Array.isArray(doc.industries) || doc.industries.length < 3 || doc.industries.length > 20 || !doc.industries.every(validIndustry)) return null;
   const serenity = doc.serenity_source && https(doc.serenity_source.url) ? { url: doc.serenity_source.url, latest_post_at: doc.serenity_source.latest_post_at ?? null } : null;
   const leopold = doc.leopold_filing && https(doc.leopold_filing.url) ? doc.leopold_filing : null;
@@ -576,21 +732,49 @@ export function parseBottleneckV3(raw: unknown, now = Date.now(), options: Bottl
     return { ...entry, market: closeLongTerm(entry.market, reportDay),
       forecast: parseOutlookForecast(entry.outlook, reportDay, entry.symbol, doc.generated_at, options), ...(trend ? { trend } : {}) };
   });
-  return { generated_at: doc.generated_at, serenity_source: serenity, leopold_filing: leopold, top, industries: doc.industries, deep_reports: deep };
+  return { generated_at: doc.generated_at, serenity_source: serenity, leopold_filing: leopold,
+    top, industries: doc.industries, deep_reports: deep, excluded_actions: doc.excluded_actions,
+    rotation_provenance: doc.rotation_provenance };
 }
 
 export async function loadBottleneckV3(view: PublicSnapshotView, options: BottleneckReadOptions = {}): Promise<BottleneckV3 | null> {
   if (view.integrity !== "sealed") return null;
+  const observedAt = Date.now();
+  let raw: unknown;
+  let effectiveOptions = options;
+  let machineUnavailable = false;
   if (options.guidanceMachineEnabled === true) {
-    if (view.kind !== "snapshot" || !view.hasSealedObject?.(BOTTLENECK_V3_KEY) || !view.hasSealedObject?.(GUIDANCE_BINDING_KEY)) return null;
+    if (view.kind !== "snapshot" || !view.hasSealedObject?.(BOTTLENECK_V3_KEY)) return null;
     const [report, binding] = await Promise.all([view.text([BOTTLENECK_V3_KEY]), view.text([GUIDANCE_BINDING_KEY])]);
-    if (report === null || binding === null) return null;
-    const selected = resolveSealedMachineBindings(report, binding);
-    if (selected === null) return null; // no second latest/KV read/legacy single object or packet-chosen expected data
-    try { return parseBottleneckV3(JSON.parse(report), Date.now(), {...options, machineBindings: selected}); }
-    catch { return null; }
+    if (report === null) return null;
+    const selected = binding === null ? null : resolveSealedMachineBindings(report, binding);
+    // A declared but missing/corrupt/replayed binding is broken custody, not
+    // permission to downgrade that machine snapshot to historical facts.
+    if (view.hasSealedObject?.(GUIDANCE_BINDING_KEY) && (binding === null || selected === null)) return null;
+    machineUnavailable = selected === null;
+    // A caller's bindings cannot repair missing custody or authorize an old forecast.
+    effectiveOptions = { ...options, machineBindings: selected ?? undefined };
+    try { raw = JSON.parse(report); } catch { return null; }
+  } else raw = await view.json<unknown>([BOTTLENECK_V3_KEY]);
+  const current = machineUnavailable ? null : parseBottleneckV3(raw, observedAt, effectiveOptions);
+  if (current) return current;
+  const retained = await readRetainedRanking(view, observedAt, options.guidanceMachineEnabled === true);
+  if (!retained) return null;
+  const historical = parseBottleneckV3(retained.raw, retained.parseAt, effectiveOptions);
+  if (!historical) return null;
+  historical.historical_retention_notice = retained.notice;
+  if (options.guidanceMachineEnabled === true) {
+    // Keep ranking facts, not expired machine authority or a silent legacy forecast.
+    historical.historical_forecasts_unavailable = true;
+    historical.historical_retention_notice += " 機器預估未延展核准；僅保留當時排行事實，不列新的訂單預估或股價情境。";
+    historical.deep_reports = {};
+    for (const entry of historical.top) {
+      delete entry.outlook;
+      delete entry.forecast;
+      delete entry.trend;
+    }
   }
-  return parseBottleneckV3(await view.json<unknown>([BOTTLENECK_V3_KEY]), Date.now(), options);
+  return historical;
 }
 
 const pct = (value: number | null | undefined, digits = 1) => value === null || value === undefined ? "未揭露" : `${value >= 0 ? "+" : ""}${(value * 100).toFixed(digits)}%`;
@@ -878,6 +1062,7 @@ function parseOutlookForecast(outlook: Outlook | null | undefined, reportDay: st
 
 /** V13: the history-model view of an entry (null unless its revenue state passed the fail-closed eligibility list). */
 function historyOf(doc: BottleneckV3, entry: BottleneckEntry): HistoryView | null {
+  if (doc.historical_forecasts_unavailable) return null;
   return historyViewOf(forecastOf(doc, entry), entry.fundamentals, doc.generated_at.slice(0, 10));
 }
 
@@ -1029,7 +1214,8 @@ function replyDisclosureBubble(notes: ReplyDisclosure[]) {
  * Growth is a damped median of the latest filed YoY observations; if absent, use layer median.
  * Never cross currency units or silently call a peer revenue number the issuer's filed result. */
 export interface Top20Fallback {
-  amount: number; change: number; currency: string; basis: "歷史推估" | "產業中位數推估";
+  amount: number; change: number; currency: string;
+  basis: "歷史推估" | "產業中位數推估" | "產業成長截尾推估" | "同業營收代理推估";
   asof: string; explanation: string;
 }
 function cleanGrowth(v: unknown): v is number {
@@ -1043,6 +1229,7 @@ function median(values: number[]): number | null {
   return data.length%2 ? data[mid]! : (data[mid-1]!+data[mid]!)/2;
 }
 export function estimateTop20Fallback(doc: BottleneckV3, entry: BottleneckEntry): {m6:Top20Fallback; m12:Top20Fallback} | null {
+  if (doc.historical_forecasts_unavailable) return null;
   const f=entry.fundamentals;
   const unit=f?.revenue_unit ?? entry.market.currency;
   const currency=typeof unit==="string" && /^[A-Z]{3}$/.test(unit) ? unit : null;
@@ -1061,13 +1248,20 @@ export function estimateTop20Fallback(doc: BottleneckV3, entry: BottleneckEntry)
   const rates=[f?.revenue_yoy,f?.revenue_yoy_prev].filter(cleanGrowth);
   const ownGrowth=median(rates);
   const layer=doc.industries.find(ind=>ind.id===entry.layer);
-  const industryGrowth=cleanGrowth(layer?.median_revenue_yoy) ? layer!.median_revenue_yoy! : 0;
-  const growth=capGrowth((ownGrowth ?? industryGrowth)*0.5);
-  const basis:Top20Fallback["basis"]=proxy || ownGrowth===null ? "產業中位數推估" : "歷史推估";
+  const rawIndustryGrowth=layer?.median_revenue_yoy;
+  const clippedIndustry=typeof rawIndustryGrowth==="number" && Number.isFinite(rawIndustryGrowth) && rawIndustryGrowth>3;
+  const industryGrowth=cleanGrowth(rawIndustryGrowth) ? rawIndustryGrowth : clippedIndustry ? 3 : null;
+  const sourceGrowth=ownGrowth ?? industryGrowth;
+  if (sourceGrowth===null) return null;
+  const growth=capGrowth(sourceGrowth*0.5);
+  const basis:Top20Fallback["basis"]=proxy ? "同業營收代理推估" : ownGrowth!==null ? "歷史推估"
+    : clippedIndustry ? "產業成長截尾推估" : "產業中位數推估";
   const asof=f?.quarter_end ?? doc.generated_at.slice(0,10);
-  const explanation=proxy ? "同產業同幣別最近季營收中位數代理；不是該公司的已報營收"
-    : ownGrowth!==null ? "公司最近季營收×期間季數；已報年增中位數折半，限制−35%至+50%"
-    : "公司最近季營收×期間季數；同層級產業年增中位數折半，限制−35%至+50%";
+  const growthExplanation=ownGrowth!==null ? "已報年增中位數折半，限制−35%至+50%"
+    : clippedIndustry ? `產業年增觀察${pct(rawIndustryGrowth,0)}超過+300%，輸入截尾至+300%後折半，最終限制−35%至+50%`
+    : "同層級產業年增中位數折半，限制−35%至+50%";
+  const explanation=(proxy ? "同產業同幣別最近季營收中位數代理；不是該公司的已報營收"
+    : "公司最近季營收×期間季數")+"；"+growthExplanation;
   const make=(months:6|12):Top20Fallback=>{
     const change=growth*(months/12);
     return {amount:filed!*(months/3)*(1+change),change,currency,basis,asof,explanation};
@@ -1075,7 +1269,7 @@ export function estimateTop20Fallback(doc: BottleneckV3, entry: BottleneckEntry)
   return {m6:make(6),m12:make(12)};
 }
 interface Top20Horizon {
-  amount:string; change:number; basis:string; asof:string; reason:string; estimate:boolean;
+  amount:string; change:number|null; basis:string; asof:string; reason:string; estimate:boolean;
 }
 function top20Horizon(doc:BottleneckV3,entry:BottleneckEntry,index:0|1):Top20Horizon|null {
   const forecast=forecastOf(doc,entry);
@@ -1086,9 +1280,9 @@ function top20Horizon(doc:BottleneckV3,entry:BottleneckEntry,index:0|1):Top20Hor
   if (h.status==="AVAILABLE" && typeof h.amount==="number" && Number.isFinite(h.amount) && h.amount>=0) {
     const label=h.basis==="RECOGNITION"?"訂單認列":h.basis==="COMPANY_GUIDANCE"?"公司指引":
       h.basis==="CONSENSUS"?"分析師共識":"營收依據";
-    return {amount:money(h.amount,h.currency),change:scenario??ownEstimate?.change??0,
+    return {amount:money(h.amount,h.currency),change:scenario??ownEstimate?.change??null,
       basis:label,asof:h.end??entry.fundamentals?.quarter_end??doc.generated_at.slice(0,10),
-      reason:scenario!==null?"封存資料的條件情境；非實績":"無股價情境，採財報增幅並假定P/S與股數不變；非目標價",
+      reason:scenario!==null?"封存資料的條件情境；非實績":ownEstimate?"無股價情境，採財報增幅並假定P/S與股數不變；非目標價":"缺可核對成長依據，股價情境未驗證",
       estimate:true};
   }
   const trend=trendHorizonFor(entry.trend,forecast,index===0?"m6":"m12");
@@ -1104,11 +1298,11 @@ function top20Horizon(doc:BottleneckV3,entry:BottleneckEntry,index:0|1):Top20Hor
 }
 function visibleHorizon(row:Top20Horizon|null,label:string):string {
   return row ? label+"："+row.amount+"（"+row.basis+"；截至"+row.asof+"；推估、非實績）" :
-    label+"：0（資料不足，僅佔位，非推估、非實績）";
+    label+"：未驗證（缺可核對營收金額、幣別或成長依據）";
 }
 function visibleScenario(row:Top20Horizon|null,label:string):string {
-  return row ? label+"："+pct(row.change,0)+"（"+row.basis+"；P/S與股數不變；推估、非實績、非目標價）" :
-    label+"：0%（無模型基準，僅佔位、非實績）";
+  return row?.change!==null && row?.change!==undefined ? label+"："+pct(row.change,0)+"（"+row.basis+"；P/S與股數不變；推估、非實績、非目標價）" :
+    label+"：未驗證（缺可核對的成長或估價基準）";
 }
 
 /** Only replace missing numeric horizons that can be projected from a genuine company quarter.
@@ -1255,7 +1449,7 @@ function companyBubble(doc: BottleneckV3, entry: BottleneckEntry, notes: ReplyDi
       uiBox([
         accentKpiTile("毛利變化", ppShort(fund?.gross_margin_change)),
         accentKpiTile("6個月",entry.market.ret_6m!==null || !needsFallback ? pct(entry.market.ret_6m,0)
-          : pct(doc.industries.find(x=>x.id===entry.layer)?.median_return_6m ?? visible[0]?.change ?? 0,0)
+          : pct(doc.industries.find(x=>x.id===entry.layer)?.median_return_6m ?? visible[0]?.change ?? null,0)
              +"（"+(entry.market.return_reasons?.ret_6m?"未調整配發；":"")+"產業推估・非實績）"),
         accentKpiTile("2年年化", long.value),
       ], { layout: "horizontal", spacing: "sm" }),
@@ -1265,7 +1459,7 @@ function companyBubble(doc: BottleneckV3, entry: BottleneckEntry, notes: ReplyDi
       uiBox([
         uiBox([uiBox([], { width: "3px", height: "16px", flex: 0, backgroundColor: T.accent }), chip(`${ordersTile![0]}：${ordersTile![1]}`, T.soft, T.ink),
           ...(revenueCard && warning ? [chip("財季已結束，仍為推估非實績", T.paleCaution, T.caution)]
-            : unavailableRevenue ? [chip(trendShown ? TREND_CHIP : needsFallback ? "歷史／產業中位數推估・非實績" : "營收推估暫不可用", T.paleCaution, T.caution)] : [])], { layout: "horizontal", spacing: "xs" }),
+            : unavailableRevenue ? [chip(trendShown ? TREND_CHIP : needsFallback ? "營收與情境推估・非實績" : "營收推估暫不可用", T.paleCaution, T.caution)] : [])], { layout: "horizontal", spacing: "xs" }),
       ]),
       uiBox([
         ...(needsFallback ? [
@@ -1317,7 +1511,7 @@ function companyBubble(doc: BottleneckV3, entry: BottleneckEntry, notes: ReplyDi
       ], { spacing: "sm" }),
     ], { paddingAll: "lg", spacing: "md" }),
     footer: uiBox([
-      compactDisclosures([{ label: "提醒", text: `${trendShown ? `${TREND_LABEL}，截至 ${trend!.anchor} 季末；` : ""}${forecastCaveat}；非目標價；非投資建議；不自動下單` }]),
+      compactDisclosures([{ label: "提醒", text: `${trendShown ? `${TREND_LABEL}，截至 ${trend!.anchor} 季末；` : ""}${forecastCaveat}；${screenConditionsText(entry)}；${latestEventText(entry)}；非目標價；非投資建議；不自動下單` }]),
       detailsButton(`${entry.symbol} 瓶頸詳情`, `瓶頸詳情 ${entry.symbol}`),
       ...(!lean ? [menuAction("產業爆發榜", "產業爆發榜")] : []),
     ], footerStyle),
@@ -1343,6 +1537,8 @@ export function buildBottleneckTop20Messages(doc: BottleneckV3, style: "flex" | 
       `2 年年化 ${longTermText(entry.market)}`,
       currentOrders(entry.outlook, ordersOf(doc, entry.symbol).filer || entry.fundamentals?.source === "SEC EDGAR XBRL companyfacts", doc.generated_at.slice(0, 10)),
       ...(corporateActionNotice(entry) ? [corporateActionNotice(entry)!] : []),
+      screenConditionsText(entry),
+      latestEventText(entry),
       ...(needsTop20Fallback(doc,entry) ? ([0,1] as const).flatMap(index=>{
         const estimate=top20Horizon(doc,entry,index), label=index===0?"半年":"1年";
         return [visibleHorizon(estimate,label+"營收推估"),visibleScenario(estimate,label+"股價情境")];
@@ -1352,7 +1548,10 @@ export function buildBottleneckTop20Messages(doc: BottleneckV3, style: "flex" | 
     // Paginated into at most five messages of whole entries (never an entry cut away by a length limit).
     const blocks = [`瓶頸爆發 TOP20（v3，產生 ${formatTaipeiTimestamp(doc.generated_at)}）`,
       "排序：層級熱度＋公司捕獲＋社群與機構線索＋市場確認＋爆發性；2年年化報酬為負者排除。分拆、恢復交易、IPO 或重整新股不足2年者，改用已核實正常交易首日以來年化（至少1年，非2年）；沿革未核實且價格不足2年者不列入。非投資建議。",
-      ...lines, "輸入「瓶頸詳情 代號」看逐項數據與來源；「產業爆發榜」看 Leopold 邏輯產業排序。", "公開研究，非投資建議；不自動下單。"];
+      ...(doc.historical_retention_notice ? [doc.historical_retention_notice] : []),
+      ...lines, ...(doc.excluded_actions ?? []).map(excludedActionText),
+      ...(doc.rotation_provenance ? [doc.rotation_provenance.notice_zh] : []),
+      "輸入「瓶頸詳情 代號」看逐項數據與來源；「產業爆發榜」看 Leopold 邏輯產業排序。", "公開研究，非投資建議；不自動下單。"];
     const pages: string[] = [];
     for (const block of blocks) {
       const last = pages[pages.length - 1];
@@ -1366,7 +1565,17 @@ export function buildBottleneckTop20Messages(doc: BottleneckV3, style: "flex" | 
   const alt = (index: number, total: number) => `瓶頸爆發 TOP20（${index + 1}/${total}）`;
   const build = (lean: boolean) => {
     const notes: ReplyDisclosure[] = [];
+    if (doc.historical_retention_notice) notes.push({
+      scope: "本頁排行與情境", label: "歷史保留資料", text: doc.historical_retention_notice,
+    });
     const cards = doc.top.map(entry => companyBubble(doc, entry, notes, lean));
+    notes.push(...(doc.excluded_actions ?? []).map(row => ({
+      scope: row.symbol, label: "未納入排行",
+      text: `${row.reason_zh}；${corporateActionNotice(row)}；官方來源：${row.corporate_action.source_url}`,
+    })));
+    if (doc.rotation_provenance) notes.push({
+      scope: "本輪排行", label: "輪動來源", text: doc.rotation_provenance.notice_zh,
+    });
     return packCarousels([...cards, replyDisclosureBubble(notes)], alt, doc.generated_at);
   };
   try {
@@ -1396,6 +1605,9 @@ function detailBubbles(doc: BottleneckV3, entry: BottleneckEntry) {
   const kind = entry.archetype === "EXPLOSION" ? "爆發型（市值<US$10B）" : "核心複利型";
   const buttons = [detailsButton(`${entry.symbol} 完整數據與網址`, `瓶頸詳情 ${entry.symbol} 文字`), menuAction("回瓶頸 TOP20", "TOP20")];
   const sharedNotes: ReplyDisclosure[] = qualificationNotes(entry);
+  if (doc.historical_retention_notice) sharedNotes.push({
+    scope: entry.symbol, label: "歷史保留資料", text: doc.historical_retention_notice,
+  });
   const page = (eyebrow: string, body: unknown[], notes: { label: string; text: string }[], compact = false) => {
     sharedNotes.push(...notes.map(note => ({ scope: eyebrow, ...note })));
     return {
@@ -1542,6 +1754,7 @@ function detailText(doc: BottleneckV3, entry: BottleneckEntry): string {
   const coverageValue = (value: number | null | undefined) => value === null || value === undefined ? "未揭露" : `${value.toFixed(0)}%`;
   return [
     `【瓶頸詳情｜#${entry.rank} ${entry.symbol} ${chineseName(entry)}（${entry.name}）】`,
+    ...(doc.historical_retention_notice ? [doc.historical_retention_notice] : []),
     `型態：${entry.archetype === "EXPLOSION" ? "瓶頸爆發型（市值<US$10B）" : "核心複利型"}；市值 ${cap(entry.market_cap_usd)}`,
     `瓶頸位置：${entry.role_zh ?? entry.role}${entry.role_zh ? `（原文：${entry.role}）` : ""}`,
     ...(needsTop20Fallback(doc,entry) ? ([0,1] as const).flatMap(index=>{
@@ -1549,6 +1762,9 @@ function detailText(doc: BottleneckV3, entry: BottleneckEntry): string {
       return [visibleHorizon(row,label+"營收推估"),visibleScenario(row,label+"股價情境")];
     }) : []),
     ...(corporateActionNotice(entry) ? [corporateActionNotice(entry)!, `${corporateActionSourceLabel(entry)}：${entry.corporate_action!.source_url}`] : []),
+    screenConditionsText(entry),
+    latestEventText(entry),
+    ...(entry.latest_event ? [`最新事件來源：${entry.latest_event.source_url}`] : []),
     `分數構成：層級熱度 ${entry.parts.layer_heat}｜公司捕獲 ${entry.parts.capture}｜市場確認 ${entry.parts.confirmation}｜爆發性 ${entry.parts.size}${entry.parts.penalty !== 0 ? `｜條件式稀釋／融資扣分 -${entry.parts.penalty}` : ""}`,
     fund ? `財報（${sourceZh(fund.source)}${official ? "；前一季年增採官方合併季報" : ""}，季末 ${fund.quarter_end}）：營收年增 ${pct(fund.revenue_yoy)}，前一季年增 ${pct(fund.revenue_yoy_prev)}（加速度 ${pp(accelOf(fund))}）；毛利率 ${gmText(fund.gross_margin)}（年變化 ${pp(fund.gross_margin_change)}）；剩餘履約義務年增 ${pct(fund.rpo_yoy)}；股數年增 ${pct(fund.shares_yoy)}${sharesBasis(fund) ? `（${sharesBasis(fund)}）` : ""}\n來源：${fund.source_url}${official ? `\n${official.label}\n前一季來源：${official.url}` : ""}` : "財報：未取得可比季度（不以估計替代）。",
     fund?.cross_check ? `${revenueCheck(fund.cross_check)}\n來源：${fund.cross_check.source_url}` : "官方營收未交叉比對",
@@ -1594,7 +1810,12 @@ export function findBottleneckEntry(doc: BottleneckV3, symbol: string): Bottlene
 
 export function buildBottleneckDetail(doc: BottleneckV3, symbol: string, style: "flex" | "text" = "text"): LineOutboundMessage[] | string {
   const entry = findBottleneckEntry(doc, symbol);
-  if (!entry) return `「${symbol}」不在本輪瓶頸爆發 TOP20（產生 ${formatTaipeiTimestamp(doc.generated_at)}）。`;
+  if (!entry) {
+    const excluded = doc.excluded_actions?.find(row => row.symbol.toUpperCase() === symbol.toUpperCase());
+    const text = excluded ? excludedActionText(excluded)
+      : `「${symbol}」不在本輪瓶頸爆發 TOP20（產生 ${formatTaipeiTimestamp(doc.generated_at)}）。`;
+    return doc.historical_retention_notice ? `${doc.historical_retention_notice}\n${text}` : text;
+  }
   // The detail card first; then the company data report (SEC filings, business profile, thesis phase, order
   // realization) when one is sealed.
   const raw = Object.hasOwn(doc.deep_reports, entry.symbol) ? doc.deep_reports[entry.symbol] : undefined;

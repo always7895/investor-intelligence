@@ -3,7 +3,8 @@
  * The publisher seals one symbol shard per first character (A-Z, 0-9, _) and 16 name shards (FNV-1a of the
  * normalized name over UTF-16 code units) as lazy content-addressed objects. A lookup reads only the shards its
  * query needs and builds the small catalog the existing resolver works on, so suffix handling, ambiguity and the
- * closed resolution union stay in global-identity.ts. A missing or malformed shard gives no catalog (UNAVAILABLE).
+ * closed resolution union stay in global-identity.ts. A missing, malformed or older-than-eight-days shard gives no matches.
+ * Every symbol, name and token route checks the original generated_at (<=300s future skew); sealing never renews it.
  *
  * Eight token shards (`v213:identity:v2:tok:0`..`7`, kind "token") add a leading-word lookup for Latin-script company
  * names ("Sivers" finds Sivers Semiconductors). A row is [tokenized name, symbol bucket, symbol, venue]; the name is the
@@ -23,6 +24,8 @@ import {
 const SCHEMA = "v213-identity-shard-v2";
 const NAME_BUCKETS = 16;
 const TOKEN_BUCKETS = 8;
+const MAX_AGE_MS = 8 * 86400_000;
+const FUTURE_SKEW_MS = 300_000;
 /** Shortest Latin-script query (letters only) that may match a name by its leading words, and the longest candidate list. */
 const LEADING_TOKEN_MIN_LETTERS = 4;
 const LEADING_TOKEN_CANDIDATES_MAX = 5;
@@ -83,6 +86,14 @@ export function identitySymbolBucket(symbol: string): string {
 
 const text = (value: unknown, max: number): value is string => typeof value === "string" && value.length > 0 && value.length <= max;
 
+function freshInstant(value: unknown): value is string {
+  if (typeof value !== "string" || !/^(?!0000)\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{3})?Z$/.test(value)) return false;
+  const stamp = Date.parse(value);
+  if (!Number.isFinite(stamp) || new Date(stamp).toISOString() !== (value.includes(".") ? value : value.replace("Z", ".000Z"))) return false;
+  const now = Date.now();
+  return now - stamp <= MAX_AGE_MS && stamp - now <= FUTURE_SKEW_MS;
+}
+
 function parseFeeds(raw: unknown): ShardFeed[] | null {
   if (!Array.isArray(raw) || raw.length === 0 || raw.length > 16) return null;
   const feeds: ShardFeed[] = [];
@@ -97,7 +108,7 @@ function parseFeeds(raw: unknown): ShardFeed[] | null {
 function parseSymbolShard(raw: unknown, bucket: string): SymbolShard | null {
   if (!raw || typeof raw !== "object") return null;
   const shard = raw as Record<string, unknown>;
-  if (shard.schema !== SCHEMA || shard.kind !== "symbol" || shard.bucket !== bucket || !text(shard.generated_at, 30)
+  if (shard.schema !== SCHEMA || shard.kind !== "symbol" || shard.bucket !== bucket || !freshInstant(shard.generated_at)
     || !Array.isArray(shard.rows) || shard.rows.length > 50_000) return null;
   const feeds = parseFeeds(shard.feeds);
   if (!feeds) return null;
@@ -117,13 +128,14 @@ function parseSymbolShard(raw: unknown, bucket: string): SymbolShard | null {
       native_name: nativeName as string | null, security_class: String(securityClass), currency, source_feed: feed.id, source_url: feed.url,
       name_zh: Array.isArray(zh) ? String(zh[0]) : null, name_zh_source: Array.isArray(zh) ? String(zh[1]) : null });
   }
-  return { generated_at: shard.generated_at as string, feeds, rows };
+  return { generated_at: shard.generated_at, feeds, rows };
 }
 
 function parseNameShard(raw: unknown, bucket: number): [string, string, string, string][] | null {
   if (!raw || typeof raw !== "object") return null;
   const shard = raw as Record<string, unknown>;
-  if (shard.schema !== SCHEMA || shard.kind !== "name" || shard.bucket !== String(bucket) || !Array.isArray(shard.rows)) return null;
+  if (shard.schema !== SCHEMA || shard.kind !== "name" || shard.bucket !== String(bucket)
+    || !freshInstant(shard.generated_at) || !Array.isArray(shard.rows)) return null;
   const rows: [string, string, string, string][] = [];
   for (const row of shard.rows) {
     if (!Array.isArray(row) || row.length !== 4 || !row.every(item => text(item, 300))) return null;
@@ -138,7 +150,7 @@ interface TokenRef { readonly name: string; readonly symbolBucket: string; reado
 function parseTokenShard(raw: unknown, bucket: number): TokenRef[] | null {
   if (!raw || typeof raw !== "object") return null;
   const shard = raw as Record<string, unknown>;
-  if (shard.schema !== SCHEMA || shard.kind !== "token" || shard.bucket !== String(bucket) || !Array.isArray(shard.rows)
+  if (shard.schema !== SCHEMA || shard.kind !== "token" || shard.bucket !== String(bucket) || !freshInstant(shard.generated_at) || !Array.isArray(shard.rows)
     || shard.rows.length > 50_000) return null;
   const rows: TokenRef[] = [];
   for (const row of shard.rows) {

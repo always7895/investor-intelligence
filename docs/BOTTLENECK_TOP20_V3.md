@@ -19,10 +19,10 @@ Aschenbrenner's logic must name the most explosive industries from current event
 
 | Step | Script | Source | Cadence |
 | --- | --- | --- | --- |
-| Serenity leads | `scripts/serenity_signals.py` | public archive `yan-labs/serenity-aleabitoreddit` (post URLs) | 6 h |
-| Leopold leads | `scripts/leopold_positions.py` | SEC 13F-HR of Situational Awareness LP (CIK 2045724) | 24 h |
+| Serenity leads | `scripts/serenity_signals.py` | public archive `yan-labs/serenity-aleabitoreddit` (post URLs) | 0.9 h source-target cadence; scheduler-dependent |
+| Leopold leads | `scripts/leopold_positions.py` | SEC 13F-HR of Situational Awareness LP (CIK 2045724) | 0.9 h source-target cadence; needs SEC contact |
 | Layers | `config/bottleneck-layers-v3.json` | structure only: company role in a scarce layer, dated source | reviewed |
-| Ranking | `scripts/bottleneck_top20_v3.py` | SEC XBRL companyfacts, Yahoo Finance (labelled unofficial), SEC full-text search | 3 h |
+| Ranking | `scripts/bottleneck_top20_v3.py` | SEC XBRL companyfacts, Yahoo Finance (labelled unofficial), SEC full-text search | every hourly refresh invocation; no independent 3h skip |
 | Seal | `publish_sealed_snapshot.py --bottleneck-v3` | lazy object `v213:bottleneck-top20:v3` | hourly |
 
 Leads weight conviction only; every figure users see comes from filings or market data with its source and date.
@@ -35,8 +35,8 @@ Leads weight conviction only; every figure users see comes from filings or marke
   `serenity_mirror_factor`, `serenity_excluded` in `scripts/bottleneck_top20_v3.py`): lead = 0.7 x clip(intensity_eff, 0,
   max_intensity / 2) (x0.3 when the stance is BEARISH) + the 13F part, times the archetype weight (30 EXPLOSION, 20
   COMPOUNDER). `max_intensity` is the maximum raw Serenity intensity; `intensity_eff` = intensity x the mirror factor m. m
-  is 1.0 while the mirror's newest post (`source.latest_post_at`) is at most 72 hours old or the field is absent, 0.5 up to
-  14 days, else 0. The 13F part is 0.3 x sqrt(min(w_eff, 0.30) / 0.30) (concave, same maximum 0.3 as before; the old 5 percent
+  is 1.0 while the mirror's newest valid post (`source.latest_post_at`) is at most 72 hours old, 0.5 up to
+  14 days, else 0; missing, malformed, naive or future timestamps give 0. The 13F part is 0.3 x sqrt(min(w_eff, 0.30) / 0.30) (concave, same maximum 0.3 as before; the old 5 percent
   cap scored a 0.05 and a 0.28 position alike, the new shape ranks 0.28 above 0.05), with w_eff = `long_weight` x `currency_factor` (1.0 when the
   field is absent; 0.25 after a recorded full-book sale dated after the 13F period, see the Aschenbrenner context
   reference) x an age factor (0, reason `STALE_13F`, when the filing period is more than 200 days before the build time,
@@ -72,9 +72,10 @@ chips/memory sit above datacenter); the same constants apply when the key is abs
 the layer's w_eff (see Lead conviction); the sealed `fund_13f_weight` stays the raw sum and `fund_13f_weight_effective`
 (not sealed) carries the one used in the heat and explosiveness clips.
 
-Deferred (DEFERRED_WITH_REASON, 2026-10-18): D4, dynamic admission of lead-only names into the universe, needs the capture
-host and a host contract (and under the currency rule would admit no 13F name); D5, non-SEC fund disclosures (for example
-a Japanese filing) are recorded as a dated note only and Serenity's own portfolio-state posts carry no signal.
+Dynamic admission now has a source implementation: additional US issuers require reviewed independent issuer/counterparty
+primary evidence and an SEC identity, then the unchanged fundamental/price-history/exclusion/per-layer gates.
+The protected host binds the expanded universe to its captured revision; no candidate is approved by default.
+Non-SEC fund disclosures remain dated references, not verified company facts.
 
 ## LINE
 
@@ -380,3 +381,122 @@ thousands; Q2 report p.42: 4,898,686 / 744,722, half-year 7,634,098 / 1,371,852)
   card) names the official report, quarters, note and page and links the Q1 report.
 - Rollout: the deployed reader predates these fields and would attribute the figure to Yahoo, so a Worker that knows
   them must serve before data carrying them is published.
+
+
+## FIX-R2B research-only provenance, screening and open event discovery (2026-11-09)
+
+Source implementation only: **IMPLEMENTED_UNVERIFIED**, not deployed or independently release-accepted.
+
+- `scripts/validated_rule_engine.py` implements the eleven actually defined R3 hypotheses (R01–R10 and R13).
+  Every condition is PASS/FAIL/UNKNOWN and visibly **未驗證**; `RULES_KEPT=0`.
+  Conditions never alter scores or override company, positive-return, rights or freshness gates.
+  R10 ATM terms and R13 independent institutional changes remain UNKNOWN without document-level evidence.
+  Relative momentum needs aligned QQQ/SOXX observations; missing benchmarks and incomplete drawdown windows remain UNKNOWN.
+- `scripts/ranking_write_policy.py` separates hourly evaluation from ranking persistence: only changed ordered Top20
+  membership/order, an initial qualified ranking, or a six-hour heartbeat after the **remote-readback-confirmed ranking**
+  permits ranking writes. A local B1 completion is not publication proof and cannot suppress a failed changed-order retry.
+  Source/score/clock-only changes do not rewrite the ranking or journal within that interval. A genuine retained host
+  frame consumes no pending input and creates no new witness or ACK.
+- `scripts/sealed_product_policy.py` selects independently due products over one immutable seal. A market-only publication
+  preserves the exact ranking blob, binding and `ranking_persisted_at`; a ranking-only publication preserves product clocks.
+  Collection continues independently, including protected-host NO_CHANGE. The following are publication cadences, not
+  permission to renew old source observations:
+
+  | Product | Publication | Source admission / actual reader hard bound | Write partition |
+  |---|---|---|---|
+  | Ranking + optional machine binding | Ordered change or 6h | Original report14h; historical facts keep their date and lose forecast authority |400/day|
+  | Quotes + options |2h|Cache≤5h / reader≤6h|600/day|
+  | Options coverage |2h|Reader≤6h and original validity boundary; absent rights remain unavailable|600/day|
+  | Price shards |3h|Cache≤3d / reader≤4d|600/day|
+  | Identity generation, including name/token routes |24h|Cache and all actual reader routes≤8d|600/day|
+  | Activation/eager core |12h target at the next due ranking **with new evidence**|Original report, data, approval, claim and capture bounds still apply|400/day|
+
+  Identity collection remains20h, prices2.9h and markets0.9h. Expired or invalid product generations are omitted, never
+  restamped; readers independently refuse them. Source outages can create disclosed unavailability, not fresh numbers.
+  The two-hour market publication cadence leaves room inside the six-hour source bound; hourly publication is not assumed
+  to fit the reserve. Production-shaped measured costs, full identity churn and failed attempts are reported by the lane's
+  source-bound30-day evidence, not inferred from a frozen ranking blob.
+- KV free-tier writes are [1,000/day](https://developers.cloudflare.com/kv/platform/limits/). Separate locked UTC ledgers
+  cap retry-inclusive reservations at400 ranking /600 independent products without borrowing. Each root's liveness marker,
+  seal and pointer belong to the ranking partition only when that root persists ranking; market-only controls use600.
+  Before any PUT, both full remaining plans are authorized, again on UTC rollover. Partial reservations and failures are
+  charged without refunds; outcome counters include partial authorization. This is not an account-wide billing meter.
+  **Runtime-write assumption:** Worker KV writes for webhook deduplication, rate limiting and tenant epoch/memory
+  share the same Cloudflare account's daily free-tier allowance as these publisher writes. The offline
+  production-shaped proof observed a publisher peak of **287 PUT launches/day** (not live billing); the
+  400/600 ledgers reserve their entire 1,000/day for publisher pathways and do **not** reserve account-wide
+  space for Worker runtime writes or unrelated writers. Operational safety depends on measuring total account
+  consumption and treating provider DAILY_KV_LIMIT as fail-closed until the next 00:00 UTC reset.
+  Provider daily-limit errors stop both partitions until00:00 UTC; the next permitted evaluation resumes without a flag.
+  Budget suppression may hold a changed candidate while independently affordable products continue. Complete all-object
+  readback, immutable blobs, pending-pointer ambiguity and pointer-last remain mandatory. An attempted pointer is never
+  called retained; unaffordable bootstrap without verified custody is `BOOTSTRAP_REQUIRED`, never an invented ranking.
+- The Worker can serve exact historical ranking facts only through verified sealed-reader custody, with the original
+  as-of and a dated historical notice on ranking/detail Text and Flex. It does not restamp old data. Historical machine
+  forecasts, fallback models and attached company reports are withheld rather than renewing approval at a replay clock.
+- `scripts/top20_rotation_provenance.py` stores candidate/source/rule digests and membership/order deltas, not full ranking
+  documents. Each v3 segment is at most 4 MiB; eight retained segments plus an HMAC-signed checkpoint authenticate the
+  retained tail, not pruned lifetime genesis. Every retained link is verified before append. Normal retained storage is
+  at most 32 MiB plus the bounded checkpoint; interrupted pruning may leave one overflow record and checkpoint temp,
+  but must complete before further growth. Legacy v2 bytes are retained, not migrated or overwritten.
+  Stable OS locks recover only an aged, confirmed-dead owner; Windows checks use query-only rights. Size/lock/signing/IO
+  failures log a sanitized cause and seal the fixed zh-TW UNVERIFIED advisory without stopping ranking or last-good serving.
+  Missing process-only `II_R2B_SHADOW_SIGNING_KEY` is UNCONFIGURED, never SIGNED. The protected host also requires an explicit
+  caller-owned `II_R2B_SHADOW_LOG`, never its immutable code tree. Failed ranking/data validation never appends.
+  An observation precedes serialization/sealing: later publication failure leaves no proof of publication, acceptance
+  or causality. Source hashes exclude invocation-only clocks/decay; actual source changes remain merely possible causes.
+- `scripts/ranking_confirmed_heartbeat.py` handles genuine protected-host NO_CHANGE by selecting independently fresh cache
+  products, not by copying an expired whole seal. Only a due ranking heartbeat advances its persistence clock; confirmed
+  core identity and original report/data/approval/capture/claim payload bytes remain exact, without another host ACK.
+  A paired root stores `last_successful_pipeline_timestamp` under its **global** run as actual seal liveness; all other
+  eager objects remain under the confirmed **core** run. Public `runId` remains the core/claim identity; audit `sealRunId`
+  is the global identity. This marker is not an activation payload, evidence date or approval renewal.
+  Original legacy-report expiration can refuse legacy routes while independently fresh products and valid current V3
+  ranking remain available. Replay v5 binds both identities and the exact copied seal SHA before execution; source mutation,
+  wrong hashes and broken declared machine bindings refuse. Historical machine facts cannot regain forecasts.
+  An ambiguous pointer attempt invalidates suppression until actual remote pointer + every member reconcile. Missing proof
+  returns runner exit2 / `CONFIRMED_HEARTBEAT_UNAVAILABLE`, never retained success or a fabricated publication.
+- Serenity schema 4 distinguishes original/reply/quote/repost, deduplicates source identity/content across scoring and
+  chronology, and records source/retrieval age and mirror status. An archive or oEmbed lookup does not authenticate
+  an author's claim or create an independent source. Current source fingerprints exclude clock-derived decay; older
+  captured operands are hashed in full and remain explicitly UNVERIFIED. Calibration consumes this schema directly.
+- 13F refresh checks submissions for a newly published filing even inside its cache cadence. Quarter-end and publication
+  dates stay distinct; restatements replace only their reporting period and NEW HOLDINGS additions preserve all lots.
+  Partial/identity-unresolved observations are explicitly PARTIAL, not fresh or current holdings.
+  Ranking gives a partial source no holding-based conviction; the existing 200-day age discount is not stacked.
+- `scripts/public_event_research.py --refresh-sec` includes free SEC daily-index discovery beyond fixed layer capturers,
+  TWSE/TPEx public notices and DART RSS. Metadata reads `SEC 公告（內容待查）` or `交易所公告（內容待查）`, never a verified
+  order/acquisition claim. Reviewed claims bind the dated primary-body/excerpt hashes in the controlled registry.
+  Selection validates controlled registration before choosing the latest event, so a fabricated later cache claim cannot
+  displace a registered event. Malformed relevant SEC index rows report INVALID_SOURCE, not successful empty coverage.
+  Unresolved Korean issuer identity remains open and cannot silently become a ticker. Extra US candidates need
+  independent, body-reviewed issuer/counterparty filings, an SEC ticker identity and an existing layer before ordinary gates.
+  Controlled candidate/review registries and all new dependencies are included in the protected source closure.
+  Ordinary and protected ranking read the controlled candidate registry; feed `admitted_candidates` is never authority.
+- Pending ALL_STOCK/CASH/MIXED merger targets are withheld with a zh-TW reason; an acquirer keeps an independently
+  calculated score. LITE/MRVL remains pending, 4.5 MRVL shares per LITE, not a completed conversion.
+- M3 display metadata comes from the controlled registry through `corporate_actions.public_notes`: pending merger notes
+  apply to both parties and completed distributions apply to MOD and THRM. Producer company and excluded rows keep the
+  note. The publisher independently seals bounded `excluded_actions` for pending targets and distribution-withheld parents,
+  with controlled terms and fixed zh-TW reasons, never their scores or returns. Text, the Flex disclosure bubble, and
+  `瓶頸詳情 LITE` / `瓶頸詳情 MOD` expose those exclusions without admitting them. THRM retains only its own returns and proofs.
+  Wire status enums remain validated metadata, never raw LINE text; each notice renders one zh-TW heading without duplication.
+- `scripts/distribution_adjusted_returns.py` owns MOD suppression and the Decimal shareholder-entitlement calculator.
+  MOD distributed 0.44619 THRM on October 1; due bills run September 28–October 1 and the reviewed ex-spin boundary is
+  October 2. Fractional cash means actual net proceeds, never a fraction times an endpoint price; distributed THRM
+  does not inherit the special dividend owed to prior holders. Research calculations alone authorize no publication.
+  Atomic restoration requires exact controlled-registry receipt pins, primary unadjusted prices, complete cash/split
+  ledgers, public-derived-return rights and settlement evidence for every crossing window. Ranking and publisher
+  independently calculate from the same captured bytes; Worker checks proof/value bindings, not original-source authenticity.
+  These real inputs remain unavailable: MOD returns stay NULL with an explicit zh-TW reason, not a guessed positive result.
+- Ordinary and guidance-enabled source orchestration run ranking on each hourly refresh, without a separate three-hour skip.
+  Same-owner clean-witness reuse requires a nonfuture cutoff less than one hour old; pending completion still requires readback.
+  No installed task, runtime or Production service was changed; a carry-forward seal is not evidence of a new ranking.
+- Order realization groups 2Y → 1Y → 6M, comparing only within one period. Complete three-period rows are marked
+  `6M／1Y／2Y 完整揭露`; partial rows remain visible with `部分期間揭露`. The 2026-11-08 NO-EMPTY-NUMBERS rule supersedes
+  the 2026-09-25 all-three-period filter. Text is lossless; missing horizons remain null/未揭露, never interpolation.
+- Missing/rejected growth does not fabricate 0%. A genuine industry observation above 300% uses an explicitly disclosed
+  300% input cap, a one-half discount and final −35%/+50% bounds; no defensible basis remains 未驗證. Genuine zero is valid.
+- Macro growth is `申報企業樣本營收年增（非總市場）` only for actual `% YoY` SEC XBRL-frame revenue observations.
+  Other or missing bases remain explicitly unconfirmed/unprovided, never a fabricated total-market or TAM CAGR.
+

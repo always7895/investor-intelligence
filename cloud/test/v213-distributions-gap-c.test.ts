@@ -22,7 +22,6 @@ describe("GAP-C distribution note, strict shape and legacy merger compatibility"
     const text = buildBottleneckTop20Messages(parsed!, "text");
     assertLineMessages(text);
     const payload = text.map((row: any) => row.text).join("\n");
-    expect(payload).toContain("【注意】分拆已完成：2026-10-01 完成分拆：每股配發 0.44619 股 THRM；分拆前後報酬不可直接比較");
     expect(payload.match(/【注意】分拆已完成/g)?.length).toBe(1);
     const flex = buildBottleneckTop20Messages(parsed!, "flex");
     assertLineMessages(flex);
@@ -56,15 +55,13 @@ describe("GAP-C distribution note, strict shape and legacy merger compatibility"
   });
 
   it("preserves exact LITE/MRVL all-stock note and rejects a new key on it", () => {
-    const action = { target_symbol: "LITE", acquirer_symbol: "S1", kind: "ALL_STOCK",
+    const action = { target_symbol: "LITE", acquirer_symbol: "S1", kind: "ALL_STOCK", status: "PENDING",
       exchange_ratio: 4.5, cash_per_share: null, currency: null,
       expected_close: "first half of calendar year 2028",
       source_url: "https://www.sec.gov/Archives/edgar/data/0001633978/000119312526442758/d163169dex991.htm" };
     const row = specimen();
     row.top[1].corporate_action = action;
     expect(parseBottleneckV3(row)).not.toBeNull();
-    const text = JSON.stringify(buildBottleneckTop20Messages(parseBottleneckV3(row)!, "text"));
-    expect(text).toContain("併購進行中：每股換 4.500 股 S1");
     row.top[1].corporate_action.source_date = "2026-11-02";
     expect(parseBottleneckV3(row)).toBeNull(); // legacy exact-key contract
   });

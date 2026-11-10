@@ -18,6 +18,7 @@ import bottleneck_top20_v3 as engine
 import build_market_quotes_options as quotes
 import publish_sealed_snapshot as publisher
 import revenue_guidance_host as host
+from tests.test_bottleneck_top20_v3 import historical_actions
 
 NOW = datetime(2026, 10, 18, tzinfo=timezone.utc)
 MAPPING = json.loads((ROOT / "config/serenity-ticker-map-v1.json").read_text(encoding="utf-8"))
@@ -52,10 +53,13 @@ def classified(posts):
 
 
 class PostTypeRules(unittest.TestCase):
-    def test_schema_three_and_new_then_reaffirmed_sorted_by_date(self):
+    def test_new_then_reaffirmed_chronology_remains_consumable(self):
         doc, rows, event = classified([post(9102, "Still holding $XXXX, doubled down", 3),
                                        post(9101, "I opened a position in $XXXX", 20)])
-        self.assertEqual(doc["schema_version"], 3)
+        calibration = importlib.import_module("serenity_calibration").build_calibration(doc, lambda _: [])
+        thesis = next(row for row in calibration["symbols"] if row["symbol"] == "XXXX")
+        self.assertEqual(thesis["new_thesis_dates"], [post(9101, "", 20)["createdAtISO"][:10]])
+        self.assertEqual(thesis["source_kinds"], ["ORIGINAL"])
         self.assertEqual(event["XXXX", "9101"], "NEW_THESIS")
         self.assertEqual(event["XXXX", "9102"], "REAFFIRMATION")
         self.assertEqual(rows["XXXX"]["first_thesis_at"], post(9101,"",20)["createdAtISO"])
@@ -140,6 +144,41 @@ class CalibrationTests(unittest.TestCase):
         self.assertIsNone(data["symbols"][0]["ret_20d"])
         self.assertEqual(data["summary"]["20d"]["unknown_count"],1)
 
+    def test_mirrors_and_reposts_do_not_create_independent_calibration_observations(self):
+        original = post(9801, "I bought $XXXX", 13)
+        mirror = {**original, "id": "9802", "sourceUrl": "https://mirror.example/status/9802",
+                  "originalSourceUrl": original["sourceUrl"]}
+        doc = serenity.build_signals(archive([original, mirror,
+            post(9803, "I bought $YYYY", 3, isRepost=True)]), MAPPING, US, NOW)
+        data = self.module().build_calibration(doc, lambda _: [])
+        self.assertEqual(data["count_new_thesis_symbols"], 1)
+        self.assertEqual(data["symbols"][0]["independent_source_count"], 1)
+        self.assertEqual(data["symbols"][0]["evidence_family"], "SERENITY_AUTHOR")
+        self.assertEqual(data["summary"]["5d"]["unknown_count"], 1)
+
+    def test_future_invalid_and_removed_thesis_events_cannot_be_resurrected_by_row_date(self):
+        doc = serenity.build_signals(archive([post(9901, "I bought $XXXX", 13)]), MAPPING, US, NOW)
+        for bad in ("not-a-date", "2027-01-01T00:00:00Z", "2026-10-05"):
+            broken = json.loads(json.dumps(doc))
+            broken["post_types"][0]["created_at"] = bad
+            self.assertEqual(self.module().build_calibration(broken, lambda _: [])["count_new_thesis_symbols"], 0)
+        doc["post_types"] = []
+        self.assertEqual(self.module().build_calibration(doc, lambda _: [])["count_new_thesis_symbols"], 0)
+
+    def test_current_signal_document_runs_through_real_calibration_cli(self):
+        cal = self.module()
+        doc = serenity.build_signals(archive([post(9951, "I bought $XXXX", 13)]), MAPPING, US, NOW)
+        with tempfile.TemporaryDirectory() as td:
+            source, target = Path(td) / "signals.json", Path(td) / "calibration.json"
+            source.write_text(json.dumps(doc), encoding="utf-8")
+            with patch.object(cal, "cached_price_reader", return_value=[]):
+                self.assertEqual(cal.main(["--signals", str(source), "--output", str(target)]), 0)
+            data = json.loads(target.read_text(encoding="utf-8"))
+        self.assertEqual(data["count_new_thesis_symbols"], 1)
+        self.assertEqual(data["symbols"][0]["source_kinds"], ["ORIGINAL"])
+        self.assertEqual(data["symbols"][0]["source_content_sha256"], doc["signals"][0]["latest_content_sha256"])
+        self.assertEqual(data["summary"]["5d"]["count_used"], 0)
+
     def test_existing_captured_yahoo_chart_parser_is_used_no_provider(self):
         cal = self.module()
         with tempfile.TemporaryDirectory() as td:
@@ -194,7 +233,7 @@ class RoboticsAndWindowTests(unittest.TestCase):
                  patch.object(engine.listing_lineage,"load",return_value={}),\
                  patch.object(engine,"usd_rate",return_value=0.01),\
                  patch.object(engine,"nasdaq_consensus",return_value=None),\
-                 patch.object(engine,"outlook",return_value={}):
+                 patch.object(engine,"outlook",return_value={}), historical_actions():
                 built=engine.build(None,NOW,with_news=False)
         self.assertEqual(built["top"][0]["symbol"],sym)
         self.assertEqual(built["top"][0]["layer"],"physical_ai_robotics")

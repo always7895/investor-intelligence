@@ -20,6 +20,7 @@ import revenue_guidance_provisioner as provisioner
 import build_line_public_options as base
 import build_v211_public_options as versioned
 from tests import test_batch08c_ranking as fixture
+from tests.test_bottleneck_top20_v3 import historical_actions
 
 ACTION_BYTES = (ROOT / "config/corporate-actions-v1.json").read_bytes()
 LAYERS = json.loads((ROOT / "config/bottleneck-layers-v3.json").read_text(encoding="utf-8"))
@@ -60,7 +61,11 @@ class ProtectedHostAndCaptureTests(unittest.TestCase):
     def test_captured_ranking_consumes_protected_bytes_not_installed_path(self):
         capture = fixture.captured()
         captured_keys = {key for key, _ in capture._entries}
-        self.assertIn("corporate_actions", captured_keys)
+        self.assertTrue({"corporate_actions", "open_candidates", "reviewed_events"} <= captured_keys)
+        self.assertEqual(actions.load_actions_bytes(capture.operand("corporate_actions").read_bytes(),
+                                                   today=fixture.NOW.date())["entries"], [])
+        for name in ("open_candidates", "reviewed_events"):
+            self.assertEqual(json.loads(capture.operand(name).read_text()), [])
         with patch.object(actions, "load_actions", side_effect=AssertionError("installed file accessed")):
             built = fixture.rank(capture)
             self.assertTrue(built["top"])
@@ -70,6 +75,14 @@ class ProtectedHostAndCaptureTests(unittest.TestCase):
                 entries["corporate_actions"] = value
                 with self.assertRaises(ValueError):
                     fixture.rank(publisher.CapturedPublicationInputs(entries))
+        # A real future source is valid captured data, but not yet known at
+        # this evaluation cutoff. The protected registry remains the authority.
+        entries["corporate_actions"] = ACTION_BYTES
+        with patch.object(actions, "load_actions", side_effect=AssertionError("installed file accessed")):
+            future = fixture.rank(publisher.CapturedPublicationInputs(entries))
+        self.assertEqual([row["symbol"] for row in future["top"]],
+                         [row["symbol"] for row in built["top"]])
+        self.assertFalse(any(row.get("corporate_action") for row in future["top"]))
         del entries["corporate_actions"]
         with self.assertRaisesRegex(ValueError, "CAPTURED_INPUT_NOT_SELECTED"):
             fixture.rank(publisher.CapturedPublicationInputs(entries))
@@ -92,6 +105,29 @@ class ProtectedHostAndCaptureTests(unittest.TestCase):
 
 
 class CorporateActionSchemaTests(unittest.TestCase):
+    def test_historical_installed_registry_omits_future_sources_but_validates_all(self):
+        cutoff = fixture.NOW.date()
+        with historical_actions() as path:
+            self.assertEqual(actions.load_actions(today=cutoff),
+                             actions.load_actions_bytes(fixture.old.HISTORICAL_ACTION_BYTES, today=cutoff))
+            # On this September historical cutoff, neither the October MOD
+            # distribution nor the November LITE deal is yet known.
+            # Both adapters must preserve a valid empty registry, not refuse.
+            path.write_bytes(ACTION_BYTES)
+            expected = actions.load_actions_bytes(ACTION_BYTES, today=cutoff)
+            self.assertEqual(expected["entries"], [])
+            for selected in (None, path):
+                with self.subTest(default_path=selected is None):
+                    observed = actions.load_actions(selected, today=cutoff)
+                    self.assertEqual(observed, expected)
+                    self.assertNotIn("LITE", actions.pending_targets(observed))
+                    self.assertNotIn("LITE", actions.public_notes(observed, asof=cutoff))
+            self.assertEqual([entry["target_symbol"] for entry in
+                actions.load_actions_bytes(ACTION_BYTES, today=date(2026, 10, 1))["entries"]],
+                ["MOD"])
+            self.assertIn("LITE", actions.pending_targets(
+                actions.load_actions_bytes(ACTION_BYTES, today=date(2026, 11, 2))))
+
     def test_sec_archives_only_rejects_issuer_ir_and_other_sec_urls(self):
         obj = json.loads(ACTION_BYTES)
         for url in (

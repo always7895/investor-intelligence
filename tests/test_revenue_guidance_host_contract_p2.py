@@ -205,6 +205,26 @@ class HostPhaseContractTests(unittest.TestCase):
         self.assertEqual(result, {"Completed": True, "Revision": A, "ReusedLiveConsumption": True})
         readback.assert_called_once_with(current.witness, state(A))
 
+    def test_cadence_reuse_requires_a_nonfuture_cutoff_strictly_less_than_one_hour_old(self):
+        instant = host.now()
+        for age, allowed in ((0, True), (3599, True), (3600, False), (-1, False)):
+            with self.subTest(age_seconds=age):
+                lease = hc.FakeLease(state(A))
+                current = hc.session(lease)
+                cutoff = (instant - timedelta(seconds=age)).strftime("%Y-%m-%dT%H:%M:%SZ")
+                current.witness = witness(current.guard, cutoff=cutoff, acked=True)
+                with mock.patch.object(host, "now", return_value=instant), \
+                        mock.patch.object(current, "_read_witness") as readback:
+                    if allowed:
+                        self.assertEqual(current.rank({"Mode": "Cadence", "Revision": None}),
+                                         {"Completed": True, "Revision": A, "ReusedLiveConsumption": True})
+                        readback.assert_called_once_with(current.witness, state(A))
+                    else:
+                        with self.assertRaisesRegex(host.HostUnavailable, "^LIVE_REBUILD_REQUIRED$"):
+                            current.rank({"Mode": "Cadence", "Revision": None})
+                        readback.assert_not_called()
+                self.assertEqual(lease.commits, [])
+
     def test_check_and_update_require_their_exact_phase(self):
         current = hc.session(hc.FakeLease(state(A, None, intent())))
         for phase, call in (("idle", current.check), ("checked", current.check), ("updated", current.check),
@@ -366,9 +386,11 @@ class HostOpenAndCloseTests(unittest.TestCase):
             result = real_commit(token, requested)
             return result if committed else SimpleNamespace(success=False, state=result.state, version=result.version)
         lease.commit_journal = commit
-        layers = {"layers": [{"capturers": [{"symbol": symbol} for symbol in symbols]}]}
-        origin = SimpleNamespace(files={"config/bottleneck-layers-v3.json": json.dumps(layers).encode("utf-8")},
-                                 close=mock.Mock(side_effect=lambda: order.append("origin-close")))
+        layers = {"layers": [{"id": "synthetic-layer", "capturers": [{"symbol": symbol} for symbol in symbols]}]}
+        origin = SimpleNamespace(files={
+            "config/bottleneck-layers-v3.json": json.dumps(layers).encode("utf-8"),
+            "config/reviewed-open-candidates-v1.json": b"[]"},
+            close=mock.Mock(side_effect=lambda: order.append("origin-close")))
         def acquire(remaining_ms, *, parent_deadline):
             order.append("lease")
             self.assertEqual(type(remaining_ms), int)

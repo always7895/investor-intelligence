@@ -1,4 +1,4 @@
-"""SYNTHETIC_NBIS_AUTO_NOT_GENUINE_NATIVE_OR_LIVE: frozen producer parity."""
+"""SYNTHETIC_NBIS_AUTO_NOT_GENUINE_NATIVE_OR_LIVE: producer contract and historical fixture hygiene."""
 from datetime import datetime, timezone
 import json
 from pathlib import Path
@@ -18,6 +18,7 @@ import revenue_guidance_overlay as overlay
 from tests import nbis_e2e_support as h
 from tests import nbis_synthetic_sources as f
 from tests.test_revenue_guidance_nbis_refusals import curated_denylist
+from tests.revenue_guidance_machine_parity_support import consumer_view
 
 CUTOFF = datetime(2032, 2, 20, 13, tzinfo=timezone.utc)
 CUTOFF_TEXT = "2032-02-20T13:00:00Z"
@@ -99,16 +100,16 @@ class NbisAutoProducerTests(unittest.TestCase):
             f.observe_boundary("N4-5", actual)
             self.assertEqual(actual, ("RESULT", ("AVAILABLE", None, True, True, True, True)))
 
-    def test_n4_2_frozen_bytes_and_fresh_root_determinism(self):
+    def test_n4_2_frozen_parity_and_fresh_root_byte_determinism(self):
         with tempfile.TemporaryDirectory(prefix="synthetic-nbis-a-") as a, tempfile.TemporaryDirectory(prefix="synthetic-nbis-b-") as b:
             def invoke():
-                frozen = FIXTURE.read_bytes()
-                first = serialize(produce(Path(a)))
-                second = serialize(produce(Path(b)))
-                return first == frozen, second == first
+                first = produce(Path(a))
+                second = produce(Path(b))
+                self.assertEqual(consumer_view(first), consumer_view(json.loads(FIXTURE.read_bytes())))
+                return serialize(second) == serialize(first)
             actual = f.outcome_of(invoke)
             f.observe_boundary("N4-2", actual)
-            self.assertEqual(actual, ("RESULT", (True, True)))
+            self.assertEqual(actual, ("RESULT", True))
 
     def test_n4_3_ten_symbol_dispositions(self):
         with tempfile.TemporaryDirectory(prefix="synthetic-nbis-dispositions-") as tmp:

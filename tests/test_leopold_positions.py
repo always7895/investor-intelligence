@@ -199,11 +199,11 @@ class AmendmentTests(unittest.TestCase):
         only_mu = re.sub(rb"(?s)(<infoTable>(?:(?!</infoTable>).)*?SANDISK.*?</infoTable>)", b"", Q2.read_bytes())
         document = self.build_with(only_mu, (FIXTURES / "13f_amendment_primary_restatement.xml").read_bytes())
         self.assertNotIn("SNDK", by_ticker(document))
-        self.assertEqual(document["amendments"], [{"accession": ACC_A, "filed": "2026-08-20", "type": "RESTATEMENT"}])
+        self.assertEqual(document["amendments"], [{"accession": ACC_A, "filed": "2026-08-20", "period": "2026-06-30", "type": "RESTATEMENT"}])
         self.assertEqual(document["filing"]["accession"], ACC_A)
         self.assertEqual(document["filing"]["period"], "2026-06-30")
 
-    def test_new_holdings_join_as_union_amended_row_wins(self):
+    def test_new_holdings_adds_entries_without_erasing_existing_same_cusip(self):
         raw = Q2.read_bytes()
         mu = re.search(rb"(?s)<infoTable>(?:(?!</infoTable>).)*?MICRON.*?</infoTable>", raw).group(0)
         amended_mu = mu.replace(b"<sshPrnamt>4828786<", b"<sshPrnamt>1000<")
@@ -211,7 +211,7 @@ class AmendmentTests(unittest.TestCase):
         table = raw[:raw.index(b"<infoTable>")] + amended_mu + b"\n" + extra + b"\n</informationTable>\n"
         document = self.build_with(table, (FIXTURES / "13f_amendment_primary_new_holdings.xml").read_bytes())
         positions = by_ticker(document)
-        self.assertEqual(positions["MU"]["long_shares"], 1000.0)
+        self.assertEqual(positions["MU"]["long_shares"], 4828786.0 + 1000.0)
         self.assertIn("SNDK", positions)  # untouched rows stay
         self.assertEqual(positions["WDGT"]["match"], "NAME")
         self.assertEqual(document["amendments"][0]["type"], "NEW HOLDINGS")
