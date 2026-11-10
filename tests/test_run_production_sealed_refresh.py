@@ -312,6 +312,7 @@ CARRY_SYNC = TRACE + SYNC_PRELUDE + (
     "trace('SYNC ' + run_dir[-4:])\nprint('SYNC_ARG ' + run_dir)\nprint('SYNC_OUTCOME_PATH ' + outcome_path)\n"
     "if (root / 'sync_slow').exists():\n    time.sleep(2.5)\n"
     f"if (root / 'sync_fail').exists():\n    write_outcome(**{FAILED_UNCONFIRMED!r})\n    sys.exit(1)\n"
+    "if (root / 'sync_unreadable').exists():\n    Path(outcome_path).write_text('NOT_JSON', encoding='utf-8')\n    sys.exit(0)\n"
     "write_outcome()\n")
 CARRY_LKG = TRACE + (
     "cmd = sys.argv[1]\ntrace('LKG ' + ' '.join(a for a in sys.argv[1:4] if not Path(a).is_absolute()))\n"
@@ -543,7 +544,8 @@ class CarryForwardHourlyTests(unittest.TestCase):
 class MachineIndependentProductFailureTests(unittest.TestCase):
     """Typed machine failure must not suppress a separately sealed product root."""
 
-    def run_failure(self, shell: str, *, bad_sync: bool = False, machine_reason: str | None = None):
+    def run_failure(self, shell: str, *, bad_sync: bool = False, unreadable_sync: bool = False,
+                    machine_reason: str | None = None):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             scripts = root / "scripts"
@@ -553,6 +555,9 @@ class MachineIndependentProductFailureTests(unittest.TestCase):
             # No machine credentials or producer. Missing guidance prerequisites
             # deliberately trigger typed MACHINE_INPUTS_UNAVAILABLE.
             (scripts / "run_daily_data_refresh.ps1").write_text("throw 'SECOND_PRODUCER_FORBIDDEN'\n", encoding="utf-8")
+            (scripts / "run_independent_product_refresh.ps1").write_text(
+                "Add-Content -Path (Join-Path (Split-Path -Parent $PSScriptRoot) 'trace.txt') -Value 'PRODUCT_CACHES'\nexit 0\n",
+                encoding="utf-8")
             (scripts / "publish_sealed_snapshot.py").write_text(
                 'raise AssertionError("SECOND_RANKING_PRODUCER_FORBIDDEN")\n', encoding="utf-8")
             (scripts / "top20_carry_forward.py").write_text(
@@ -581,6 +586,8 @@ class MachineIndependentProductFailureTests(unittest.TestCase):
                 (scripts / "revenue_guidance_backend.psm1").write_text(backend, encoding="utf-8")
             if bad_sync:
                 (root / "sync_fail").write_text("1", encoding="utf-8")
+            if unreadable_sync:
+                (root / "sync_unreadable").write_text("1", encoding="utf-8")
             command = [shell, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
                        "-File", str(scripts / SCRIPT.name), "-GuidanceMachinePublicationEnabled"]
             if machine_reason is not None:
@@ -594,7 +601,7 @@ class MachineIndependentProductFailureTests(unittest.TestCase):
         for shell in shells():
             code, trace, outcome = self.run_failure(shell)
             self.assertEqual(code, 2, (shell, trace, outcome))
-            self.assertEqual(trace, ["PRODUCTS_ONLY", "REPLAY cccc PASS", "SYNC cccc"])
+            self.assertEqual(trace, ["PRODUCT_CACHES", "PRODUCTS_ONLY", "REPLAY cccc PASS", "SYNC cccc"])
             self.assertEqual((outcome["primary_exit"], outcome["error_category"],
                               outcome["primary_phase"]), (2, "MACHINE_INPUTS_UNAVAILABLE", "MACHINE_PRESEAL"))
             self.assertEqual((outcome["publication_confirmed"], outcome["publication_operation_succeeded"]),
@@ -603,6 +610,7 @@ class MachineIndependentProductFailureTests(unittest.TestCase):
             self.assertEqual((independent["status"], independent["exit"], independent["pointer_state"]),
                              ("PRODUCTS_PUBLISHED", 0, "READBACK_CONFIRMED"))
             self.assertEqual(independent["run_id"], "20260926T010000Z-cccccccccccc")
+            self.assertEqual((independent["cache_refresh"], independent["cache_refresh_exit"]), ("COMPLETED", 0))
             self.assertEqual(outcome["local_maintenance"]["top20_status"], "NOT_ADMITTED")
 
     def test_all_typed_machine_failures_continue_independent_products(self):
@@ -613,16 +621,28 @@ class MachineIndependentProductFailureTests(unittest.TestCase):
                     code, trace, outcome = self.run_failure(shell, machine_reason=reason)
                     self.assertEqual(code, 2, (trace, outcome))
                     self.assertEqual(outcome["error_category"], reason)
-                    self.assertEqual(trace, ["PRODUCTS_ONLY", "REPLAY cccc PASS", "SYNC cccc"])
+                    self.assertEqual(trace, ["PRODUCT_CACHES", "PRODUCTS_ONLY", "REPLAY cccc PASS", "SYNC cccc"])
                     self.assertEqual(outcome["independent_products"]["status"], "PRODUCTS_PUBLISHED")
                     self.assertTrue(outcome["publication_confirmed"])
                     self.assertFalse(outcome["publication_operation_succeeded"])
+
+    def test_unreadable_product_sync_outcome_is_unknown_not_unattempted(self):
+        for shell in shells():
+            code, trace, outcome = self.run_failure(shell, unreadable_sync=True)
+            self.assertEqual(code, 2, (shell, trace, outcome))
+            self.assertEqual(trace, ["PRODUCT_CACHES", "PRODUCTS_ONLY", "REPLAY cccc PASS", "SYNC cccc"])
+            self.assertEqual(outcome["error_category"], "MACHINE_INPUTS_UNAVAILABLE")
+            self.assertEqual(outcome["pointer_state"], "UNKNOWN")
+            self.assertEqual(outcome["independent_products"]["pointer_state"], "UNKNOWN")
+            self.assertEqual(outcome["independent_products"]["status"], "UNAVAILABLE")
+            self.assertFalse(outcome["publication_confirmed"])
+            self.assertFalse(outcome["publication_operation_succeeded"])
 
     def test_unconfirmed_products_do_not_turn_a_machine_failure_into_success(self):
         for shell in shells():
             code, trace, outcome = self.run_failure(shell, bad_sync=True)
             self.assertEqual(code, 2, (shell, trace, outcome))
-            self.assertEqual(trace, ["PRODUCTS_ONLY", "REPLAY cccc PASS", "SYNC cccc"])
+            self.assertEqual(trace, ["PRODUCT_CACHES", "PRODUCTS_ONLY", "REPLAY cccc PASS", "SYNC cccc"])
             self.assertEqual(outcome["error_category"], "MACHINE_INPUTS_UNAVAILABLE")
             self.assertFalse(outcome["publication_confirmed"])
             self.assertFalse(outcome["publication_operation_succeeded"])

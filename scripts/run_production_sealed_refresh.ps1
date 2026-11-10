@@ -216,8 +216,27 @@ function Invoke-IndependentProductsAfterMachineFailure {
     $receipt = [ordered]@{
         status='NOT_PUBLISHED'; exit=1; pointer_state='NOT_ATTEMPTED'
         run_id=$null; reason='INDEPENDENT_PRODUCTS_UNAVAILABLE'
+        cache_refresh='SKIPPED_BUDGET'; cache_refresh_exit=$null
     }
     try {
+        # This is the same independent zh-name/identity/price/quote collection
+        # as ordinary daily maintenance, without its SEC/guidance/ranking work.
+        # One bounded process tree, never beyond the actual remaining budget.
+        $remainingMs = [long][Math]::Floor([Math]::Max(0,
+            $PostSealBudgetSeconds * 1000.0 - ((Get-Date) - $runStarted).TotalMilliseconds))
+        $refreshSeconds = [int][Math]::Floor([Math]::Min([double]$RefreshTimeoutSeconds,
+            [Math]::Floor($remainingMs / 1000.0)))
+        if ($refreshSeconds -ge 1) {
+            try {
+                $receipt.cache_refresh_exit = Invoke-BoundedScript 'INDEPENDENT_PRODUCTS' `
+                    (Join-Path $repo 'scripts\run_independent_product_refresh.ps1') @() $refreshSeconds
+                $receipt.cache_refresh = if ($receipt.cache_refresh_exit -eq 0) {'COMPLETED'} else {'FAILED'}
+            } catch {
+                $receipt.cache_refresh='FAILED'; $receipt.cache_refresh_exit=1
+            }
+        }
+        # A failed/expired collector never restamps sources: the real sealer
+        # will use only cache bodies still inside each product's hard age bound.
         $staged = Invoke-LoggedNative { & $py 'scripts\ranking_confirmed_heartbeat.py' --snapshot-root $runsRoot --products-only }
         if ($staged.Code -ne 0) {
             $receipt.status='STAGE_FAILED'; $receipt.exit=$staged.Code
@@ -242,6 +261,7 @@ function Invoke-IndependentProductsAfterMachineFailure {
             return [pscustomobject]$receipt
         }
         $outcomePath = Join-Path $logDir ('sealed-sync-' + [guid]::NewGuid().ToString('N') + '.json')
+        $receipt.pointer_state='UNKNOWN' # sync launched; pointer PUT/readback may have occurred
         $synced = Invoke-LoggedNative { & $py 'scripts\sync_sealed_snapshot_kv.py' --run-dir $productDir --outcome-path $outcomePath }
         $outcome = Read-SafeSyncOutcome $outcomePath $productRun
         $receipt.exit = $synced.Code
@@ -569,7 +589,7 @@ try {
                 $script:IndependentProducts=Invoke-IndependentProductsAfterMachineFailure
                 # An attempted or confirmed product pointer remains visible
                 # even when the unrelated machine computation failed.
-                if ($script:IndependentProducts.pointer_state -cin @('READBACK_CONFIRMED','ATTEMPTED_UNCONFIRMED')) {
+                if ($script:IndependentProducts.pointer_state -cin @('READBACK_CONFIRMED','ATTEMPTED_UNCONFIRMED','UNKNOWN')) {
                     $pointerState=$script:IndependentProducts.pointer_state
                 }
                 if ($script:IndependentProducts.status -ceq 'PRODUCTS_PUBLISHED') {
