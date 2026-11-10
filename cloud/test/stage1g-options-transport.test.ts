@@ -105,7 +105,7 @@ describe("Stage1G sealed E1 historical-volatility and coverage parity", () => {
       const renderedFlex = JSON.stringify(buildCoveredCallMessages(accepted!, "每月期權", "flex"));
       const renderedText = JSON.stringify(buildCoveredCallMessages(accepted!, "每月期權", "text"));
       const nextWeek = JSON.stringify(buildCoveredCallMessages(
-        { ...accepted!, weekly_week: "NEXT" }, "每週期權", "text"));
+        { ...accepted!, weekly_week: "NEXT", expiry: "2026-11-19" }, "每週期權", "text"));
       expect(nextWeek).toContain("本週已無剩餘週選，顯示下週最早到期日");
       expect(nextWeek).not.toContain("與每月期權為同一合約");
       for (const rendered of [renderedFlex, renderedText]) {
