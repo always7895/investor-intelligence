@@ -128,15 +128,20 @@ def load_actions_bytes(raw: bytes, *, today: date | None = None) -> dict[str, An
             distribution_day = _day(raw["distribution_date"])
             source_day = _day(raw["source_date"])
             review_day = _day(raw["review_by"]) if raw["review_by"] is not None else None
-            if source_day < distribution_day or source_day > today or (review_day is not None and review_day < distribution_day):
+            if source_day < distribution_day or (review_day is not None and review_day < distribution_day):
                 raise ValueError("CORPORATE_ACTION_DISTRIBUTION_CHRONOLOGY")
             if "entitlement_receipts" in raw:
                 # Authority comes only from these controlled captured registry bytes,
                 # not an evidence catalog's approval flags or self-computed checksum.
                 from distribution_adjusted_returns import validate_entitlement_receipts
                 validate_entitlement_receipts(raw["entitlement_receipts"])
-                if any(not source_day <= _day(r["approved_on"]) <= today for r in raw["entitlement_receipts"]):
+                if any(_day(r["approved_on"]) < source_day for r in raw["entitlement_receipts"]):
                     raise ValueError("CORPORATE_ACTION_ENTITLEMENT_REVIEW_DATE")
+            # Historical replays must not learn future filings or approvals.
+            # Validate the entire entry first; skip only well-formed future evidence.
+            if source_day > today or ("entitlement_receipts" in raw and
+                    any(_day(r["approved_on"]) > today for r in raw["entitlement_receipts"])):
+                continue
             key = (raw["target_symbol"], raw["distribution_date"], raw["related_symbol"])
             if key in distribution_keys:
                 raise ValueError("CORPORATE_ACTION_DUPLICATE_DISTRIBUTION")
@@ -161,7 +166,7 @@ def load_actions_bytes(raw: bytes, *, today: date | None = None) -> dict[str, An
         announced = _day(raw["announced_on"])
         status_on, source_on = (_day(raw[key]) for key in ("status_on", "source_date"))
         review_on = _day(raw["review_by"]) if raw["review_by"] is not None else None
-        if status_on < announced or source_on < status_on or source_on > today or (review_on is not None and review_on < announced):
+        if status_on < announced or source_on < status_on or (review_on is not None and review_on < announced):
             raise ValueError("CORPORATE_ACTION_CHRONOLOGY")
         close = raw["expected_close"]
         if not (isinstance(close, str) and (CLOSE.fullmatch(close) or _valid_close_day(close))):
@@ -177,6 +182,9 @@ def load_actions_bytes(raw: bytes, *, today: date | None = None) -> dict[str, An
                 raise ValueError("CORPORATE_ACTION_CASH")
         elif cash is not None or raw["currency"] is not None:
             raise ValueError("CORPORATE_ACTION_ALL_STOCK_CASH")
+        if source_on > today:
+            # Not yet publicly known at this point in time (no suppression or notice).
+            continue
         if raw["status"] == "PENDING":
             if raw["target_symbol"] in pending_targets:
                 raise ValueError("CORPORATE_ACTION_DUPLICATE_PENDING_TARGET")

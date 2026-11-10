@@ -52,7 +52,7 @@ class CorporateActionLoaderTests(unittest.TestCase):
             ("url", lambda d: d["entries"][0].update(source_url="https://untrusted.invalid/a")),
             ("URL shape only", lambda d: d["entries"][0].update(source_url="https://www.sec.gov/Archives/not-a-filing")),
             ("bad port", lambda d: d["entries"][0].update(source_url="https://www.sec.gov:bad/Archives/edgar/data/1/000119312526442758/a.htm")),
-            ("future source", lambda d: d["entries"][0].update(source_date="2026-11-08")),
+            ("reversed status and source", lambda d: d["entries"][0].update(status_on="2026-11-04", source_date="2026-11-03")),
             ("field", lambda d: d["entries"][0].update(unreviewed=True)),
         ):
             with self.subTest(label=label), tempfile.TemporaryDirectory() as tmp:
