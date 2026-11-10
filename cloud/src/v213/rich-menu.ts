@@ -705,9 +705,15 @@ export async function v213PublicLineAnswer(env: Env, query: ParsedQuery): Promis
           }
           if (detailed.status === "PERIOD_UNAVAILABLE") {
             const displayTicker = detailed.ticker ?? shown;
-            const reason = detailed.unavailable
-              ? `${note ? `${note}` : ""}${detailed.unavailable}（已封存之公開觀察）`
-              : `${note ? `${note}` : ""}本輪封存資料沒有 ${displayTicker} 的${period === "weekly" ? "每週期權" : "每月期權"}觀察。`;
+            const perStrategy = detailed.strategyReasons
+              ? ["備兌買權：" + detailed.strategyReasons.cc,
+                 "現金擔保賣權：" + detailed.strategyReasons.csp,
+                 "領口策略：" + detailed.strategyReasons.collar].join("\n")
+              : detailed.unavailable;
+            const reason = perStrategy
+              ? (note ?? "") + perStrategy + "（已封存之公開觀察）"
+              : (note ?? "") + "本輪封存資料沒有 " + displayTicker +
+                (period === "weekly" ? " 的每週期權" : " 的每月期權") + "觀察。";
             return { handled: true, messages: optionsUnavailableReport(displayTicker, period, reason, isText) };
           }
           if (detailed.status === "DOCUMENT_STALE") {

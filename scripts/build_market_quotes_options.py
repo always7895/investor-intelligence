@@ -455,7 +455,7 @@ def covered_call_tiers(rows: list[dict[str, Any]], spot: float, dte: int, *,
                        prepared: list[dict[str, Any]] | None = None) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
     """(suggestions, middle): the highest usable strike (HIGH_STRIKE; no yield floor), a balanced strike below it (BALANCED), and
     the optional MIDDLE strike strictly between the two (never padded, never a duplicate strike). Only out-of-the-money
-    strikes with two-sided quotes qualify, and one common sigma supplies every delta.
+    strikes with two-sided quotes qualify, and per-leg evidence supplies each delta.
     MAX_HIGH_STRIKE_DELTA is checked before rounding. Only cent-exact strikes are recommended;
     raw chain health is independent. DTE 0 annualizes over one day."""
     if dte < 0:
@@ -599,7 +599,7 @@ def collar_tiers(calls: list[dict[str, Any]], puts: list[dict[str, Any]], spot: 
                  prepared_puts: list[dict[str, Any]] | None = None) -> tuple[dict[str, Any] | None, str | None]:
     """({put, items}, reason): long stock + a protective put (absolute delta nearest PROTECTIVE_PUT_DELTA inside its window; buy limit = mid
     rounded up, never above the ask) + the short call in CONSERVATIVE_DELTA_BAND (the delta nearest the lower edge first, optional
-    BALANCED nearest the upper edge). Every leg needs both quote sides and the same sigma; there is no yield floor."""
+    BALANCED nearest the upper edge). Every leg needs both quote sides and independently verified Delta; no yield floor."""
     if dte < 0:
         return None, "所選到期已過期，不提供領口策略建議"
     reason = _leg_quote_unavailable(puts, spot, put=True, buy=True, cent_exact_only=cent_exact_only)
@@ -717,12 +717,10 @@ def cycle_result(ticker: str, expiry: str, dte: int, spot: float, rows: list[dic
             reasons={"cc": _diag(cc_reason),
                      "csp": _diag(strategies["csp"]["unavailable"]),
                      "collar": _diag(strategies["collar"]["unavailable"])}
-            # The public unavailable reason must no longer make a put refusal
-            # look like a call refusal. Keep each exact per-strategy diagnostic
-            # in a strictly bounded additive field, and show a compact summary.
-            compact=("備兌："+reasons["cc"][:92]+"；賣權："+reasons["csp"][:35]+
-                     "；領口："+reasons["collar"][:35])
-            return {"unavailable": _diag(compact), "strategy_reasons": reasons}
+            # Do not truncate mid-phrase or insert put/collar diagnostics
+            # into the CC block. The Worker renders all three exact strings.
+            summary = "本到期日三種期權策略均未符合條件；各策略拒絕原因分別列示"
+            return {"unavailable": summary, "strategy_reasons": reasons}
 
     def find_row(analysis: dict[str, Any], quoted: dict[str, Any]) -> dict[str, Any]:
         matches = [row for row in analysis["computed"] if
@@ -1003,7 +1001,10 @@ def _cycles_from_calls(calls: list[dict[str, Any]], ticker: str, spot: float, st
                                   asof=today.isoformat() if today else None, week=week, identity=identity, puts=chosen_puts,
                                   monthly_rule=monthly_rule, historical_volatility=history)
         if cycle == "monthly" and monthly is not None and not out[cycle].get("suggestions"):
-            cc_reason = out[cycle].get("unavailable") or out[cycle]["strategies"]["cc"]["unavailable"]
+            blocks = out[cycle].get("strategies")
+            cc_block = blocks.get("cc") if isinstance(blocks, dict) else None
+            cc_reason = (cc_block.get("unavailable") if isinstance(cc_block, dict) else None
+                         ) or out[cycle].get("strategy_reasons", {}).get("cc") or out[cycle].get("unavailable")
             observation = _monthly_quote_observation(
                 ticker, spot, [monthly], calls, stamp, today, currency=currency, source=source,
                 provenance=provenance, rights=rights, identity=identity, cc_reason=cc_reason, puts=puts,

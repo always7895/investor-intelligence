@@ -13,7 +13,7 @@ import {
 } from "./option-recommendation-rules";
 import { admitPublicOption, OptionRightsNotAdmittedError } from "./public-options-admission";
 import {
-  historicalDeltaBasisZh, validHistoricalVolatility, type HistoricalVolatility,
+  validHistoricalVolatility, type HistoricalVolatility,
 } from "./historical-volatility";
 import type { DeltaModel } from "./option-delta-model";
 import { isSideCycleDeltaModel, validSideCycleDeltaModel, parseSideDeltaModel, sideModelLegConsistent,
@@ -26,7 +26,7 @@ export interface CoveredCallSuggestion {
   role: "HIGH_STRIKE" | "MIDDLE" | "BALANCED"; strike: number; bid: number; ask: number | null; mid: number | null; limit_price: number;
   premium_per_contract: number; period_yield: number; annualized_yield: number; upside_to_strike: number;
   delta: number | null; iv: number | null; oi: number | null; volume: number | null; spread_pct: number | null;
-  /** One common model for the complete eligible underlying/expiry cohort. */
+  /** Per-leg verified basis, never a cross-strike common sigma. */
   delta_basis: DeltaModel["basis"];
 }
 /** Quote basis of the previous-session carry-forward (scripts/options_carry_forward.py): when the current chain has no valid two-sided
@@ -527,9 +527,11 @@ const tierTitle = (item: CoveredCallSuggestion, index: number) => `建議${ORDIN
 
 /** Period marker: rows that carry weekly_week say which calendar week the expiry is in; rows that carry monthly_rule say when the
  * monthly is not the plain third Friday of the nearest month. */
-function weekNoteZh(cycle: CoveredCallCycle): string | null {
+function weekNoteZh(cycle: CoveredCallCycle, combinedMonthly = false): string | null {
   if (cycle.weekly_week === "CURRENT") return "本週到期";
-  if (cycle.weekly_week === "NEXT") return "本週已無剩餘週選，顯示下週最早到期日";
+  if (cycle.weekly_week === "NEXT") return combinedMonthly
+    ? "本週已無剩餘週選；下週最早到期日即標準月選 " + cycle.expiry + "，與每月期權為同一合約"
+    : "本週已無剩餘週選，顯示下週最早到期日";
   if (cycle.monthly_rule === "HOLIDAY_SHIFT") return "該月第三個星期五無到期日，顯示當週最後一個上市到期日";
   if (cycle.monthly_rule === "LATER_LISTED") return "本月標準月選已到期或未上市，顯示下一個標準月選";
   return null;
@@ -634,7 +636,7 @@ function headerBox(ctx: CardContext, eyebrow: string) {
   const { cycle } = ctx;
   return productHeader(`${eyebrow} · ${ctx.periodLabel} · ${ctx.carried ? "前一時段報價" : "延遲報價"}`, `${cycle.ticker}｜到期 ${cycle.expiry}`, [
     uiBox([chip(ctx.dteZh), chip(`${ctx.spotLabel} ${money(cycle.spot, cycle.currency)}`), chip(`計價 ${cycle.currency}`)], { layout: "horizontal", spacing: "sm" }),
-    ...(weekNoteZh(cycle) ? [uiBox([chip(weekNoteZh(cycle)!)], { layout: "horizontal", spacing: "sm" })] : []),
+    ...(weekNoteZh(cycle, ctx.periodLabel.includes("週選與月選同到期")) ? [uiBox([chip(weekNoteZh(cycle, ctx.periodLabel.includes("週選與月選同到期"))!)], { layout: "horizontal", spacing: "sm" })] : []),
     ...(ctx.monthlyNotice ? [chip(ctx.monthlyNotice, T.cycleCaution, T.cycleCautionText)] : []),
   ]);
 }
@@ -930,7 +932,7 @@ export function buildCoveredCallMessages(cycle: CoveredCallCycle, periodLabel: s
     const lines = [
       `【${cycle.suggestions.length > 0 ? "備兌買權建議" : "期權策略"}｜${cycle.ticker} ${displayPeriodLabel}】到期 ${cycle.expiry}（${carried ? dteZh : `${cycle.dte} 天`}）｜${spotLabel} ${money(cycle.spot, cycle.currency)}（計價 ${cycle.currency}）`,
       ...(carriedLabel ? [carriedLabel] : []),
-      ...(weekNoteZh(cycle) ? [`${weekNoteZh(cycle)}${cycle.asof_date ? `（以交易所當地日期 ${cycle.asof_date} 判斷）` : ""}`] : []),
+      ...(weekNoteZh(cycle, combinedExpiry) ? [`${weekNoteZh(cycle, combinedExpiry)}${cycle.asof_date ? `（以交易所當地日期 ${cycle.asof_date} 判斷）` : ""}`] : []),
       ...(shortDteNoticeZh(cycle.dte) ? [shortDteNoticeZh(cycle.dte)!] : []),
       ...(ctx.deltaBasis ? [ctx.deltaBasis] : []),
       ...(cycle.historical_volatility ? [`歷史來源：Yahoo Finance 日線調整後收盤價；${cycle.historical_volatility.source_url}`] : []),

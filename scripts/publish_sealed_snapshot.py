@@ -1042,14 +1042,15 @@ def expand_sealed_cycle(cycle: dict, per_ticker_history: object = None) -> dict:
 
 
 def dedupe_sealed_history(options: dict) -> None:
-    """One immutable 11-field array per ticker, never per cycle. Before
-    deduplication each cycle was validated against complete authenticated
-    evidence. The per-ticker source must be byte-for-byte identical on both
-    periods or the build stops loudly, not a best-effort merge.
+    """Dedupe a ticker only when all period-level authenticated histories agree.
+    Previous-session carry-forward and a new live period may legitimately
+    have different as-of dates and SHA-256; preserve both arrays losslessly,
+    with no shared marker, instead of aborting the entire snapshot.
     """
     for ticker,cycles in options.items():
         if not isinstance(cycles,dict):continue
         common=None
+        conflict=False
         for period in ("weekly","monthly"):
             cycle=cycles.get(period)
             if not isinstance(cycle,dict):continue
@@ -1063,7 +1064,12 @@ def dedupe_sealed_history(options: dict) -> None:
             if not isinstance(raw,list) or len(raw)!=len(STAGE1F_HISTORY_KEYS):
                 raise RuntimeError("STAGE1F_HISTORY_TRANSPORT_INVALID")
             if common is None:common=raw
-            elif common!=raw:raise RuntimeError("STAGE1F_HISTORY_CONFLICT: "+ticker)
+            elif common!=raw:conflict=True
+        if conflict:
+            # Keep original, independently validated arrays with each cycle;
+            # Worker already accepts the per-cycle eleven-value transport.
+            cycles.pop("_hv", None)
+            continue
         if common is not None:
             cycles["_hv"]=common
             for period in ("weekly","monthly"):

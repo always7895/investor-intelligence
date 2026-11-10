@@ -15,7 +15,6 @@ from decimal import Decimal, ROUND_FLOOR, ROUND_CEILING
 from typing import Any
 
 import option_delta_model as bs
-import option_recommendation_rules as rules
 
 MODEL_SCHEMA = "STAGE1E_PER_SIDE_V1"
 MODEL_KEYS = frozenset(("schema", "calls", "puts"))
@@ -24,7 +23,7 @@ MODE_BASES = {"SOURCE_IV": "QUOTED_IV", "SOURCE_DELTA": "QUOTED",
               "MID_IV": "QUOTE_IMPLIED", "HISTORICAL_VOL": "HISTORICAL_VOL"}
 DELTA_UNCERTAINTY_TRIGGER = 0.10
 REASON_MONOTONE = "Delta 不確定性過高的履約價非單調；僅剔除此不確定合約"
-REASON_MISSING_HISTORY = "寬價差側缺少經核驗的 61 筆調整後收盤價 HV20/HV60，不提供該側策略"
+REASON_MISSING_HISTORY = "Delta 不確定側缺少經核驗的 61 筆調整後收盤價 HV20/HV60，不提供該側策略"
 REASON_INVALID_IV = "該雙邊報價不能建立可核驗的逐腿 IV 區間；僅剔除此合約"
 
 
@@ -47,10 +46,6 @@ def quote_ok(value: Any) -> bool:
     return (isinstance(value, dict) and positive(value.get("strike"))
             and positive(value.get("bid")) and positive(value.get("ask"))
             and value["bid"] <= value["ask"])
-
-
-def wide(value: dict[str, Any]) -> bool:
-    return (value["ask"] - value["bid"]) / (value["bid"] / 2 + value["ask"] / 2) > rules.MAX_QUOTE_IMPLIED_SPREAD_RATIO
 
 
 def quote_delta_uncertainty(row: dict[str, Any], spot: float, dte: int, *, put: bool) -> float | None:
@@ -285,30 +280,48 @@ def valid_side_model(value: Any, history: Any) -> bool:
     return parsed_side_model(value) is not None
 
 
+LIMIT_TICK = Decimal("0.01")
+
+
+def decimal_tick_limit(bid: float, ask: float, theoretical: float, *,
+                       buy: bool, tick: Decimal = LIMIT_TICK) -> float | None:
+    """Stage1G executable tick limit. Decimal(str(number)) prevents float-mid
+    contamination. Snap AFTER clamping the model, never clamp a snapped limit
+    back to an off-tick midpoint (the Stage1F N1 defect).
+
+    A malformed quote with no tick in [bid, floor_tick(mid)] has no valid
+    executable price; refuse it rather than manufacturing an off-tick order.
+    """
+    if not (positive(bid) and positive(ask) and finite(theoretical)
+            and theoretical >= 0 and bid <= ask and tick > 0):
+        return None
+    lower, upper, model = (Decimal(str(v)) for v in (bid, ask, theoretical))
+    mid = (lower + upper) / 2
+    mid_floor = (mid / tick).to_integral_value(rounding=ROUND_FLOOR) * tick
+    first_tick = (lower / tick).to_integral_value(rounding=ROUND_CEILING) * tick
+    if first_tick > mid_floor:
+        return None
+    clamped = max(lower, min(mid, model))
+    snapped = (clamped / tick).to_integral_value(
+        rounding=ROUND_CEILING if buy else ROUND_FLOOR) * tick
+    # Keep an exact tick throughout, even if the post-round cap is binding.
+    return float(min(mid_floor, max(first_tick, snapped)).quantize(tick))
+
+
 def model_based_limit(leg: dict[str, Any], spot: float, dte: int, sigma: float,
                       *, put: bool, buy: bool) -> float | None:
-    """Model-based starting LIMIT for a HISTORY side, bounded by actual Bid and mid.
-
-    The model determines only the *starting quote*, not a filled premium or
-    realized return. Both buy and sell may start below mid; buy rounds UP to
-    the 0.01 tick, sell DOWN, then both clamp to [Bid,mid]. The worst-case
-    buy remains actual Ask. No volatility estimate changes the quote sides.
+    """Compute the clamped-volatility model starting price; return only an
+    executable $/SEK 0.01 tick within real Bid and floor_tick(mid).
+    It is not a guaranteed fill or a midpoint-based quote.
     """
     if not quote_ok(leg) or not positive(spot) or not positive(sigma):
         return None
-    years=max(dte,1)/365
-    theoretical=(bs.bs_put_price if put else bs.bs_call_price)(
-        spot,leg["strike"],years,sigma)
+    years = max(dte, 1) / 365
+    theoretical = (bs.bs_put_price if put else bs.bs_call_price)(
+        spot, leg["strike"], years, sigma)
     if theoretical is None or not finite(theoretical):
         return None
-    mid=leg["bid"]/2+leg["ask"]/2
-    price=max(leg["bid"],min(mid,theoretical))
-    # Match the independent Worker to within 1e-9 of a 0.01 tick:
-    # binary midpoints such as 1.2999999999999998 must not be rounded
-    # down to 1.29 in Python but to 1.30 in JavaScript.
-    rounded=(math.ceil(price*100-1e-9) if buy
-             else math.floor(price*100+1e-9))/100
-    return max(leg["bid"],min(mid,rounded))
+    return decimal_tick_limit(leg["bid"], leg["ask"], theoretical, buy=buy)
 
 
 def limit_from_computed(row: dict[str, Any], spot: float, dte: int, *,
@@ -316,8 +329,12 @@ def limit_from_computed(row: dict[str, Any], spot: float, dte: int, *,
     if row.get("delta_basis") != "HISTORICAL_VOL":
         return None
     entry=row.get("_entry")
-    return model_based_limit(row,spot,dte,entry.get("sigma") if isinstance(entry,dict) else None,
-                             put=put,buy=buy)
+    limit = model_based_limit(row, spot, dte,
+                              entry.get("sigma") if isinstance(entry, dict) else None,
+                              put=put, buy=buy)
+    if limit is None:
+        raise ValueError("STAGE1G_HISTORICAL_LIMIT_NO_VALID_TICK")
+    return limit
 
 
 def model_leg_consistent(leg: Any, model: Any, history: Any,

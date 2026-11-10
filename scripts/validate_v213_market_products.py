@@ -23,7 +23,6 @@ from pathlib import Path
 
 import option_recommendation_rules as rules
 import option_historical_volatility as history_vol
-import option_delta_model as delta_math
 import option_delta_side_model as side_math
 
 
@@ -356,7 +355,7 @@ def _cycle_delta_model(cycle: dict) -> dict | None:
 def _strategy_leg(leg, *, buy: bool, spot: float, put: bool, band: tuple[float, float], code: str,
                   dte: int, model: dict, history: dict | None = None,
                   extra: frozenset = frozenset()) -> dict:
-    """Two-sided OTM leg, bounded quote limit, and full-precision common-model delta."""
+    """Two-sided OTM leg, bounded tick limit and full-precision per-leg delta."""
     if not isinstance(leg, dict) or set(leg) != STRATEGY_LEG_KEYS | extra:
         raise MarketProductValidationError(f"{code}_SHAPE")
     strike = _finite_number(leg.get("strike"), "strike")
@@ -373,9 +372,7 @@ def _strategy_leg(leg, *, buy: bool, spot: float, put: bool, band: tuple[float, 
         raise MarketProductValidationError(f"{code}_DELTA_OUTSIDE_BAND")
     if leg.get("delta_basis") not in STRATEGY_DELTA_BASES or leg.get("delta_basis") is None:
         raise MarketProductValidationError("INVALID_DELTA_BASIS")
-    valid = (side_math.model_leg_consistent(leg, model, history, spot, dte, put=put, buy=buy, band=band)
-             if side_math.is_side_model(model)
-             else delta_math.model_leg_consistent(leg, model, spot, dte, put=put, band=band))
+    valid = side_math.model_leg_consistent(leg, model, history, spot, dte, put=put, buy=buy, band=band)
     if not valid:
         raise MarketProductValidationError(f"{code}_SIDE_DELTA_MODEL_INCONSISTENT")
     return {"strike": strike, "bid": bid, "ask": ask, "mid": mid, "limit": limit}
@@ -742,11 +739,9 @@ def validate_covered_call_cycle(cycle: dict, evaluated_at: str | datetime | None
         if item.get("delta_basis") not in STRATEGY_DELTA_BASES:
             raise MarketProductValidationError("INVALID_DELTA_BASIS")
         band = (0.0, MAX_HIGH_STRIKE_DELTA) if item.get("role") == "HIGH_STRIKE" else None
-        consistent = (side_math.model_leg_consistent(
+        consistent = (model is not None and side_math.model_leg_consistent(
             item, model, cycle.get("historical_volatility") if history_valid else None,
-            spot, dte, put=False, band=band) if side_math.is_side_model(model)
-            else delta_math.model_leg_consistent(item, model, spot, dte, band=band)
-            if model is not None else False)
+            spot, dte, put=False, band=band))
         if not consistent:
             raise MarketProductValidationError("COVERED_CALL_SIDE_DELTA_MODEL_INCONSISTENT")
         if item.get("iv") is not None and not finite(item["iv"], "iv") > 0:

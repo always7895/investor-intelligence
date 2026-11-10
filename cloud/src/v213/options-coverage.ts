@@ -307,7 +307,8 @@ Promise<{ rows: CoverageObserved[]; validUntil: number } | null> {
       if (isRecord(entry) && typeof entry.unavailable === "string") continue;  // producer-declared unavailable stays unavailable
       const cycle = validateCoveredCallCycle(entry, now, doc.generated_at, period,
         { sharedHistory: cycles._hv });
-      if (!cycle || !validInstant(cycle.timestamp) || !admitPublicOption(cycle, now).ok) continue;  // format-valid AND admitted by the canonical policy
+      if (!cycle || cycle.ticker !== ticker || !validInstant(cycle.timestamp) ||
+          !admitPublicOption(cycle, now).ok) continue;  // strict ticker-key parity with Python coverage
       const base: CoverageObserved = { provider_id: cycle.provider_id as string, jurisdiction: cycle.jurisdiction as string, venue: cycle.venue as string,
         instrument_kind: cycle.instrument_kind as string, quote_basis: cycle.quote_basis, publication_scope: cycle.publication_scope as string,
         cycle_count: 0, ticker_key_count: 0, quote_as_of_max: cycle.timestamp };

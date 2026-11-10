@@ -141,6 +141,7 @@ export interface DetailedOptionObservation {
   status: OptionDiagnosticStatus;
   quote?: CoveredCallCycle;
   unavailable?: string;
+  strategyReasons?: { cc: string; csp: string; collar: string };
   docGeneratedAt?: string;
   ticker?: string;
   period?: "weekly" | "monthly";
@@ -222,7 +223,16 @@ export async function loadDetailedOptionObservation(
   }
   const entry = cycles[period] as Record<string, unknown> | undefined;
   if (entry && typeof entry === "object" && !Array.isArray(entry) && typeof entry.unavailable === "string") {
-    return { status: "PERIOD_UNAVAILABLE", unavailable: entry.unavailable.slice(0, 200), ticker: matchedKey, docGeneratedAt, period };
+    const candidate = entry.strategy_reasons;
+    const names = ["cc", "csp", "collar"] as const;
+    const validReasons = candidate && typeof candidate === "object" && !Array.isArray(candidate)
+      && Object.keys(candidate).length === 3 && names.every(name =>
+        Object.hasOwn(candidate, name) && typeof (candidate as Record<string, unknown>)[name] === "string"
+        && (candidate as Record<string, string>)[name]!.trim().length > 0
+        && (candidate as Record<string, string>)[name]!.length <= 180);
+    return { status: "PERIOD_UNAVAILABLE", unavailable: entry.unavailable.slice(0, 200),
+      ...(validReasons ? { strategyReasons: candidate as { cc: string; csp: string; collar: string } } : {}),
+      ticker: matchedKey, docGeneratedAt, period };
   }
   if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
     // The period key is present but its value is malformed: distinct from a producer-declared unavailable/missing period.

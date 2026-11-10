@@ -113,6 +113,47 @@ function deltaUncertainty(leg: Record<string,unknown>, spot: number, dte: number
   return dl === undefined || dh === undefined ? null : Math.abs(dh-dl);
 }
 
+/** Exact decimal-rational conversion of JS's shortest decimal numeral, not
+ * IEEE float multiplication by 100. Handles exponent notation without a
+ * floating-point intermediate. Only nonnegative prices are passed here. */
+function ratio(value: number): readonly [bigint, bigint] | null {
+  if (!finite(value) || value < 0) return null;
+  const [mantissa, exponentText] = value.toString().toLowerCase().split("e");
+  const exponent = exponentText === undefined ? 0 : Number(exponentText);
+  if (!Number.isInteger(exponent) || Math.abs(exponent) > 32) return null;
+  const [whole, fraction = ""] = mantissa!.split(".");
+  if (!/^\d+$/u.test(whole!) || !/^\d*$/u.test(fraction)) return null;
+  let numerator = BigInt(whole! + fraction), places = fraction.length - exponent;
+  if (places < 0) { numerator *= 10n ** BigInt(-places); places = 0; }
+  return [numerator, 10n ** BigInt(places)];
+}
+
+/** N1: round the bounded model to a true cent tick, never back-clamp a tick to
+ * a binary midpoint such as 0.6799999999999999 or a half tick (0.335).
+ * The real quote may have extra precision; reject if it leaves no cent tick.
+ */
+export function decimalModelLimit(
+  bid: number, ask: number, theoretical: number, buy: boolean,
+): number | null {
+  if (!positive(bid) || !positive(ask) || bid > ask || !finite(theoretical) || theoretical < 0) return null;
+  const b = ratio(bid), a = ratio(ask), model = ratio(theoretical);
+  if (!b || !a || !model) return null;
+  const floorCent = (n: bigint, d: bigint) => n * 100n / d;
+  const ceilCent = (n: bigint, d: bigint) => (n * 100n + d - 1n) / d;
+  const first = ceilCent(b[0], b[1]);
+  const midNumerator = b[0] * a[1] + a[0] * b[1];
+  const midDenominator = 2n * b[1] * a[1];
+  const top = floorCent(midNumerator, midDenominator);
+  if (first > top) return null;
+  const modelBelowBid = model[0] * b[1] < b[0] * model[1];
+  const modelAboveMid = model[0] * midDenominator > midNumerator * model[1];
+  const selected = modelBelowBid ? b : modelAboveMid
+    ? [midNumerator, midDenominator] as const : model;
+  const ticks = buy ? ceilCent(selected[0], selected[1]) : floorCent(selected[0], selected[1]);
+  const bounded = ticks < first ? first : ticks > top ? top : ticks;
+  return Number(bounded) / 100;
+}
+
 export function sideModelLegConsistent(
   leg: Record<string, unknown>, model: SideCycleDeltaModel,
   history: HistoricalVolatility | undefined, spot: number, dte: number,
@@ -143,9 +184,10 @@ export function sideModelLegConsistent(
       exact=quote?.[1] ?? null;
       if (Object.hasOwn(leg,"limit_price")) {
         if (!quote || !finite(leg.limit_price)) return false;
-        const mid=(bid+ask)/2, price=Math.min(mid,Math.max(bid,quote[0]));
-        const rounded=buy ? Math.ceil(price*100-1e-9)/100 : Math.floor(price*100+1e-9)/100;
-        if (Math.abs(leg.limit_price-Math.min(mid,Math.max(bid,rounded)))>1e-8) return false;
+        const expected = decimalModelLimit(bid, ask, quote[0], buy);
+        if (expected === null || Math.abs(leg.limit_price - expected) > 1e-9) return false;
+        if (!Number.isInteger(Math.round(leg.limit_price * 100)) ||
+            Math.abs(leg.limit_price * 100 - Math.round(leg.limit_price * 100)) > 1e-8) return false;
       }
     } else if (basis === "QUOTE_IMPLIED") {
       if ((deltaUncertainty(leg, spot, dte, put) ?? 0) > DELTA_UNCERTAINTY_TRIGGER
