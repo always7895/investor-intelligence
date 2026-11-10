@@ -299,7 +299,7 @@ STRATEGY_COLLAR_KEYS = frozenset({"role", "call", "net_premium_per_share", "max_
                                   "worst_case_net_per_share"})
 
 
-def _execution_quote(leg: dict, *, buy: bool, code: str) -> tuple:
+def _execution_quote(leg: dict, *, buy: bool, code: str, model_based: bool = False) -> tuple:
     """Both quote sides are required; retain the quote-bounded limit envelope."""
     bid = None if leg.get("bid") is None else _finite_number(leg["bid"], "bid")
     ask = None if leg.get("ask") is None else _finite_number(leg["ask"], "ask")
@@ -311,8 +311,9 @@ def _execution_quote(leg: dict, *, buy: bool, code: str) -> tuple:
     if bid > ask or not bid <= limit <= ask:
         raise MarketProductValidationError(f"{code}_PRICES_INCONSISTENT")
     mid = (bid + ask) / 2
-    if buy and limit < mid - 1e-9:
-        raise MarketProductValidationError(f"{code}_BUY_LIMIT_OUTSIDE_MID_ASK")
+    if buy and ((model_based and limit > mid + 1e-9) or
+                (not model_based and limit < mid - 1e-9)):
+        raise MarketProductValidationError(f"{code}_BUY_LIMIT_OUTSIDE_MODEL_MID_BOUNDS")
     if not buy and limit > mid + 1e-9:
         raise MarketProductValidationError(f"{code}_PRICES_INCONSISTENT")
     return bid, ask, mid, limit
@@ -347,9 +348,9 @@ def _history_evidence_valid(cycle: dict) -> bool:
 def _cycle_delta_model(cycle: dict) -> dict | None:
     history = cycle.get("historical_volatility") if _history_evidence_valid(cycle) else None
     model = cycle.get("delta_model")
-    valid = (side_math.valid_side_model(model, history) if side_math.is_side_model(model)
-             else delta_math.valid_delta_model(model, history))
-    return model if valid else None
+    # Stage1F binding m6: the rejected common-sigma dictionary is no longer
+    # admitted by any publisher, carry or coverage entrypoint.
+    return model if side_math.valid_side_model(model, history) else None
 
 
 def _strategy_leg(leg, *, buy: bool, spot: float, put: bool, band: tuple[float, float], code: str,
@@ -359,7 +360,8 @@ def _strategy_leg(leg, *, buy: bool, spot: float, put: bool, band: tuple[float, 
     if not isinstance(leg, dict) or set(leg) != STRATEGY_LEG_KEYS | extra:
         raise MarketProductValidationError(f"{code}_SHAPE")
     strike = _finite_number(leg.get("strike"), "strike")
-    bid, ask, mid, limit = _execution_quote(leg, buy=buy, code=code)
+    model_based=side_math.is_side_model(model) and leg.get("delta_basis")=="HISTORICAL_VOL"
+    bid, ask, mid, limit = _execution_quote(leg, buy=buy, code=code, model_based=model_based)
     if not ((0 < strike < spot) if put else (strike > spot > 0)):
         raise MarketProductValidationError(f"{code}_STRIKE_NOT_OUT_OF_THE_MONEY")
     if strike != round(strike, 2):
@@ -371,7 +373,7 @@ def _strategy_leg(leg, *, buy: bool, spot: float, put: bool, band: tuple[float, 
         raise MarketProductValidationError(f"{code}_DELTA_OUTSIDE_BAND")
     if leg.get("delta_basis") not in STRATEGY_DELTA_BASES or leg.get("delta_basis") is None:
         raise MarketProductValidationError("INVALID_DELTA_BASIS")
-    valid = (side_math.model_leg_consistent(leg, model, history, spot, dte, put=put, band=band)
+    valid = (side_math.model_leg_consistent(leg, model, history, spot, dte, put=put, buy=buy, band=band)
              if side_math.is_side_model(model)
              else delta_math.model_leg_consistent(leg, model, spot, dte, put=put, band=band))
     if not valid:

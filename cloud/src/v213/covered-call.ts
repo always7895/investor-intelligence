@@ -15,7 +15,7 @@ import { admitPublicOption, OptionRightsNotAdmittedError } from "./public-option
 import {
   historicalDeltaBasisZh, validHistoricalVolatility, type HistoricalVolatility,
 } from "./historical-volatility";
-import { modelLegConsistent, validDeltaModel, type DeltaModel } from "./option-delta-model";
+import type { DeltaModel } from "./option-delta-model";
 import { isSideCycleDeltaModel, validSideCycleDeltaModel, parseSideDeltaModel, sideModelLegConsistent,
   type SideCycleDeltaModel } from "./option-delta-side-model";
 import {
@@ -101,11 +101,11 @@ const close = (value: number, expected: number, absoluteTolerance = 1e-4) => Num
   && Math.abs(value - expected) <= Math.max(absoluteTolerance, Math.abs(expected) * 1e-3);
 
 /** Both quote sides are mandatory; limits remain inside the existing quote envelope. */
-function validLimitQuote(bid: unknown, ask: unknown, limit: unknown, buy: boolean): boolean {
+function validLimitQuote(bid: unknown, ask: unknown, limit: unknown, buy: boolean, modelBased = false): boolean {
   if (!finite(limit) || limit <= 0) return false;
   if (!finite(bid) || !finite(ask) || bid <= 0 || bid > ask || limit < bid || limit > ask) return false;
   const mid = bid / 2 + ask / 2;
-  return buy ? limit >= mid - 1e-9 && limit <= ask : limit >= bid && limit <= mid + 1e-9;
+  return buy ? (modelBased ? limit <= mid + 1e-9 : limit >= mid - 1e-9 && limit <= ask) : limit <= mid + 1e-9;
 }
 
 function hasHistoricalEvidence(cycle: Record<string, unknown>): boolean {
@@ -115,22 +115,19 @@ function hasHistoricalEvidence(cycle: Record<string, unknown>): boolean {
     exchangeDate(Date.parse(cycle.timestamp), cycle.currency === "SEK" ? "STOCKHOLM" : "US"));
 }
 
-function cycleDeltaModel(cycle: Record<string, unknown>): DeltaModel | SideCycleDeltaModel | null {
+function cycleDeltaModel(cycle: Record<string, unknown>): SideCycleDeltaModel | null {
+  // Stage1F: refuse the rejected common-sigma dictionary at all entrypoints.
   const history = hasHistoricalEvidence(cycle) ? cycle.historical_volatility as HistoricalVolatility : undefined;
-  if (isSideCycleDeltaModel(cycle.delta_model)) {
-    return validSideCycleDeltaModel(cycle.delta_model, history) ? cycle.delta_model : null;
-  }
-  return validDeltaModel(cycle.delta_model, history) ? cycle.delta_model : null;
+  return isSideCycleDeltaModel(cycle.delta_model) && validSideCycleDeltaModel(cycle.delta_model, history)
+    ? cycle.delta_model : null;
 }
 function cycleLegConsistent(
   item: Record<string, unknown>, model: DeltaModel | SideCycleDeltaModel,
-  cycle: Record<string, any>, put: boolean, band?: readonly [number, number],
+  cycle: Record<string, any>, put: boolean, band?: readonly [number, number], buy = false,
 ): boolean {
-  if (isSideCycleDeltaModel(model)) {
-    const history = hasHistoricalEvidence(cycle) ? cycle.historical_volatility as HistoricalVolatility : undefined;
-    return sideModelLegConsistent(item, model, history, cycle.spot, cycle.dte, put, band);
-  }
-  return modelLegConsistent(item, model, cycle.spot, cycle.dte, put, band);
+  if (!isSideCycleDeltaModel(model)) return false;
+  const history = hasHistoricalEvidence(cycle) ? cycle.historical_volatility as HistoricalVolatility : undefined;
+  return sideModelLegConsistent(item, model, history, cycle.spot, cycle.dte, put, band, buy);
 }
 
 const UTC_INSTANT_RE = /^\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?Z$/;
@@ -187,20 +184,23 @@ function validMonthlyQuoteObservation(raw: unknown, cycle: Record<string, any>):
  * carried row is a USD (US-listed) capture taken inside a regular US session within four days, with its asof_date, whose contract
  * is still listed on the New York date of `now` (its dte and asof_date describe the capture, so the live dte rule does not apply). */
 export function validateCoveredCallCycle(raw: unknown, now?: number, documentGeneratedAt?: string, period?: "weekly" | "monthly",
-  options?: { readonly allowPreviousSession?: boolean }): CoveredCallCycle | null {
+  options?: { readonly allowPreviousSession?: boolean; readonly sharedHistory?: unknown }): CoveredCallCycle | null {
   if (!raw || typeof raw !== "object") return null;
   const original = raw as Record<string, any>;
   // The Stage1E sealed transport stores the same 11 authenticated historical
   // fields in a fixed order, without repeated JSON key names. Restore before
   // validating source, SHA, clock, history and per-leg BSM delta. The producer
   // and older sealed cycle formats remain unchanged.
-  const history = original.historical_volatility;
-  const historyKeys = ["ticker", "currency", "hv20", "hv60", "observations",
-    "start_date_20", "start_date_60", "asof_date", "source_url",
-    "source_sha256", "price_basis"] as const;
-  if (Array.isArray(history) && history.length !== historyKeys.length) return null;
-  const cycle = Array.isArray(history)
-    ? { ...original, historical_volatility: Object.fromEntries(historyKeys.map((key, index) => [key, history[index]])) }
+  const history=original.historical_volatility;
+  const historyKeys=["ticker","currency","hv20","hv60","observations",
+    "start_date_20","start_date_60","asof_date","source_url",
+    "source_sha256","price_basis"] as const;
+  const shared=options?.sharedHistory;
+  const compact=history==="@" ? shared : history;
+  if ((history==="@" && !Array.isArray(shared)) ||
+      (Array.isArray(compact) && compact.length!==historyKeys.length)) return null;
+  const cycle=Array.isArray(compact)
+    ? {...original,historical_volatility:Object.fromEntries(historyKeys.map((key,index)=>[key,compact[index]]))}
     : original;
   const carried = cycle.quote_basis === PREVIOUS_SESSION_BASIS && options?.allowPreviousSession === true;
   if (cycle.strategy !== "COVERED_CALL" || (cycle.currency !== "USD" && cycle.currency !== "SEK") || cycle.multiplier !== 100
@@ -381,8 +381,9 @@ function legValid(leg: unknown, spot: number, kind: { buy: boolean; put: boolean
   if (!["strike", "limit_price", "delta"].every(key => finite(leg[key]))) return false;
   if (!(kind.put ? leg.strike > 0 && leg.strike < spot : leg.strike > spot && spot > 0)
     || Math.round(leg.strike * 100) / 100 !== leg.strike) return false;
-  if (!validLimitQuote(leg.bid, leg.ask, leg.limit_price, kind.buy)) return false;
-  if (!cycleLegConsistent(leg, model, cycle, kind.put, kind.band)) return false;
+  const modelBased=typeof model==="string" && leg.delta_basis==="HISTORICAL_VOL";
+  if (!validLimitQuote(leg.bid, leg.ask, leg.limit_price, kind.buy, modelBased)) return false;
+  if (!cycleLegConsistent(leg, model, cycle, kind.put, kind.band, kind.buy)) return false;
   if (!(leg.delta > 0 && leg.delta <= 1)) return false;
   if (!(leg.delta >= kind.band[0] - DELTA_BAND_TOLERANCE && leg.delta <= kind.band[1] + DELTA_BAND_TOLERANCE)) return false;
   return typeof leg.delta_basis === "string" && DELTA_BASES.has(leg.delta_basis);
@@ -486,34 +487,27 @@ function liquidityZh(bid: number | null, ask: number | null): string {
 const countZh = (value: number | null | undefined) => typeof value === "number" && Number.isFinite(value) ? String(value) : "未提供";
 /** The shared model basis and evidence, once per strategy card rather than per strike. */
 function deltaBasisZh(cycle: CoveredCallCycle): string | null {
-  const model = cycle.delta_model;
-  if (!model) return null;
-  if (isSideCycleDeltaModel(model)) {
-    const descriptions: string[] = [];
-    const parsed = parseSideDeltaModel(model);
-    if (!parsed) return null;
-    for (const [key, label] of [["calls", "買權"], ["puts", "賣權"]] as const) {
-      const [basis, skippedCount, firstDroppedWide] = parsed[key];
-      if (basis === null) continue;
-      if (basis === "HISTORICAL_VOL") {
-        const h = cycle.historical_volatility;
-        if (!h) continue;
-        descriptions.push(label + " HISTORICAL_VOL：20日HV20 " + pct(h.hv20, 2)
-          + "、60日HV60 " + pct(h.hv60, 2)
-          + "；逐腿sigma=clamp(max(HV20,HV60),各腿Bid IV,各腿Ask IV)；最後收盤日 "
-          + h.asof_date + "；非報價中價反推");
-      } else {
-        descriptions.push(label + " QUOTE_IMPLIED：維持原來源IV／來源Delta／雙邊中價IV之逐腿順序");
-      }
-      if (firstDroppedWide !== null) descriptions.push(label + " 跳過 " + skippedCount
-        + " 筆不適格合約；其中履約價 " + firstDroppedWide
-        + " 的寬價差 Delta 非單調，僅剔除該腿，不影響其他有效腿");
+  const model=cycle.delta_model;
+  if (!model || typeof model !== "string") return null;
+  const parsed=parseSideDeltaModel(model);
+  if (!parsed) return null;
+  const lines:string[]=[];
+  for (const [key,label] of [["calls","買權"],["puts","賣權"]] as const) {
+    const [basis,skipped,example]=parsed[key];
+    if (basis===null) continue;
+    if (basis==="HISTORICAL_VOL") {
+      const h=cycle.historical_volatility;
+      if (!h) return null;
+      lines.push(label+" Delta 採歷史波動率模型：20日HV20 "+pct(h.hv20,2)
+        +"、60日HV60 "+pct(h.hv60,2)
+        +"；各腿依其 Bid／Ask 隱含波動率上下界限制；截至 "+h.asof_date+"，估算非成交保證");
+    } else {
+      lines.push(label+" Delta 採報價隱含模型：依來源波動率、來源 Delta 或逐腿雙邊中價推算");
     }
-    return descriptions.join("；");
+    if (example!==null) lines.push(label+" 已個別跳過 "+skipped
+      +" 筆不適格腿，其中履約價 "+example+" 的 Delta 非單調；其餘腿保留");
   }
-  if (model.basis === "HISTORICAL_VOL") return cycle.historical_volatility
-    ? historicalDeltaBasisZh(cycle.historical_volatility, model.sigma) : null;
-  return "Delta 以買賣報價 IV 共同區間估算（共同波動率 " + pct(model.sigma, 2) + "）";
+  return lines.join("；");
 }
 /** Role label and note. The visible title is numbered by display position (一／二／三) so numbering never has a gap: the middle
  * tier is shown only when it exists, and without it the two original titles are unchanged. */
@@ -645,8 +639,9 @@ function headerBox(ctx: CardContext, eyebrow: string) {
   ]);
 }
 
-const LIMIT_SELECTION_RULE = "LIMIT：雙邊由中價向下取0.01起掛；未成交每15分鐘最多降0.01，每交易時段最多4次且不低於Bid，觸底或4次即停止下調；不保證成交";
-const BUY_LIMIT_RULE = "LIMIT：買進Put由中價向上取0.01起掛，不高於Ask；不保證成交";
+const LIMIT_SELECTION_RULE = "LIMIT：報價隱含腿由中價向下取0.01起掛；歷史波動率腿採模型價並限制在Bid至中價間；未成交每15分鐘最多降0.01、每時段最多4次且不低於Bid；不保證成交";
+const BUY_LIMIT_RULE = "LIMIT：報價隱含Put由中價向上取0.01起掛、不高於Ask；歷史波動率買進腿依模型價向上取0.01且不高於中價或Ask；不保證成交";
+const MODEL_LIMIT_WARNING = "歷史波動率腿採模型起始限價，位於真實Bid至中價間；寬價差可能無法成交，成交前不計收益";
 const PENDING_LIMIT_NOTICE = "限價成交前不計入收益";
 
 function annualCasesZh(limitYield: number, bid: number, capital: number, cycle: CoveredCallCycle): string {
@@ -665,6 +660,7 @@ function ccTierLines(cycle: CoveredCallCycle, item: CoveredCallSuggestion, index
     tierTitle(item, index),
     `履約價 ${money(item.strike, cycle.currency)}（距現價 +${pct(item.upside_to_strike)}）｜建議賣出限價 ${quoteMoney(item.limit_price, cycle.currency)}（${bidAskZh(item, cycle.currency)}）`,
     LIMIT_SELECTION_RULE,
+    ...(item.delta_basis==="HISTORICAL_VOL" ? [MODEL_LIMIT_WARNING] : []),
     `LIMIT每口權利金 ${money(item.premium_per_contract, cycle.currency)}｜期間收益 ${pct(item.period_yield, 2)}｜年化 ${pct(item.annualized_yield)}｜Delta ${item.delta === null || item.delta === undefined ? "未提供" : `${item.delta.toFixed(2)}${basis ? `（${basis}）` : ""}`}`,
     `${bidCaseZh(item.bid, cycle.spot, cycle)}；${PENDING_LIMIT_NOTICE}`,
     `流動性：OI ${countZh(item.oi)}｜成交量 ${countZh(item.volume)}｜${liquidityZh(item.bid, item.ask)}`,
@@ -677,6 +673,7 @@ function cspTierLines(cycle: CoveredCallCycle, item: CspItem, index: number): st
     `建議${ORDINAL_ZH[index] ?? String(index + 1)}：${tierNameZh(item.role)}`,
     `履約價 ${money(item.strike, cur)}（低於現價 ${pct(item.downside_buffer)}）｜建議賣出限價 ${quoteMoney(item.limit_price, cur)}（${bidAskZh(item, cur)}）`,
     LIMIT_SELECTION_RULE, liquidityZh(item.bid, item.ask),
+    ...(item.delta_basis==="HISTORICAL_VOL" ? [MODEL_LIMIT_WARNING] : []),
     `LIMIT每口權利金 ${money(item.premium_per_contract, cur)}｜需備現金 ${money(item.cash_required, cur)}｜期間收益 ${pct(item.limit_price / item.strike, 2)}｜年化 ${pct(item.annualized_yield)}（以備妥現金計）｜損益兩平 ${money(item.breakeven, cur)}`,
     `${bidCaseZh(item.bid, item.strike, cycle)}；${PENDING_LIMIT_NOTICE}`,
     `被指派機率參考：${legDeltaZh(item)}`,
@@ -687,6 +684,7 @@ function collarPutLines(cycle: CoveredCallCycle, put: BuyStrategyLeg): string[] 
   return [
     `保護賣權（買進）履約價 ${money(put.strike, cycle.currency)}｜建議買入限價 ${quoteMoney(put.limit_price, cycle.currency)}（${bidAskZh(put, cycle.currency)}）｜${legDeltaZh(put)}`,
     BUY_LIMIT_RULE, liquidityZh(put.bid, put.ask),
+    ...(put.delta_basis==="HISTORICAL_VOL" ? [MODEL_LIMIT_WARNING] : []),
   ];
 }
 
@@ -699,9 +697,14 @@ function collarTierLines(cycle: CoveredCallCycle, put: BuyStrategyLeg, item: Col
     `建議${ORDINAL_ZH[index] ?? String(index + 1)}：${tierNameZh(item.role)}`,
     `賣出買權履約價 ${money(item.call.strike, cur)}｜建議賣出限價 ${quoteMoney(item.call.limit_price, cur)}（${bidAskZh(item.call, cur)}）｜${legDeltaZh(item.call)}`,
     LIMIT_SELECTION_RULE, liquidityZh(item.call.bid, item.call.ask),
+    ...(item.call.delta_basis==="HISTORICAL_VOL" ? [MODEL_LIMIT_WARNING] : []),
     `LIMIT每口淨權利金（${net >= 0 ? "收入" : "支出"}）${money(Math.abs(net), cur)}｜淨權利金年化 ${pct(item.net_premium_per_share * annualize)}`,
     `Bid情境（Call Bid－Put Ask）：每口淨權利金 ${signedMoney(perContract(conservative), cur)}｜淨權利金年化 ${pct(conservative * annualize)}（非保證，非總報酬）；${PENDING_LIMIT_NOTICE}`,
-    `最大損失 ${money(perContract(item.max_loss_per_share), cur)}／口｜最大獲利 ${money(perContract(item.max_gain_per_share), cur)}／口｜損益兩平 ${money(item.break_even, cur)}`,
+    "以限價計：最大損失 "+money(perContract(item.max_loss_per_share),cur)+
+      "／口｜最大獲利 "+money(perContract(item.max_gain_per_share),cur)+
+      "／口｜損益兩平 "+money(item.break_even,cur),
+    "以 Call Bid／Put Ask 最不利報價計：最大損失 "+
+      money(perContract(cycle.spot-put.strike-conservative),cur)+"／口（非保證成交）",
   ];
 }
 
@@ -809,7 +812,7 @@ function disclosureBubble(ctx: CardContext) {
     "公開延遲；非投資建議；年化非保證；不下單",
     ...(modelBasis ? [modelBasis] : []),
     ...(cycle.historical_volatility ? [`歷史來源：Yahoo Finance 日線調整後收盤價；${cycle.historical_volatility.source_url}`] : []),
-    "單邊報價缺少買賣報價 IV 區間，不參與策略建議；同一標的到期日的合資格履約價共用同一 Delta 模型",
+    "單邊報價不參與策略建議；同一到期日買權與賣權分側驗證，各腿可使用不同波動率；沒有共同IV交集門檻",
     PENDING_LIMIT_NOTICE,
     ...(tiers.length ? [
       "期間收益＝限價÷現價；年化收益＝期間收益×365÷DTE",
@@ -913,12 +916,19 @@ export function buildCoveredCallMessages(cycle: CoveredCallCycle, periodLabel: s
   const hasPutStrategy = (rawCsp && !("unavailable" in rawCsp)) || (rawCollar && !("unavailable" in rawCollar));
   if (cycle.quote_observation && !cycle.suggestions.length && !hasPutStrategy)
     return monthlyObservationMessages(cycle, style, admission.operator_accepted === true);
-  const ctx = cardContext(cycle, periodLabel);
+  // The same listed third-Friday contract is BOTH this week's expiry and the
+  // nearest standard monthly. Render one canonical monthly-labeled card,
+  // not two seemingly distinct trades for the same underlying/expiry.
+  const combinedExpiry = periodLabel === "每週期權" &&
+    monthlyRuleConsistent(cycle.expiry, "THIRD_FRIDAY");
+  const displayPeriodLabel = combinedExpiry
+    ? "每月期權（週選與月選同到期，合併顯示）" : periodLabel;
+  const ctx = cardContext(cycle, displayPeriodLabel);
   ctx.operatorNotice = admission.operator_accepted === true ? OPERATOR_ACCEPTED_NOTICE_ZH : null;
   const { carried, carriedLabel, operatorNotice, dteZh, spotLabel } = ctx;
   if (style === "text") {
     const lines = [
-      `【${cycle.suggestions.length > 0 ? "備兌買權建議" : "期權策略"}｜${cycle.ticker} ${periodLabel}】到期 ${cycle.expiry}（${carried ? dteZh : `${cycle.dte} 天`}）｜${spotLabel} ${money(cycle.spot, cycle.currency)}（計價 ${cycle.currency}）`,
+      `【${cycle.suggestions.length > 0 ? "備兌買權建議" : "期權策略"}｜${cycle.ticker} ${displayPeriodLabel}】到期 ${cycle.expiry}（${carried ? dteZh : `${cycle.dte} 天`}）｜${spotLabel} ${money(cycle.spot, cycle.currency)}（計價 ${cycle.currency}）`,
       ...(carriedLabel ? [carriedLabel] : []),
       ...(weekNoteZh(cycle) ? [`${weekNoteZh(cycle)}${cycle.asof_date ? `（以交易所當地日期 ${cycle.asof_date} 判斷）` : ""}`] : []),
       ...(shortDteNoticeZh(cycle.dte) ? [shortDteNoticeZh(cycle.dte)!] : []),

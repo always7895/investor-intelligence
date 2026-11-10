@@ -1019,6 +1019,57 @@ def lazy_price_bodies(path: Path, now: datetime) -> "dict[str, str]":
 
 
 LAZY_BODY_MAX_BYTES = 1_900_000  # per lazy market body (quotes, options)
+STAGE1F_HISTORY_KEYS = ("ticker", "currency", "hv20", "hv60", "observations",
+    "start_date_20", "start_date_60", "asof_date", "source_url",
+    "source_sha256", "price_basis")
+STAGE1F_HISTORY_MARKER = "@"
+
+
+def expand_sealed_cycle(cycle: dict, per_ticker_history: object = None) -> dict:
+    """Losslessly expand a Stage1F per-ticker shared HV record for *any* Python
+    reader of the exact sealed body, including coverage. No invented history.
+    A malformed shared reference remains invalid and is refused by the strict
+    cycle validator. Old self-contained Stage1E arrays are also decoded.
+    """
+    if not isinstance(cycle, dict):return cycle
+    raw=cycle.get("historical_volatility")
+    if raw != STAGE1F_HISTORY_MARKER and not isinstance(raw,list):
+        return cycle
+    values=per_ticker_history if raw == STAGE1F_HISTORY_MARKER else raw
+    if not isinstance(values,list) or len(values)!=len(STAGE1F_HISTORY_KEYS):
+        return cycle
+    return {**cycle,"historical_volatility":dict(zip(STAGE1F_HISTORY_KEYS,values))}
+
+
+def dedupe_sealed_history(options: dict) -> None:
+    """One immutable 11-field array per ticker, never per cycle. Before
+    deduplication each cycle was validated against complete authenticated
+    evidence. The per-ticker source must be byte-for-byte identical on both
+    periods or the build stops loudly, not a best-effort merge.
+    """
+    for ticker,cycles in options.items():
+        if not isinstance(cycles,dict):continue
+        common=None
+        for period in ("weekly","monthly"):
+            cycle=cycles.get(period)
+            if not isinstance(cycle,dict):continue
+            raw=cycle.get("historical_volatility")
+            if raw is None:continue
+            if isinstance(raw,dict) and set(raw)==set(STAGE1F_HISTORY_KEYS):
+                # Validated source evidence attached to an observation without
+                # model recommendation is also eligible for lossless dedupe.
+                raw=[raw[key] for key in STAGE1F_HISTORY_KEYS]
+                cycle["historical_volatility"]=raw
+            if not isinstance(raw,list) or len(raw)!=len(STAGE1F_HISTORY_KEYS):
+                raise RuntimeError("STAGE1F_HISTORY_TRANSPORT_INVALID")
+            if common is None:common=raw
+            elif common!=raw:raise RuntimeError("STAGE1F_HISTORY_CONFLICT: "+ticker)
+        if common is not None:
+            cycles["_hv"]=common
+            for period in ("weekly","monthly"):
+                cycle=cycles.get(period)
+                if isinstance(cycle,dict) and isinstance(cycle.get("historical_volatility"),list):
+                    cycle["historical_volatility"]=STAGE1F_HISTORY_MARKER
 
 
 def lazy_market_bodies(path: Path, now: datetime) -> "dict[str, str]":
@@ -1043,7 +1094,13 @@ def lazy_market_bodies(path: Path, now: datetime) -> "dict[str, str]":
             for cycle, value in cycles.items():
                 try:
                     if isinstance(value, dict) and "unavailable" in value:
-                        options[ticker][cycle] = {"unavailable": str(value["unavailable"])[:200]}
+                        stripped={"unavailable": str(value["unavailable"])[:200]}
+                        reasons=value.get("strategy_reasons")
+                        if (isinstance(reasons,dict) and set(reasons)=={"cc","csp","collar"}
+                            and all(isinstance(reasons[k],str) and 0<len(reasons[k])<=180
+                                    for k in ("cc","csp","collar"))):
+                            stripped["strategy_reasons"]={k:reasons[k] for k in ("cc","csp","collar")}
+                        options[ticker][cycle]=stripped
                         continue
                     if isinstance(value, dict) and option_rights.public_option_cycle_admission(value, policy) is not None:
                         options[ticker][cycle] = {"unavailable": option_rights.OPTION_RIGHTS_UNAVAILABLE_ZH}  # label/currency/source never admit
@@ -1068,29 +1125,29 @@ def lazy_market_bodies(path: Path, now: datetime) -> "dict[str, str]":
                             and value["delta_model"].startswith("E1|")
                             and isinstance(value.get("historical_volatility"), dict)):
                         evidence = value["historical_volatility"]
-                        ordered = ("ticker", "currency", "hv20", "hv60", "observations",
-                                   "start_date_20", "start_date_60", "asof_date",
-                                   "source_url", "source_sha256", "price_basis")
-                        value = {**value, "historical_volatility": [evidence[key] for key in ordered]}
+                        value = {**value, "historical_volatility": [evidence[key] for key in STAGE1F_HISTORY_KEYS]}
                     options[ticker][cycle] = value
                 except MarketProductValidationError as error:
                     options[ticker][cycle] = {"unavailable": f"報價未通過驗證（{str(error)[:60]}）"}
+        dedupe_sealed_history(options)
         quotes = {"schema": "v213-quotes-v1", "generated_at": doc["generated_at"], "quotes": doc["quotes"]}
         option_doc = {"schema": "v213-options-v2", "generated_at": doc["generated_at"], "options": options}
         bodies = {"v213:quotes:v1": json.dumps(quotes, ensure_ascii=False, separators=(",", ":"), allow_nan=False),
                   "v213:options:v2": json.dumps(option_doc, ensure_ascii=False, separators=(",", ":"), allow_nan=False)}
-        if len(bodies["v213:options:v2"].encode("utf-8")) > LAZY_BODY_MAX_BYTES:
-            # V21: the strategies are additive. Over the size cap they are dropped first (a cycle that has only strategies becomes
-            # unavailable), so the covered calls still publish instead of the whole options object being withheld.
-            for per_ticker in options.values():
-                for cycle, value in list(per_ticker.items()):
-                    if isinstance(value, dict) and "strategies" in value:
-                        per_ticker[cycle] = ({k: v for k, v in value.items() if k != "strategies"} if value.get("suggestions")
-                                             else {"unavailable": "報價資料量超過上限，策略暫不提供"})
-            bodies["v213:options:v2"] = json.dumps(option_doc, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
+        final_size=len(bodies["v213:options:v2"].encode("utf-8"))
+        if final_size > LAZY_BODY_MAX_BYTES:
+            # No universe-wide removal of CSP/collar. A payload that cannot
+            # carry its *validated* strategy blocks fails loudly and exposes
+            # the actual overage in the offline report.
+            raise RuntimeError("STAGE1F_OPTIONS_CAP_EXCEEDED: "+
+                               str(final_size)+"/"+str(LAZY_BODY_MAX_BYTES))
     except (OSError, ValueError, KeyError, TypeError, AttributeError):
         return {}
-    return bodies if all(len(body.encode("utf-8")) <= LAZY_BODY_MAX_BYTES for body in bodies.values()) else {}
+    for key,body in bodies.items():
+        size=len(body.encode("utf-8"))
+        if size>LAZY_BODY_MAX_BYTES:
+            raise RuntimeError("STAGE1F_LAZY_BODY_CAP_EXCEEDED: "+key+":"+str(size))
+    return bodies
 
 
 COVERAGE_KEY = "v213:options-coverage:v1"
@@ -1132,18 +1189,21 @@ def _coverage_observed(options_body: "str | None", policy: "object", now: dateti
             if isinstance(cycle, dict) and isinstance(cycle.get("unavailable"), str):
                 continue
             try:
-                validate_covered_call_cycle(cycle, evaluated_at=now_utc, document_at=document["generated_at"], period=period)
+                expanded=expand_sealed_cycle(cycle,cycles.get("_hv"))
+                validate_covered_call_cycle(expanded, evaluated_at=now_utc, document_at=document["generated_at"], period=period)
+                if expanded.get("ticker")!=ticker:
+                    continue
             except (MarketProductValidationError, TypeError, ValueError, KeyError, AttributeError, OverflowError):
                 continue
-            if not coverage_instant(cycle["timestamp"]) or option_rights.public_option_cycle_admission(cycle, policy) is not None:
+            if not coverage_instant(expanded["timestamp"]) or option_rights.public_option_cycle_admission(expanded, policy) is not None:
                 continue  # a label, a boolean or the mere presence in the body never counts
-            identity = tuple(cycle[key] for key in ("provider_id", "jurisdiction", "venue", "instrument_kind", "quote_basis", "publication_scope"))
-            stamp = datetime.strptime(cycle["timestamp"][:-1], "%Y-%m-%dT%H:%M:%S" + (".%f" if len(cycle["timestamp"]) == 24 else ""))
-            group = groups.setdefault(identity, {"cycles": 0, "tickers": set(), "as_of": cycle["timestamp"], "stamp": stamp})
+            identity = tuple(expanded[key] for key in ("provider_id", "jurisdiction", "venue", "instrument_kind", "quote_basis", "publication_scope"))
+            stamp = datetime.strptime(expanded["timestamp"][:-1], "%Y-%m-%dT%H:%M:%S" + (".%f" if len(expanded["timestamp"]) == 24 else ""))
+            group = groups.setdefault(identity, {"cycles": 0, "tickers": set(), "as_of": expanded["timestamp"], "stamp": stamp})
             group["cycles"] += 1
             group["tickers"].add(ticker)
             if stamp > group["stamp"]:
-                group["stamp"], group["as_of"] = stamp, cycle["timestamp"]
+                group["stamp"], group["as_of"] = stamp, expanded["timestamp"]
     rows = [{"provider_id": key[0], "jurisdiction": key[1], "venue": key[2], "instrument_kind": key[3], "quote_basis": key[4],
              "publication_scope": key[5], "cycle_count": group["cycles"], "ticker_key_count": len(group["tickers"]),
              "quote_as_of_max": group["as_of"]} for key, group in sorted(groups.items(), key=lambda item: "|".join(item[0]))]

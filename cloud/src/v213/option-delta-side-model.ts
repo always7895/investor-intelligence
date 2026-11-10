@@ -3,7 +3,7 @@
  * Historical per-leg IV bounds and clamp are RECOMPUTED from actual Bid/Ask
  * by the independent Worker, never trusted as repeated producer metadata. */
 import type { HistoricalVolatility } from "./historical-volatility";
-import { MAX_QUOTE_IMPLIED_SPREAD_RATIO } from "./option-recommendation-rules";
+
 
 export const SIDE_MODEL_SCHEMA = "STAGE1E_PER_SIDE_V1" as const;
 export type SideBasis = "QUOTE_IMPLIED" | "HISTORICAL_VOL" | null;
@@ -15,9 +15,7 @@ const positive = (x: unknown): x is number => finite(x) && x > 0;
 const record = (x: unknown): x is Record<string, unknown> => x !== null && typeof x === "object" && !Array.isArray(x);
 const quoteOk = (leg: Record<string, unknown>) =>
   positive(leg.strike) && positive(leg.bid) && positive(leg.ask) && leg.bid <= leg.ask;
-const wide = (leg: Record<string, unknown>) => quoteOk(leg)
-  && (Number(leg.ask) - Number(leg.bid)) / (Number(leg.bid) / 2 + Number(leg.ask) / 2)
-    > MAX_QUOTE_IMPLIED_SPREAD_RATIO;
+export const DELTA_UNCERTAINTY_TRIGGER = 0.10;
 export function isSideCycleDeltaModel(value: unknown): value is SideCycleDeltaModel {
   return typeof value === "string" && value.startsWith("E1|");
 }
@@ -104,10 +102,21 @@ function roundedIv(sigma: number): number {
   }
   return Number(sigma.toFixed(4));
 }
+function deltaUncertainty(leg: Record<string,unknown>, spot: number, dte: number, put: boolean): number | null {
+  if (!quoteOk(leg) || !positive(spot) || !finite(dte) || dte < 0) return null;
+  const strike = Number(leg.strike), years = Math.max(dte,1) / 365;
+  const lo = inverse(Number(leg.bid),spot,strike,years,put);
+  const hi = inverse(Number(leg.ask),spot,strike,years,put);
+  if (lo === null || hi === null || lo > hi) return null;
+  const dl = priceDelta(spot,strike,years,lo,put)?.[1];
+  const dh = priceDelta(spot,strike,years,hi,put)?.[1];
+  return dl === undefined || dh === undefined ? null : Math.abs(dh-dl);
+}
+
 export function sideModelLegConsistent(
   leg: Record<string, unknown>, model: SideCycleDeltaModel,
   history: HistoricalVolatility | undefined, spot: number, dte: number,
-  put: boolean, band?: readonly [number, number],
+  put: boolean, band?: readonly [number, number], buy = false,
 ): boolean {
   try {
     if (!record(leg) || !validSideCycleDeltaModel(model, history) || !quoteOk(leg)
@@ -130,9 +139,17 @@ export function sideModelLegConsistent(
       if (bidIv === null || askIv === null || bidIv > askIv) return false;
       sigma = Math.min(askIv, Math.max(history.hv20, history.hv60, bidIv));
       if (!positive(sigma)) return false;
-      exact = priceDelta(spot, strike, years, sigma, put)?.[1] ?? null;
+      const quote=priceDelta(spot,strike,years,sigma,put);
+      exact=quote?.[1] ?? null;
+      if (Object.hasOwn(leg,"limit_price")) {
+        if (!quote || !finite(leg.limit_price)) return false;
+        const mid=(bid+ask)/2, price=Math.min(mid,Math.max(bid,quote[0]));
+        const rounded=buy ? Math.ceil(price*100-1e-9)/100 : Math.floor(price*100+1e-9)/100;
+        if (Math.abs(leg.limit_price-Math.min(mid,Math.max(bid,rounded)))>1e-8) return false;
+      }
     } else if (basis === "QUOTE_IMPLIED") {
-      if (wide(leg) || !["QUOTE_IMPLIED", "QUOTED_IV", "QUOTED"].includes(String(leg.delta_basis))) return false;
+      if ((deltaUncertainty(leg, spot, dte, put) ?? 0) > DELTA_UNCERTAINTY_TRIGGER
+        || !["QUOTE_IMPLIED", "QUOTED_IV", "QUOTED"].includes(String(leg.delta_basis))) return false;
       if (leg.delta_basis === "QUOTED") {
         if (Object.hasOwn(leg, "iv") && leg.iv !== null) return false;
         exact = leg.delta;

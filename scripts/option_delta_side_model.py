@@ -1,8 +1,8 @@
-"""Stage 1E master ruling: independent call/put-side Delta selection.
+"""Stage 1F review ruling: delta-uncertainty independent-side model.
 
 Pure offline mathematics; caller verifies contracts, historical source, clock and
-quote eligibility. A side that contains any wide *eligible* quote uses HV20/HV60
-per-leg IV clamps. No side shares a sigma or IV intersection with another side.
+quote eligibility. A side that contains any *uncertain* eligible leg (bid/ask implied-delta
+difference greater than 0.10) uses HV20/HV60 per-leg IV clamps. No side shares a sigma or IV intersection with another side.
 All-tight sides retain the Stage 1C order: provided IV, signed provider Delta,
 then the two-sided quote midpoint IV. Only offending wide legs may be dropped
 to preserve strike monotonicity. No function here prices an order.
@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import math
 import re
+from decimal import Decimal, ROUND_FLOOR, ROUND_CEILING
 from typing import Any
 
 import option_delta_model as bs
@@ -21,7 +22,8 @@ MODEL_KEYS = frozenset(("schema", "calls", "puts"))
 MODES = ("SOURCE_IV", "SOURCE_DELTA", "MID_IV", "HISTORICAL_VOL")
 MODE_BASES = {"SOURCE_IV": "QUOTED_IV", "SOURCE_DELTA": "QUOTED",
               "MID_IV": "QUOTE_IMPLIED", "HISTORICAL_VOL": "HISTORICAL_VOL"}
-REASON_MONOTONE = "寬價差履約價 Delta 非單調；僅剔除此寬價差合約"
+DELTA_UNCERTAINTY_TRIGGER = 0.10
+REASON_MONOTONE = "Delta 不確定性過高的履約價非單調；僅剔除此不確定合約"
 REASON_MISSING_HISTORY = "寬價差側缺少經核驗的 61 筆調整後收盤價 HV20/HV60，不提供該側策略"
 REASON_INVALID_IV = "該雙邊報價不能建立可核驗的逐腿 IV 區間；僅剔除此合約"
 
@@ -49,6 +51,34 @@ def quote_ok(value: Any) -> bool:
 
 def wide(value: dict[str, Any]) -> bool:
     return (value["ask"] - value["bid"]) / (value["bid"] / 2 + value["ask"] / 2) > rules.MAX_QUOTE_IMPLIED_SPREAD_RATIO
+
+
+def quote_delta_uncertainty(row: dict[str, Any], spot: float, dte: int, *, put: bool) -> float | None:
+    """Absolute change in option delta across its own *two-sided* quote IV range.
+
+    Wide quoted prices are harmless when their Delta uncertainty is <= 0.10.
+    No cross-leg or common-IV intersection is implied. An uninvertible leg
+    cannot trigger historical inference and may still have verifiable source
+    Greeks under the Stage1C quoted path.
+    """
+    if not quote_ok(row) or not positive(spot) or not finite(dte) or dte < 0:
+        return None
+    years = max(dte, 1) / 365
+    inverse = bs.implied_vol_put if put else bs.implied_vol
+    low = inverse(row["bid"], spot, row["strike"], years)
+    high = inverse(row["ask"], spot, row["strike"], years)
+    if low is None or high is None or not 0 <= low <= high:
+        return None
+    left = _delta(spot, row["strike"], years, low, put)
+    right = _delta(spot, row["strike"], years, high, put)
+    if left is None or right is None or not finite(left) or not finite(right):
+        return None
+    return abs(right - left)
+
+
+def is_uncertain(row: dict[str, Any], spot: float, dte: int, *, put: bool) -> bool:
+    difference = quote_delta_uncertainty(row, spot, dte, put=put)
+    return difference is not None and difference > DELTA_UNCERTAINTY_TRIGGER
 
 
 def _delta(spot: float, strike: float, years: float, sigma: float, put: bool) -> float | None:
@@ -149,7 +179,8 @@ def calculate_side(rows: list[dict[str, Any]], spot: float, dte: int,
     if not eligible:
         return {"side": side_name, "basis": None, "computed": [], "skipped": skipped,
                 "reason": "本側沒有可核驗、價外、雙邊的完整合約"}
-    basis = "HISTORICAL_VOL" if any(wide(row) for row in eligible) else "QUOTE_IMPLIED"
+    basis = ("HISTORICAL_VOL" if any(is_uncertain(row, spot, dte, put=put) for row in eligible)
+             else "QUOTE_IMPLIED")
     if not positive(spot) or not finite(dte) or dte < 0:
         return {"side": side_name, "basis": basis, "computed": [], "skipped": skipped,
                 "reason": "現價或到期天數不可核驗"}
@@ -199,7 +230,7 @@ def calculate_side(rows: list[dict[str, Any]], spot: float, dte: int,
             skipped.append({"strike": raw["strike"], "reason": "無可核驗的逐腿 Delta，僅剔除此合約"})
             continue
         entry = _entry(raw, mode=mode, sigma=sigma, bounds=(iv_bid, iv_ask), exact=exact)
-        computed.append({**_leg_result(raw, exact, MODE_BASES[mode], sigma), "_wide": wide(raw), "_entry": entry})
+        computed.append({**_leg_result(raw, exact, MODE_BASES[mode], sigma), "_wide": is_uncertain(raw, spot, dte, put=put), "_entry": entry})
     computed = _monotone_side(computed, put, skipped)
     reason = None
     if not computed:
@@ -210,7 +241,7 @@ def calculate_side(rows: list[dict[str, Any]], spot: float, dte: int,
 
 
 def side_model_wire(result: dict[str, Any], chosen: list[dict[str, Any]]) -> str:
-    """Compact side code B,count,first-monotone-drop; all Greeks are recomputed.
+    """Compact side code B,count,first-nonmonotone-uncertain; Greeks recomputed.
 
     QUOTE_IMPLIED/Q, HISTORICAL_VOL/H, unavailable/-.
     """
@@ -254,8 +285,43 @@ def valid_side_model(value: Any, history: Any) -> bool:
     return parsed_side_model(value) is not None
 
 
+def model_based_limit(leg: dict[str, Any], spot: float, dte: int, sigma: float,
+                      *, put: bool, buy: bool) -> float | None:
+    """Model-based starting LIMIT for a HISTORY side, bounded by actual Bid and mid.
+
+    The model determines only the *starting quote*, not a filled premium or
+    realized return. Both buy and sell may start below mid; buy rounds UP to
+    the 0.01 tick, sell DOWN, then both clamp to [Bid,mid]. The worst-case
+    buy remains actual Ask. No volatility estimate changes the quote sides.
+    """
+    if not quote_ok(leg) or not positive(spot) or not positive(sigma):
+        return None
+    years=max(dte,1)/365
+    theoretical=(bs.bs_put_price if put else bs.bs_call_price)(
+        spot,leg["strike"],years,sigma)
+    if theoretical is None or not finite(theoretical):
+        return None
+    mid=leg["bid"]/2+leg["ask"]/2
+    price=max(leg["bid"],min(mid,theoretical))
+    # Match the independent Worker to within 1e-9 of a 0.01 tick:
+    # binary midpoints such as 1.2999999999999998 must not be rounded
+    # down to 1.29 in Python but to 1.30 in JavaScript.
+    rounded=(math.ceil(price*100-1e-9) if buy
+             else math.floor(price*100+1e-9))/100
+    return max(leg["bid"],min(mid,rounded))
+
+
+def limit_from_computed(row: dict[str, Any], spot: float, dte: int, *,
+                        put: bool=False, buy: bool=False) -> float | None:
+    if row.get("delta_basis") != "HISTORICAL_VOL":
+        return None
+    entry=row.get("_entry")
+    return model_based_limit(row,spot,dte,entry.get("sigma") if isinstance(entry,dict) else None,
+                             put=put,buy=buy)
+
+
 def model_leg_consistent(leg: Any, model: Any, history: Any,
-                         spot: float, dte: int, *, put: bool,
+                         spot: float, dte: int, *, put: bool, buy: bool = False,
                          band: tuple[float, float] | None = None) -> bool:
     if (not isinstance(leg, dict) or not valid_side_model(model, history) or not quote_ok(leg)
         or not positive(spot) or not finite(dte) or dte < 0):
@@ -287,8 +353,12 @@ def model_leg_consistent(leg: Any, model: Any, history: Any,
         exact = _delta(spot, leg["strike"], years, sigma, put)
         if "iv" in leg and leg["iv"] is not None:
             return False
+        if "limit_price" in leg:
+            limit=model_based_limit(leg,spot,dte,sigma,put=put,buy=buy)
+            if limit is None or not finite(leg.get("limit_price")) or abs(leg["limit_price"]-limit)>1e-8:
+                return False
     elif basis == "QUOTE_IMPLIED":
-        if wide(leg) or leg_basis not in ("QUOTE_IMPLIED", "QUOTED_IV", "QUOTED"):
+        if is_uncertain(leg, spot, dte, put=put) or leg_basis not in ("QUOTE_IMPLIED", "QUOTED_IV", "QUOTED"):
             return False
         if leg_basis == "QUOTED":
             # Stage 1C explicitly permitted a valid source Delta independently

@@ -409,23 +409,6 @@ def _ranking_rows(rows: list[dict[str, Any]], spot: float, *, put: bool,
             and (not cent_exact_only or _cent_exact(row["strike"]))]
 
 
-def _ranking_model(calls: list[dict[str, Any]], puts: list[dict[str, Any]], spot: float, dte: int,
-                   history: dict[str, Any] | None, *, cent_exact_only: bool = True) -> tuple[dict[str, Any] | None, str | None]:
-    return delta_math.build_delta_model(
-        _ranking_rows(calls, spot, put=False, cent_exact_only=cent_exact_only),
-        _ranking_rows(puts, spot, put=True, cent_exact_only=cent_exact_only), spot, dte, history)
-
-
-def _with_model_delta(row: dict[str, Any], spot: float, dte: int, model: dict[str, Any], *,
-                      put: bool = False) -> dict[str, Any]:
-    call = delta_math.bs_call_delta(spot, row["strike"], rules.effective_days(dte) / 365, model["sigma"], digits=None)
-    exact = (1 - call if put else call) if call is not None else None
-    return {**row, "iv": None if model["basis"] == "HISTORICAL_VOL" else round(model["sigma"], 4),
-            "delta": round(exact, 3) if exact is not None else None,
-            "delta_exact": exact, "delta_basis": model["basis"]}
-
-
-
 def _int(value: Any) -> int | None:
     try:
         text = str(value).replace(",", "").strip()
@@ -456,7 +439,9 @@ def _suggestion(role: str, row: dict[str, Any], spot: float, dte: int) -> dict[s
     days = rules.effective_days(dte)  # annualization never uses fewer than one day (DTE 0 is the expiry day)
     bid, ask = row["bid"], row["ask"]
     mid = (bid + ask) / 2 if ask is not None else None
-    limit = _sell_limit(bid, ask)
+    limit = side_math.limit_from_computed(row,spot,dte,put=False,buy=False)
+    if limit is None:
+        limit = _sell_limit(bid, ask)
     period_yield = limit / spot
     return {"role": role, "strike": row["strike"], "bid": bid, "ask": ask, "mid": mid, "limit_price": limit,
             "premium_per_contract": round(limit * 100, 2), "period_yield": round(period_yield, 6),
@@ -478,9 +463,8 @@ def covered_call_tiers(rows: list[dict[str, Any]], spot: float, dte: int, *,
     days = rules.effective_days(dte)
     if prepared is not None:
         usable = prepared
-    elif model is not None and not side_math.is_side_model(model):
-        # Explicit legacy-model unit tests stay accepted.
-        usable = _otm_calls(rows, spot, dte, cent_exact_only, model=model)
+    elif model is not None:
+        raise ValueError("STAGE1F_PRODUCER_LEGACY_COMMON_SIGMA_MODEL_REJECTED")
     else:
         usable = side_math.calculate_side(rows, spot, dte, None, cent_exact_only=cent_exact_only)["computed"]
     if not usable:
@@ -545,18 +529,6 @@ def _in_band(row: dict[str, Any], band: tuple[float, float]) -> bool:
     return row.get("delta_exact") is not None and band[0] - 1e-12 <= row["delta_exact"] <= band[1] + 1e-12
 
 
-def _otm_puts(puts: list[dict[str, Any]], spot: float, dte: int, cent_exact_only: bool, *,
-              model: dict[str, Any]) -> list[dict[str, Any]]:
-    return [_with_model_delta(row, spot, dte, model, put=True)
-            for row in _ranking_rows(puts, spot, put=True, cent_exact_only=cent_exact_only)]
-
-
-def _otm_calls(rows: list[dict[str, Any]], spot: float, dte: int, cent_exact_only: bool, *,
-               model: dict[str, Any]) -> list[dict[str, Any]]:
-    return [_with_model_delta(row, spot, dte, model)
-            for row in _ranking_rows(rows, spot, put=False, cent_exact_only=cent_exact_only)]
-
-
 def _leg_quote_unavailable(rows: list[dict[str, Any]], spot: float, *, put: bool, buy: bool = False, cent_exact_only: bool = True) -> str | None:
     """Explain the first failed quote gate before testing delta, using only the eligible side of spot."""
     side = "賣權" if put else "買權"
@@ -594,8 +566,8 @@ def cash_secured_put_tiers(puts: list[dict[str, Any]], spot: float, dte: int, *,
     days = rules.effective_days(dte)
     if prepared is not None:
         usable = prepared
-    elif model is not None and not side_math.is_side_model(model):
-        usable = _otm_puts(puts, spot, dte, cent_exact_only, model=model)
+    elif model is not None:
+        raise ValueError("STAGE1F_PRODUCER_LEGACY_COMMON_SIGMA_MODEL_REJECTED")
     else:
         analysis = side_math.calculate_side(puts, spot, dte, None, put=True)
         usable = analysis["computed"]
@@ -612,7 +584,9 @@ def cash_secured_put_tiers(puts: list[dict[str, Any]], spot: float, dte: int, *,
         chosen.append(("BALANCED", _nearest(higher, rules.CONSERVATIVE_DELTA_BAND[1])))
     items = []
     for role, row in chosen:
-        limit = _sell_limit(row["bid"], row["ask"])
+        limit = side_math.limit_from_computed(row,spot,dte,put=True,buy=False)
+        if limit is None:
+            limit = _sell_limit(row["bid"], row["ask"])
         items.append({"role": role, **_leg(row, limit), "premium_per_contract": round(limit * 100, 2),
                       "cash_required": round(row["strike"] * 100, 2), "annualized_yield": round(limit / row["strike"] * 365 / days, 6),
                       "breakeven": round(row["strike"] - limit, 4), "downside_buffer": round(1 - row["strike"] / spot, 6)})
@@ -634,8 +608,8 @@ def collar_tiers(calls: list[dict[str, Any]], puts: list[dict[str, Any]], spot: 
     window = rules.PROTECTIVE_PUT_DELTA_BAND
     if prepared_puts is not None:
         usable_puts = prepared_puts
-    elif model is not None and not side_math.is_side_model(model):
-        usable_puts = _otm_puts(puts, spot, dte, cent_exact_only, model=model)
+    elif model is not None:
+        raise ValueError("STAGE1F_PRODUCER_LEGACY_COMMON_SIGMA_MODEL_REJECTED")
     else:
         usable_puts = side_math.calculate_side(puts, spot, dte, None, put=True)["computed"]
     protective = [row for row in usable_puts if _in_band(row, window)]
@@ -646,8 +620,8 @@ def collar_tiers(calls: list[dict[str, Any]], puts: list[dict[str, Any]], spot: 
         return None, reason
     if prepared_calls is not None:
         usable_calls = prepared_calls
-    elif model is not None and not side_math.is_side_model(model):
-        usable_calls = _otm_calls(calls, spot, dte, cent_exact_only, model=model)
+    elif model is not None:
+        raise ValueError("STAGE1F_PRODUCER_LEGACY_COMMON_SIGMA_MODEL_REJECTED")
     else:
         usable_calls = side_math.calculate_side(calls, spot, dte, None)["computed"]
     band = [row for row in usable_calls if _in_band(row, rules.CONSERVATIVE_DELTA_BAND)]
@@ -655,7 +629,8 @@ def collar_tiers(calls: list[dict[str, Any]], puts: list[dict[str, Any]], spot: 
         low, high = rules.CONSERVATIVE_DELTA_BAND
         return None, f"所選到期價外買權中，沒有 delta 介於 {low:.2f}–{high:.2f} 的履約價"
     put_row = _nearest(protective, rules.PROTECTIVE_PUT_DELTA)
-    put_leg = _leg(put_row, _buy_limit(put_row["bid"], put_row["ask"]))
+    put_limit = side_math.limit_from_computed(put_row,spot,dte,put=True,buy=True)
+    put_leg = _leg(put_row, put_limit if put_limit is not None else _buy_limit(put_row["bid"],put_row["ask"]))
     first = _nearest(band, rules.CONSERVATIVE_DELTA_BAND[0])
     chosen = [("CONSERVATIVE", first)]
     lower = [row for row in band if row["strike"] < first["strike"]]
@@ -663,7 +638,8 @@ def collar_tiers(calls: list[dict[str, Any]], puts: list[dict[str, Any]], spot: 
         chosen.append(("BALANCED", _nearest(lower, rules.CONSERVATIVE_DELTA_BAND[1])))
     items = []
     for role, row in chosen:
-        call_leg = _leg(row, _sell_limit(row["bid"], row["ask"]))
+        call_limit = side_math.limit_from_computed(row,spot,dte,put=False,buy=False)
+        call_leg = _leg(row, call_limit if call_limit is not None else _sell_limit(row["bid"],row["ask"]))
         net = round(call_leg["limit_price"] - put_leg["limit_price"], 4)
         loss = round(spot - put_leg["strike"] - net, 4)
         gain = round(call_leg["strike"] - spot + net, 4)
@@ -735,8 +711,18 @@ def cycle_result(ticker: str, expiry: str, dte: int, spot: float, rows: list[dic
             cc_reason = _covered_call_unavailable(
                 rows, spot, dte, expiry, model=None,
                 model_reason=call_analysis["reason"] or "本側缺少可核驗的有效雙邊期權腿")
-        if strategies is None or all("unavailable" in block for block in strategies.values()):
+        if strategies is None:
             return {"unavailable": cc_reason}
+        if all("unavailable" in block for block in strategies.values()):
+            reasons={"cc": _diag(cc_reason),
+                     "csp": _diag(strategies["csp"]["unavailable"]),
+                     "collar": _diag(strategies["collar"]["unavailable"])}
+            # The public unavailable reason must no longer make a put refusal
+            # look like a call refusal. Keep each exact per-strategy diagnostic
+            # in a strictly bounded additive field, and show a compact summary.
+            compact=("備兌："+reasons["cc"][:92]+"；賣權："+reasons["csp"][:35]+
+                     "；領口："+reasons["collar"][:35])
+            return {"unavailable": _diag(compact), "strategy_reasons": reasons}
 
     def find_row(analysis: dict[str, Any], quoted: dict[str, Any]) -> dict[str, Any]:
         matches = [row for row in analysis["computed"] if
@@ -1163,6 +1149,12 @@ def nasdaq_us_options(symbol: str, spot: float, today: date, stamp: str, *,
                 response = http_json(targeted)
                 source_rows = response["data"]["table"]["rows"]
                 source_asof = _nasdaq_us_asof(response)
+                # A correctly shaped, explicitly empty Nasdaq result is an
+                # authoritative no-listing observation, NOT READ_ERROR.
+                # Missing table/rows, a malformed scalar or transport errors
+                # still raise and preserve the independent read-failure path.
+                if source_rows is None:
+                    source_rows = []
                 if not isinstance(source_rows, list):
                     raise ValueError("UNREADABLE_TARGETED_OPTION_ROWS")
                 saw_source_rows = saw_source_rows or bool(source_rows)
@@ -1768,7 +1760,11 @@ def nordic_options(symbol: str, base: str, spot: float, today: date, stamp: str,
     if not rows:
         monthly_refetched = True
         try:
-            refreshed = http_json(NORDIC_CHAIN.format(orderbook=orderbook))["data"]["instrumentListing"]["rows"]
+            refreshed_response=http_json(NORDIC_CHAIN.format(orderbook=orderbook))
+            refreshed=refreshed_response["data"]["instrumentListing"]["rows"]
+            if (refreshed is None and isinstance(refreshed_response.get("messages"),dict)
+                    and refreshed_response["messages"].get("code")=="NO_INST_FOUND"):
+                refreshed=[]
             if not isinstance(refreshed, list):
                 raise ValueError("UNREADABLE_TARGETED_OPTION_ROWS")
             rows = refreshed
@@ -1806,7 +1802,11 @@ def nordic_options(symbol: str, base: str, spot: float, today: date, stamp: str,
     standard_targets={iso for iso,_ in _calendar_standard_monthlies(today, stamp, "STOCKHOLM")}
     if not monthly_refetched and standard_targets and not _monthly_candidates([x["expiry"] for x in listed],today,stamp,"STOCKHOLM"):
         try:
-            refreshed = http_json(NORDIC_CHAIN.format(orderbook=orderbook))["data"]["instrumentListing"]["rows"]
+            refreshed_response=http_json(NORDIC_CHAIN.format(orderbook=orderbook))
+            refreshed=refreshed_response["data"]["instrumentListing"]["rows"]
+            if (refreshed is None and isinstance(refreshed_response.get("messages"),dict)
+                    and refreshed_response["messages"].get("code")=="NO_INST_FOUND"):
+                refreshed=[]
             if not isinstance(refreshed, list):
                 raise ValueError("UNREADABLE_TARGETED_OPTION_ROWS")
             if _nordic_chain_root(row for batch in (rows, refreshed) for row in batch) != root:

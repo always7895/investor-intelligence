@@ -230,7 +230,8 @@ export async function loadDetailedOptionObservation(
   }
   // The only caller that opts into the previous-session carry-forward basis (its own age, session and expiry rules live in the
   // validator); the coverage page and every format-only caller keep refusing it.
-  const cycle = validateCoveredCallCycle(entry, now, docGeneratedAt, period, { allowPreviousSession: true });
+  const cycle = validateCoveredCallCycle(entry, now, docGeneratedAt, period,
+    { allowPreviousSession: true, sharedHistory: cycles._hv });
   // OPTIONBIND1: the cycle must belong to the key it was selected under (exact string equality; no trim, case folding or alias
   // repair). A foreign cycle under this key is an invalid row, decided before rights admission, with no fallback to another key.
   if (!cycle || cycle.ticker !== matchedKey) {
