@@ -1,6 +1,8 @@
 """Confirmed-byte heartbeat transactions against actual sealed KV sync/readback."""
 import json
+import os
 import unittest
+from pathlib import Path
 from datetime import timedelta
 from unittest import mock
 
@@ -32,6 +34,83 @@ class ConfirmedHeartbeatTests(unittest.TestCase):
         patcher = mock.patch.object(publisher, "build_seal", seal)
         patcher.start()
         self.addCleanup(patcher.stop)
+
+    def test_machine_only_failure_hour_publishes_healthy_market_and_retains_ranking_digest(self):
+        # 07:00 has no new machine result, but market collection is healthy.
+        # Even though the ranking's 6h heartbeat is due, --products-only MUST
+        # leave its confirmed cadence, core claim and exact ranked blob alone.
+        first, _ = self.h.publish(START)
+        prior = carry.confirmed_snapshot(self.h.snapshots)
+        before = products.parts(prior["objects"], prior["pointer"])
+        ranked = before["lazy"][publisher.BOTTLENECK_V3_KEY]
+        now = START + timedelta(hours=7)
+        Clock.instant = now
+        quote = json.dumps({"schema": "v213-quotes-v1", "generated_at": integration.stamp(now), "quotes": {}})
+        option = json.dumps({"schema": "v213-options-v2", "generated_at": integration.stamp(now), "options": {}})
+        coverage = json.dumps({"schema": "v213-options-coverage-v1", "generated_at": integration.stamp(now), "coverage": {}})
+        price = json.dumps({"schema": "v213-prices-v1", "generated_at": integration.stamp(now), "prices": {}})
+        with mock.patch.object(publisher, "lazy_identity_bodies", return_value={}), \
+                mock.patch.object(publisher, "lazy_price_bodies", return_value={"v213:prices:v1:US": price}), \
+                mock.patch.object(publisher, "lazy_market_bodies", return_value={
+                    "v213:quotes:v1": quote, "v213:options:v2": option}), \
+                mock.patch.object(publisher, "lazy_options_coverage_body",
+                                  return_value={"v213:options-coverage:v1": coverage}):
+            staged = heartbeat.stage(self.h.snapshots, now, product_paths=self.product_paths, products_only=True)
+        self.assertEqual(staged["status"], "STAGED_INDEPENDENT_PRODUCTS")
+        staged_pointer = json.loads((self.h.snapshots / staged["run_id"] / "pointer.raw.json").read_bytes())
+        staged_objects = json.loads((self.h.snapshots / staged["run_id"] / "objects.json").read_bytes())
+        after = products.parts(staged_objects, staged_pointer)
+        self.assertEqual(staged["ranking_status"], "REUSED")
+        self.assertEqual(after["manifest"]["ranking_persisted_at"], integration.stamp(START))
+        self.assertEqual(after["manifest"]["public_data_as_of"], before["manifest"]["public_data_as_of"])
+        self.assertEqual(after["core_run_id"], first["run_id"])
+        self.assertEqual(after["lazy"][publisher.BOTTLENECK_V3_KEY], ranked)
+        self.assertEqual(after["lazy"]["v213:quotes:v1"], quote)
+        self.assertEqual(after["lazy"]["v213:options:v2"], option)
+        self.assertEqual(after["lazy"]["v213:options-coverage:v1"], coverage)
+        self.assertEqual(after["lazy"]["v213:prices:v1:US"], price)
+        for logical, value in before["core"].items():
+            if logical != products.PIPELINE_KEY:
+                self.assertEqual(after["core"][logical], value)
+        result = self.h.upload(staged)
+        self.assertEqual(result.exit, 0, result.outcome)
+        self.assertEqual((result.record["ranking_writes_reserved"],
+                          result.record["pointer_state"]), (0, "READBACK_CONFIRMED"))
+        self.assertGreater(result.record["market_writes_reserved"], 0)
+        served, pointer = self.h.serving()
+        self.assertEqual(served.decode("utf-8"), ranked)
+        self.assertEqual(pointer["run_id"], staged["run_id"])
+        proof_target = os.getenv("R2B_ROUND3_MACHINE_HOUR_PROOF_OUT")
+        if proof_target:
+            allowed = Path(__file__).resolve().parents[2] / "evidence" / "round3"
+            allowed.mkdir(parents=True, exist_ok=True)
+            target = Path(proof_target).resolve()
+            if not target.is_relative_to(allowed.resolve()) or target.exists():
+                raise AssertionError("UNSAFE_OR_EXISTING_PROOF_TARGET")
+            receipt = {
+                "kind": "ONE_HOUR_MACHINE_ONLY_FAILURE_WITH_HEALTHY_MARKET_SOURCES",
+                "hour_utc": integration.stamp(now),
+                "scope": "SYNTHETIC_IO_REAL_SEAL_AND_SYNC_NOT_LIVE_PROVIDER",
+                "ranked_rows_served": len(json.loads(served)["top"]),
+                "machine_failure_runner_test": "MachineIndependentProductFailureTests",
+                "no_secondary_ranking_producer": True,
+                "ranking_reused": staged["ranking_status"] == "REUSED",
+                "ranking_persisted_at": after["manifest"]["ranking_persisted_at"],
+                "ranking_digest_before": products.digest(ranked),
+                "ranking_digest_after": products.digest(after["lazy"][publisher.BOTTLENECK_V3_KEY]),
+                "original_public_data_as_of": staged_pointer["public_data_as_of"],
+                "market_source_generated_at": integration.stamp(now),
+                "quotes_fresh": json.loads(after["lazy"]["v213:quotes:v1"])["generated_at"] == integration.stamp(now),
+                "options_fresh": json.loads(after["lazy"]["v213:options:v2"])["generated_at"] == integration.stamp(now),
+                "coverage_fresh": json.loads(after["lazy"]["v213:options-coverage:v1"])["generated_at"] == integration.stamp(now),
+                "price_shard_fresh": json.loads(after["lazy"]["v213:prices:v1:US"])["generated_at"] == integration.stamp(now),
+                "ranking_reservation": result.record["ranking_writes_reserved"],
+                "product_reservation": result.record["market_writes_reserved"],
+                "pointer_readback_confirmed": result.record["pointer_state"] == "READBACK_CONFIRMED",
+                "no_new_machine_ack_or_forecast": True,
+                "DUAL_ACCEPTED": False,
+            }
+            target.write_text(json.dumps(receipt, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
     def test_failed_six_local_seal_retries_at_seven_without_new_evidence(self):
         first, _ = self.h.publish(START)

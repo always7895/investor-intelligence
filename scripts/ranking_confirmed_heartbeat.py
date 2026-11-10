@@ -19,7 +19,8 @@ def encoded(value):
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
 
 
-def stage(snapshot_root: Path, now: datetime, *, product_paths: dict[str, Path] | None = None) -> dict:
+def stage(snapshot_root: Path, now: datetime, *, product_paths: dict[str, Path] | None = None,
+          products_only: bool = False) -> dict:
     import sealed_product_policy as products
     root = carry.plain_path(snapshot_root)
     try:
@@ -45,7 +46,8 @@ def stage(snapshot_root: Path, now: datetime, *, product_paths: dict[str, Path] 
     fresh.update(publisher.lazy_market_bodies(Path(paths["market"]), now))
     fresh.update(publisher.lazy_options_coverage_body(fresh.get("v213:options:v2"), now))
     selected = products.prepare_publication(root, previous["objects"], encoded(previous["pointer"]), now,
-        previous=previous, fresh_products=fresh, confirmed_only=True)
+        previous=previous, fresh_products=fresh, confirmed_only=True,
+        allow_confirmed_heartbeat=not products_only)
     if "retained" in selected:
         return selected["retained"]
     pointer_text = selected["pointer"]
@@ -88,9 +90,12 @@ def stage(snapshot_root: Path, now: datetime, *, product_paths: dict[str, Path] 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--snapshot-root", type=Path, required=True)
+    parser.add_argument("--products-only", action="store_true",
+                        help="Never advance the ranking cadence; only due independent products may be sealed.")
     args = parser.parse_args()
     try:
-        result = stage(args.snapshot_root, datetime.now(timezone.utc).replace(microsecond=0))
+        result = stage(args.snapshot_root, datetime.now(timezone.utc).replace(microsecond=0),
+                       products_only=args.products_only)
     except (OSError, ValueError, TypeError, KeyError):
         print("CONFIRMED_HEARTBEAT_UNAVAILABLE")
         return 1

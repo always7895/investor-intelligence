@@ -222,7 +222,8 @@ def _assemble(base: dict, ranking_lazy: dict[str, str], products: dict[str, str]
 def prepare_publication(snapshot_root: Path, objects: dict[str, str], pointer_text: str,
                         now: datetime, *, previous: dict | None = None,
                         fresh_products: dict[str, str] | None = None,
-                        confirmed_only: bool = False, reconcile: bool = False) -> dict:
+                        confirmed_only: bool = False, reconcile: bool = False,
+                        allow_confirmed_heartbeat: bool = True) -> dict:
     """Select rank/products; remote discovery is explicit, never an implicit credential read."""
     import top20_carry_forward as carry
     import sync_sealed_snapshot_kv as sync
@@ -248,7 +249,8 @@ def prepare_publication(snapshot_root: Path, objects: dict[str, str], pointer_te
            writes.publication_due(old_ranking, candidate_ranking, now))
     ranking_due = due not in {"NO_CHANGE", "CANDIDATE_UNAVAILABLE"}
     if confirmed_only:
-        ranking_due = (now - instant(old["manifest"].get("ranking_persisted_at", old["manifest"]["generated_at"]))).total_seconds() >= writes.HEARTBEAT_SECONDS
+        ranking_due = (allow_confirmed_heartbeat and
+                       (now - instant(old["manifest"].get("ranking_persisted_at", old["manifest"]["generated_at"]))).total_seconds() >= writes.HEARTBEAT_SECONDS)
     old_lazy = old["lazy"] if old else {}
     products, clocks = choose_products(old_lazy,
         fresh_products if fresh_products is not None else candidate["lazy"],

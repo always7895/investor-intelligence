@@ -540,6 +540,98 @@ class CarryForwardHourlyTests(unittest.TestCase):
             self.assertEqual((self.outcome["primary_exit"], self.outcome["local_maintenance"]), (0, None))  # no maintenance off-switch
 
 
+class MachineIndependentProductFailureTests(unittest.TestCase):
+    """Typed machine failure must not suppress a separately sealed product root."""
+
+    def run_failure(self, shell: str, *, bad_sync: bool = False, machine_reason: str | None = None):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            scripts = root / "scripts"
+            scripts.mkdir()
+            shutil.copy(SCRIPT, scripts / SCRIPT.name)
+            (scripts / "v213_operation_lock.ps1").write_text(LOCK_STUB, encoding="utf-8")
+            # No machine credentials or producer. Missing guidance prerequisites
+            # deliberately trigger typed MACHINE_INPUTS_UNAVAILABLE.
+            (scripts / "run_daily_data_refresh.ps1").write_text("throw 'SECOND_PRODUCER_FORBIDDEN'\n", encoding="utf-8")
+            (scripts / "publish_sealed_snapshot.py").write_text(
+                'raise AssertionError("SECOND_RANKING_PRODUCER_FORBIDDEN")\n', encoding="utf-8")
+            (scripts / "top20_carry_forward.py").write_text(
+                'raise AssertionError("SECOND_TOP20_PRODUCER_FORBIDDEN")\n', encoding="utf-8")
+            product_run = "20260926T010000Z-cccccccccccc"
+            product_stage = TRACE + (
+                "import json\n"
+                "assert '--products-only' in sys.argv and '--snapshot-root' in sys.argv\n"
+                "trace('PRODUCTS_ONLY')\n"
+                f"print(json.dumps({{'status':'STAGED_INDEPENDENT_PRODUCTS','run_id':'{product_run}'}}))\n"
+            )
+            (scripts / "ranking_confirmed_heartbeat.py").write_text(product_stage, encoding="utf-8")
+            (scripts / "stage_sealed_replay.py").write_text(CARRY_REPLAY, encoding="utf-8")
+            (scripts / "sync_sealed_snapshot_kv.py").write_text(CARRY_SYNC, encoding="utf-8")
+            if machine_reason is not None:
+                if machine_reason not in ("MACHINE_EVIDENCE_LIMIT", "MACHINE_EXPORT_UNAVAILABLE",
+                                          "GUIDANCE_MACHINE_PROVIDER_UNAVAILABLE"):
+                    raise ValueError("UNSUPPORTED_TYPED_REASON")
+                backend = (
+                    "function Invoke-GuidanceObservedProcess { param($Label,$Executable,$Arguments,$WorkingDirectory,$RemainingMilliseconds,$MachineRunId)\n"
+                    " [pscustomobject]@{Completed=$false;Attempted=$true;ExitCode=1;Status='EXIT_OBSERVED';"
+                    f"MachineReason='{machine_reason}';MachineBundle=$null}}\n"
+                    "}\nfunction Wait-GuidanceCustody { }\n"
+                    "Export-ModuleMember -Function Invoke-GuidanceObservedProcess,Wait-GuidanceCustody\n"
+                )
+                (scripts / "revenue_guidance_backend.psm1").write_text(backend, encoding="utf-8")
+            if bad_sync:
+                (root / "sync_fail").write_text("1", encoding="utf-8")
+            command = [shell, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+                       "-File", str(scripts / SCRIPT.name), "-GuidanceMachinePublicationEnabled"]
+            if machine_reason is not None:
+                command.extend(("-GuidanceAutoUpdateEnabled", "-GuidanceDirtyRebuildEnabled"))
+            done = subprocess.run(command, cwd=root, capture_output=True, timeout=90, env=run_env())
+            trace = (root / "trace.txt").read_text(encoding="utf-8").splitlines()
+            outcome = parse_outcome(done.stdout.decode("utf-8", errors="replace"))
+            return done.returncode, trace, outcome
+
+    def test_typed_failure_still_syncs_independent_products_without_ranking_export(self):
+        for shell in shells():
+            code, trace, outcome = self.run_failure(shell)
+            self.assertEqual(code, 2, (shell, trace, outcome))
+            self.assertEqual(trace, ["PRODUCTS_ONLY", "REPLAY cccc PASS", "SYNC cccc"])
+            self.assertEqual((outcome["primary_exit"], outcome["error_category"],
+                              outcome["primary_phase"]), (2, "MACHINE_INPUTS_UNAVAILABLE", "MACHINE_PRESEAL"))
+            self.assertEqual((outcome["publication_confirmed"], outcome["publication_operation_succeeded"]),
+                             (True, False))
+            independent = outcome["independent_products"]
+            self.assertEqual((independent["status"], independent["exit"], independent["pointer_state"]),
+                             ("PRODUCTS_PUBLISHED", 0, "READBACK_CONFIRMED"))
+            self.assertEqual(independent["run_id"], "20260926T010000Z-cccccccccccc")
+            self.assertEqual(outcome["local_maintenance"]["top20_status"], "NOT_ADMITTED")
+
+    def test_all_typed_machine_failures_continue_independent_products(self):
+        for shell in shells():
+            for reason in ("MACHINE_EVIDENCE_LIMIT", "MACHINE_EXPORT_UNAVAILABLE",
+                           "GUIDANCE_MACHINE_PROVIDER_UNAVAILABLE"):
+                with self.subTest(shell=shell, reason=reason):
+                    code, trace, outcome = self.run_failure(shell, machine_reason=reason)
+                    self.assertEqual(code, 2, (trace, outcome))
+                    self.assertEqual(outcome["error_category"], reason)
+                    self.assertEqual(trace, ["PRODUCTS_ONLY", "REPLAY cccc PASS", "SYNC cccc"])
+                    self.assertEqual(outcome["independent_products"]["status"], "PRODUCTS_PUBLISHED")
+                    self.assertTrue(outcome["publication_confirmed"])
+                    self.assertFalse(outcome["publication_operation_succeeded"])
+
+    def test_unconfirmed_products_do_not_turn_a_machine_failure_into_success(self):
+        for shell in shells():
+            code, trace, outcome = self.run_failure(shell, bad_sync=True)
+            self.assertEqual(code, 2, (shell, trace, outcome))
+            self.assertEqual(trace, ["PRODUCTS_ONLY", "REPLAY cccc PASS", "SYNC cccc"])
+            self.assertEqual(outcome["error_category"], "MACHINE_INPUTS_UNAVAILABLE")
+            self.assertFalse(outcome["publication_confirmed"])
+            self.assertFalse(outcome["publication_operation_succeeded"])
+            self.assertEqual(outcome["pointer_state"], "ATTEMPTED_UNCONFIRMED")
+            self.assertEqual((outcome["independent_products"]["status"],
+                              outcome["independent_products"]["pointer_state"]),
+                             ("SYNC_UNCONFIRMED", "ATTEMPTED_UNCONFIRMED"))
+
+
 class MachineRetainedRunnerTests(unittest.TestCase):
     def setUp(self):
         if not shells():

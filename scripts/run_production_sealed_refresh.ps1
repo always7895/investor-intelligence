@@ -208,6 +208,66 @@ function Invoke-MachinePresealDaily {
         '--guidance-report-sha256',$public.BodySha256,'--guidance-binding-sha256',$public.BindingSha256)
 }
 
+function Invoke-IndependentProductsAfterMachineFailure {
+    # A typed machine export failure must not starve independent market/price/
+    # identity cadence. This is NOT a second ranking producer or a machine
+    # downgrade: it can only copy remote-readback-confirmed ranking + binding
+    # by digest, then stage/sync an independently due product root.
+    $receipt = [ordered]@{
+        status='NOT_PUBLISHED'; exit=1; pointer_state='NOT_ATTEMPTED'
+        run_id=$null; reason='INDEPENDENT_PRODUCTS_UNAVAILABLE'
+    }
+    try {
+        $staged = Invoke-LoggedNative { & $py 'scripts\ranking_confirmed_heartbeat.py' --snapshot-root $runsRoot --products-only }
+        if ($staged.Code -ne 0) {
+            $receipt.status='STAGE_FAILED'; $receipt.exit=$staged.Code
+            return [pscustomobject]$receipt
+        }
+        $retained = Read-RetainedPublisherOutcome $staged
+        if ($null -ne $retained) {
+            $receipt.status='RETAINED_LAST_GOOD'; $receipt.exit=0
+            $receipt.reason=$retained.retention_reason
+            return [pscustomobject]$receipt
+        }
+        $productRun = Get-PrintedRunId $staged
+        if (-not $productRun) {
+            $receipt.status='STAGED_RUN_UNCONFIRMED'
+            return [pscustomobject]$receipt
+        }
+        $productDir = Join-Path $runsRoot $productRun
+        Assert-PlainLocalRefreshPath $productDir
+        $replayed = Invoke-LoggedNative { & $py 'scripts\stage_sealed_replay.py' --run-dir $productDir }
+        if ($replayed.Code -ne 0) {
+            $receipt.status='REPLAY_FAILED'; $receipt.exit=$replayed.Code
+            return [pscustomobject]$receipt
+        }
+        $outcomePath = Join-Path $logDir ('sealed-sync-' + [guid]::NewGuid().ToString('N') + '.json')
+        $synced = Invoke-LoggedNative { & $py 'scripts\sync_sealed_snapshot_kv.py' --run-dir $productDir --outcome-path $outcomePath }
+        $outcome = Read-SafeSyncOutcome $outcomePath $productRun
+        $receipt.exit = $synced.Code
+        $receipt.pointer_state = $outcome.pointer_state
+        if ($synced.Code -eq 0 -and $outcome.status -ceq 'SUCCEEDED' -and
+            $outcome.pointer_state -ceq 'READBACK_CONFIRMED' -and $outcome.error_category -ceq 'NONE') {
+            $receipt.status='PRODUCTS_PUBLISHED'; $receipt.exit=0
+            $receipt.run_id=$productRun
+            $receipt.reason='REMOTE_READBACK_CONFIRMED'
+        } elseif ($synced.Code -eq 0 -and $outcome.status -ceq 'RETAINED_LAST_GOOD' -and
+                  $outcome.pointer_state -ceq 'NOT_ATTEMPTED' -and $outcome.error_category -ceq 'NONE') {
+            $receipt.status='RETAINED_LAST_GOOD'; $receipt.exit=0
+            $receipt.reason=$outcome.retention_reason
+        } else {
+            $receipt.status='SYNC_UNCONFIRMED'
+            if ($receipt.exit -eq 0) { $receipt.exit=1 }
+            $receipt.reason='INDEPENDENT_PRODUCTS_SYNC_FAILED'
+        }
+    } catch {
+        # Do not turn an unproven pointer into retained/success or print CLI data.
+        $receipt.status='UNAVAILABLE'; $receipt.exit=1
+        $receipt.reason='INDEPENDENT_PRODUCTS_UNAVAILABLE'
+    }
+    return [pscustomobject]$receipt
+}
+
 function Invoke-CarryForwardSeal {
     # Each fallback removes only the defective product; quotes/options/prices
     # retain their own cadence even when ranking or identity input is unavailable.
@@ -408,6 +468,7 @@ $presealDaily = $null
 $script:MachinePublisherArgs=@()
 $script:MachineRetainedOutcome=$null
 $script:MachineHeartbeatRunId=$null
+$script:IndependentProducts=$null
 $maintenanceAdmitted = $true
 $py = if ($env:PROJECT_PYTHON) { $env:PROJECT_PYTHON } else { 'python' }
 try {
@@ -498,6 +559,23 @@ try {
     } catch {
         if ($GuidanceMachinePublicationEnabled -and $_.Exception.Message -cin @('MACHINE_INPUTS_UNAVAILABLE','MACHINE_EVIDENCE_LIMIT','MACHINE_EXPORT_UNAVAILABLE','GUIDANCE_MACHINE_PROVIDER_UNAVAILABLE','BOOTSTRAP_REQUIRED','CONFIRMED_HEARTBEAT_UNAVAILABLE')) {
             $primaryCode=2; $primaryCategory=$_.Exception.Message
+            if ($primaryPhase -eq 'MACHINE_PRESEAL' -and $primaryCategory -cin @(
+                'MACHINE_INPUTS_UNAVAILABLE','MACHINE_EVIDENCE_LIMIT',
+                'MACHINE_EXPORT_UNAVAILABLE','GUIDANCE_MACHINE_PROVIDER_UNAVAILABLE')) {
+                # Preserve the machine failure and its exit 2, but let a
+                # separate product-only seal retain its own independent clocks.
+                # No second model/ranking producer, local Top20 or fresh ACK.
+                $maintenanceAdmitted=$false
+                $script:IndependentProducts=Invoke-IndependentProductsAfterMachineFailure
+                # An attempted or confirmed product pointer remains visible
+                # even when the unrelated machine computation failed.
+                if ($script:IndependentProducts.pointer_state -cin @('READBACK_CONFIRMED','ATTEMPTED_UNCONFIRMED')) {
+                    $pointerState=$script:IndependentProducts.pointer_state
+                }
+                if ($script:IndependentProducts.status -ceq 'PRODUCTS_PUBLISHED') {
+                    $runId=$script:IndependentProducts.run_id
+                }
+            }
         } elseif ($primaryCode -eq 0) { $primaryCode=1; if ($primaryCategory -eq 'NONE') { $primaryCategory='PRIMARY_EXCEPTION' } }
     }
     # Preserve the first primary failure. This finally-shaped continuation has
@@ -516,6 +594,7 @@ try {
         $summary['daily_observation']=[ordered]@{status=$presealDaily.Status;attempted=$presealDaily.Attempted;
             completed=$presealDaily.Completed;exit=$presealDaily.ExitCode}
     }
+    if ($null -ne $script:IndependentProducts) { $summary['independent_products']=$script:IndependentProducts }
     $line='SEALED_REFRESH_OUTCOME ' + ($summary | ConvertTo-Json -Depth 5 -Compress)
     Write-Host $line
     try { Add-Content -LiteralPath $log -Value $line -Encoding utf8 }
