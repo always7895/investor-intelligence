@@ -32,7 +32,7 @@ class LocalSourceInstallTests(unittest.TestCase):
         repo.mkdir()
         tracked = subprocess.check_output([GIT, "-C", str(ROOT), "ls-files", "-z"]).decode().split("\0")
         for extra in ("scripts/v213_runtime_install_coordinator.ps1", "scripts/v213_runtime_restore_previous.ps1",
-                      "scripts/export_local_source_checkout.ps1"):
+                      "scripts/v213_operation_lock.ps1", "scripts/export_local_source_checkout.ps1"):
             tracked.append(extra)
         for relative in tracked:
             if not relative or relative.startswith((".github/", "state/", "tests/")):
@@ -65,8 +65,8 @@ class LocalSourceInstallTests(unittest.TestCase):
         executable = dict(harness.required_hosts())[shell]
         env = harness.isolated_environment(parent, executable)
         env["PATH"] = os.pathsep.join((env["PATH"], str(Path(GIT).parent)))
-        return subprocess.run([executable, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File",
-                               str(ROOT / "scripts/v213_runtime_install_coordinator.ps1"), *args],
+        return subprocess.run(harness.isolated_installer_command(
+                                  executable, ROOT / "scripts/v213_runtime_install_coordinator.ps1", *args),
                               cwd=str(parent), env=env, capture_output=True, encoding="utf-8", errors="replace", timeout=300)
 
     def _install(self, shell, parent, export, repo, runtime):

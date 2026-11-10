@@ -35,6 +35,31 @@ def required_hosts():
     return [(name, str(Path(path).absolute())) for name, path in hosts]
 
 
+def isolated_installer_command(executable, script, *args):
+    """Run an actual entrypoint while injecting coordinator-only isolation defaults."""
+    if len(args) % 2:
+        raise ValueError("installer arguments must be name/value pairs")
+
+    def quote(value):
+        return "'" + str(value).replace("'", "''") + "'"
+
+    arguments = " ".join(f"{name} {quote(value)}" for name, value in zip(args[::2], args[1::2]))
+    mutex = "Local\\V213_Installer_Test_" + uuid.uuid4().hex
+    command = (
+        "$ErrorActionPreference='Stop';"
+        "$global:LASTEXITCODE=0;"
+        "$env:V213_TEST_MUTEX_MUST_BE_ISOLATED='1';"
+        "function Get-ScheduledTask { throw 'UNEXPECTED_SCHEDULER_QUERY' };"
+        "$PSDefaultParameterValues=@{"
+        "'v213_runtime_install_coordinator.ps1:TaskStateProvider'={{ @() }};"
+        "'v213_runtime_install_coordinator.ps1:OperationMutexName'=" + quote(mutex) + "};"
+        "try { & " + quote(script) + " " + arguments + ";"
+        "if (-not $?) { exit 1 }; exit $LASTEXITCODE } "
+        "catch { [Console]::Error.WriteLine($_.Exception.Message); exit 1 }"
+    )
+    return [executable, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", command]
+
+
 def assert_plain_path(path):
     """lstat detects junctions as well as symlinks; never traverse a link."""
     path = Path(path)

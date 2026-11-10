@@ -1,4 +1,5 @@
 """Actual isolated installer callers; synthetic PE/legacy markers are not release proof."""
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -8,6 +9,9 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
+_harness_spec = importlib.util.spec_from_file_location("v213_installer_parse_harness", ROOT / "tests/installer_parse_harness.py")
+harness = importlib.util.module_from_spec(_harness_spec)
+_harness_spec.loader.exec_module(harness)
 INSTALLERS = ('install-v213-runtime.ps1', 'install-v213-source-diverse-runtime.ps1',
               'install-v213-source-diverse-runtime-v2.ps1', 'install-v213-serenity-latest-runtime.ps1')
 
@@ -44,7 +48,7 @@ class InstallerModelAuthorityTests(unittest.TestCase):
             parent = Path(directory)
             source = parent / 'source'; source.mkdir()
             tracked = subprocess.check_output(['git', '-C', str(ROOT), 'ls-files', '-z']).decode().split('\0')
-            tracked.append('scripts/v213_runtime_install_coordinator.ps1')
+            tracked.extend(('scripts/v213_runtime_install_coordinator.ps1', 'scripts/v213_operation_lock.ps1'))
             for relative in tracked:
                 if not relative or relative.startswith(('.github/', 'state/', 'tests/')):
                     continue
@@ -78,10 +82,12 @@ class InstallerModelAuthorityTests(unittest.TestCase):
                         user.parent.mkdir(parents=True)
                         operator = b'{"synthetic_operator_sentinel":true}'
                         user.write_bytes(operator)
-                        result = subprocess.run([shell, '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
-                            str(source / installer), '-ProjectRoot', str(source), '-RuntimeRoot', str(runtime)],
+                        temp = target / 'temp'; temp.mkdir()
+                        result = subprocess.run(harness.isolated_installer_command(
+                            shell, source / installer, '-ProjectRoot', source, '-RuntimeRoot', runtime),
                             env={**{k: v for k, v in os.environ.items() if k.casefold() != 'psmodulepath'},
-                                 'LOCALAPPDATA': str(local), 'V213_MODEL_PROFILE_JSON': 'synthetic-unqualified-override'},
+                                 'LOCALAPPDATA': str(local), 'TEMP': str(temp), 'TMP': str(temp),
+                                 'V213_MODEL_PROFILE_JSON': 'synthetic-unqualified-override'},
                             capture_output=True, timeout=60)
                         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
                         self.assertEqual(user.read_bytes(), operator)

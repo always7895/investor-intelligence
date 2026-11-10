@@ -12,6 +12,8 @@
 4. Prepare locked Worker dependencies as required by that package's installer; [dependency instructions](DEPENDENCY_LOCKING.md). The current coordinator's isolated regression requires `cloud/node_modules` when supplied by the source toolchain. Root node_modules and mutable caches are different ownership classes; do not blindly remove every directory with the same name.
 5. Verify the complete installed dependency chain, metadata, actual EXE and scheduled actions independently. Installation metadata is not model selection or live release qualification. Keep rollback originals and failure journals.
 
+The coordinator takes the relay operation mutex and checks the five project scheduled-task names before either install or restore; a busy mutex, running task, or unavailable task-state query refuses the operation before transaction writes. Keep tasks quiescent for the whole operation: a task can start after the initial snapshot, and not every task participates in the mutex. The task-provider and alternate-mutex parameters are test injection only, never for a real runtime.
+
 **安裝程式碼不等於授權部署、發布、註冊／啟動排程或傳送真實LINE。**
 Code installation does not authorize Production operations. CI remains `production_mutation_by_ci=false`.
 

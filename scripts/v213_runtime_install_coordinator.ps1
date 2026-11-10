@@ -9,7 +9,10 @@ param(
     [ValidateSet('R75_PACKAGE','LOCAL_SOURCE_CHECKOUT')][string]$PackageOrigin = 'R75_PACKAGE',
     [string]$SourceRepository = '',
     # Undo the most recent finalized install: swap <runtime>.old.<transaction> back and restore state and receipt.
-    [string]$RestorePrevious = ''
+    [string]$RestorePrevious = '',
+    # Test injection only: production callers must use the defaults.
+    [string]$OperationMutexName = 'Local\InvestorIntelligence_V213_R75_OPERATION',
+    [scriptblock]$TaskStateProvider
 )
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
@@ -396,6 +399,29 @@ function Restore-V213Metadata([string]$Path, [byte[]]$Original, [bool]$Existed, 
     return $true
 }
 
+. (Join-Path $PSScriptRoot 'v213_operation_lock.ps1')
+$operationHeld = $false
+try {
+    [void](Enter-V213OperationLock -Owner 'runtime-install' -MutexName $OperationMutexName)
+    $operationHeld = $true
+    $taskNames = @('InvestorDailyBriefing', 'InvestorIntelligence-TaifexOptionsEod',
+        'InvestorIntelligence-v213-FreeRelay', 'InvestorIntelligenceFreshnessWatchdog',
+        'InvestorIntelligenceSealedFreshness')
+    try {
+        $tasks = if ($null -ne $TaskStateProvider) { @(& $TaskStateProvider) }
+                 else { @(Get-ScheduledTask -ErrorAction Stop) }
+        foreach ($task in $tasks) {
+            if ([string]$task.TaskName -notin $taskNames) { continue }
+            $state = [string]$task.State
+            if ($state -eq 'Running') { throw 'RUNTIME_TASK_RUNNING' }
+            if ($state -notin @('Ready', 'Disabled', 'Queued')) { throw 'RUNTIME_TASK_STATE_UNKNOWN' }
+        }
+    }
+    catch {
+        if ($_.Exception.Message -in @('RUNTIME_TASK_RUNNING', 'RUNTIME_TASK_STATE_UNKNOWN')) { throw }
+        throw 'RUNTIME_TASK_QUERY_FAILED'
+    }
+
 $RuntimeRoot = [IO.Path]::GetFullPath($RuntimeRoot)
 if ($RestorePrevious) {
     . (Join-Path $PSScriptRoot 'v213_runtime_restore_previous.ps1')
@@ -735,4 +761,8 @@ catch {
 }
 finally {
     if ($lock) { $lock.Dispose() }
+}
+}
+finally {
+    if ($operationHeld) { Exit-V213OperationLock }
 }

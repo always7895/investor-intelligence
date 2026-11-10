@@ -189,8 +189,8 @@ try {
                         harness.write_new(occupied / 'sentinel.bin', b'UNIQUE_PUBLIC_SENTINEL')
                         harness.write_json(case / 'inputs.json', {'files': inputs, 'caller': caller, 'metadata': name,
                             'scope': 'SYNTHETIC_SOURCE_ENTRYPOINT_EARLY_REFUSAL', 'release_qualified': False})
-                        command = [executable, '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File',
-                                   str(source / caller), '-ProjectRoot', str(source), '-RuntimeRoot', str(runtime)]
+                        command = harness.isolated_installer_command(
+                            executable, source / caller, '-ProjectRoot', source, '-RuntimeRoot', runtime)
                         try:
                             result = subprocess.run(command, cwd=case, env=env, capture_output=True,
                                                     encoding='utf-8', errors='replace', timeout=30)
@@ -224,6 +224,7 @@ try {
         shutil.copyfile(ROOT / "install-v213-runtime.ps1", source / "install-v213-runtime.ps1")
         (source / "scripts").mkdir()
         shutil.copyfile(ROOT / "scripts/v213_runtime_install_coordinator.ps1", source / "scripts/v213_runtime_install_coordinator.ps1")
+        shutil.copyfile(ROOT / "scripts/v213_operation_lock.ps1", source / "scripts/v213_operation_lock.ps1")
         (source / "HOTFIX-REFS.json").write_text(
             '{"artifact_kind":"R75_FREE_WORKERS_RELAY_HOTFIX","package_version":"2.1.3",'
             '"source_commit":"' + "a" * 40 + '","workflow_run_id":"12345",'
@@ -235,8 +236,8 @@ try {
         local.mkdir(exist_ok=True)
         env["LOCALAPPDATA"] = str(local)
         return subprocess.run(
-            [executable, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File",
-             str(source / "install-v213-runtime.ps1"), "-ProjectRoot", str(source), "-RuntimeRoot", str(runtime)],
+            harness.isolated_installer_command(executable, source / "install-v213-runtime.ps1",
+                                               "-ProjectRoot", source, "-RuntimeRoot", runtime),
             cwd=str(local.parent), env=env, capture_output=True, encoding="utf-8", errors="replace", timeout=30,
         )
 
@@ -322,7 +323,7 @@ try {
     def _write_full_package_source(self, source):
         source.mkdir()
         tracked = subprocess.check_output(["git", "-C", str(ROOT), "ls-files", "-z"]).decode().split("\0")
-        tracked.append("scripts/v213_runtime_install_coordinator.ps1")
+        tracked.extend(("scripts/v213_runtime_install_coordinator.ps1", "scripts/v213_operation_lock.ps1"))
         for relative in tracked:
             if not relative or relative.startswith((".github/", "state/", "tests/")):
                 continue
