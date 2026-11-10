@@ -16,8 +16,11 @@ import uuid
 ROOT = Path(__file__).resolve().parents[1]
 
 CANONICAL_TEST_PS_SHA256 = '619a8b4562d85068bc8ac5a3e37fa1be15159ff9b8548c0a840c2f559a2ad42e'
-CANONICAL_LOCK_PS_SHA256 = '886e2407d7e3b7677e6e84c5cbe6eeab01cd6d77c7942f073120ec5ce3f4f69c'
-PRODUCTION_MUTEX_CONSTRUCTION = b"$mutex = New-Object Threading.Mutex($false, 'Local\\InvestorIntelligence_V213_R75_OPERATION')"
+CANONICAL_LOCK_PS_SHA256 = 'e41db5bfe5ebcf7ab0500d7330449ba6f367a91ee22b1ceb9ed29ba5cd4afdf5'
+PRODUCTION_MUTEX_DECLARATION = b"$script:V213ProductionOperationMutex = 'Local\\InvestorIntelligence_V213_R75_OPERATION'"
+PRODUCTION_MUTEX_CONSTRUCTION = b"$mutex = New-Object Threading.Mutex($false, $MutexName)"
+PRODUCTION_MUTEX_DEFAULT = b"[string]$MutexName=$script:V213ProductionOperationMutex"
+PRODUCTION_MUTEX_ISOLATION_GUARD = b"$MutexName -eq $script:V213ProductionOperationMutex"
 PRODUCTION_MUTEX_LITERAL = b"'Local\\InvestorIntelligence_V213_R75_OPERATION'"
 PRODUCTION_MUTEX_UNQUOTED = b"Local\\InvestorIntelligence_V213_R75_OPERATION"
 LEGACY_ARTIFACT_NAME = 'Investor-Intelligence-v2.1.3-R75-Free-Relay-Hotfix'
@@ -91,8 +94,10 @@ def synthetic_scope_repo(directory: Path, *, status: str = 'ACCEPTED', late_path
 
 
 def transform_operation_lock_module(raw_bytes: bytes, test_id: str) -> bytes:
-    if PRODUCTION_MUTEX_CONSTRUCTION not in raw_bytes:
-        raise ValueError("Production mutex construction not found in source bytes")
+    for required in (PRODUCTION_MUTEX_DECLARATION, PRODUCTION_MUTEX_CONSTRUCTION,
+                     PRODUCTION_MUTEX_DEFAULT, PRODUCTION_MUTEX_ISOLATION_GUARD):
+        if raw_bytes.count(required) != 1:
+            raise ValueError("Expected exactly one production mutex declaration, construction, default and guard")
     if raw_bytes.count(PRODUCTION_MUTEX_LITERAL) != 1:
         raise ValueError(
             f"Expected exactly 1 quoted production mutex literal, found {raw_bytes.count(PRODUCTION_MUTEX_LITERAL)}"
@@ -356,8 +361,12 @@ class CurrentReleaseLaneTests(unittest.TestCase):
         self.assertEqual(hashlib.sha256(canonical_test_bytes).hexdigest(), CANONICAL_TEST_PS_SHA256)
         self.assertEqual(hashlib.sha256(canonical_lock_bytes).hexdigest(), CANONICAL_LOCK_PS_SHA256)
 
-        # Assert exact production default construction and singleton literal
-        self.assertIn(PRODUCTION_MUTEX_CONSTRUCTION, canonical_lock_bytes)
+        # Pin the singleton name and all runtime uses before isolating the lock.
+        for required in (PRODUCTION_MUTEX_DECLARATION, PRODUCTION_MUTEX_CONSTRUCTION,
+                         PRODUCTION_MUTEX_DEFAULT, PRODUCTION_MUTEX_ISOLATION_GUARD):
+            self.assertEqual(canonical_lock_bytes.count(required), 1)
+            with self.assertRaises(ValueError):
+                transform_operation_lock_module(canonical_lock_bytes.replace(required, b"# removed"), "testguid")
         self.assertEqual(canonical_lock_bytes.count(PRODUCTION_MUTEX_LITERAL), 1)
         self.assertEqual(canonical_lock_bytes.count(PRODUCTION_MUTEX_UNQUOTED), 1)
 
@@ -365,12 +374,12 @@ class CurrentReleaseLaneTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             transform_operation_lock_module(b"# no mutex construction here", "testguid")
 
-        synthetic_missing_literal = PRODUCTION_MUTEX_CONSTRUCTION.replace(PRODUCTION_MUTEX_LITERAL, b"'other'")
+        synthetic_missing_literal = canonical_lock_bytes.replace(PRODUCTION_MUTEX_LITERAL, b"'other'")
         with self.assertRaises(ValueError):
             transform_operation_lock_module(synthetic_missing_literal, "testguid")
 
         # Synthetic multiple-match input must fail before subprocess launch
-        synthetic_multi = PRODUCTION_MUTEX_CONSTRUCTION + b"\n" + PRODUCTION_MUTEX_LITERAL
+        synthetic_multi = canonical_lock_bytes + b"\n" + PRODUCTION_MUTEX_LITERAL
         with self.assertRaises(ValueError):
             transform_operation_lock_module(synthetic_multi, "testguid")
 

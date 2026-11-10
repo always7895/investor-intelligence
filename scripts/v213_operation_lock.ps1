@@ -1,12 +1,13 @@
 Set-StrictMode -Version Latest
+$script:V213ProductionOperationMutex = 'Local\InvestorIntelligence_V213_R75_OPERATION'
 if (-not (Get-Variable -Scope Script -Name V213OperationLockDepth -ErrorAction SilentlyContinue)) { $script:V213OperationLockDepth = 0 }
 if (-not (Get-Variable -Scope Script -Name V213OperationLock -ErrorAction SilentlyContinue)) { $script:V213OperationLock = $null }
 if (-not (Get-Variable -Scope Script -Name V213OperationLockOwner -ErrorAction SilentlyContinue)) { $script:V213OperationLockOwner = '' }
-if (-not (Get-Variable -Scope Script -Name V213OperationLockName -ErrorAction SilentlyContinue)) { $script:V213OperationLockName = 'Local\InvestorIntelligence_V213_R75_OPERATION' }
+if (-not (Get-Variable -Scope Script -Name V213OperationLockName -ErrorAction SilentlyContinue)) { $script:V213OperationLockName = $script:V213ProductionOperationMutex }
 
 function Enter-V213OperationLock {
-    param([string]$Owner,[int]$TimeoutSeconds=0,[string]$MutexName='Local\InvestorIntelligence_V213_R75_OPERATION')
-    if ($env:V213_TEST_MUTEX_MUST_BE_ISOLATED -eq '1' -and $MutexName -eq 'Local\InvestorIntelligence_V213_R75_OPERATION') {
+    param([string]$Owner,[int]$TimeoutSeconds=0,[string]$MutexName=$script:V213ProductionOperationMutex)
+    if ($env:V213_TEST_MUTEX_MUST_BE_ISOLATED -eq '1' -and $MutexName -eq $script:V213ProductionOperationMutex) {
         throw 'V213_TEST_MUTEX_NOT_ISOLATED'
     }
     if ($script:V213OperationLockDepth -and $script:V213OperationLock) {
