@@ -1,9 +1,5 @@
 # Workspace maintenance / 工作區精簡
 
-<!-- DOCS-R1 scope -->
-> **Scope:** Technical reference; verify executable behavior against code and current source-bound evidence. Current acceptance and unresolved issues: [STATUS](../state/STATUS.md). The document itself does not authorize Production changes.
-<!-- /DOCS-R1 scope -->
-
 ## Authoritative layout
 
 - Single project home: `D:\Investor-Intelligence-LINE-Pi`.

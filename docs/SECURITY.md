@@ -1,9 +1,5 @@
 # Security and Credential Operations
 
-<!-- DOCS-R1 scope -->
-> **Scope:** Contractual safety/evidence boundary; retain exact normative markers and validate against runtime configuration. Current acceptance and unresolved issues: [STATUS](../state/STATUS.md). The document itself does not authorize Production changes.
-<!-- /DOCS-R1 scope -->
-
 _Last reconciled: 2026-08-25 Asia/Taipei_
 
 ## Normative boundary
@@ -45,7 +41,7 @@ Secrets may exist only in:
 
 Secrets never belong in source, committed JSON/TOML, logs, issues, PRs, screenshots, chats, reports, workflow summaries or release archives.
 
-The shared bot stores no raw push destination and has no push sender. Raw LINE IDs are transient event data only.
+The shared bot stores no raw push destination and has no push sender. Raw LINE IDs are transient event data only. **Ephemeral TryCloudflare hostnames must never be advertised or configured as a fixed public entrypoint.**
 
 ## Shared LINE security
 
@@ -141,3 +137,19 @@ Until this gate passes, the repository remains private and no external user is a
 ## Release security
 
 The final ZIP is built reproducibly from a clean exported tree. It excludes Git history, secrets, raw IDs, messages, owner/private files, actual portfolios, broker data, caches, reports, logs, runner state and model weights. A checksum, manifest and SBOM accompany the package.
+
+## Git-history and exact-HEAD privacy evidence (merged policy)
+
+A read-only history/current-tree inventory reports only stable finding codes, object prefix, one-way locator hash, count and PASS/FAIL. It does **not** report matched content, raw paths, personal identifiers, e-mail addresses, private holdings, credentials, tokens, environment dumps or LINE raw IDs. Required report flags:
+
+```text
+matched_content_in_report = false
+raw_paths_in_report = false
+raw_email_addresses_in_report = false
+secret_values_in_report = false
+owner_financial_data_in_report = false
+```
+
+Every PASS is bound to the **exact source commit**; a Markdown-only change still needs a current-tree security scan. Manifest, SHA256SUMS, SBOM, release ZIP, provenance, workflow run and receipt must agree with the release commit; never replace immutable assets or infer a current release from R75-era evidence. Historic R75 facts remain available with `git show 4494f4d:docs/GIT_HISTORY_PRIVACY_GATES.md` and are **not** today's release status. Provider-owned `refs/pull/*` are auditable, not deletable ordinary branches.
+
+Containment/revocation comes first on a new sensitive-data finding; preserve evidence and re-run exact-head gates before any approved remediation. **No routine history rewrite or force-push**, nor hiding a finding by deleting its report. Any destructive remediation needs explicit separate authorization, offline mirror, clean re-clone and independent all-object verification; keep immutable rollback evidence.

@@ -1,9 +1,5 @@
 # Revenue guidance auto-update (ORDERS-V3-AUTOUPDATE-01)
 
-<!-- DOCS-R1 scope -->
-> **Scope:** Technical reference; verify executable behavior against code and current source-bound evidence. Current acceptance and unresolved issues: [STATUS](../state/STATUS.md). The document itself does not authorize Production changes.
-<!-- /DOCS-R1 scope -->
-
 Status: **Part A slice 1 (framework + NVDA + MU) documented as accepted in this doc (`e89936f`); receipt not located in R; unverified. B0 documented as accepted in this doc (`839f2f8`); receipt not located in R; unverified. B1 effective-input boundary: the subject line of commit `77c0552` says "B1 accepted and committed"; receipt not located in R; unverified. No same-snapshot dual-acceptance receipt is claimed for any of the three. Not deployed or installed (`state/STATUS.md`: PRODUCTION_GO=false).** Source-only F03 caller/Worker composition and F05A's inactive NBIS adapter
 are not functional acceptance or activation. Installed defaults still do not select these machine paths;
 with no auto-update state root (the unchanged production case) every default build is byte-identical
@@ -17,130 +13,9 @@ Goal (operator 2026-09-29): after each results release the revenue-guidance reco
 filings without a human step. Anything that cannot be proven from the filings keeps the issuer suspended; numbers are
 never guessed and old numbers never return after a newer results event has been seen.
 
-## F05A R2 source corrections — IMPLEMENTED_UNVERIFIED, exact FIVE-path GO
+## Archived F05A R2 source-correction history
 
-Historical authority of the R2 snapshot (superseded by `AGENTS.md` and `state/STATUS.md`; not a current permission): parent archive
-`autonomous-completion-20261002/FUNCTION-05A-R2-CORRECTIONS-GO-20261002T2320Z.txt`.
-Master's fixed80 static verdict was **CHANGES_REQUIRED**, not an executed test verdict: R1 checkpoint
-`6443C7DE4D7D8FA885710216564FC55B72A6AB32C718C99165792EE56D42B589`, independently80/80,
-7changed/73unchanged and all packet pins. R2 permits ONLY verifier/updater/TS-machine/docs/STATUS;
-other75—including financial core pair/profile/defaults/overlay/P1/native—are readonly. The older F05A
-seven/nine-path GO is semantic background, NOT current expansion permission. Historical partials/R1 stay
-immutable/unaccepted. At the R2 snapshot the source was **IMPLEMENTED_UNVERIFIED / independent review pending**, not lane
-or functional acceptance, and tests/parser/extraction/replay/qualification were **NOT_RUN** (no activation); the later synthetic NBIS tests are listed in the status reconciliation at the top and do not make F05A accepted.
-
-Fresh partial packet: parent archive
-`autonomous-completion-20261002/function-05a-sol-20261002T2031350514628Z/`. Seven preimages were copied and
-verified once. Its true union is fixed F03 r3 SAME78 plus **auto_verify.py**, **79 paths**; the profile was already
-in78. Old immutable signoff/handoff prose saying profile was the extra member is wrong and remains preserved.
-The historical `FUNCTION-05A-NBIS-DEPENDENCY-EXPANSION-GO-20261002T2112Z.txt` permitted only the two
-narrow financial-core paths below, total nine then; R2 does NOT permit further edits to either. New continuation packet `function-05a-sol-continuation-20261002T2118490613395Z/`
-references partial79 and preserves ONLY two new core preimages. Final union **80=partial79+revenue_guidance.py**. F03 r3's independent
-source-static closure remains limited to its own fixed bytes; it is not acceptance of this partial source.
-
-Partial verifier work adds the distinct `NBIS_6K_TABLE_REAFFIRMATION_V1` enumeration, an adapter-specific closed
-profile validator, structural grid/header/cell helpers, calendar-quarter helpers and source-only original-FY /
-all-metrics reaffirmation predicates. The NEW continuation composes these in actual `BUILDERS` / `PLANNERS`,
-adds an **inactive** NBIS profile and closes the separate overlay/event/outcome/nested-decision and Worker dialects.
-Historical R1 fixed packet: `function-05a-sol-final-20261002T2249051461063Z/`, based on partial80 checkpoint
-`DB89B722FC9DD43D3CA816BD6902B26D7596C3BC678D423929411F1A13BD8960`, original BEFORE7 and BEFORE2.
-R2 packet: `function-05a-sol-r2-20261002T2325246310895Z/`; BEFORE5 SHA
-`727DABA55DBCDAEDFF4589526A1D35A93251F983A2DCEA88AC697800FC054412`. Actual current fixed80 matched
-R1 before edits; ONLY the five authorized CURRENT preimages were copied once. All old7+2/partials/final/
-failure/rollover evidence stays immutable. R2 fresh SAME80 identity is not functional/native/platform/capacity
-acceptance, all-functions/product completion or deployment permission.
-
-### R2 actual source corrections (no executed validation at the R2 snapshot; see the status reconciliation at the top)
-
-- **F1:** alias capacity admission BEFORE BOTH cached and fresh insertion, before unnecessary request/persist.
-  A reused raw still costs an attempt alias slot. Existing-key semantics, original byte/role/URL/clock checks and
-  all32 already accumulated witnesses remain; overflow is typed WAITING, not a deliberately oversized attempt.
-  Existing merge-overflow preservation/A1 behavior and resource/store limits stay unchanged.
-- **F2:** EVERY collected operative href in EVERY member/current/historical channel body maps to an actual
-  captured member URL. Closed MEMBERSHIP `link_accounts` covers all member-capture keys; ROUTING `channel_links`
-  covers every actual current/historical channel key. All target aliases and URLs are exact source-bound members;
-  required form/channel attachment links are additionally checked. External HTML/extensionless/unclassified
-  links refuse, even when both required attachments exist. No administrative host/extension/title/size wildcard,
-  crawler or packet 'checkedAll'. Only literal document-local anchors cannot acquire another body; mail/contact
-  schemes, unknown base/link/resource/event-handler attributes and unsupported acquisition shapes refuse.
-  Independent raw replay re-extracts complete href sets; TS mirrors full key coverage and source/target bindings.
-- **F3:** CALENDAR `tagged_proofs` covers EVERY distinct FULL original source-bound operand, including direct,
-  longer/shorter subtraction, FY-YTD and full-year/calendar operands. A period alone never deduplicates documents.
-  Exact coverage/ordered unique full identities reject sparse/duplicate/unbound proofs; ACTUAL tagged evidence
-  must match its catalog entry. Each proof reads its original document/entity/context/namespace/unit/scope/period;
-  present evidence carries closed actual fact metadata, and untagged foreign absence stays explicitly typed.
-  Namespace/entity/unit/context/scope/value conflicts refuse. Python raw replay and TS enforce coverage/metadata/
-  exact half-up half-open fences, including tiny fractions; exact fixed-point Decimal strings are not approximation.
-- **F4:** original FY range AND mandatory company-GAAP proposition use a FULL closed positive block grammar,
-  with matching complete own/adjacent FY heading, actual quote, range/scope/heading spans and versioned grammar.
-  Both positive-sentence orders are supported; unknown governing prefixes/suffixes, quotation/negation/history/
-  hypothetical/exception/mixed-clause layouts refuse rather than count positive substrings or a blacklist as proof.
-  Accounting-basis propositions also require full positive blocks; quoted HTML containers refuse inspectability.
-  TS recomputes complete grammar coverage/spans/year/endpoints/passage, not scope-keyword membership.
-- **F5:** corroboration distinguishes ONLY an ENTIRE parsed positive FY block from an ENTIRE positive comparable
-  consolidated QUARTER-actual sentence. The mandatory scope clause no longer demands an invented quarter actual
-  in that block. 'Contains guidance' is NOT a skip rule: mixed/negated/unsupported blocks refuse. Real actual
-  repetitions still bind their letter capture, complete quote/offsets, own quarter/units/exact value to statements;
-  TS parses that same meaning, not arbitrary quote text. No source rewrite/artificial financial sentence/oracle.
-
-The real updater discovers 6-K inspection leads (not invented item2.02), captures actual whole supported indices,
-forms, statements, letters and current/historical IR/wire pages via SAME transport/held B1Store. Original clocks,
-raw/canonical identities and roles remain. Form-body/header periods—not filing month—select packages. Existing fair
-queue/history/request/time/byte/store limits apply. Interrupted terminal NBIS keeps its incomplete evidence predecessor;
-an overflowing capture merge retains both bounded attempts instead of clipping or enlarging32. Foreign feed items-column
-absence is representable only for NBIS callers; A1 feed/event/numeric semantics are unchanged.
-
-Total expanded-slot reservation precedes materialization (32768 across all tables), with bounded nodes/rows/columns/
-spans/depth/attributes/text and64Mi work. Source-bound direct intervals, distinct 6M-minus-final-Q and FY-minus-initial9M,
-exact direct differences, highlights/explicit comparable consolidated letter repetitions, calendar/full-year relationships
-and narrow dated prior-comparative notes are composed. Change/comparatives/AI-cloud/ARR never substitute for group actuals.
-Whole-table GAAP/continuing-basis propositions and SAME complete original-guidance-block company-wide GAAP scope are
-required; proximity to a GAAP/company heading is insufficient. Every later captured results letter positively reaffirms
-all metrics for SAME FY without a competing numeric outlook. Original/current/intermediate membership decisions remain;
-same-anchor advancement requires a genuinely later predecessor reference, never changed actual dates.
-
-Every supported member is inspected and source-linked. Historical channel pages require their own dated identities and
-original-package links; a current copy/title match cannot clear them. Intervening/same-day/later material not positively
-covered refuses. Overlay admission independently runs the pure builder on original stored raw captures, comparing FULL
-record/decisions under installed code/profile/baseline identities. No callback stub, synthetic approval/provider/HMAC or
-role-only clearance. Worker derives mode from original hash-bound event plus independently sealed issuer/code/profile pins;
-it mirrors closed full operands/package/basis/history/reaffirmation/FY/calendar schemas and source-vs-raw binding, while
-reusing the original financial/recognition parser, active-reference descriptor, raw receipts/BOTH sites/full own-reference
-material union/ties and scoped EVIDENCE_LIMIT. Safe whole-USD amounts, exact decimal display shifts and fractional-aware
-half-up half-open fences avoid binary-fraction tolerances. **Enabled symbols remain exactly NVDA/MU.**
-
-Inspectability is deliberately closed, not universal SEC support: unreviewed aggregate/text/XML/PDF/media index members,
-opaque images/CSS-generated content/unknown scripts/acquisition shapes/operative links, missing bases/periods or competing
-guidance refuse. Only the original exact administrative EDGAR injection is excluded from inspectability preflight;
-raw/canonical hashes remain untouched. No claim that retained NBIS sources satisfy the positive grammar. Existing32
-captures/16 documents/32 decisions/8 packages/16 historical channels/24 issuer requests/256000-byte envelope limits can
-block acquisition/publication. No cap increase, silent skip/truncation or capacity proof.
-
-**Master-authorized narrow dependency correction, source-only/unverified:** the readonly financial validators explicitly admit zero
-reported current-FY YTD as `ytd_start == ytd_end == fy_start`, `ytd_revenue == 0`, `ytd_quarter_ends == []`.
-However, the FY-only calculators in `scripts/revenue_guidance.py` and `cloud/src/v213/order-forecast.ts` require
-`ytd_end == actual anchor`. With a previous-FY Q4 anchor and next-FY-only guidance, `fy_start` is the day after that
-anchor; the admitted degenerate representation cannot satisfy the calculators. A missing reconciliation is also
-unavailable; inventing a reported quarter, moving the anchor or emitting a reversed YTD span is not a solution.
-The historical continuation GO authorized only the FY-only anchor conditional in those **two exact paths**, implemented
-without execution and unchanged from partial80 in the NEW continuation. Python uses the existing require_snapshot/current-record-digest MACHINE_REPLAY auto_item;
-TS requires the private validator-created WeakSet context, AUTO and non-scoped. Both require strict finite
-nonbool numeric zero, an actual empty quarter-end array, canonical degenerate YTD at FYstart, actual anchor exactly
-the prior day, at least four reported actuals entirely before FYstart and exactly four original proven intervals
-from FYstart through FYend. Existing fiscal bounds, receipt/context/source/linkage/claim checks and downstream
-residual/n=4/allocation/TTM/scenario computation remain; no early success, new dates/intervals or packetBoolean.
-HUMAN/nonempty/concurrent/Q-only/transport branches retain original checks. This is a static source correction,
-not an executed positive/negative proof and does NOT qualify current raw NBIS scope. F05A stays OPEN; other
-unfinished functions are not DEFERRED/COMPLETE.
-
-Source prerequisites remain genuine: the pinned existing inventory has no NBIS accession-index/IR-role/wire-role
-rows; that does not prove absence elsewhere. Original numeric-source scope/basis cannot be borrowed from curated
-labels or oracle values: the Q1 letter's revenue/ARR graphic sits near AI-cloud metrics and does not itself establish
-company-wide GAAP scope; the implemented stricter documentary predicates do not manufacture that proof. Missing or ambiguous documentary proof must refuse, not be manufactured. A later
-reaffirmation must preserve original numeric source and cannot erase unresolved same-day/later material.
-
-Each immutable packet's manifest/checkpoint/signoff/handoff, not this prose, pins its own actual identities. All completion,
-admission and production flags remain false; global P0 is NOT_REAUDITED and capacity UNQUALIFIED. Process rules of the F05A era (compaction counting, `/new` replacement of the writer pane, the roles of that era) are history, superseded by `AGENTS.md` and each current GO; work continues only under an exact current GO.
+The R2 five-path source-only packet, earlier 79/80-path partials and static judgments are **historical evidence, not a renewed GO**. Exact clauses, hashes and failure packets remain at `git show 4494f4d:docs/REVENUE_GUIDANCE_AUTOUPDATE.md` and immutable receipts. The NBIS 6-K reaffirmation adapter stays disabled/unqualified and `enabled_symbols` remains NVDA/MU. Synthetic replay, Worker transport and narrow source corrections do not qualify native Windows or production admission. Never expand source paths or invent original financial scope from this summary.
 
 ## Components
 
@@ -725,24 +600,9 @@ the runtime cache). `--as-of` is accepted only with `--replay`. Exit 0 with a JS
 `SETTLED`, `WAITING`, `BLOCKED` or `ATTEMPTED` with its outcome); exit 2 with `SYSTEMIC_FAILURE` for lock, state,
 receipt-cache or persistence failures and any unexpected error.
 
-## Proven by slice 1
+## Historical slice-one replay
 
-- Real replay chains from the test baseline (`bootstrap-registry.json`, each issuer as of the release before the
-  chain) through the real release checker over complete replayed SEC, wire and IR feeds, the updater and admission:
-  NVDA 2026-02-25 -> 2026-05-20 -> 2026-08-26 and MU 2025-12-17 (waiting on its release day, verified after its 10-Q)
-  -> 2026-03-18 -> 2026-06-24. Every guidance endpoint, trailing quarter (with Q4 derivation operands) and forward
-  interval equals values typed from the filings, and the last links equal the curated production records (US$108.0B
-  ±2%, Q3 FY27; US$50.0B ± US$1.0B, FQ4-26).
-- MU's FQ4-26 successor passes its own complete next-day release check (the checker alone says `REVIEW_REQUIRED`
-  because of the same-day 8-K and wire copy; both are its proven consumed event) and is usable; the curated baseline
-  is suspended by the gate as soon as its results filing is listed, before any auto-update state exists.
-- NVDA's Q3 FY27 successor stays suspended: its own check lists the unrelated same-day IR release of 2026-08-26 (AWS
-  agreement), which nothing accounts for automatically.
-- Idempotence, historical cutoffs, detection committed before fetching, crash and outage after detection, no clearing
-  by omission or receipt retention (an item first seen during a repeated outage survives eight later checks and the
-  successful retry), detections carried across the reference change (a later or same-day item keeps the successor
-  suspended, an earlier one is superseded), the detection-overflow barrier, re-verification after an identity change, and tamper, forgery,
-  corruption, namespace and transport cases (see the test file; the key defences are mutation-checked).
+The dated NVDA/MU synthetic and captured-event replay included same-day suspension, incomplete/detection evidence and retention checks. Original event times and frozen outcomes are at `git show 4494f4d:docs/REVENUE_GUIDANCE_AUTOUPDATE.md`; not a new production or release verdict.
 
 ## Local diagnostic preview (B3-PREVIEW-01)
 
@@ -774,28 +634,9 @@ Explicit deferrals (this preview is none of them, and accepts none of them):
   `PRODUCTION_GO` and `FINAL_RELEASE_COMPLETE` all stay false, and the existing Options/A5 acceptances are
   unchanged.
 
-## Open (later slices and Part B)
+## Deferred machine-admission work
 
-- **A2:** CRWV (quarter and full-year guidance in the official IR outlook presentation) and NBIS (6-K EX-99.1 tables
-  and EX-99.2 guidance/reaffirmation, 6M-minus-Q2 derivation) with explicit event/source adapters, active-claim
-  reference selection for concurrent claims and reaffirmations, and report-period-driven event plans (Astra A1-r2). The NBIS adapter `NBIS_6K_TABLE_REAFFIRMATION_V1` exists as source-only, inactive and unqualified (`enabled_symbols` is NVDA and MU) and is exercised only by synthetic offline tests; F05A stays OPEN.
-  **A3:** LITE, CRDO, BE, AMD, MRVL profiles. Before scaling: a persisted fair queue and demonstrated total
-  request/wall/disk budgets with several waiting issuers; bounded attempt-history growth without deleting evidence.
-- **Autonomy gap (Astra ruling 2026-09-29):** Part B may add a reviewed, versioned, positive-template classification of
-  earnings-date notices (complete official item captured, announcement-only template, issuer, period and a future
-  results date proven, whole-item exclusion checks, a distinct machine disposition bound to the bytes and replayed at
-  admission). Unrelated same-day press releases and generic 8-Ks stay suspended until a later verified release or a
-  human review; keyword absence never clears an item.
-- **Part B order (Astra `astra-priority-partb.result.md`):** B0 (documented as accepted in this doc; receipt not located in R; unverified: adapter enum, shared reference,
-  decision contract, fair queue, history segments), B1 effective-input loader (a historical batch, `astra-contract-b1.result.md`;
-  frozen production golden in the lane archive `b1-golden\`), then B2 daily caller and dirty state,
-  B3 sealed evidence and Worker readers, B4 package/end-to-end/rollout plan, all for NVDA/MU; then A2a NBIS and A2b
-  CRWV (`astra-contract-a2.result.md`) and A3. In detail: wire the checker over effective records and the updater into `run_daily_data_refresh.ps1`; the shared
-  effective-input loader for `order_forecast.py`/`publish_sealed_snapshot.py` with the release-check gate; the
-  guidance-input dirty marker and ranking rebuild; the sealed `auto_update` evidence subrecord and Worker readers
-  (`「官方財報自動核對（發布 YYYY-MM-DD）」`, typed `AUTO_UPDATE_BLOCKED`/`AUTO_UPDATE_WAITING` reasons); packaging;
-  reader-first rollout under its own plan, a Sonnet 5.5 go/no-go review and then the operator's authorization in the executing session.
-- **G9 capability lane (O7/O10/R11, decision `R/DECISION-G9-O7-LEASE-DEADLINE.md`):** when the B1 lease deadline passes, `Transport.remaining()` raises the storage `BudgetExceededError` (every non-cleanup lease operation checks the strict deadline), so the run stops with the last published pointer and the next run on a fresh lease serves the interrupted issuer in its queue turn; no WAITING outcome can be published after the deadline. Open: a publish reserve before the lease deadline (G9-O10-PUBLISH-RESERVE, needs measured native timing) and who seeds the first generation, because the capability branch requires an existing pointer (G9B-CAPABILITY-BOOTSTRAP). The mocked capability cycle (`tests/test_revenue_guidance_g9b_capability.py`) proves branch logic only; native storage, lease and readback stay G3.
+A2/A3 issuer expansion, B2 daily caller and dirty-state integration, B3 sealed Worker evidence, B4 install/native Windows capability, G9 publish reserve and first-generation bootstrap remain **unqualified** here. Existing NBIS is synthetic and disabled. The historical task queue and detailed past findings remain at `git show 4494f4d:docs/REVENUE_GUIDANCE_AUTOUPDATE.md`. Publication and rollout require fixed-snapshot independent acceptance and operator authorization.
 
 ## B3-WIRE-01 (disabled versioned transport)
 

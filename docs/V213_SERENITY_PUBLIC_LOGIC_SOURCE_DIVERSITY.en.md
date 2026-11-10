@@ -1,9 +1,5 @@
 # v2.1.3 Serenity Public-Logic Reconstruction and Source Diversity
 
-<!-- DOCS-R1 scope -->
-> **Scope:** Dated reference; not current Production status, a new approval, or deployment authority. Current acceptance and unresolved issues: [STATUS](../state/STATUS.md). The document itself does not authorize Production changes.
-<!-- /DOCS-R1 scope -->
-
 Investor Intelligence does not claim access to, or reproduction of, Serenity's private process, official formula or official score. Historical machine keys such as `serenity_score` remain only for compatibility and are displayed as **System operationalization** fields.
 
 The analysis model separates a dated identifiable Serenity public-source view from architecture/demand, evidence-bound dependency graph, bottleneck-versus-expansion state, company capture, valuation expectations, thesis killers, lifecycle/timing, the legacy system overlay, model inference and the user's long-term preference overlay.

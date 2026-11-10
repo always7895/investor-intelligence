@@ -1,9 +1,5 @@
 # Dataset-specific source review — 2026-09-09
 
-<!-- DOCS-R1 scope -->
-> **Scope:** Dated reference; not current Production status, a new approval, or deployment authority. Current acceptance and unresolved issues: [STATUS](../state/STATUS.md). The document itself does not authorize Production changes.
-<!-- /DOCS-R1 scope -->
-
 Scope: public data access and permitted roles, not Production activation or legal advice. Read original dataset terms rather than extrapolating rights from a homepage, search snippet, API availability or another dataset.
 
 ## Reviewed usable open datasets

@@ -1,9 +1,5 @@
 # KV deployment preflight
 
-<!-- DOCS-R1 scope -->
-> **Scope:** Technical reference; verify executable behavior against code and current source-bound evidence. Current acceptance and unresolved issues: [STATUS](../state/STATUS.md). The document itself does not authorize Production changes.
-<!-- /DOCS-R1 scope -->
-
 No deployment is performed during development. Before a future release can create or bind Cloudflare KV namespaces, six real IDs must be supplied outside Git and validated:
 
 ```text

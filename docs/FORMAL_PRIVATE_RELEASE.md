@@ -1,9 +1,5 @@
 # 歷史文件：Formal Private Release v2.0.0
 
-<!-- DOCS-R1 scope -->
-> **Scope:** Dated reference; not current Production status, a new approval, or deployment authority. Current acceptance and unresolved issues: [STATUS](../state/STATUS.md). The document itself does not authorize Production changes.
-<!-- /DOCS-R1 scope -->
-
 > **此文件只保留 v2.0.0 私人交付的歷史稽核內容，已由 v2.1.3 R75 FREE_RELAY 不可變正式版取代。**
 >
 > 目前正式文件：[主 README](../README.md)｜[繁體中文完整說明](../README.zh-TW.md)｜[R75 最終正式發布](FINAL_RELEASE.md)

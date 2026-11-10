@@ -1,9 +1,5 @@
 # Data-driven industry rotation v1 / 資料驅動產業輪替
 
-<!-- DOCS-R1 scope -->
-> **Scope:** Technical reference; verify executable behavior against code and current source-bound evidence. Current acceptance and unresolved issues: [STATUS](../state/STATUS.md). The document itself does not authorize Production changes.
-<!-- /DOCS-R1 scope -->
-
 [Docs index](README.md) · [Current state](../state/STATUS.md)
 
 Industry analysis is data-driven and market-responsive; every value needs a source, and the data remain diverse and refreshed after project completion.

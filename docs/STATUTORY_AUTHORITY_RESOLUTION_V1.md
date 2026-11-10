@@ -1,9 +1,5 @@
 # STATUTORY_AUTHORITY_RESOLUTION_V1 (Objective A & B)
 
-<!-- DOCS-R1 scope -->
-> **Scope:** Technical reference; verify executable behavior against code and current source-bound evidence. Current acceptance and unresolved issues: [STATUS](../state/STATUS.md). The document itself does not authorize Production changes.
-<!-- /DOCS-R1 scope -->
-
 Status: RESOLVED - documentation + fail-closed test coverage. No live HTTP
 was performed at any point; all external states below are retained audit
 observations, not re-verified claims. This is a provenance record, not

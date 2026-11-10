@@ -1,9 +1,5 @@
 # Persona Logic — Full Presentation (Serenity main logic / Aschenbrenner context logic)
 
-<!-- DOCS-R1 scope -->
-> **Scope:** Technical reference; verify executable behavior against code and current source-bound evidence. Current acceptance and unresolved issues: [STATUS](../state/STATUS.md). The document itself does not authorize Production changes.
-<!-- /DOCS-R1 scope -->
-
 Status: RESEARCH DOCUMENT (documentation/skill layer only) — 2026-09-17/18, TASK0 2J-E wheel 1.
 Authority: LOCAL-ONLY; conformed to `skills/serenity-public-research/`. Any scoring/code usage requires a separate
 Pro work-order. All dated facts below are labeled by provenance tier:

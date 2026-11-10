@@ -1,10 +1,6 @@
 # Options source review (development checkpoint)
 
-<!-- DOCS-R1 scope -->
-> **Scope:** Technical reference; verify executable behavior against code and current source-bound evidence. Current acceptance and unresolved issues: [STATUS](../state/STATUS.md). The document itself does not authorize Production changes.
-<!-- /DOCS-R1 scope -->
-
-For the broader stock/news/macro source audit and explicit local collector, see [Public source coverage / 全來源覆蓋](PUBLIC_SOURCE_COVERAGE.md). Broader coverage does not upgrade option quote eligibility.
+For the broader stock/news/macro source audit and explicit local collector, see [Public source coverage / 全來源覆蓋](SOURCE_COVERAGE_MATRIX.md). Broader coverage does not upgrade option quote eligibility.
 
 No new provider is activated by this review. Free access does not establish redistribution rights. Public LINE remains isolated from brokerage accounts. Existing prohibited-provider decisions remain intact pending explicit, evidenced policy review.
 

@@ -1,9 +1,5 @@
 # LINE all-friends access (V213_LINE_ACCESS_MODE)
 
-<!-- DOCS-R1 scope -->
-> **Scope:** Technical reference; verify executable behavior against code and current source-bound evidence. Current acceptance and unresolved issues: [STATUS](../state/STATUS.md). The document itself does not authorize Production changes.
-<!-- /DOCS-R1 scope -->
-
 Status: source-template candidate only (not deployed). The Production source template now ships `V213_LINE_ACCESS_MODE = "all_friends"`; this does not establish the live Worker configuration or authorize a deployment. A separately approved Production rollout with migration, budget and reply-quota checks is required (see [Rollout](#rollout-not-part-of-the-code-change)). Operator decision of 2026-10-11: every LINE friend in a direct chat may use the public features and the local-model Q&A, with a per-friend limit and a bounded queue so the single shared GPU is not overloaded. Personal holdings, IBKR data, scheduled push, notification settings, pairing and admin routes stay owner-only.
 
 Runtime path: `cloud/src/v213/production-worker.ts` -> `cloud/src/v211/worker.ts`. The policy lives next to the gate it replaces in `cloud/src/v211/line-access.ts`; the friend lane's counters live in the Durable Object `V213FriendQaGate` (`cloud/src/v213/friend-qa-gate.ts`). The separate shared bot (`cloud/src/worker.ts`, `LINE_ACCESS_MODE` = `disabled|allowlist`) is unchanged; the new switch has a different name on purpose.

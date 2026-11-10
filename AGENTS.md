@@ -2,7 +2,7 @@
 
 ## Project and authority
 
-Public-market research: Python collectors and gates (`scripts/`, `tests/`), LINE Worker (`cloud/`), Windows runtime and installers (`launcher/`, root `*.ps1`). [README](README.md) is for users, [STATUS](state/STATUS.md) for current acceptance, and [docs index](docs/README.md) for detailed contracts.
+Public research: Python collectors and gates (`scripts/`, `tests/`), LINE Worker (`cloud/`), Windows runtime (`launcher/`, root `*.ps1`). [README](README.md) serves users; [STATUS](state/STATUS.md) is current acceptance; [docs index](docs/README.md) stores contracts.
 
 - Respond to the operator in **Traditional Chinese (zh-TW)**. Code, commits and agent task files may use English; preserve bilingual documents.
 - **Done = the tracked writer and an independent reviewer accept the SAME fixed snapshot**. Otherwise work is **IMPLEMENTED_UNVERIFIED**, not released. **Known P0 must be zero** before shipping; BLOCKED never means PASS.
@@ -12,7 +12,7 @@ Public-market research: Python collectors and gates (`scripts/`, `tests/`), LINE
 
 ## Setup, checks and acceptance
 
-Use the hash-locked 64-bit CPython 3.12.10 resolver in an authorized local checkout; the approved venv is scoped to that checkout. Node.js version and exact Worker commands come from `cloud/package.json`. From the source root:
+Use the **hash-locked 64-bit CPython 3.12.10** resolver; the approved virtual environment is **scoped to that authorized checkout**. Node.js commands come from `cloud/package.json`. From the source root:
 
 ```powershell
 & .\scripts\resolve_python.ps1 -VenvPath .venv-local-gates -InstallLockedDependencies
@@ -24,7 +24,7 @@ $env:PYTHONUTF8 = '1'
 & $env:PROJECT_PYTHON scripts/run_offline_tests.py --repository
 ```
 
-From `cloud/`: `npm ci --ignore-scripts --no-audit --no-fund`, `npm run typecheck`, `npm test`. Focused Python: `python -m unittest tests.test_<module>` with the approved interpreter. **Stop at the first nonzero exit**; do not relabel BLOCKED as PASS. **Acceptance-grade Python evidence requires the complete H5 gate in the local workspace**, beyond a focused or ordinary offline pass ([locked dependency and gate contract](docs/DEPENDENCY_LOCKING.md)). A healthy model endpoint is **not a completed answer**, and tests alone are not new Production verification.
+From `cloud/`: `npm ci --ignore-scripts --no-audit --no-fund`, `npm run typecheck`, `npm test`. Focused Python: `python -m unittest tests.test_<module>` with the approved interpreter. Stop at first nonzero; **full H5 gate** is mandatory for acceptance ([dependency contract](docs/DEPENDENCY_LOCKING.md)). A healthy endpoint is **not a completed answer**, and focused tests are not Production proof.
 
 ## Change discipline and permissions
 
@@ -37,10 +37,9 @@ From `cloud/`: `npm ci --ignore-scripts --no-audit --no-fund`, `npm run typechec
 
 ## Research
 
-- The [Serenity public-research skill](skills/serenity-public-research/SKILL.md) is the **primary public-method lens**. **Leopold Aschenbrenner is CONTEXT_ONLY for company proof**, never a permanent sector filter or an assertion of his official investment formula. By operator decision, his scaling chain leads **industry ranking**, and his fund's effective **13F weight** leads ranking conviction in [BOTTLENECK_TOP20_V3](docs/BOTTLENECK_TOP20_V3.md). Neither author's views are independently proved company facts.
-- **Company figures come only from filings and market data.** Claims require independent, claim-level evidence; mirrors or syndications of one issuer disclosure count as **one lineage**. Attribute the original date and primary source; missing evidence stays unknown.
-- Grounded **options order parameters and position sizing are allowed** (see `cloud/src/v213/options-guidance.ts`, including liquidity, timestamp and suitability boundaries), but the system **never executes trades**. LINE uses public quote observation only; it does not access private owner or broker positions.
+- Use [Serenity research SKILL](skills/serenity-public-research/SKILL.md) and [Top20 contract](docs/BOTTLENECK_TOP20_V3.md) on demand. Serenity is a public research lens; Leopold Aschenbrenner is CONTEXT_ONLY for company proof, not a permanent filter; **his scaling chain leads industry ranking**, not company-claim proof. RULES_KEPT=0: unvalidated author-derived conviction weights.
+- Company figures require dated primary issuer filings and market data with **independent claim-level evidence**. Attribute the **original date and primary source**; mirrors or syndications of one disclosure count as **one lineage**. Unknown is not zero. Public indicative options guidance (`cloud/src/v213/options-guidance.ts`) may include risk/position sizing, bid/ask/expiry and **liquidity, timestamp and suitability boundaries**, never a trade; the LINE model sees public observations, no broker positions.
 
 ## Pull requests and evidence
 
-State the change, source and evidence cutoff, tests (exact commands/counts), risks/falsifiers, approvals required and rollback. Test the actual user-facing caller, not only a helper; distinguish released and installed behavior from the source branch. Never claim a new live rollout, model benchmark, or Production qualification from a documentation change.
+Record change, source cutoff, exact tests/exit codes, **risks/falsifiers**, approvals and rollback. Test user-facing callers, not only helpers; distinguish **released/installed behavior from the source branch**. Documentation never proves live rollout, model performance or installed qualification.

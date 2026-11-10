@@ -1,14 +1,13 @@
 # 文件索引 / Documentation index
 
-Current source, last recorded deployment observation and open work: [STATUS](../state/STATUS.md). Human overview: [README](../README.md). This index routes normative contracts, dated research and compatible historical paths; a Markdown link is not a live-validation receipt.
+Current source, last recorded deployment observation and open work: [STATUS](../state/STATUS.md). Human overview: [README](../README.md). This index routes contracts, on-demand methods and dated references; a Markdown link is not live acceptance.
 
 本索引涵蓋所有Git可見Markdown（含新文件），由離線structure gate檢查；連結通過不代表事實或外部來源已重驗。檔案不為分類而搬移。
 
 ## Start here / 入口
 
 - [README](../README.md)
-- [CHANGELOG](../CHANGELOG.md)
-- [Official guides and application](OFFICIAL_GUIDES.md)
+- [Changelog](../CHANGELOG.md) — source history, not a download attestation
 - [CONTRIBUTING](../CONTRIBUTING.md)
 - [SECURITY policy](../SECURITY.md)
 - [SUPPORT](../SUPPORT.md)
@@ -41,7 +40,6 @@ Current source, last recorded deployment observation and open work: [STATUS](../
 - [DETAILED_REPORT_CONTRACT](DETAILED_REPORT_CONTRACT.md)
 - [MODEL_RUNTIME_MIGRATION](MODEL_RUNTIME_MIGRATION.md)
 - [LOCAL_RUNTIME_INDEPENDENCE](LOCAL_RUNTIME_INDEPENDENCE.md) — local gateway contract only; no live model qualification; acceptance is STATUS-authoritative
-- [PUBLIC_SOURCE_COVERAGE](PUBLIC_SOURCE_COVERAGE.md)
 - [PUBLIC_UNIVERSE_DISCOVERY](PUBLIC_UNIVERSE_DISCOVERY.md) — 公開市場掛牌識別線索發現與覆蓋邊界（零錄取）
 - [COMPANY_CLAIM_ADMISSION_BRIDGE](COMPANY_CLAIM_ADMISSION_BRIDGE.md) — 類型化公司主張准入橋接規範
 - [PHRASE_ZH_QUALIFIED_PRESENTATION_CONTRACT](PHRASE_ZH_QUALIFIED_PRESENTATION_CONTRACT.md) — design only; no model activation
@@ -74,7 +72,6 @@ Current source, last recorded deployment observation and open work: [STATUS](../
 - [SOURCE_COVERAGE_MATRIX](SOURCE_COVERAGE_MATRIX.md)
 - [KV_DEPLOYMENT_PREFLIGHT](KV_DEPLOYMENT_PREFLIGHT.md)
 - [METHODOLOGY_ATTRIBUTION](METHODOLOGY_ATTRIBUTION.md)
-- [GIT_HISTORY_PRIVACY_GATES](GIT_HISTORY_PRIVACY_GATES.md)
 - [FINAL_CLEANUP_POLICY](FINAL_CLEANUP_POLICY.md)
 
 ## On-demand methodology / 按需研究方法
@@ -109,3 +106,12 @@ Older deployment/PASS/coverage claims here are scoped to their recorded revision
 - [FINAL_DELIVERY_REPORT_R75_FREE_RELAY](../state/FINAL_DELIVERY_REPORT_R75_FREE_RELAY.md)
 - [ROLLBACK_JARS_POINTER_BACKUP](../state/rollback-jars/README.md) — archive of retired snapshot pointer bytes (operational)
 - [TASK0_PHASE1D_SEALED_SNAPSHOT_FIXTURE](../cloud/test/fixtures/task0-phase1d/README.md) — fixed sealed-snapshot test fixture
+
+## Official instruction references (read 2026-11-10)
+
+- [Claude Code memory and CLAUDE.md](https://code.claude.com/docs/en/memory) and [best practices](https://code.claude.com/docs/en/best-practices): short scoped rules, imports, concrete checks and deny/hook follow-up for permanent prohibitions.
+- [AGENTS.md convention](https://agents.md/) and [Codex AGENTS.md](https://developers.openai.com/codex/guides/agents-md) (redirected on read to learn.chatgpt.com/docs/agent-configuration/agents-md): human README separate from agent test/permission instructions.
+- [GitHub README guidance](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-readmes), [community health](https://docs.github.com/en/communities/setting-up-your-project-for-healthy-contributions), [security](https://docs.github.com/en/code-security/how-tos/report-and-fix-vulnerabilities/configure-vulnerability-reporting/add-security-policy) and [issue templates](https://docs.github.com/en/communities/using-templates-to-encourage-useful-issues-and-pull-requests/about-issue-and-pull-request-templates): no invented release asset or security-contact address.
+- [LINE Flex](https://developers.line.biz/en/docs/messaging-api/using-flex-messages/), [Messaging API](https://developers.line.biz/en/reference/messaging-api/), [quick reply](https://developers.line.biz/en/docs/messaging-api/using-quick-reply/) and [rich menus](https://developers.line.biz/en/docs/messaging-api/rich-menus-overview/): official message constraints do not prove an actual send.
+
+Documentation gate checks links, index and markers, not runtime truth or authorization. Consult [STATUS](../state/STATUS.md) and the independent fixed-source gates before any release or Production action.

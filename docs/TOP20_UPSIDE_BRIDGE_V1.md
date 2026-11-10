@@ -1,9 +1,5 @@
 # Top20 upside ranking and order-realization bridge V1 / Top20 上漲潛力排序與訂單實現估值橋
 
-<!-- DOCS-R1 scope -->
-> **Scope:** Design or candidate contract; existence of this file does not prove implementation, admission or rollout. Current acceptance and unresolved issues: [STATUS](../state/STATUS.md). The document itself does not authorize Production changes.
-<!-- /DOCS-R1 scope -->
-
 Status (2026-09-25): design; phase 1 implemented, phases 2–5 open. "Implemented" in this document means source present; the business-profile and company deep-report lanes are IMPLEMENTED_UNVERIFIED, not accepted (`state/STATUS.md`, Open work). Operator requirements, recorded verbatim in intent:
 
 1. Rank Top20 by the composite potential of future price appreciation.

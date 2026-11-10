@@ -1,9 +1,5 @@
 # Methodology Attribution Policy
 
-<!-- DOCS-R1 scope -->
-> **Scope:** Technical reference; verify executable behavior against code and current source-bound evidence. Current acceptance and unresolved issues: [STATUS](../state/STATUS.md). The document itself does not authorize Production changes.
-<!-- /DOCS-R1 scope -->
-
 This project must distinguish four different kinds of content. They may appear in the same report, but they must never be presented as if they came from the same author.
 
 ## 1. Source view

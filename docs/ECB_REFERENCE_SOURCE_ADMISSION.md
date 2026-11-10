@@ -1,9 +1,5 @@
 # European Central Bank (ECB) Reference Source Admission
 
-<!-- DOCS-R1 scope -->
-> **Scope:** Technical reference; verify executable behavior against code and current source-bound evidence. Current acceptance and unresolved issues: [STATUS](../state/STATUS.md). The document itself does not authorize Production changes.
-<!-- /DOCS-R1 scope -->
-
 ## 1. Scope and Identity
 
 This document records the admission review and configuration contract for the European Central Bank (ECB) daily EUR/USD reference exchange rate feed (`eu_ecb_fx_reference`).

@@ -1,9 +1,5 @@
 # Phase 5 Public LINE Validation Gate
 
-<!-- DOCS-R1 scope -->
-> **Scope:** Dated reference; not current Production status, a new approval, or deployment authority. Current acceptance and unresolved issues: [STATUS](../state/STATUS.md). The document itself does not authorize Production changes.
-<!-- /DOCS-R1 scope -->
-
 _Last reconciled: 2026-08-25 Asia/Taipei_
 
 ## Normative boundary

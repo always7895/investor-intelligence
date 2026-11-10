@@ -1,9 +1,5 @@
 # QA Capacity Contract V1 (2026-09-21; base HEAD 84133f8)
 
-<!-- DOCS-R1 scope -->
-> **Scope:** Dated reference; not current Production status, a new approval, or deployment authority. Current acceptance and unresolved issues: [STATUS](../state/STATUS.md). The document itself does not authorize Production changes.
-<!-- /DOCS-R1 scope -->
-
 ## Purpose
 
 Development-only cooperative QA capacity evidence for Windows-native observation.

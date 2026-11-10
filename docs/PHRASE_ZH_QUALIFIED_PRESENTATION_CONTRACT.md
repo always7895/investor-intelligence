@@ -1,9 +1,5 @@
 # phrase_zh qualified presentation contract (design only)
 
-<!-- DOCS-R1 scope -->
-> **Scope:** Design or candidate contract; existence of this file does not prove implementation, admission or rollout. Current acceptance and unresolved issues: [STATUS](../state/STATUS.md). The document itself does not authorize Production changes.
-<!-- /DOCS-R1 scope -->
-
 Status: **PROPOSED_CONTRACT / NOT_IMPLEMENTED / QUALIFICATION_OPEN** at
 `a951ec91`. No translator/model activation, publication-schema change or qualified
 Chinese phrase is authorized. BATCH02A D6 remains unchanged; current public

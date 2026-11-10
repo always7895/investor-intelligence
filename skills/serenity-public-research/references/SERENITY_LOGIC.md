@@ -1,9 +1,5 @@
 # Serenity reasoning model — deep reconstruction
 
-<!-- DOCS-R1 scope -->
-> **Scope:** Methodology reference, not either author's private or official investment method; no authority to trade or deploy. Current acceptance and unresolved issues: [STATUS](../../../state/STATUS.md). The document itself does not authorize Production changes.
-<!-- /DOCS-R1 scope -->
-
 Public-logic reconstruction of how Serenity (@aleabitoreddit) reasons, built from attributable public posts and clearly labelled third-party analyses. It is not Serenity's official framework, private process, portfolio or advice. A Serenity post is a source view, never company evidence. Dated examples below are leads with their verification status; they are not current recommendations.
 
 ## Contents

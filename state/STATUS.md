@@ -1,92 +1,43 @@
-# Current state / 目前狀態
+# Current source and release acceptance / 目前狀態
 
-**As of 2026-11-09 (Asia/Taipei).** Branch **`integ/r2`** is the isolated Stage 1C integration candidate, continuing from Stage 1B **`29fe31eb7bc5e8b7aa00fc6c38d30b35017cf091`** on base **`65e8f5b`**, not an accepted release or deployment. Independent **ACCEPT_WITH_FIXES** is not release acceptance; status remains **IMPLEMENTED_UNVERIFIED** pending master re-review of the fixed snapshot and evidence. Release **`v3.3.0`** remains the earlier dual-accepted source snapshot **`8ff4b0722f71f983716b2accc1fadeb301e848e4`**, not the installed Worker version.
+**As of 2026-11-10 (Asia/Taipei).** source HEAD: `<filled by master at integration>`. Source acceptance, installed runtime, historical release and Production observations are separate. This is not fresh Production readback, deployment permission or independent acceptance.
 
-**As of 2026-11-09 (Asia/Taipei).** Release **`v3.3.0`** is the dual-accepted source snapshot **`8ff4b0722f71f983716b2accc1fadeb301e848e4`** (`feat/v33-options-trend`), merged to `main`. The commit that adds this page is documentation-only on top of that snapshot. The release is a source release; it is **not** the installed Worker version. This page records the project, not a task log.
+## Current gates
 
-## FIX-R2B research implementation (2026-11-09; isolated source branch only)
+- **Stage 1D options: REJECTED as shipped; Stage 1E independently reviewed ACCEPT_WITH_FIXES (2026-11-10 11:50), Stage 1F correction IN_PROGRESS in a separate lane.** The binding 2026-11-10 cohort ruling rejected Stage 1D's collapse from 292 to 47 symbols with a strategy. Require per-side quote/HV delta basis, SIVE CC/CSP/collar where eligible, both M4 sets, exact bid/ask and limit warning evidence, independent fixed-snapshot review. **Stage 1 option rules:** nearest standard monthly with **no minimum DTE**, no later-month or weekly substitution, and **no annualized-yield floor** for eligible CC/CSP. Missing evidence yields a dated refusal, not substituted data.
+- **R2B ranking: IN_PROGRESS / IMPLEMENTED_UNVERIFIED.** Round-three independent review ACCEPT_WITH_FIXES (2026-11-10 09:44); the four round-three corrections were delivered and are **under round-four review**, not accepted. Earlier 720-hour proof did not establish production-shaped object churn, independent nonranking product availability, quota/retry, 30-day two-ledger or fail-closed no-KV-write gates. Do not promote separate lane patches to release acceptance.
+- **Serenity/Leopold screener: UNVERIFIED.** Fourteen exploratory rules, RULES_KEPT=0; weight 0 for all until broad point-in-time SEC filings (>=3 years, including delisted issuers), >=5 years of prices, and independent out-of-sample tests justify adoption. Posts and 13F are dated leads/validation, never automatic source-based ranks.
+- **Top20 numeric estimates:** show evidence-labelled modelling basis for 6-month and one-year fields or an explicit verification failure; no blank-as-zero, fabricated growth or unsupported filing attribution. MOD crossing-distribution return remains withheld until entitlement-adjusted verified basis; LITE/MRVL pending deal and MRVL independent score remain gated.
+- **Acceptance rule:** IMPLEMENTED_UNVERIFIED until writer and independent reviewer accept the SAME fixed snapshot; known P0 must be zero. publication_eligible=false. Offline checks, a simulated answer, source tag or package metadata cannot replace external acceptance.
 
-- Status: **IMPLEMENTED_UNVERIFIED**, not deployed, not a release and not master/independent dual-accepted.
-- Pending merger targets are withheld with zh-TW reasons; LITE/MRVL remains a pending 4.5-share transaction.
-  MRVL retains its independently calculated score; no target gains or announced synergies are transferred.
-- MOD→THRM research calculation handles due bills, the October 2 ex-spin boundary and actual net fractional proceeds.
-  Publication restoration requires complete, rights-qualified, independently pinned primary inputs. They remain unavailable,
-  so real MOD crossing-window returns stay NULL with an explicit reason; synthetic calculation tests are not market evidence.
-- The exact eleven R3 hypotheses remain display/shadow-only, `RULES_KEPT=0`, visibly `未驗證`.
-  Bounded v3 checkpoint/tail HMAC journals need a process-only signing key and an explicit caller-owned log path.
-  Missing configuration is UNCONFIGURED, not SIGNED; journal failures remain advisory and cannot stop last-good serving.
-  Source hashes exclude invocation-only clocks/decay; the signed observation time remains explicit.
-- Hourly ranking evaluation uses remote-readback-confirmed order and its independent clock, not unpublished B1 completion;
-  ranking persists only ordered changes or six-hour heartbeats. Retry-inclusive UTC ledgers cap ranking400 / other products600
-  out of1,000 without borrowing. Quotes/options/coverage publish2h, prices3h and identity24h; expired bytes are omitted/refused,
-  never renewed. Fresh market-only seals reuse original core identity, ranking bytes and approval clocks. Quota holds preserve
-  verified nonempty last-good facts with their original dates; historical machine forecasts remain unavailable. No invented bootstrap.
-- 13F polls for new publications inside its cache cadence. Amendment periods and quarter-end/publication dates stay distinct;
-  partial sources are not falsely fresh. Serenity schema 4 retains original/reply/quote/repost/mirror provenance.
-- Free SEC/TWSE/TPEx/DART discovery extends beyond fixed layers but does not admit a company. Independently reviewed
-  issuer/counterparty body evidence, canonical SEC identity and every ordinary gate remain required; default approvals are empty.
-  Both ranking paths use controlled registry bytes; an unregistered later cache event cannot replace a registered claim.
-  Malformed relevant SEC index rows remain INVALID_SOURCE rather than falsely complete empty discovery.
-  Unresolved Korean identity, primary-data rights and real MOD price/settlement evidence remain open.
-- G06 groups 2Y → 1Y → 6M and sorts only within comparable horizons; G13 labels reported-company sample growth, not total market.
-- Installed runtime, task registration and Production are intentionally unchanged. Master acceptance, complete H5 evidence
-  and separate current-session rollout authorization remain prerequisites for any deployment.
-  Copied-data evidence and failed/retried source-gate exits belong to the isolated lane's REPORT, not release approval.
+## Live and installed boundary
 
-## Production and rollout
+- Historical source v3.3.0 and installed/Production are different. The master's 2026-11-08 **read-only /health readback** (MASTER-LIVE-ACCESS-READBACK-CLAUDECODE-a43bef58-20261108.txt) observed `all_friends`, correcting an older STATUS assertion of `owner_only`. **Actual current live mode remains UNKNOWN here**, without a fresh authorized readback; neither historical observation grants rollout permission.
+- Combined all-friends rollout was **PAUSED** by operator on 2026-11-08. Candidate release requires independent review, master GO/NO-GO, and **new explicit current-session authorization** naming the final snapshot before any Worker/KV, schedule, broker, real LINE or release operation.
+- The release-r2 report found no downloadable v3.3.0 GitHub assets; the installed tree still differs from integration and lacks required modules/catalog alignment. Coordinator closure, rollback, release ZIP/SHA-256 and source-to-installed parity remain unaccepted.
 
-- **Live Worker (master-reported):** version `18c0a22d-4e06-4f76-b687-423e524dba32`; deployed **2026-11-05T00:54:48Z** from source **`0c33b33`**; LINE access mode **`owner_only`**. These are the accepted deployment identifiers supplied by the master, not a new live readback performed in this repository.
-- **Combined all-friends rollout: PAUSED by the operator on 2026-11-08.** Do not silently switch to `all_friends` or treat a source build as deployed. Any new rollout requires a new plan, **master GO**, and **explicit current-session operator authorization**.
-- CI, an offline test, or a successful build does not qualify fresh sealed market evidence, confirm the current model endpoint or authorize LINE/KV/Worker changes.
+## Historical v3.3.0 source acceptance
 
-## Integrated source and acceptance scope
+- Historical dual-accepted source `8ff4b07`: H5 `rel1-g2` had 346 modules, 326 PASS, 20 pre-ruled BLOCKED, 0 FAIL (PASS_AS_RULED). This does not prove current installed bytes or attached release assets.
 
-- **UI-R3:** reviewed LINE display design pass, with Chinese human-facing labels and raw-code safeguards; no claim that every source renderer is live in the installed Worker.
-- **GAP-C:** completed MOD → THRM distribution on 2026-10-01 (0.44619 THRM shares per MOD share). Because adjusted entitlement prices are not independently proven, historical returns crossing the distribution are withheld as **unknown, not zero**, and the positive long-term history gate excludes MOD from V3 Top20 until qualified.
-- **MIN-1:** documented minimization of obsolete paths, preserving required tests, install/release boundaries and source evidence.
-- **Official-guides documentation:** README, AGENTS/CLAUDE, GitHub community files, SKILL and topic documents follow the official guides; every Markdown file is linked from `docs/README.md`.
-- The public-data/IBKR separation, paid-fallback refusal, rights/admission gates, sealed-object digest, snapshot freshness and rollback requirements remain mandatory. Source acceptance is not Production acceptance: `publication_eligible` stays false until a new rollout produces its own live evidence.
+## Dated open follow-ups
 
-## Stage 1 integration boundary
+- **AGLT:** 365-day listed-history admission gate; a recent listing does not confer immediate rank eligibility.
+- **Q3 2026 Aschenbrenner 13F:** recheck the primary filing and reporting period **after 2026-11-16**; an earlier report is not a current holding.
+- **LITE/MRVL:** `review_by=2026-12-07`; keep deal state pending until new primary evidence.
+- **MOD/THRM:** withhold distribution-crossing return until entitlement-adjusted prices are verified.
 
-- Monthly selection uses the nearest standard expiry without a minimum DTE, through exchange-local expiry-day close. Missing nearest chains require bounded lookup and dated refusal, not a later-month or weekly substitution.
-- Covered-call and cash-secured-put selection have no annualized-yield floor; conservative strike, delta and quote requirements remain. Low yield is a displayed fact, not a reason to suppress an otherwise eligible strategy.
-- LINE push localization precedes admission sizing, digesting and serialization; visible machine-code checks cover shared rendered fixtures. Mixed date-only and precise same-day observations preserve listing priority.
-- Catalog bytes are bound to the Worker pin with LF checkout protection. Original source refusal reasons remain visible rather than being rewritten into invented refreshed-meta explanations.
-- The lane's `REPORT-STAGE1.txt` records commits, committed-tree gates, identical-input route scans and separately recorded producer-function replay. Historical samples, synthetic fixtures, new raw recordings and regenerated metadata are distinct evidence populations.
-- No Stage 2/R2B artifact, push, release, Production change or rollout is included. Local gates do not replace independent acceptance or fresh source evidence.
+## Ordered next actions (no automatic execution authority)
 
-### Stage 1B follow-through
+1. Executor: complete Stage 1F fixes from REVIEW-INTEG-R2-STAGE1E and binding master ruling; rerun both M4 sets and SIVE CC/CSP/collar parity, then obtain independent Opus review of the identical commit.
+2. Executor: finish R2B realistic 30-day KV reservation, journal rollover, per-hour fresh/retained status, quote/options/price availability, machine/nonmachine failure and 00:00 UTC retry; independent Opus reviewer on the identical commit.
+3. Master: integrate accepted lanes into one source, rerun Python, Worker, source-bound docs, security, privacy and full H5 gates; get one independent acceptance and no known P0.
+4. Reviewer/master: dry-run qualified sealed producer plus Worker compatibility, source catalog/installation manifest closure, rollback rehearsal, immutable release package and checksum; master GO/NO-GO.
+5. Operator: new exact release/rollout and cleanup authorization; master executes only permitted phases and observes fresh Production readback. Only accepted post-deploy receipts can set FINAL_RELEASE_COMPLETE=true.
+6. Only after final release: archive evidence and backups, then separately authorized cleanup of confirmed-dead development files and runner.
 
-- M1 separates genuine provider observation clocks from acquisition clocks, including conservative handling of legacy generation-time collisions and observation-only lookup ranking.
-- M2 preserves precise per-strategy refusal reasons on validated monthly observations. Missing metadata is not proof of an absent put chain; diagnostic-only blocks do not suppress otherwise eligible prior-session carry.
-- m1 restores positive localized refusal assertions for corrupted snapshots; m3 applies currency-aware quote precision to Top20 cross-check lines without changing source values.
-- `REPORT-STAGE1B.txt` records the separate commits, bounded public acquisition, offline whole-universe function/sealer/Worker evidence and committed-tree gates. Fresh recordings, synthetic regressions and unchanged historical-corpus checks remain distinct populations; function replay is not producer-main, publication-gate or Production acceptance.
-- M3 and Stage 2 remain outside this stage; no push, tag, merge, deployment or real LINE delivery is authorized by these changes.
+## Dated references
 
-### Stage 1C follow-through
+Workspace review receipts: review-r2/REVIEW-INTEG-R2-STAGE1E.md, review-r2/REVIEW-R2B-ROUND3.md, release-r2/REPORT.txt. These paths are outside the Git checkout and represent dated independent assessments, not current release approvals. Historical state remains in Git, e.g. git show 38860e7:state/STATUS.md.
 
-- US/Stockholm CC, CSP and collar share quote-bounded midpoint LIMIT recommendations, liquidity warnings and visible LIMIT/conservative-side economics. Wide spread is no longer a refusal; delta, OTM, exact identity/strikes, expiry, freshness, rights, seals and no yield floor remain binding. One-sided references do not qualify two-sided carry.
-- Findings 1–3 distinguish empty/untyped/unreadable/no-instrument sources, verify one consistent Nordic exchange root and exact grouped strikes, and seal/display actual US source observation dates without assigning acquisition dates to prices or option legs.
-- `REPORT-STAGE1C.txt` is the lane handoff for immutable Stage 1B replay, all 28 original observations, all 13 Nordic findings, SIVE Text/Flex, the separately authorized regular-session recollection and committed-tree gates. Counts and execution HEADs belong to their recorded inputs; a new input set is not an equal-input improvement claim.
-- Only one bounded, read-only public recollection is authorized by the Stage 1C addendum. This does not authorize Stage 2, producer-main/publication acceptance, push, tag, merge, deployment, Production mutation or real LINE delivery.
-
-
-## Release acceptance (v3.3.0)
-
-- **Writer:** complete H5 gate `rel1-g2` on `8ff4b07`: 346 modules, 326 PASS, 20 BLOCKED as ruled before launch (host-bound modules), 0 FAIL; verdict PASS_AS_RULED.
-- **Independent reviewer:** separate ChatGPT review in its own clone: four gates, `cloud` typecheck and 2204 Vitest tests, release-scope Python modules all exit 0; no P0/P1. Receipts are kept in the local audit archive.
-
-## Next actions
-
-1. Re-review the Stage 1B fixed snapshot using `REPORT-STAGE1B.txt`; retain Stage 1 evidence separately. Unproved source-data cases remain open, and successful local commands do not grant release acceptance or permission to start Stage 2.
-2. Any later combined rollout requires a new plan, **master GO** and **explicit current-session operator authorization**; do not activate deployments, schedules or `all_friends` access.
-
-## Open follow-ups
-
-- **MOD:** obtain verifiable entitlement-adjusted historical returns before allowing a crossing-window CAGR to count.
-- **AGLT:** follow the listed-company lead, but respect the **365-day history admission gate**; listing is not immediate ranking eligibility.
-- **Aschenbrenner 13F:** verify the **Q3 2026 13F after 2026-11-16**, using filing date and reporting period; do not infer current positions from an earlier filing.
-- **LITE/MRVL:** next deal-state review `review_by=2026-12-07`; the merger remains a pending state until primary evidence changes it.
-
-**Boundaries:** no secret, owner/portfolio/IBKR-to-LINE data, Production mutation, paid fallback, automated trading or unauthorized rollout. Prior evidence remains in Git (`git show 38860e7:state/STATUS.md`), not as competing current-status prose.
+Safety: public-only LINE, no private IBKR-to-Worker/LINE/KV, no paid fallback, no unauthorized cloud/broker operations, no secret or identifying value in logs, no forced push, no second large local model server.

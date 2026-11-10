@@ -1,9 +1,5 @@
 # Investor Intelligence v2.1.0 正式版完整使用說明
 
-<!-- DOCS-R1 scope -->
-> **Scope:** Dated reference; not current Production status, a new approval, or deployment authority. Current acceptance and unresolved issues: [STATUS](../state/STATUS.md). The document itself does not authorize Production changes.
-<!-- /DOCS-R1 scope -->
-
 > 本文件描述 v2.1.0 最終 Windows 使用流程。排名是研究工具，不是 Serenity 或 Leopold Aschenbrenner 本人發布的股票名單、背書、投資建議或報酬保證。
 
 ## 一、核心行為

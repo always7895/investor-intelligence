@@ -1,9 +1,5 @@
 # COMPANY_EVIDENCE_CANDIDATES_INVENTORY_V1
 
-<!-- DOCS-R1 scope -->
-> **Scope:** Technical reference; verify executable behavior against code and current source-bound evidence. Current acceptance and unresolved issues: [STATUS](../state/STATUS.md). The document itself does not authorize Production changes.
-<!-- /DOCS-R1 scope -->
-
 INVESTOR_HERDR_ADMISSION_PIPELINE - candidate inventory and typed-admission
 readiness index. All evidence below is **retained digested corpus** inside
 `_workspace/audit-runtime/gemini-executor-20260914/`

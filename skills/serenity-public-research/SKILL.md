@@ -15,6 +15,10 @@ Serenity is the primary public-method lens; **Leopold Aschenbrenner** is **CONTE
 4. Label independent company facts `SUPPORTED`, model inferences `INFERENCE` and missing or unsupported data `UNSUPPORTED`/withheld. A re-post of the same SEC/issuer release is one lineage; a historical post is not the author's current position. `@stockgodserenity` is a different quarantined identity from `@aleabitoreddit`.
 5. State dated falsifiers, risk/reflexivity, source/factual period, market observation time, confidence axes and the next review trigger. Unknown is never zero, an approved trade, or a default company phase.
 
+## Current screener admission
+
+The bounded 2026-11-09 backtest assessed 14 candidate rules, with RULES_KEPT=0. No author-conditioned score or author-post mention should be promoted as validated alpha. Require at least three years of point-in-time filings with delisted issuers, five years of prices and an independent out-of-sample validation before assigning a positive rule weight. Interim conditions display 未驗證; posts and 13F remain leads only.
+
 ## Output and options boundaries
 
 - A Serenity post is an attributed source view, **not** an independently verified company fact or a direct ticker recommendation. An archive may discover leads, not certify current stance; no hard-coded ticker/sector weights.

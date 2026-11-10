@@ -1,9 +1,5 @@
 # Typed Company Claim Admission Bridge
 
-<!-- DOCS-R1 scope -->
-> **Scope:** Technical reference; verify executable behavior against code and current source-bound evidence. Current acceptance and unresolved issues: [STATUS](../state/STATUS.md). The document itself does not authorize Production changes.
-<!-- /DOCS-R1 scope -->
-
 **Lane:** `TYPED_COMPANY_CLAIM_ADMISSION_V1` / `CANONICAL_COMPANY_ACQUISITION_BINDING_V1`
 
 **Scripts:**

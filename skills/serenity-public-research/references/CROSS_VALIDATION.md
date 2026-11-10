@@ -1,5 +1,7 @@
 # 深化研究與來源交叉驗證 / Deeper research and source cross-validation
 
+> **Validation:** Only point-in-time, independently admitted evidence can promote a rule. Current automatic screener has no validated weighted rule.
+
 ## Contents
 
 - Scope; required depth; source capability matrix

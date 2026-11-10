@@ -1,9 +1,5 @@
 # Authoritative source coverage matrix
 
-<!-- DOCS-R1 scope -->
-> **Scope:** Technical reference; verify executable behavior against code and current source-bound evidence. Current acceptance and unresolved issues: [STATUS](../state/STATUS.md). The document itself does not authorize Production changes.
-<!-- /DOCS-R1 scope -->
-
 The source catalog has no fixed numeric ceiling. Coverage is expanded by authority and claim class, while runtime work remains bounded by request, byte, time, host-concurrency, retry and free-quota budgets. Catalog membership never activates a source.
 
 ## Current coverage families
@@ -55,3 +51,18 @@ A source becomes runtime-eligible only after all of the following are true for t
 11. the exact canonical candidate passes BARRY.
 
 A large catalog never overrides these gates. Unknown fields, unknown rights, unknown health and conflicting material values all fail closed.
+
+## Development-only public-source evidence (merged coverage audit)
+
+Catalog membership, a working parser or an HTTPS fetch is **not** Production admission. Run the opt-in `scripts/fetch_public_source_observations.py --fetch` collector with the checkout's locked `PROJECT_PYTHON` (64-bit CPython 3.12.10), **never arbitrary system Python** (3.13.15 failed the TWSE certificate chain). Use system+certifi CA and CERT_REQUIRED/hostname verification, **never `verify=false` or lowered verification flags**. Fixed HTTPS endpoints have a **20-second timeout and bounded read**, no credentials/proxy secrets, redirects, paid fallback or implicit retries; output is `LOCAL_PUBLIC_SOURCE_OBSERVATIONS`, `publication_eligible=false`. Keep historical pinned-runtime and failed-probe evidence separately at `state/public-source-pinned-runtime-proof.json` and `state/public-source-development-proof.json`.
+
+| Development source | Observed scope | Current boundary |
+| --- | --- | --- |
+| Federal Reserve, SEC and ECB RSS | Bounded announcements and news leads; all three fetched in local proof | Headlines are not independent issuer-fundamental claims or comprehensive breaking news |
+| TWSE and TPEx OpenAPI | Venue-specific Taiwan EOD OHLC with typed `MISSING_CLOSE` (not zero) | Two venues are not two independent quotes for one instrument |
+| Yahoo, SEC, World Bank, ECB, GLEIF, Nasdaq, SDMX | Existing/staged sources and parsers | Same-instrument US quotes, rights, freshness and runtime admission remain open |
+| TAIFEX EOD and Alpaca indicative imports | Developer-only options observations | Not a qualified public LINE quote source; no broker/public data mixing |
+
+Official pointers: https://www.federalreserve.gov/feeds/feeds.htm (terms: https://www.federalreserve.gov/disclaimer.htm ; Board-origin works generally public domain with attribution, **excluding third-party credited material**; collect **headline/link metadata only, no images or article bodies**) ; https://www.sec.gov/about/rss-feeds ; https://www.ecb.europa.eu/home/html/rss.en.html ; https://openapi.twse.com.tw/ ; https://www.tpex.org.tw/openapi/ . Preserve original date, issuer/instrument, claim/units/period and independent lineage. The shared validator rejects credential-bearing URLs, unsafe host/subdomain scopes, unreviewed TLS exceptions, nonfinite/duplicate JSON and future-clock tolerance stacking. Successful retrieval does not grant redistribution rights.
+
+A separate **116-entry research-candidate manifest** (`config/authoritative-source-catalog.research-candidate.json`) adds 15 disabled discovery-only public bank/broker, investment-manager and editorial candidates to the reviewed 101-entry default. Examples include Goldman Sachs, J.P. Morgan, Morgan Stanley, Schwab, Fidelity, UBS, BlackRock, Vanguard, PIMCO, Reuters, Bloomberg, FT, WSJ, CNBC and Morningstar. The prior sample had four readable landing pages, one HTTP403 and one aborted request; none proved an admitted article feed. **Customer-only research and reports are excluded**, even where a public publisher landing page is discoverable. Do **not** activate the 116-candidate set under the pinned 101-source policy, use paid/premium material, treat syndication as independent evidence or rank conjectured orders. US quote corroboration and public redistribution review remain unresolved.

@@ -1,9 +1,5 @@
 # Model runtime contract / 模型串接與切換
 
-<!-- DOCS-R1 scope -->
-> **Scope:** Technical reference; verify executable behavior against code and current source-bound evidence. Current acceptance and unresolved issues: [STATUS](../state/STATUS.md). The document itself does not authorize Production changes.
-<!-- /DOCS-R1 scope -->
-
 [Current acceptance](../state/STATUS.md) · [Execution lanes / SKILL audit](RESEARCH_EXECUTION_AUDIT.md)
 
 F04 source bodies are **IMPLEMENTED_UNVERIFIED**, not functional or installed acceptance. The F04 snapshot was written under the phase IMPLEMENTATION_FIRST_NO_TESTS, in which no command below was executed; the project phase is now INCREMENTAL_VERIFICATION (`state/STATUS.md`), and BATCH07 later added synthetic caller tests (see the M4 section). No endpoint, resident model, GPU, complete answer or deployment is certified here.

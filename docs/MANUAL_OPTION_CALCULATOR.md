@@ -1,9 +1,5 @@
 # Ephemeral manual option quote calculator
 
-<!-- DOCS-R1 scope -->
-> **Scope:** Technical reference; verify executable behavior against code and current source-bound evidence. Current acceptance and unresolved issues: [STATUS](../state/STATUS.md). The document itself does not authorize Production changes.
-<!-- /DOCS-R1 scope -->
-
 The shared LINE Bot has no production live option BID/ASK provider until a source passes free-access, automation, redistribution and adapter review. It must not fill that gap with scraping, brokerage data, paid feeds or invented quotes.
 
 As a deterministic fallback, an allowlisted direct-chat user may supply a complete quote in one message:

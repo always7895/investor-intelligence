@@ -1,9 +1,5 @@
 # Authoritative Global Identity Resolver v1 (Specification & Acceptance Revision 2)
 
-<!-- DOCS-R1 scope -->
-> **Scope:** Technical reference; verify executable behavior against code and current source-bound evidence. Current acceptance and unresolved issues: [STATUS](../state/STATUS.md). The document itself does not authorize Production changes.
-<!-- /DOCS-R1 scope -->
-
 ## 1. Overview & Architecture
 
 `AUTHORITATIVE_GLOBAL_IDENTITY_RESOLVER_V1` establishes a truly general, source-audited global instrument identity resolver for the Investor Intelligence LINE bot. It replaces ephemeral top-20 matching and hardcoded dictionaries with a verifiable, versioned catalog schema (`v213-global-identity-v1`).

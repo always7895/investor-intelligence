@@ -1,9 +1,5 @@
 # Source activation plan V1 / 來源啟用計畫
 
-<!-- DOCS-R1 scope -->
-> **Scope:** Design or candidate contract; existence of this file does not prove implementation, admission or rollout. Current acceptance and unresolved issues: [STATUS](../state/STATUS.md). The document itself does not authorize Production changes.
-<!-- /DOCS-R1 scope -->
-
 Status: PLAN (2026-09-25). Operator rule: every data type must come from diversified, independent sources; no single provider (for example yfinance alone). This plan measures what is actually enabled and orders the work to enable more, without bypassing rights, access or evidence gates.
 
 ## Measured state (registry `scripts/source_registry.load_registry`, 2026-09-25)

@@ -1,5 +1,7 @@
 # Engineering documentation and maintenance / 工程文件維護
 
+> **Check:** Source, reviewed patch and installed artifacts are different snapshots; verify separately.
+
 **Source of truth:** the executable code and reviewed configuration at a fixed commit. [STATUS](../state/STATUS.md) is the only current acceptance/defect/next-action ledger; [docs/README](README.md) lists technical contracts. Dated claims in older documents are historical, not permission to run them.
 
 ## How to edit
@@ -16,4 +18,4 @@
 - [AGENTS.md format](https://agents.md/) and [Claude Code instruction memory and imports](https://code.claude.com/docs/en/memory).
 - [LINE Messaging API reference](https://developers.line.biz/en/reference/messaging-api/) and [Flex layout guidance](https://developers.line.biz/en/docs/messaging-api/using-flex-messages/). The product's own limits can be **stricter** than LINE's published maxima.
 
-See [the detailed official-guide mapping](OFFICIAL_GUIDES.md) and [worktree deletion safeguards](WORKSPACE_MAINTENANCE.md).
+See [the detailed official-guide mapping](README.md) and [worktree deletion safeguards](WORKSPACE_MAINTENANCE.md).

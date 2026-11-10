@@ -1,9 +1,5 @@
 # Leopold Aschenbrenner — context model (CONTEXT_ONLY)
 
-<!-- DOCS-R1 scope -->
-> **Scope:** Methodology reference, not either author's private or official investment method; no authority to trade or deploy. Current acceptance and unresolved issues: [STATUS](../../../state/STATUS.md). The document itself does not authorize Production changes.
-<!-- /DOCS-R1 scope -->
-
 Auxiliary hypothesis layer. It is CONTEXT_ONLY: never company-fact proof, never company evidence or a second witness for a Serenity view, and never counted toward any phase or constraint family; it never restricts the discovery universe to AI. Separately, the operator decision of 2026-09-26 permits scaling-chain and dated 13F LEAD weights in industry/layer/company discovery and ranking; these separately authorized lead weights may influence ranking, and this documentation correction changes no existing weights. Essay figures are 2024 scenarios; fund filings are delayed, partial disclosures, not endorsements or current holdings. Project-authored interpretation is labelled INFERENCE.
 
 ## Contents

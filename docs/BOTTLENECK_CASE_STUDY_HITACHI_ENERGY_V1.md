@@ -1,9 +1,5 @@
 # BOTTLENECK_CASE_STUDY_HITACHI_ENERGY_V1
 
-<!-- DOCS-R1 scope -->
-> **Scope:** Technical reference; verify executable behavior against code and current source-bound evidence. Current acceptance and unresolved issues: [STATUS](../state/STATUS.md). The document itself does not authorize Production changes.
-<!-- /DOCS-R1 scope -->
-
 Canonical archetype case study for the **Power Transformer Supply-Chain
 Chokepoint** (public observables mapped to the TSE-listed vehicle
 Hitachi, and not TSE: 6501, through its Hitachi Energy division). This is a

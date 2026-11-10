@@ -1,9 +1,5 @@
 # Investor Intelligence v2.1.0：私人擁有者 LINE Top 20
 
-<!-- DOCS-R1 scope -->
-> **Scope:** Dated reference; not current Production status, a new approval, or deployment authority. Current acceptance and unresolved issues: [STATUS](../state/STATUS.md). The document itself does not authorize Production changes.
-<!-- /DOCS-R1 scope -->
-
 ## 功能範圍
 
 v2.1.0 以 **Serenity-first** 七因子框架產生公開研究 Top 20，依序以 Serenity 分數、資料品質與股票代號排序。Aschenbrenner A/B/C 只作獨立基礎設施 overlay，不加入 Serenity 主分數。

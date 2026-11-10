@@ -1,9 +1,5 @@
 # LINE Public-Options-Only Architecture
 
-<!-- DOCS-R1 scope -->
-> **Scope:** Technical reference; verify executable behavior against code and current source-bound evidence. Current acceptance and unresolved issues: [STATUS](../state/STATUS.md). The document itself does not authorize Production changes.
-<!-- /DOCS-R1 scope -->
-
 _Last updated: 2026-08-24 Asia/Taipei_
 
 ## Non-negotiable boundary

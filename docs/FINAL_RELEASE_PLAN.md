@@ -1,9 +1,5 @@
 # Release maintenance rules
 
-<!-- DOCS-R1 scope -->
-> **Scope:** Contractual safety/evidence boundary; retain exact normative markers and validate against runtime configuration. Current acceptance and unresolved issues: [STATUS](../state/STATUS.md). The document itself does not authorize Production changes.
-<!-- /DOCS-R1 scope -->
-
 Current identity/status / 最新版本與狀態：[README](../README.md) · [中英狀態 / Bilingual status](CURRENT_STATUS_BILINGUAL.md). Avoid duplicated version tables / 不重複維護版本表。
 
 ## 不可放寬的安全邊界 / Mandatory safety boundaries

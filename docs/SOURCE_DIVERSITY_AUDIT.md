@@ -1,9 +1,5 @@
 # Source diversity audit / 資料來源多元化稽核
 
-<!-- DOCS-R1 scope -->
-> **Scope:** Dated reference; not current Production status, a new approval, or deployment authority. Current acceptance and unresolved issues: [STATUS](../state/STATUS.md). The document itself does not authorize Production changes.
-<!-- /DOCS-R1 scope -->
-
 Operator rule (2026-09-26): no data product may depend on a single source. 任何資料產品都不得單一依賴一個來源。
 
 Audit of 2026-09-26 (updated the same evening): read-only inventory by Gemini 3.8 (steps of `scripts/run_daily_data_refresh.ps1`, the sealed run and

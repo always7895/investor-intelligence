@@ -1,6 +1,6 @@
 # Investor Intelligence
 
-[繁體中文](README.zh-TW.md) · [Documentation](docs/README.md) · [Current source and release status](state/STATUS.md) · [Support](SUPPORT.md)
+[繁體中文](README.zh-TW.md) · [Documentation](docs/README.md) · [Changelog](CHANGELOG.md) · [Current source and release status](state/STATUS.md) · [Support](SUPPORT.md)
 
 Privacy-first public-market research with evidence-gated, indicative LINE views. It helps compare bottleneck industries, issuers, disclosed orders, historical returns and conditional revenue/price scenarios. It does **not** execute broker trades, expose a private portfolio in LINE, guarantee returns or buy paid data when a free source fails.
 
@@ -27,11 +27,9 @@ python scripts/workflow_supply_chain_gate.py
 
 For the hash-locked Python test interpreter and full offline suite, use [DEPENDENCY_LOCKING](docs/DEPENDENCY_LOCKING.md). For the Worker, run `npm ci --ignore-scripts --no-audit --no-fund`, `npm run typecheck` and `npm test` **from `cloud/`**. No command here deploys, publishes snapshots, registers schedules or sends a real LINE message.
 
-## Download, install, update and rollback
+## Delivery status and required follow-through
 
-Check the [v3.3.0 release](https://github.com/always7895/investor-intelligence/releases/tag/v3.3.0) for a qualified release asset and its checksum. As checked on 2026-11-09, that release has no attached assets; the source archive is not an accepted install package. Do not install from it as a substitute.
-
-When a qualified package is available, verify its external SHA-256 and follow [release and installation](docs/FINAL_RELEASE.md) and the package's instructions for the intended runtime. For an update, use the approved package and installed profile, preserve the coordinator's ownership manifest and previous transaction, and obtain the required separate rollout authorization. For rollback, follow the package's recorded transaction and [operator runbook](docs/OPERATOR_RUNBOOK.md); verify restored state before resuming schedules. Neither an install nor a rollback is authorized by these instructions.
+Consult [current acceptance and open gates](state/STATUS.md) and [dated source changes](CHANGELOG.md); neither the checked-out source nor historical release notes prove a downloadable or deployed artifact.
 
 ## Release, safety and help
 

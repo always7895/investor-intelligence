@@ -1,9 +1,5 @@
 # Serenity Public Research Lens — Investor Intelligence
 
-<!-- DOCS-R1 scope -->
-> **Scope:** Methodology reference, not either author's private or official investment method; no authority to trade or deploy. Current acceptance and unresolved issues: [STATUS](../../../state/STATUS.md). The document itself does not authorize Production changes.
-<!-- /DOCS-R1 scope -->
-
 ## Contents
 
 - Identity and attribution boundary

@@ -1,9 +1,5 @@
 # Publication-mode contract v2 (C1 parity)
 
-<!-- DOCS-R1 scope -->
-> **Scope:** Technical reference; verify executable behavior against code and current source-bound evidence. Current acceptance and unresolved issues: [STATUS](../state/STATUS.md). The document itself does not authorize Production changes.
-<!-- /DOCS-R1 scope -->
-
 Contract file: `config/v213-r75-publication-mode-v2.json` (id `v213-r75-publication-mode-v2`, supersedes `v213-r75-publication-mode-v1`). `config/v213-r75-publication-mode-v1.json` stays byte-identical as history: the committed live receipts `state/r75-qa-live-*.json` pin its hash and still refer to exactly that content.
 
 ## What changed

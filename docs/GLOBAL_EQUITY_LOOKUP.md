@@ -1,9 +1,5 @@
 # 全球個股快查規範 (Global Equity Lookup Specification)
 
-<!-- DOCS-R1 scope -->
-> **Scope:** Technical reference; verify executable behavior against code and current source-bound evidence. Current acceptance and unresolved issues: [STATUS](../state/STATUS.md). The document itself does not authorize Production changes.
-<!-- /DOCS-R1 scope -->
-
 > **AUTHORITATIVE GLOBAL IDENTITY RESOLVER V1 / 權威全球身分解析器 v1 候選。** 完整規格見 `docs/GLOBAL_IDENTITY_RESOLVER_V1.md` 與 audit `authoritative-global-identity-v1-research.md`。
 
 ## 1. 概述 (Overview)
