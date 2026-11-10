@@ -51,7 +51,7 @@ describe("reused-core replay: explicit expired legacy refusal is independent of 
     expect(view.integrity).toBe("sealed"); expect(view.runId).toBe(SYNTHETIC_RUN); expect(view.sealRunId).toBe(GLOBAL_RUN);
     expect(typeof report).toBe("string");
     expect(await probeLegacyReport(view, f.env, report)).toEqual({ expiredRefused: true, originalGeneratedAt: SYNTHETIC_STAMP, pipelineFresh: true });
-    expect(await loadDelayedQuote(view, "SIVE.ST")).toMatchObject({ price: 32.78, asof: GLOBAL_STAMP });
+    expect(await loadDelayedQuote(view, "SIVE.ST")).toMatchObject({ price: 32.78, asof: null, fetched_at: GLOBAL_STAMP });
     expect(await view.text(["v213:top20-report:latest"])).toBe(f.reportRaw);
     expect(JSON.parse((await view.text(["v213:activation-claim"]))!).claimed_at).toBe(SYNTHETIC_STAMP);
     expect(JSON.parse(f.kv.values.get("snapshot:current")!).public_data_as_of).toBe(SYNTHETIC_STAMP);
