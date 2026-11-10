@@ -110,6 +110,24 @@ class GateContractTests(unittest.TestCase):
 class ProductionKvAddressingTests(unittest.TestCase):
     """Every production KV command names Production explicitly; the local store is never a silent target."""
 
+    def test_deploy_gate_has_only_remote_reads_and_no_kv_mutation(self):
+        # Negative pin: do not trust a mere count of the existing GET.
+        live_lines = "\n".join(line for line in GATE.splitlines()
+                               if line.strip() and not line.lstrip().startswith("#"))
+        gets = re.findall(r"(?im)^.*\bkv\s+key\s+get\b[^\n]*", live_lines)
+        self.assertEqual(len(gets), 1, gets)
+        self.assertTrue(all("--remote" in line and "--local" not in line for line in gets))
+        self.assertNotRegex(live_lines, r"(?i)\bkv\s+(?:key\s+(?:put|delete|remove)|bulk\b|(?:put|delete)\b)")
+
+    def test_freshness_watchdog_cannot_launch_wrangler_or_mutate_kv(self):
+        watchdog = (ROOT / "scripts" / "freshness_watchdog.ps1").read_text(encoding="utf-8")
+        live_lines = "\n".join(line for line in watchdog.splitlines()
+                               if line.strip() and not line.lstrip().startswith("#"))
+        self.assertIn("--read-freshness", live_lines)
+        self.assertIn("sync_sealed_snapshot_kv.py", live_lines)
+        self.assertNotRegex(live_lines, r"(?i)\bwrangler(?:\.cmd|\.exe|\.js)?\b")
+        self.assertNotRegex(live_lines, r"(?i)\bkv\s+(?:key\s+(?:put|delete|remove)|bulk\b|(?:put|delete)\b)")
+
     def test_sync_and_rollback_pass_remote_on_every_kv_command(self):
         import rollback_sealed_snapshot as rollback
         import sync_sealed_snapshot_kv as sync

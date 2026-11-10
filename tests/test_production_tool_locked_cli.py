@@ -126,9 +126,18 @@ class StageVitestTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = Path(tmp)
             (run_dir / "summary.json").write_text(json.dumps({"top20_state": None}), encoding="utf-8")
+            # Replay reads the sealed source triplet before resolving its CLI.
+            # Keep _stage and the file/digest checks live in this negative test.
+            run_id = "20261101T000000Z-aaaaaaaaaaaa"
+            seal_text = json.dumps({"objects": {}}, separators=(",", ":"))
+            (run_dir / "objects.json").write_text(json.dumps({
+                f"snapshot:{run_id}:{replay.SEAL_KEY}": seal_text
+            }), encoding="utf-8")
+            (run_dir / "pointer.raw.json").write_text(json.dumps({
+                "run_id": run_id, "seal_sha256": replay.hashlib.sha256(seal_text.encode()).hexdigest()
+            }), encoding="utf-8")
             out = io.StringIO()
-            with mock.patch.object(replay, "stage", return_value="RUN"), \
-                    mock.patch.object(replay, "_vitest_command", side_effect=replay.LockedCliUnavailable()), \
+            with mock.patch.object(replay, "_vitest_command", side_effect=replay.LockedCliUnavailable()), \
                     mock.patch.object(replay.subprocess, "run", side_effect=no_process), contextlib.redirect_stdout(out):
                 self.assertEqual(replay.main(["--run-dir", str(run_dir)]), 1)
         self.assertEqual(json.loads(out.getvalue()), {"status": "FAIL", "failed": ["STAGE_ERROR"], "error": "LockedCliUnavailable"})
