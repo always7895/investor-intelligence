@@ -435,6 +435,12 @@ def _quote_value(value: Any, parser: Callable[[Any], float | None] = _float) -> 
 
 
 
+def _valid_model_tick(row: dict[str, Any], spot: float, dte: int, *, put: bool, buy: bool = False) -> bool:
+    """Fail closed on a historical-volatility leg with no legal executable cent."""
+    return (row.get("delta_basis") != "HISTORICAL_VOL" or
+            side_math.limit_from_computed(row, spot, dte, put=put, buy=buy) is not None)
+
+
 def _suggestion(role: str, row: dict[str, Any], spot: float, dte: int) -> dict[str, Any]:
     days = rules.effective_days(dte)  # annualization never uses fewer than one day (DTE 0 is the expiry day)
     bid, ask = row["bid"], row["ask"]
@@ -467,6 +473,7 @@ def covered_call_tiers(rows: list[dict[str, Any]], spot: float, dte: int, *,
         raise ValueError("STAGE1F_PRODUCER_LEGACY_COMMON_SIGMA_MODEL_REJECTED")
     else:
         usable = side_math.calculate_side(rows, spot, dte, None, cent_exact_only=cent_exact_only)["computed"]
+    usable = [row for row in usable if _valid_model_tick(row, spot, dte, put=False)]
     if not usable:
         return [], None
     annual = lambda row: row["bid"] / spot * 365 / days  # noqa: E731 - compare quoted-side premium, not guaranteed proceeds
@@ -573,7 +580,8 @@ def cash_secured_put_tiers(puts: list[dict[str, Any]], spot: float, dte: int, *,
         usable = analysis["computed"]
         if not usable and analysis["reason"]:
             return [], analysis["reason"]
-    band = [row for row in usable if _in_band(row, rules.CONSERVATIVE_DELTA_BAND)]
+    band = [row for row in usable if _in_band(row, rules.CONSERVATIVE_DELTA_BAND)
+            and _valid_model_tick(row, spot, dte, put=True)]
     if not band:
         low, high = rules.CONSERVATIVE_DELTA_BAND
         return [], f"所選到期價外賣權中，沒有 delta 絕對值介於 {low:.2f}–{high:.2f} 的履約價"
@@ -597,9 +605,12 @@ def collar_tiers(calls: list[dict[str, Any]], puts: list[dict[str, Any]], spot: 
                  cent_exact_only: bool = True, model: dict[str, Any] | None = None,
                  prepared_calls: list[dict[str, Any]] | None = None,
                  prepared_puts: list[dict[str, Any]] | None = None) -> tuple[dict[str, Any] | None, str | None]:
-    """({put, items}, reason): long stock + a protective put (absolute delta nearest PROTECTIVE_PUT_DELTA inside its window; buy limit = mid
-    rounded up, never above the ask) + the short call in CONSERVATIVE_DELTA_BAND (the delta nearest the lower edge first, optional
-    BALANCED nearest the upper edge). Every leg needs both quote sides and independently verified Delta; no yield floor."""
+    """({put, items}, reason): long stock + a protective put (absolute delta nearest PROTECTIVE_PUT_DELTA inside its window)
+    + the short call in CONSERVATIVE_DELTA_BAND. QUOTE_IMPLIED buy limits use
+    mid rounded UP (at or below ask); HISTORICAL_VOL buy and sell limits use
+    a model-based executable cent within [bid, floor_tick(mid)] and a leg
+    with no valid tick is refused, not repriced with midpoint fallback.
+    All legs require two-sided quotes and independently verified Delta; no yield floor."""
     if dte < 0:
         return None, "所選到期已過期，不提供領口策略建議"
     reason = _leg_quote_unavailable(puts, spot, put=True, buy=True, cent_exact_only=cent_exact_only)
@@ -612,7 +623,8 @@ def collar_tiers(calls: list[dict[str, Any]], puts: list[dict[str, Any]], spot: 
         raise ValueError("STAGE1F_PRODUCER_LEGACY_COMMON_SIGMA_MODEL_REJECTED")
     else:
         usable_puts = side_math.calculate_side(puts, spot, dte, None, put=True)["computed"]
-    protective = [row for row in usable_puts if _in_band(row, window)]
+    protective = [row for row in usable_puts if _in_band(row, window)
+                  and _valid_model_tick(row, spot, dte, put=True, buy=True)]
     if not protective:
         return None, f"所選到期價外賣權中，沒有 delta 絕對值約 {rules.PROTECTIVE_PUT_DELTA:.2f}（{window[0]:.2f}–{window[1]:.2f}）的履約價"
     reason = _leg_quote_unavailable(calls, spot, put=False, cent_exact_only=cent_exact_only)
@@ -624,7 +636,8 @@ def collar_tiers(calls: list[dict[str, Any]], puts: list[dict[str, Any]], spot: 
         raise ValueError("STAGE1F_PRODUCER_LEGACY_COMMON_SIGMA_MODEL_REJECTED")
     else:
         usable_calls = side_math.calculate_side(calls, spot, dte, None)["computed"]
-    band = [row for row in usable_calls if _in_band(row, rules.CONSERVATIVE_DELTA_BAND)]
+    band = [row for row in usable_calls if _in_band(row, rules.CONSERVATIVE_DELTA_BAND)
+            and _valid_model_tick(row, spot, dte, put=False)]
     if not band:
         low, high = rules.CONSERVATIVE_DELTA_BAND
         return None, f"所選到期價外買權中，沒有 delta 介於 {low:.2f}–{high:.2f} 的履約價"

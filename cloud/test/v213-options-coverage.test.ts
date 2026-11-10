@@ -298,6 +298,18 @@ describe("G1A observed rows", () => {
     }
   });
 
+  it("does not count a cycle whose authenticated ticker differs from its sealed object key", async () => {
+    admitSyntheticProvider();
+    const options = optionsDocument();
+    options.options.SYNTHUS00.weekly.ticker = "WRONGKEY";
+    const three = { ...IDENTITY, cycle_count: 3, ticker_key_count: 2, quote_as_of_max: "2026-09-30T17:00:00Z" };
+    const admitted = await load(derivedBody("2026-09-30T17:00:00Z", await linkOf(options), [three]), options);
+    expect(textOf(buildOptionsCoverageMessages(admitted.result))).toContain("3 個週期、2 個代號鍵");
+    const wrong = { ...three, cycle_count: 4 };
+    const refused = await load(derivedBody("2026-09-30T17:00:00Z", await linkOf(options), [wrong]), options);
+    expect(textOf(buildOptionsCoverageMessages(refused.result))).toContain(UNKNOWN_LINE);
+  });
+
   it("the options link is checked by digest and byte length; a missing link or body is unknown, never zero", async () => {
     admitSyntheticProvider();
     const options = optionsDocument();

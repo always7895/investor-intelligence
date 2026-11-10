@@ -136,11 +136,18 @@ export function decimalModelLimit(
   bid: number, ask: number, theoretical: number, buy: boolean,
 ): number | null {
   if (!positive(bid) || !positive(ask) || bid > ask || !finite(theoretical) || theoretical < 0) return null;
-  // Match Python's 12-decimal model-price quantization before exact bigint
-  // tick snapping; removes only cross-runtime BSM ULP noise at 0.01 edges.
-  const b = ratio(bid), a = ratio(ask),
-    model = ratio(Number(theoretical.toFixed(12)));
-  if (!b || !a || !model) return null;
+  // Python quantizes Decimal(str(theoretical)) to 12 places with HALF_EVEN.
+  // Number.toFixed rounds the underlying binary value and can disagree at
+  // exact decimal half-quantums; use shortest-repr bigint rational parity.
+  const b = ratio(bid), a = ratio(ask), rawModel = ratio(theoretical);
+  if (!b || !a || !rawModel) return null;
+  const scale = 1_000_000_000_000n;
+  const scaled = rawModel[0] * scale;
+  const whole = scaled / rawModel[1];
+  const remainder = scaled % rawModel[1];
+  const add = 2n * remainder > rawModel[1]
+    || (2n * remainder === rawModel[1] && whole % 2n === 1n);
+  const model = [whole + (add ? 1n : 0n), scale] as const;
   const floorCent = (n: bigint, d: bigint) => n * 100n / d;
   const ceilCent = (n: bigint, d: bigint) => (n * 100n + d - 1n) / d;
   const first = ceilCent(b[0], b[1]);

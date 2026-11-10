@@ -224,6 +224,12 @@ def calculate_side(rows: list[dict[str, Any]], spot: float, dte: int,
         if exact is None or not finite(exact) or not 0 <= exact <= 1:
             skipped.append({"strike": raw["strike"], "reason": "無可核驗的逐腿 Delta，僅剔除此合約"})
             continue
+        # A genuine historical-volatility quote may lack ANY executable cent
+        # between its Bid and floor(mid). Refuse only that leg, never abort the
+        # entire period or substitute a quote-based price for a model-based leg.
+        if basis == "HISTORICAL_VOL" and model_based_limit(raw, spot, dte, sigma, put=put, buy=False) is None:
+            skipped.append({"strike": raw["strike"], "reason": "歷史波動率腿無有效 0.01 價格格點，已拒絕此合約"})
+            continue
         entry = _entry(raw, mode=mode, sigma=sigma, bounds=(iv_bid, iv_ask), exact=exact)
         computed.append({**_leg_result(raw, exact, MODE_BASES[mode], sigma), "_wide": is_uncertain(raw, spot, dte, put=put), "_entry": entry})
     computed = _monotone_side(computed, put, skipped)
@@ -336,8 +342,8 @@ def limit_from_computed(row: dict[str, Any], spot: float, dte: int, *,
     limit = model_based_limit(row, spot, dte,
                               entry.get("sigma") if isinstance(entry, dict) else None,
                               put=put, buy=buy)
-    if limit is None:
-        raise ValueError("STAGE1G_HISTORICAL_LIMIT_NO_VALID_TICK")
+    # No executable cent => refuse this leg. calculate_side already excludes
+    # such legs before any strategy tier can choose them.
     return limit
 
 

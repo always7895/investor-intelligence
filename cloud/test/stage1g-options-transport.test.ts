@@ -54,6 +54,12 @@ describe("Stage1G executable decimal tick prices", () => {
     expect(decimalModelLimit(.335, .335, .335, false)).toBeNull();
     expect(decimalModelLimit(.335, .335, .335, true)).toBeNull();
   });
+
+  it("matches Python Decimal(str(model)) HALF_EVEN at 12 decimal places", () => {
+    expect(decimalModelLimit(.01, 1, .3400000000005, true)).toBe(.34);
+    expect(decimalModelLimit(.01, 1, .3400000000015, true)).toBe(.35);
+    expect(decimalModelLimit(.01, 1, .3400000000005, false)).toBe(.34);
+  });
 });
 
 describe("Stage1G sealed E1 historical-volatility and coverage parity", () => {
@@ -98,6 +104,10 @@ describe("Stage1G sealed E1 historical-volatility and coverage parity", () => {
       expect(accepted).not.toBeNull();
       const renderedFlex = JSON.stringify(buildCoveredCallMessages(accepted!, "每月期權", "flex"));
       const renderedText = JSON.stringify(buildCoveredCallMessages(accepted!, "每月期權", "text"));
+      const nextWeek = JSON.stringify(buildCoveredCallMessages(
+        { ...accepted!, weekly_week: "NEXT" }, "每週期權", "text"));
+      expect(nextWeek).toContain("本週已無剩餘週選，顯示下週最早到期日");
+      expect(nextWeek).not.toContain("與每月期權為同一合約");
       for (const rendered of [renderedFlex, renderedText]) {
         expect(rendered).toContain("歷史波動率模型");
         expect(rendered).not.toContain("資料暫不可用");
