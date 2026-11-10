@@ -295,7 +295,11 @@ def decimal_tick_limit(bid: float, ask: float, theoretical: float, *,
     if not (positive(bid) and positive(ask) and finite(theoretical)
             and theoretical >= 0 and bid <= ask and tick > 0):
         return None
-    lower, upper, model = (Decimal(str(v)) for v in (bid, ask, theoretical))
+    lower, upper = (Decimal(str(v)) for v in (bid, ask))
+    # Model prices come from independent Python/Worker BS inversions. A
+    # difference of a few IEEE ULPs straddling e.g. 0.0500000000000000
+    # must NOT move a buy LIMIT by a full executable cent.
+    model = Decimal(str(theoretical)).quantize(Decimal("0.000000000001"))
     mid = (lower + upper) / 2
     mid_floor = (mid / tick).to_integral_value(rounding=ROUND_FLOOR) * tick
     first_tick = (lower / tick).to_integral_value(rounding=ROUND_CEILING) * tick

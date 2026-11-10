@@ -157,6 +157,9 @@ class SideScopedDeltaTests(unittest.TestCase):
             (.01, 2.50, .0565, .05, .06),
             (.07, 2.50, .2717, .27, .28),
             (.01, .40, 0.0, .01, .01),      # zero theoretical -> Bid
+            (.05, .25, .0499999999999996, .05, .05),
+            (.05, .25, .0500000000000004, .05, .05),  # Python/TS BSM ULP boundary
+
         ]
         for bid, ask, theoretical, sell, buy in cases:
             with self.subTest(bid=bid,ask=ask,theoretical=theoretical):
