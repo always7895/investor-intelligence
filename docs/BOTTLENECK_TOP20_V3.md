@@ -421,6 +421,12 @@ Source implementation only: **IMPLEMENTED_UNVERIFIED**, not deployed or independ
   seal and pointer belong to the ranking partition only when that root persists ranking; market-only controls use600.
   Before any PUT, both full remaining plans are authorized, again on UTC rollover. Partial reservations and failures are
   charged without refunds; outcome counters include partial authorization. This is not an account-wide billing meter.
+  **Runtime-write assumption:** Worker KV writes for webhook deduplication, rate limiting and tenant epoch/memory
+  share the same Cloudflare account's daily free-tier allowance as these publisher writes. The offline
+  production-shaped proof observed a publisher peak of **287 PUT launches/day** (not live billing); the
+  400/600 ledgers reserve their entire 1,000/day for publisher pathways and do **not** reserve account-wide
+  space for Worker runtime writes or unrelated writers. Operational safety depends on measuring total account
+  consumption and treating provider DAILY_KV_LIMIT as fail-closed until the next 00:00 UTC reset.
   Provider daily-limit errors stop both partitions until00:00 UTC; the next permitted evaluation resumes without a flag.
   Budget suppression may hold a changed candidate while independently affordable products continue. Complete all-object
   readback, immutable blobs, pending-pointer ambiguity and pointer-last remain mandatory. An attempted pointer is never
