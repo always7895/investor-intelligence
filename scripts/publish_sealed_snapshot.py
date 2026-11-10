@@ -1057,6 +1057,21 @@ def lazy_market_bodies(path: Path, now: datetime) -> "dict[str, str]":
                     value = degrade_bad_strategy_blocks(value)
                     validate_covered_call_cycle(value, evaluated_at=now, document_at=doc["generated_at"], period=cycle,
                                                 allow_previous_session=True)
+                    # Stage 1E only: lossless compact transport of the authenticated
+                    # historical evidence; this is AFTER strict Python validation.
+                    # Its exact 11 fields (including source URL and raw SHA-256)
+                    # are re-expanded and authenticated by the Worker. No source
+                    # observation or trading price is modified, and the 1.9MB
+                    # maximum is never raised. Earlier cycle schemas are unchanged.
+                    if (isinstance(value, dict)
+                            and isinstance(value.get("delta_model"), str)
+                            and value["delta_model"].startswith("E1|")
+                            and isinstance(value.get("historical_volatility"), dict)):
+                        evidence = value["historical_volatility"]
+                        ordered = ("ticker", "currency", "hv20", "hv60", "observations",
+                                   "start_date_20", "start_date_60", "asof_date",
+                                   "source_url", "source_sha256", "price_basis")
+                        value = {**value, "historical_volatility": [evidence[key] for key in ordered]}
                     options[ticker][cycle] = value
                 except MarketProductValidationError as error:
                     options[ticker][cycle] = {"unavailable": f"報價未通過驗證（{str(error)[:60]}）"}

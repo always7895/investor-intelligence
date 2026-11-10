@@ -82,6 +82,7 @@ from typing import Any, Callable, Iterable
 import option_recommendation_rules as rules
 import option_historical_volatility as history_vol
 import option_delta_model as delta_math
+import option_delta_side_model as side_math
 import options_carry_forward as carry_forward
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -465,7 +466,8 @@ def _suggestion(role: str, row: dict[str, Any], spot: float, dte: int) -> dict[s
 
 
 def covered_call_tiers(rows: list[dict[str, Any]], spot: float, dte: int, *,
-                       cent_exact_only: bool = True, model: dict[str, Any] | None = None) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
+                       cent_exact_only: bool = True, model: dict[str, Any] | None = None,
+                       prepared: list[dict[str, Any]] | None = None) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
     """(suggestions, middle): the highest usable strike (HIGH_STRIKE; no yield floor), a balanced strike below it (BALANCED), and
     the optional MIDDLE strike strictly between the two (never padded, never a duplicate strike). Only out-of-the-money
     strikes with two-sided quotes qualify, and one common sigma supplies every delta.
@@ -474,11 +476,13 @@ def covered_call_tiers(rows: list[dict[str, Any]], spot: float, dte: int, *,
     if dte < 0:
         return [], None
     days = rules.effective_days(dte)
-    if model is None:
-        model, _ = _ranking_model(rows, [], spot, dte, None, cent_exact_only=cent_exact_only)
-    if model is None:
-        return [], None
-    usable = _otm_calls(rows, spot, dte, cent_exact_only, model=model)
+    if prepared is not None:
+        usable = prepared
+    elif model is not None and not side_math.is_side_model(model):
+        # Explicit legacy-model unit tests stay accepted.
+        usable = _otm_calls(rows, spot, dte, cent_exact_only, model=model)
+    else:
+        usable = side_math.calculate_side(rows, spot, dte, None, cent_exact_only=cent_exact_only)["computed"]
     if not usable:
         return [], None
     annual = lambda row: row["bid"] / spot * 365 / days  # noqa: E731 - compare quoted-side premium, not guaranteed proceeds
@@ -579,7 +583,8 @@ def _leg_quote_unavailable(rows: list[dict[str, Any]], spot: float, *, put: bool
 
 
 def cash_secured_put_tiers(puts: list[dict[str, Any]], spot: float, dte: int, *,
-                           cent_exact_only: bool = True, model: dict[str, Any] | None = None) -> tuple[list[dict[str, Any]], str | None]:
+                           cent_exact_only: bool = True, model: dict[str, Any] | None = None,
+                           prepared: list[dict[str, Any]] | None = None) -> tuple[list[dict[str, Any]], str | None]:
     """Two-sided OTM puts in the full-precision conservative delta band; premiums remain quote-based."""
     if dte < 0:
         return [], "所選到期已過期，不提供現金擔保賣權建議"
@@ -587,11 +592,15 @@ def cash_secured_put_tiers(puts: list[dict[str, Any]], spot: float, dte: int, *,
     if reason:
         return [], reason
     days = rules.effective_days(dte)
-    if model is None:
-        model, reason = _ranking_model([], puts, spot, dte, None, cent_exact_only=cent_exact_only)
-        if model is None:
-            return [], reason
-    usable = _otm_puts(puts, spot, dte, cent_exact_only, model=model)
+    if prepared is not None:
+        usable = prepared
+    elif model is not None and not side_math.is_side_model(model):
+        usable = _otm_puts(puts, spot, dte, cent_exact_only, model=model)
+    else:
+        analysis = side_math.calculate_side(puts, spot, dte, None, put=True)
+        usable = analysis["computed"]
+        if not usable and analysis["reason"]:
+            return [], analysis["reason"]
     band = [row for row in usable if _in_band(row, rules.CONSERVATIVE_DELTA_BAND)]
     if not band:
         low, high = rules.CONSERVATIVE_DELTA_BAND
@@ -611,7 +620,9 @@ def cash_secured_put_tiers(puts: list[dict[str, Any]], spot: float, dte: int, *,
 
 
 def collar_tiers(calls: list[dict[str, Any]], puts: list[dict[str, Any]], spot: float, dte: int, *,
-                 cent_exact_only: bool = True, model: dict[str, Any] | None = None) -> tuple[dict[str, Any] | None, str | None]:
+                 cent_exact_only: bool = True, model: dict[str, Any] | None = None,
+                 prepared_calls: list[dict[str, Any]] | None = None,
+                 prepared_puts: list[dict[str, Any]] | None = None) -> tuple[dict[str, Any] | None, str | None]:
     """({put, items}, reason): long stock + a protective put (absolute delta nearest PROTECTIVE_PUT_DELTA inside its window; buy limit = mid
     rounded up, never above the ask) + the short call in CONSERVATIVE_DELTA_BAND (the delta nearest the lower edge first, optional
     BALANCED nearest the upper edge). Every leg needs both quote sides and the same sigma; there is no yield floor."""
@@ -621,18 +632,24 @@ def collar_tiers(calls: list[dict[str, Any]], puts: list[dict[str, Any]], spot: 
     if reason:
         return None, reason
     window = rules.PROTECTIVE_PUT_DELTA_BAND
-    if model is None:
-        model, reason = _ranking_model(calls, puts, spot, dte, None, cent_exact_only=cent_exact_only)
-        if model is None:
-            return None, reason
-    usable_puts = _otm_puts(puts, spot, dte, cent_exact_only, model=model)
+    if prepared_puts is not None:
+        usable_puts = prepared_puts
+    elif model is not None and not side_math.is_side_model(model):
+        usable_puts = _otm_puts(puts, spot, dte, cent_exact_only, model=model)
+    else:
+        usable_puts = side_math.calculate_side(puts, spot, dte, None, put=True)["computed"]
     protective = [row for row in usable_puts if _in_band(row, window)]
     if not protective:
         return None, f"所選到期價外賣權中，沒有 delta 絕對值約 {rules.PROTECTIVE_PUT_DELTA:.2f}（{window[0]:.2f}–{window[1]:.2f}）的履約價"
     reason = _leg_quote_unavailable(calls, spot, put=False, cent_exact_only=cent_exact_only)
     if reason:
         return None, reason
-    usable_calls = _otm_calls(calls, spot, dte, cent_exact_only, model=model)
+    if prepared_calls is not None:
+        usable_calls = prepared_calls
+    elif model is not None and not side_math.is_side_model(model):
+        usable_calls = _otm_calls(calls, spot, dte, cent_exact_only, model=model)
+    else:
+        usable_calls = side_math.calculate_side(calls, spot, dte, None)["computed"]
     band = [row for row in usable_calls if _in_band(row, rules.CONSERVATIVE_DELTA_BAND)]
     if not band:
         low, high = rules.CONSERVATIVE_DELTA_BAND
@@ -656,10 +673,20 @@ def collar_tiers(calls: list[dict[str, Any]], puts: list[dict[str, Any]], spot: 
 
 
 def strategy_blocks(calls: list[dict[str, Any]], puts: list[dict[str, Any]], spot: float, dte: int, label: dict[str, Any], *,
-                    model: dict[str, Any]) -> dict[str, Any]:
-    """The additive csp and collar blocks use the cycle's single common model."""
-    csp, csp_reason = cash_secured_put_tiers(puts, spot, dte, model=model)
-    collar, collar_reason = collar_tiers(calls, puts, spot, dte, model=model)
+                    model: dict[str, Any] | None = None,
+                    prepared_calls: list[dict[str, Any]] | None = None,
+                    prepared_puts: list[dict[str, Any]] | None = None,
+                    call_reason: str | None = None, put_reason: str | None = None) -> dict[str, Any]:
+    """Stage 1E treats calls/puts independently; no shared IV intersection."""
+    csp, csp_reason = cash_secured_put_tiers(puts, spot, dte, model=model, prepared=prepared_puts)
+    collar, collar_reason = collar_tiers(calls, puts, spot, dte, model=model,
+                                        prepared_calls=prepared_calls, prepared_puts=prepared_puts)
+    if not csp and put_reason:
+        csp_reason = put_reason
+    if not collar and put_reason:
+        collar_reason = put_reason
+    elif not collar and call_reason and (not prepared_calls):
+        collar_reason = call_reason
     return {"csp": {"suggestions": csp, **label} if csp else {"unavailable": _diag(csp_reason or "")},
             "collar": {**collar, **label} if collar else {"unavailable": _diag(collar_reason or "")}}
 
@@ -689,33 +716,63 @@ def cycle_result(ticker: str, expiry: str, dte: int, spot: float, rows: list[dic
                  monthly_rule: str | None = None, historical_volatility: dict[str, Any] | None = None) -> dict[str, Any]:
     """puts (V21): the same expiry's put rows when the source answered a put side (None: the response carried none, so no `strategies`)."""
     history = _checked_history(historical_volatility, ticker, currency, stamp)
-    model, model_reason = _ranking_model(rows, puts or [], spot, dte, history)
-    if model is None:
-        return {"unavailable": _covered_call_unavailable(rows, spot, dte, expiry, model=None, model_reason=model_reason)}
-    suggestions, middle = covered_call_tiers(rows, spot, dte, model=model)
+    call_analysis = side_math.calculate_side(rows, spot, dte, history)
+    put_analysis = side_math.calculate_side(puts or [], spot, dte, history, put=True)
+    suggestions, middle = covered_call_tiers(rows, spot, dte, prepared=call_analysis["computed"])
     strategies: dict[str, Any] | None = None
     if puts is not None and identity is not None:
-        label = {"rights_status": rights, "provider_id": identity["provider_id"], "quote_basis": "delayed", "timestamp": stamp}
-        strategies = strategy_blocks(rows, puts, spot, dte, label, model=model)
+        label = {"rights_status": rights, "provider_id": identity["provider_id"],
+                 "quote_basis": "delayed", "timestamp": stamp}
+        strategies = strategy_blocks(
+            rows, puts, spot, dte, label,
+            prepared_calls=call_analysis["computed"], prepared_puts=put_analysis["computed"],
+            call_reason=call_analysis["reason"], put_reason=put_analysis["reason"])
     cc_reason = ""
     if not suggestions:
-        cc_reason = _covered_call_unavailable(rows, spot, dte, expiry, model=model)
+        if call_analysis["computed"]:
+            cc_reason = f"{expiry} 到期的價外買權中，沒有 Delta 不超過 {MAX_HIGH_STRIKE_DELTA:.2f} 的履約價"
+        else:
+            cc_reason = _covered_call_unavailable(
+                rows, spot, dte, expiry, model=None,
+                model_reason=call_analysis["reason"] or "本側缺少可核驗的有效雙邊期權腿")
         if strategies is None or all("unavailable" in block for block in strategies.values()):
             return {"unavailable": cc_reason}
-    result = {"ticker": ticker, "strategy": "COVERED_CALL", "expiry": expiry, "dte": dte, "spot": spot, "currency": currency,
-              "multiplier": 100, "quote_basis": "delayed", "timestamp": stamp, "source": source, "provenance": provenance,
-              "rights_status": rights, "suggestions": suggestions, "delta_model": model}
-    if strategies is not None:  # additive and optional: an older reader ignores it; a cycle without a covered call keeps suggestions == []
+
+    def find_row(analysis: dict[str, Any], quoted: dict[str, Any]) -> dict[str, Any]:
+        matches = [row for row in analysis["computed"] if
+                   row["strike"] == quoted["strike"] and row["bid"] == quoted["bid"] and row["ask"] == quoted["ask"]]
+        if len(matches) != 1:
+            raise ValueError("STAGE1E_SELECTED_LEG_HAS_NO_UNIQUE_SOURCE")
+        return matches[0]
+
+    selected_calls = [find_row(call_analysis, item) for item in suggestions]
+    if middle is not None:
+        selected_calls.append(find_row(call_analysis, middle))
+    selected_puts: list[dict[str, Any]] = []
+    if strategies is not None:
+        csp = strategies.get("csp", {})
+        collar = strategies.get("collar", {})
+        if "suggestions" in csp:
+            selected_puts.extend(find_row(put_analysis, item) for item in csp["suggestions"])
+        if "items" in collar:
+            selected_puts.append(find_row(put_analysis, collar["put"]))
+            selected_calls.extend(find_row(call_analysis, item["call"]) for item in collar["items"])
+    model = side_math.cycle_model_wire(call_analysis, put_analysis, selected_calls, selected_puts)
+    result = {"ticker": ticker, "strategy": "COVERED_CALL", "expiry": expiry, "dte": dte,
+              "spot": spot, "currency": currency, "multiplier": 100, "quote_basis": "delayed",
+              "timestamp": stamp, "source": source, "provenance": provenance, "rights_status": rights,
+              "suggestions": suggestions, "delta_model": model}
+    if strategies is not None:
         result["strategies"] = {"cc": {"unavailable": cc_reason}, **strategies} if not suggestions else strategies
-    if identity is not None:  # the CLAIMED catalog join identity (additive; an older reader ignores it and its catalog does not admit it)
+    if identity is not None:
         result.update(identity)
-    if middle is not None:  # additive and optional: older readers ignore it and still render the two original tiers
+    if middle is not None:
         result["middle_suggestion"] = middle
-    if asof is not None:  # the exchange-local as-of date the expiry rule was applied on (YYYY-MM-DD)
+    if asof is not None:
         result["asof_date"] = asof
-    if week is not None:  # weekly only: CURRENT (this calendar week) or NEXT (this week has no remaining weekly)
+    if week is not None:
         result["weekly_week"] = week
-    if monthly_rule is not None:  # monthly only: which branch of the standard-monthly rule chose the expiry (additive; old readers ignore it)
+    if monthly_rule is not None:
         result["monthly_rule"] = monthly_rule
     if history is not None:
         result["historical_volatility"] = history
@@ -842,12 +899,35 @@ def _monthly_quote_observation(ticker: str, spot: float, choices: list["rules.Mo
         label = {"rights_status":rights,"provider_id":identity["provider_id"],
                  "quote_basis":"delayed","timestamp":stamp}
         history = _checked_history(historical_volatility, ticker, currency, stamp)
-        model, reason = _ranking_model(same_calls, same_puts, spot, dte, history)
-        if model is not None:
-            result["delta_model"] = model
-            blocks = strategy_blocks(same_calls, same_puts, spot, dte, label, model=model)
-        else:
-            blocks = {name: {"unavailable": _diag(reason or "缺少可核驗的共同 Delta 模型")} for name in ("csp", "collar")}
+        # The observation path MUST recover independently valid CSP/collar legs
+        # even when there is no eligible covered call. Stage1D incorrectly fed
+        # both sides into a single unavailable candidate, losing put cards.
+        call_side = side_math.calculate_side(same_calls, spot, dte, history)
+        put_side = side_math.calculate_side(same_puts, spot, dte, history, put=True)
+        blocks = strategy_blocks(same_calls, same_puts, spot, dte, label,
+                                  prepared_calls=call_side["computed"],
+                                  prepared_puts=put_side["computed"],
+                                  call_reason=call_side["reason"], put_reason=put_side["reason"])
+        selected_calls = []
+        selected_puts = []
+        if "suggestions" in blocks["csp"]:
+            for item in blocks["csp"]["suggestions"]:
+                selected_puts.extend(row for row in put_side["computed"]
+                                     if row["strike"] == item["strike"]
+                                     and row["bid"] == item["bid"] and row["ask"] == item["ask"])
+        if "items" in blocks["collar"]:
+            item_put = blocks["collar"]["put"]
+            selected_puts.extend(row for row in put_side["computed"]
+                                 if row["strike"] == item_put["strike"]
+                                 and row["bid"] == item_put["bid"] and row["ask"] == item_put["ask"])
+            for item in blocks["collar"]["items"]:
+                cc = item["call"]
+                selected_calls.extend(row for row in call_side["computed"]
+                                      if row["strike"] == cc["strike"]
+                                      and row["bid"] == cc["bid"] and row["ask"] == cc["ask"])
+        if selected_calls or selected_puts:
+            result["delta_model"] = side_math.cycle_model_wire(call_side, put_side,
+                                                               selected_calls, selected_puts)
         if history is not None:
             result["historical_volatility"] = history
     else:

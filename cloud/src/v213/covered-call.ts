@@ -16,6 +16,8 @@ import {
   historicalDeltaBasisZh, validHistoricalVolatility, type HistoricalVolatility,
 } from "./historical-volatility";
 import { modelLegConsistent, validDeltaModel, type DeltaModel } from "./option-delta-model";
+import { isSideCycleDeltaModel, validSideCycleDeltaModel, parseSideDeltaModel, sideModelLegConsistent,
+  type SideCycleDeltaModel } from "./option-delta-side-model";
 import {
   LINE_THEME as T, accentHeading, altSummary, chip, detailsButton, footerStyle, menuAction, productHeader, uiBox, uiText,
 } from "./line-theme";
@@ -86,13 +88,13 @@ export interface CoveredCallCycle {
   /** Source-bound daily adjusted-close estimate; mandatory for HISTORICAL_VOL legs, never re-dated on carry. */
   historical_volatility?: HistoricalVolatility;
   /** Required for recommendations; a pure observation can have no coherent model. */
-  delta_model?: DeltaModel;
+  delta_model?: DeltaModel | SideCycleDeltaModel;
   /** Monthly cycles only: which branch of the standard-monthly rule chose the expiry (THIRD_FRIDAY, HOLIDAY_SHIFT or LATER_LISTED); absent in older rows. */
   monthly_rule?: MonthlyRule;
 }
 
 const finite = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
-const DELTA_BASES = new Set<string>(DELTA_MODEL_BASES);
+const DELTA_BASES = new Set<string>([...DELTA_MODEL_BASES, "QUOTED", "QUOTED_IV"]);
 /** The high strike's assignment cap (scripts/build_market_quotes_options.py MAX_HIGH_STRIKE_DELTA). */
 const MAX_HIGH_STRIKE_DELTA = 0.20;
 const close = (value: number, expected: number, absoluteTolerance = 1e-4) => Number.isFinite(expected)
@@ -113,11 +115,23 @@ function hasHistoricalEvidence(cycle: Record<string, unknown>): boolean {
     exchangeDate(Date.parse(cycle.timestamp), cycle.currency === "SEK" ? "STOCKHOLM" : "US"));
 }
 
-function cycleDeltaModel(cycle: Record<string, unknown>): DeltaModel | null {
+function cycleDeltaModel(cycle: Record<string, unknown>): DeltaModel | SideCycleDeltaModel | null {
   const history = hasHistoricalEvidence(cycle) ? cycle.historical_volatility as HistoricalVolatility : undefined;
+  if (isSideCycleDeltaModel(cycle.delta_model)) {
+    return validSideCycleDeltaModel(cycle.delta_model, history) ? cycle.delta_model : null;
+  }
   return validDeltaModel(cycle.delta_model, history) ? cycle.delta_model : null;
 }
-
+function cycleLegConsistent(
+  item: Record<string, unknown>, model: DeltaModel | SideCycleDeltaModel,
+  cycle: Record<string, any>, put: boolean, band?: readonly [number, number],
+): boolean {
+  if (isSideCycleDeltaModel(model)) {
+    const history = hasHistoricalEvidence(cycle) ? cycle.historical_volatility as HistoricalVolatility : undefined;
+    return sideModelLegConsistent(item, model, history, cycle.spot, cycle.dte, put, band);
+  }
+  return modelLegConsistent(item, model, cycle.spot, cycle.dte, put, band);
+}
 
 const UTC_INSTANT_RE = /^\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?Z$/;
 
@@ -175,7 +189,19 @@ function validMonthlyQuoteObservation(raw: unknown, cycle: Record<string, any>):
 export function validateCoveredCallCycle(raw: unknown, now?: number, documentGeneratedAt?: string, period?: "weekly" | "monthly",
   options?: { readonly allowPreviousSession?: boolean }): CoveredCallCycle | null {
   if (!raw || typeof raw !== "object") return null;
-  const cycle = raw as Record<string, any>;
+  const original = raw as Record<string, any>;
+  // The Stage1E sealed transport stores the same 11 authenticated historical
+  // fields in a fixed order, without repeated JSON key names. Restore before
+  // validating source, SHA, clock, history and per-leg BSM delta. The producer
+  // and older sealed cycle formats remain unchanged.
+  const history = original.historical_volatility;
+  const historyKeys = ["ticker", "currency", "hv20", "hv60", "observations",
+    "start_date_20", "start_date_60", "asof_date", "source_url",
+    "source_sha256", "price_basis"] as const;
+  if (Array.isArray(history) && history.length !== historyKeys.length) return null;
+  const cycle = Array.isArray(history)
+    ? { ...original, historical_volatility: Object.fromEntries(historyKeys.map((key, index) => [key, history[index]])) }
+    : original;
   const carried = cycle.quote_basis === PREVIOUS_SESSION_BASIS && options?.allowPreviousSession === true;
   if (cycle.strategy !== "COVERED_CALL" || (cycle.currency !== "USD" && cycle.currency !== "SEK") || cycle.multiplier !== 100
     || (cycle.quote_basis !== "delayed" && !carried) || typeof cycle.ticker !== "string" || !/^[A-Z0-9.\- ]{1,16}$/.test(cycle.ticker)
@@ -283,7 +309,7 @@ export function validateCoveredCallCycle(raw: unknown, now?: number, documentGen
     if (item.delta !== null && item.delta !== undefined && !(finite(item.delta) && item.delta >= 0 && item.delta <= 1)) return false;
     if (item.role === "HIGH_STRIKE" && !(finite(item.delta) && item.delta <= MAX_HIGH_STRIKE_DELTA)) return false;
     if (item.delta_basis !== null && item.delta_basis !== undefined && !DELTA_BASES.has(item.delta_basis)) return false;
-    if (model === null || !modelLegConsistent(item, model, cycle.spot, cycle.dte, false,
+    if (model === null || !cycleLegConsistent(item, model, cycle, false,
       item.role === "HIGH_STRIKE" ? [0, MAX_HIGH_STRIKE_DELTA] : undefined)) return false;
     if (item.iv !== null && item.iv !== undefined && !(finite(item.iv) && item.iv > 0)) return false;
     // Optional supplied liquidity/spread fields must be a finite, non-negative number when present (amendment-02):
@@ -349,13 +375,14 @@ const unavailableValid = (block: unknown): block is StrategyUnavailable => isRec
 
 /** One quoted leg: exact keys are checked by the caller, cent-exact OTM strike, executable quote
  * side, bounded limit, absolute delta in the band, and a supported (never fabricated) delta basis. */
-function legValid(leg: unknown, spot: number, kind: { buy: boolean; put: boolean; band: readonly [number, number] }, model: DeltaModel, dte: number): boolean {
+function legValid(leg: unknown, spot: number, kind: { buy: boolean; put: boolean; band: readonly [number, number] },
+  model: DeltaModel | SideCycleDeltaModel, cycle: Record<string, any>): boolean {
   if (!isRecord(leg) || !LEG_KEYS.every(key => Object.hasOwn(leg, key))) return false;
   if (!["strike", "limit_price", "delta"].every(key => finite(leg[key]))) return false;
   if (!(kind.put ? leg.strike > 0 && leg.strike < spot : leg.strike > spot && spot > 0)
     || Math.round(leg.strike * 100) / 100 !== leg.strike) return false;
   if (!validLimitQuote(leg.bid, leg.ask, leg.limit_price, kind.buy)) return false;
-  if (!modelLegConsistent(leg, model, spot, dte, kind.put, kind.band)) return false;
+  if (!cycleLegConsistent(leg, model, cycle, kind.put, kind.band)) return false;
   if (!(leg.delta > 0 && leg.delta <= 1)) return false;
   if (!(leg.delta >= kind.band[0] - DELTA_BAND_TOLERANCE && leg.delta <= kind.band[1] + DELTA_BAND_TOLERANCE)) return false;
   return typeof leg.delta_basis === "string" && DELTA_BASES.has(leg.delta_basis);
@@ -381,7 +408,7 @@ function strategyBlockValid(name: "csp" | "collar", block: unknown, cycle: Recor
     const items = labelValid(block, cycle, "suggestions");
     if (!items) return false;
     for (const item of items) {
-      if (!hasExactKeys(item, CSP_KEYS) || !legValid(item, spot, { buy: false, put: true, band: CONSERVATIVE_DELTA_BAND }, model, cycle.dte)) return false;
+      if (!hasExactKeys(item, CSP_KEYS) || !legValid(item, spot, { buy: false, put: true, band: CONSERVATIVE_DELTA_BAND }, model, cycle)) return false;
       if (!["premium_per_contract", "cash_required", "annualized_yield", "breakeven", "downside_buffer"].every(key => finite(item[key]))) return false;
       if (!close(item.premium_per_contract, item.limit_price * 100, 0.005 + 1e-9) || !close(item.cash_required, item.strike * 100)
         || !close(item.annualized_yield, item.limit_price / item.strike * 365 / days) || !close(item.breakeven, item.strike - item.limit_price)
@@ -391,11 +418,11 @@ function strategyBlockValid(name: "csp" | "collar", block: unknown, cycle: Recor
   }
   const items = labelValid(block, cycle, "items", ["put"]);
   if (!items || !isRecord(block.put) || !hasExactKeys(block.put, LEG_KEYS)
-    || !legValid(block.put, spot, { buy: true, put: true, band: PROTECTIVE_PUT_DELTA_BAND }, model, cycle.dte)) return false;
+    || !legValid(block.put, spot, { buy: true, put: true, band: PROTECTIVE_PUT_DELTA_BAND }, model, cycle)) return false;
   const put = block.put as BuyStrategyLeg;
   for (const item of items) {
     if (!hasExactKeys(item, COLLAR_KEYS) || !isRecord(item.call) || !hasExactKeys(item.call, LEG_KEYS)
-      || !legValid(item.call, spot, { buy: false, put: false, band: CONSERVATIVE_DELTA_BAND }, model, cycle.dte)) return false;
+      || !legValid(item.call, spot, { buy: false, put: false, band: CONSERVATIVE_DELTA_BAND }, model, cycle)) return false;
     if (!["net_premium_per_share", "max_loss_per_share", "max_gain_per_share", "break_even", "worst_case_net_per_share"].every(key => finite(item[key]))) return false;
     const call = item.call as SellStrategyLeg;
     const net = call.limit_price - put.limit_price;
@@ -461,9 +488,32 @@ const countZh = (value: number | null | undefined) => typeof value === "number" 
 function deltaBasisZh(cycle: CoveredCallCycle): string | null {
   const model = cycle.delta_model;
   if (!model) return null;
+  if (isSideCycleDeltaModel(model)) {
+    const descriptions: string[] = [];
+    const parsed = parseSideDeltaModel(model);
+    if (!parsed) return null;
+    for (const [key, label] of [["calls", "買權"], ["puts", "賣權"]] as const) {
+      const [basis, skippedCount, firstDroppedWide] = parsed[key];
+      if (basis === null) continue;
+      if (basis === "HISTORICAL_VOL") {
+        const h = cycle.historical_volatility;
+        if (!h) continue;
+        descriptions.push(label + " HISTORICAL_VOL：20日HV20 " + pct(h.hv20, 2)
+          + "、60日HV60 " + pct(h.hv60, 2)
+          + "；逐腿sigma=clamp(max(HV20,HV60),各腿Bid IV,各腿Ask IV)；最後收盤日 "
+          + h.asof_date + "；非報價中價反推");
+      } else {
+        descriptions.push(label + " QUOTE_IMPLIED：維持原來源IV／來源Delta／雙邊中價IV之逐腿順序");
+      }
+      if (firstDroppedWide !== null) descriptions.push(label + " 跳過 " + skippedCount
+        + " 筆不適格合約；其中履約價 " + firstDroppedWide
+        + " 的寬價差 Delta 非單調，僅剔除該腿，不影響其他有效腿");
+    }
+    return descriptions.join("；");
+  }
   if (model.basis === "HISTORICAL_VOL") return cycle.historical_volatility
     ? historicalDeltaBasisZh(cycle.historical_volatility, model.sigma) : null;
-  return `Delta 以買賣報價 IV 共同區間估算（共同波動率 ${pct(model.sigma, 2)}）`;
+  return "Delta 以買賣報價 IV 共同區間估算（共同波動率 " + pct(model.sigma, 2) + "）";
 }
 /** Role label and note. The visible title is numbered by display position (一／二／三) so numbering never has a gap: the middle
  * tier is shown only when it exists, and without it the two original titles are unchanged. */
@@ -529,7 +579,10 @@ function collarShown(cycle: CoveredCallCycle): Shown<CollarData> {
 }
 const ccNone = (cycle: CoveredCallCycle) => cycle.strategies?.cc?.unavailable ?? "本輪沒有符合條件的備兌買權";
 
-const BASIS_ZH = { QUOTE_IMPLIED: "買賣報價 IV 共同模型", HISTORICAL_VOL: "歷史波動率共同模型" } as const;
+const BASIS_ZH = {
+  QUOTE_IMPLIED: "買賣報價 IV 模型", HISTORICAL_VOL: "逐腿歷史波動率模型",
+  QUOTED_IV: "來源 IV 模型", QUOTED: "來源 Delta",
+} as const;
 const legDeltaZh = (leg: StrategyLeg) => `Delta ${leg.delta.toFixed(2)}（約 ${Math.round(leg.delta * 100)}%，${BASIS_ZH[leg.delta_basis]}）`;
 const bidAskZh = (leg: Pick<StrategyLeg, "bid" | "ask">, currency: string) => `Bid ${quoteMoney(leg.bid, currency)}／中價 ${quoteMoney(quoteMid(leg.bid, leg.ask), currency, true)}／Ask ${quoteMoney(leg.ask, currency)}`;
 const tierNameZh = (role: string) => role === "CONSERVATIVE" ? "保守型（Delta 約 0.20 起）" : "平衡型（收較多權利金）";
