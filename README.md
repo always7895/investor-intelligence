@@ -27,6 +27,12 @@ python scripts/workflow_supply_chain_gate.py
 
 For the hash-locked Python test interpreter and full offline suite, use [DEPENDENCY_LOCKING](docs/DEPENDENCY_LOCKING.md). For the Worker, run `npm ci --ignore-scripts --no-audit --no-fund`, `npm run typecheck` and `npm test` **from `cloud/`**. No command here deploys, publishes snapshots, registers schedules or sends a real LINE message.
 
+## Download, install, update and rollback
+
+Check the [v3.3.0 release](https://github.com/always7895/investor-intelligence/releases/tag/v3.3.0) for a qualified release asset and its checksum. As checked on 2026-11-09, that release has no attached assets; the source archive is not an accepted install package. Do not install from it as a substitute.
+
+When a qualified package is available, verify its external SHA-256 and follow [release and installation](docs/FINAL_RELEASE.md) and the package's instructions for the intended runtime. For an update, use the approved package and installed profile, preserve the coordinator's ownership manifest and previous transaction, and obtain the required separate rollout authorization. For rollback, follow the package's recorded transaction and [operator runbook](docs/OPERATOR_RUNBOOK.md); verify restored state before resuming schedules. Neither an install nor a rollback is authorized by these instructions.
+
 ## Release, safety and help
 
 The source revision is not an installed or released artifact. [STATUS](state/STATUS.md) records what is currently verified, any last *recorded* Production observation and the next acceptance action. A release requires immutable source-bound evidence, verified ZIP/checksums, an independent reviewer and separate operator authorization; see [release/install boundaries](docs/FINAL_RELEASE.md).

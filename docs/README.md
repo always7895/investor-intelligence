@@ -7,6 +7,7 @@ Current source, last recorded deployment observation and open work: [STATUS](../
 ## Start here / 入口
 
 - [README](../README.md)
+- [CHANGELOG](../CHANGELOG.md)
 - [Official guides and application](OFFICIAL_GUIDES.md)
 - [CONTRIBUTING](../CONTRIBUTING.md)
 - [SECURITY policy](../SECURITY.md)
