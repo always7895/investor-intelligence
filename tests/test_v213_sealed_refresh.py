@@ -365,8 +365,9 @@ exit 0
 
 LOCK_PROBE_PS = r"""$lockScript=Join-Path $PSScriptRoot 'scripts/v213_operation_lock.ps1'
 $text=Get-Content -LiteralPath $lockScript -Raw
-if($text -notmatch 'Threading\.Mutex\(\$false,\s*''Local\\([^'']+)''\)'){ "probe_status=ERROR"; exit 0 }
-$mutexName='Local\' + $Matches[1]
+$declarations=[regex]::Matches($text,'(?m)^\$script:V213ProductionOperationMutex\s*=\s*''(Local\\V213_ACK_FIXTURE_[A-Za-z0-9_-]+)''\s*$')
+if($declarations.Count-ne1){ "probe_status=ERROR"; exit 0 }
+$mutexName=$declarations[0].Groups[1].Value
 $mutex=New-Object Threading.Mutex($false,$mutexName)
 $status='ERROR'
 try{
@@ -390,8 +391,9 @@ $resultPath=Join-Path $PSScriptRoot 'lock-abandon-result.txt'
 . (Join-Path $PSScriptRoot 'scripts/v213_operation_lock.ps1')
 $lockScript=Join-Path $PSScriptRoot 'scripts/v213_operation_lock.ps1'
 $text=Get-Content -LiteralPath $lockScript -Raw
-if($text -notmatch 'Threading\.Mutex\(\$false,\s*''Local\\([^'']+)''\)'){ "probe_status=ERROR" | Set-Content -LiteralPath $resultPath -Encoding ascii; exit 0 }
-$mutex=New-Object Threading.Mutex($false,('Local\' + $Matches[1]))
+$declarations=[regex]::Matches($text,'(?m)^\$script:V213ProductionOperationMutex\s*=\s*''(Local\\V213_ACK_FIXTURE_[A-Za-z0-9_-]+)''\s*$')
+if($declarations.Count-ne1){ "probe_status=ERROR" | Set-Content -LiteralPath $resultPath -Encoding ascii; exit 0 }
+$mutex=New-Object Threading.Mutex($false,$declarations[0].Groups[1].Value)
 # All preparation is done before the ready signal: the holder exits as soon
 # as it sees ready, so WaitOne starts immediately after the signal. This
 # ready coordination is this fixture's reproduction arrangement for the
