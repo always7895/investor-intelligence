@@ -70,11 +70,19 @@ class ProtectedHostAndCaptureTests(unittest.TestCase):
             built = fixture.rank(capture)
             self.assertTrue(built["top"])
         entries = {key: value.read_bytes() if value.exists() else None for key, value in capture._entries}
-        for value in (b"{}", b'{"schema_version":1,"entries":[],"entries":[]}', ACTION_BYTES):
+        for value in (b"{}", b'{"schema_version":1,"entries":[],"entries":[]}'):
             with self.subTest(value=value):
                 entries["corporate_actions"] = value
                 with self.assertRaises(ValueError):
                     fixture.rank(publisher.CapturedPublicationInputs(entries))
+        # A real future source is valid captured data, but not yet known at
+        # this evaluation cutoff. The protected registry remains the authority.
+        entries["corporate_actions"] = ACTION_BYTES
+        with patch.object(actions, "load_actions", side_effect=AssertionError("installed file accessed")):
+            future = fixture.rank(publisher.CapturedPublicationInputs(entries))
+        self.assertEqual([row["symbol"] for row in future["top"]],
+                         [row["symbol"] for row in built["top"]])
+        self.assertFalse(any(row.get("corporate_action") for row in future["top"]))
         del entries["corporate_actions"]
         with self.assertRaisesRegex(ValueError, "CAPTURED_INPUT_NOT_SELECTED"):
             fixture.rank(publisher.CapturedPublicationInputs(entries))
@@ -97,17 +105,28 @@ class ProtectedHostAndCaptureTests(unittest.TestCase):
 
 
 class CorporateActionSchemaTests(unittest.TestCase):
-    def test_historical_installed_registry_keeps_future_sources_fail_closed(self):
+    def test_historical_installed_registry_omits_future_sources_but_validates_all(self):
         cutoff = fixture.NOW.date()
         with historical_actions() as path:
             self.assertEqual(actions.load_actions(today=cutoff),
                              actions.load_actions_bytes(fixture.old.HISTORICAL_ACTION_BYTES, today=cutoff))
-            # The current real registry is not valid September evidence, through either path adapter.
+            # On this September historical cutoff, neither the October MOD
+            # distribution nor the November LITE deal is yet known.
+            # Both adapters must preserve a valid empty registry, not refuse.
             path.write_bytes(ACTION_BYTES)
+            expected = actions.load_actions_bytes(ACTION_BYTES, today=cutoff)
+            self.assertEqual(expected["entries"], [])
             for selected in (None, path):
                 with self.subTest(default_path=selected is None):
-                    with self.assertRaisesRegex(ValueError, "CORPORATE_ACTION_CHRONOLOGY"):
-                        actions.load_actions(selected, today=cutoff)
+                    observed = actions.load_actions(selected, today=cutoff)
+                    self.assertEqual(observed, expected)
+                    self.assertNotIn("LITE", actions.pending_targets(observed))
+                    self.assertNotIn("LITE", actions.public_notes(observed, asof=cutoff))
+            self.assertEqual([entry["target_symbol"] for entry in
+                actions.load_actions_bytes(ACTION_BYTES, today=date(2026, 10, 1))["entries"]],
+                ["MOD"])
+            self.assertIn("LITE", actions.pending_targets(
+                actions.load_actions_bytes(ACTION_BYTES, today=date(2026, 11, 2))))
 
     def test_sec_archives_only_rejects_issuer_ir_and_other_sec_urls(self):
         obj = json.loads(ACTION_BYTES)
