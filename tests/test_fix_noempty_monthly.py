@@ -6,6 +6,7 @@ import math
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import build_market_quotes_options as product
 import option_delta_model as md
+import option_delta_side_model as side_math
 from validate_v213_market_products import validate_covered_call_cycle, MarketProductValidationError
 
 TODAY=date(2026,11,8)
@@ -84,15 +85,29 @@ def test_short_standard_monthly_keeps_source_evidence_and_finite_annualization(d
         missing="no listed monthly",today=today,venue="STOCKHOLM",
         identity=product.NORDIC_OPTION_IDENTITY)["monthly"]
     assert cycle["expiry"]==FIRST
-    # A 0.01/0.04 spread is not tight. Without verified HV20/HV60 it remains a
-    # quote observation for every short standard expiry; never an executable LIMIT.
-    observation=cycle["quote_observation"]
-    assert cycle["suggestions"] == []
+    # Stage1F M1 triggers HV only when the *per-leg Delta uncertainty* exceeds
+    # 0.10, not merely because the quote spread is large. Preserve an honest
+    # observation if that trigger fires with no verified HV; otherwise admit
+    # the two-sided Q leg if it has a valid out-of-money strategy.
     if bid is not None:
-        assert observation["kind"]=="TWO_SIDED"
-        assert observation["bid"]==bid and observation["ask"]==ask
-        assert observation["annualized_yield"] == round(bid/SPOT*365/max(dte,1),6)
+        uncertainty=side_math.quote_delta_uncertainty(
+            {"strike":17.0,"bid":bid,"ask":ask},SPOT,dte,put=False)
+        if uncertainty is not None and uncertainty<=.10 and cycle.get("suggestions"):
+            assert "quote_observation" not in cycle
+            leg=cycle["suggestions"][0]
+            assert leg["bid"]==bid and leg["ask"]==ask
+            assert bid<=leg["limit_price"]<=(bid+ask)/2
+            assert math.isfinite(leg["annualized_yield"])
+            assert leg["annualized_yield"]>=0
+        else:
+            observation=cycle["quote_observation"]
+            assert cycle["suggestions"] == []
+            assert observation["kind"]=="TWO_SIDED"
+            assert observation["bid"]==bid and observation["ask"]==ask
+            assert observation["annualized_yield"] == round(bid/SPOT*365/max(dte,1),6)
     else:
+        observation=cycle["quote_observation"]
+        assert cycle["suggestions"] == []
         assert observation["annualized_yield"] == (None if last is None else round(last/SPOT*365/max(dte,1),6))
     validate_covered_call_cycle(cycle,evaluated_at=stamp,document_at=stamp,period="monthly")
 

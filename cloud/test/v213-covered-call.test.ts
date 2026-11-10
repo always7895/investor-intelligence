@@ -90,7 +90,7 @@ describe("covered-call suggestions", () => {
     // legacy common-sigma dictionary. Unknown or inconsistent source
     // annotation is still refused. QUOTED requires an absent IV field.
     const quotedIv = structuredClone(implied);
-    quotedIv.suggestions[0]!.delta_basis = "QUOTED_IV";
+    (quotedIv.suggestions[0]! as unknown as { delta_basis: string }).delta_basis = "QUOTED_IV";
     expect(validateCoveredCallCycle(quotedIv)).not.toBeNull();
     for (const delta_basis of ["QUOTED", "GUESSED"]) {
       const unknown = structuredClone(implied); Object.assign(unknown.suggestions[0]!, { delta_basis });
