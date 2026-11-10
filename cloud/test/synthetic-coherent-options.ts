@@ -78,8 +78,19 @@ export function syntheticCalls(spot: number, dte: number, highStrike: number, ba
 /** Only retime explicitly synthetic fixtures. Rebuild every leg and quote-derived
  * economic field together, preserving strikes, roles, labels and normalized vol. */
 export function repriceSyntheticCycle(cycle: CoveredCallCycle, dte: number): void {
-  if (!cycle.delta_model || cycle.delta_model.basis !== "QUOTE_IMPLIED") throw new Error("Expected a synthetic tight-book model");
-  const sigma = cycle.delta_model.sigma * Math.sqrt(Math.max(cycle.dte, 1) / Math.max(dte, 1));
+  const existing = cycle.delta_model;
+  if (!existing || (typeof existing === "string" ? !existing.startsWith("E1|Q,") || existing.includes("|H,")
+    : existing.basis !== "QUOTE_IMPLIED")) throw new Error("Expected a synthetic tight-book model");
+  // Stage 1E's sealed side wire is compact. Recover the *synthetic* input
+  // volatility from an actual source-IV leg, or invert its own quoted mid.
+  // Never use a missing common sigma as if it were genuine provider evidence.
+  const first = cycle.suggestions[0];
+  if (!first || first.ask === null) throw new Error("Synthetic retime requires a two-sided source-backed call");
+  const sourceSigma = typeof existing === "string"
+    ? (first.iv && first.iv > 0 ? first.iv
+      : syntheticIv((first.bid + first.ask) / 2, cycle.spot, first.strike, cycle.dte, false))
+    : existing.sigma;
+  const sigma = sourceSigma * Math.sqrt(Math.max(cycle.dte, 1) / Math.max(dte, 1));
   const cc = [...cycle.suggestions, ...(cycle.middle_suggestion ? [cycle.middle_suggestion] : [])];
   const csp = cycle.strategies?.csp;
   const collar = cycle.strategies?.collar;
@@ -91,12 +102,20 @@ export function repriceSyntheticCycle(cycle: CoveredCallCycle, dte: number): voi
   }
   const { quotes, delta_model } = book(cycle.spot, dte, sigma, legs.map(({ leg, put }) => ({ strike: leg.strike, put })));
   cycle.dte = dte;
-  cycle.delta_model = delta_model;
+  const sideScoped = typeof existing === "string";
+  cycle.delta_model = sideScoped ? ("E1|Q,0,-|" + (legs.some(item => item.put) ? "Q" : "-") + ",0,-") : delta_model;
   legs.forEach(({ leg, put, buy }, i) => {
     const quote = quotes[i]!;
+    const selectedSigma = sideScoped
+      ? syntheticIv((quote.bid + quote.ask) / 2, cycle.spot, quote.strike, dte, put)
+      : delta_model.sigma;
+    const basis = sideScoped ? "QUOTE_IMPLIED" : delta_model.basis;
     Object.assign(leg, { bid: quote.bid, ask: quote.ask, limit_price: quoteLimit(quote.bid, quote.ask, buy),
-      delta: syntheticGreeks(cycle.spot, leg.strike, dte, delta_model.sigma, put).delta, delta_basis: delta_model.basis });
-    if ("iv" in leg) Object.assign(leg, callItem(leg.role, quote, cycle.spot, dte, delta_model));
+      delta: syntheticGreeks(cycle.spot, leg.strike, dte, selectedSigma, put).delta, delta_basis: basis });
+    if ("iv" in leg) {
+      const model = { ...delta_model, sigma: selectedSigma, basis: "QUOTE_IMPLIED" as const };
+      Object.assign(leg, callItem(leg.role, quote, cycle.spot, dte, model));
+    }
   });
   if (csp && "suggestions" in csp) for (const item of csp.suggestions) Object.assign(item, {
     premium_per_contract: Math.round(item.limit_price * 10_000) / 100, cash_required: item.strike * 100,

@@ -39,12 +39,7 @@
               "spread_pct": 0.0601
             }
           ],
-          "delta_model": {
-            "basis": "QUOTE_IMPLIED",
-            "sigma": 0.5999751817101978,
-            "iv_bid": 0.5941427071851997,
-            "iv_ask": 0.605807656235196
-          },
+          "delta_model": "E1|Q,0,-|-,0,-",
           "provider_id": "nasdaq_public_option_chain",
           "jurisdiction": "US",
           "venue": "US_LISTED_OPTIONS",
@@ -87,12 +82,7 @@
               "spread_pct": 0.0601
             }
           ],
-          "delta_model": {
-            "basis": "QUOTE_IMPLIED",
-            "sigma": 0.5999716515476726,
-            "iv_bid": 0.5937928176405673,
-            "iv_ask": 0.6061504854547779
-          },
+          "delta_model": "E1|Q,0,-|-,0,-",
           "provider_id": "nasdaq_public_option_chain",
           "jurisdiction": "US",
           "venue": "US_LISTED_OPTIONS",
@@ -130,19 +120,14 @@
               "annualized_yield": 0.354571,
               "upside_to_strike": 0.09,
               "delta": 0.162,
-              "delta_basis": "QUOTE_IMPLIED",
+              "delta_basis": "QUOTED_IV",
               "iv": 0.6,
               "oi": 10,
               "volume": 5,
               "spread_pct": 0.0602
             }
           ],
-          "delta_model": {
-            "basis": "QUOTE_IMPLIED",
-            "sigma": 0.5999662613454237,
-            "iv_bid": 0.593900796311436,
-            "iv_ask": 0.6060317263794115
-          },
+          "delta_model": "E1|Q,0,-|-,0,-",
           "provider_id": "yahoo_finance_option_chain",
           "jurisdiction": "US",
           "venue": "US_LISTED_OPTIONS",
@@ -177,19 +162,14 @@
               "annualized_yield": 0.181359,
               "upside_to_strike": 0.2,
               "delta": 0.179,
-              "delta_basis": "QUOTE_IMPLIED",
+              "delta_basis": "QUOTED_IV",
               "iv": 0.6,
               "oi": 10,
               "volume": 5,
               "spread_pct": 0.0601
             }
           ],
-          "delta_model": {
-            "basis": "QUOTE_IMPLIED",
-            "sigma": 0.5999716515476726,
-            "iv_bid": 0.5937928176405673,
-            "iv_ask": 0.6061504854547779
-          },
+          "delta_model": "E1|Q,0,-|-,0,-",
           "provider_id": "yahoo_finance_option_chain",
           "jurisdiction": "US",
           "venue": "US_LISTED_OPTIONS",

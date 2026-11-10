@@ -88,7 +88,8 @@ def generate_fixture_document() -> dict[str, Any]:
     for period in ("weekly", "monthly"):
         cycle = allowed["options"][NASDAQ_TICKER][period]
         assert "unavailable" not in cycle and cycle["provider_id"] == support.NASDAQ_ID and cycle["quote_basis"] == "delayed", cycle
-        assert cycle["suggestions"] and cycle["delta_model"]["basis"] == "QUOTE_IMPLIED", cycle
+        assert (cycle["suggestions"] and isinstance(cycle["delta_model"], str)
+                and cycle["delta_model"].startswith("E1|Q,")), cycle
     assert allowed["options"][US_SIBLING]["monthly"]["provider_id"] == support.YAHOO_ID
 
     def keep(document: dict[str, Any]) -> dict[str, Any]:

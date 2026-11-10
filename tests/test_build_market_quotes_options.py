@@ -126,7 +126,7 @@ class QuoteClockTests(unittest.TestCase):
 
 
 class SuggestionTests(unittest.TestCase):
-    """Stage 1D: Greeks are inferred from ALL eligible quoted legs, never source Greeks."""
+    """Stage 1E: isolated all-tight legs retain Stage1C SOURCE_IV/QUOTED/mid precedence."""
     @staticmethod
     def coherent(strikes, spot=100.0, dte=30, sigma=.30):
         import math
@@ -138,7 +138,7 @@ class SuggestionTests(unittest.TestCase):
                 continue
             bid = math.floor(price * .97 * 10000) / 10000
             ask = math.ceil(price * 1.03 * 10000) / 10000
-            quotes.append({**row(float(strike), bid, ask, delta=.99), "iv": 9.9})
+            quotes.append({**row(float(strike), bid, ask, delta=.99), "iv": sigma})
         return quotes
 
     def test_highest_strike_worth_selling_then_a_balanced_one(self):
@@ -150,20 +150,22 @@ class SuggestionTests(unittest.TestCase):
         self.assertGreaterEqual(suggestions[0]["limit_price"], suggestions[0]["bid"])
         self.assertLessEqual(suggestions[0]["limit_price"], suggestions[0]["mid"])
         self.assertAlmostEqual(suggestions[0]["annualized_yield"], suggestions[0]["period_yield"]*365/30, places=5)
-        self.assertEqual(suggestions[0]["delta_basis"], "QUOTE_IMPLIED")
+        self.assertEqual(suggestions[0]["delta_basis"], "QUOTED_IV")
         self.assertNotEqual(suggestions[0]["delta"], .99)
-        self.assertNotEqual(suggestions[0]["iv"], 9.9)
+        self.assertAlmostEqual(suggestions[0]["iv"], .30, places=4)
 
     def test_a_chain_without_delta_or_iv_is_capped_by_the_delta_its_quotes_imply(self):
-        # Two otherwise quoted strikes have disjoint IV intersections: refuse the entire
-        # eligible cohort, never drop the inconvenient higher strike and recommend the rest.
+        # The tight side does NOT require a common-IV intersection: each
+        # independent Stage1C midpoint-inverted leg keeps its own Delta.
         spot,dte=100.,30
         years=dte/365
         def fair(k,s):
             price=delta_math.bs_call_price(spot,k,years,s)
             return {**row(k,price*.99,price*1.01), "iv":None}
         mixed=[fair(150,1.6),fair(130,.45),fair(120,.5)]
-        self.assertEqual(builder.covered_call_suggestions(mixed,spot,dte),[])
+        mixed_selection=builder.covered_call_suggestions(mixed,spot,dte)
+        self.assertTrue(mixed_selection)
+        self.assertEqual(mixed_selection[0]["delta_basis"],"QUOTE_IMPLIED")
         coherent=self.coherent([105,108,110],spot,dte)
         got=builder.covered_call_suggestions(coherent,spot,dte)
         self.assertTrue(got)
@@ -181,18 +183,25 @@ class SuggestionTests(unittest.TestCase):
         exact=delta_math.bs_call_delta(100.,110.,years,delta_math.implied_vol(1.10,100.,110.,years),digits=None)
         self.assertGreater(exact,.2)
         self.assertEqual(round(exact,3),.2)
-        self.assertEqual(builder.covered_call_suggestions([row(110,1.09,1.11, .2)],100.,30),[])
+        # A valid source-quoted Delta has priority over midpoint inversion.
+        source=builder.covered_call_suggestions([row(110,1.09,1.11,.2)],100.,30)
+        self.assertTrue(source)
+        self.assertEqual(source[0]["delta_basis"],"QUOTED")
         high=builder.covered_call_suggestions(self.coherent([112,115,118]),100.,30)
         self.assertTrue(high)
         self.assertTrue(high[0]["delta"]<=.2)
 
     def test_quoted_iv_and_quoted_delta_keep_their_basis(self):
-        src={**self.coherent([115])[0], "iv":.8,"delta":.99}
+        src={**self.coherent([115])[0],"iv":.30,"delta":.99}
         suggestion=builder.covered_call_suggestions([src],100.,30)[0]
-        self.assertEqual(suggestion["delta_basis"],"QUOTE_IMPLIED")
-        self.assertNotEqual(suggestion["iv"],src["iv"])
+        self.assertEqual(suggestion["delta_basis"],"QUOTED_IV")
+        self.assertEqual(suggestion["iv"],.30)
         self.assertNotEqual(suggestion["delta"],src["delta"])
-        self.assertAlmostEqual(suggestion["delta"],delta_math.bs_call_delta(100.,115.,30/365,suggestion["iv"]),places=3)
+        self.assertAlmostEqual(suggestion["delta"],
+                               delta_math.bs_call_delta(100.,115.,30/365,suggestion["iv"]),places=3)
+        quoted=builder.covered_call_suggestions([row(120,.5,.54,.15)],100.,30)[0]
+        self.assertEqual(quoted["delta_basis"],"QUOTED")
+        self.assertEqual(quoted["delta"],.15)
 
     def test_wide_spread_uses_midpoint_without_refusing_a_valid_delta(self):
         wide=builder.covered_call_suggestions([row(120,1.0,1.6)],100.,20)
@@ -681,7 +690,7 @@ class SealingTests(unittest.TestCase):
         tampered["suggestions"][0]["limit_price"] = 9.0
         with self.assertRaises(MarketProductValidationError):
             validate_covered_call_cycle(tampered, evaluated_at=stamp)
-        self.assertEqual(good["suggestions"][0]["delta_basis"], "QUOTE_IMPLIED")
+        self.assertEqual(good["suggestions"][0]["delta_basis"], "QUOTED")
         at_limit = json.loads(json.dumps(good))
         validate_covered_call_cycle(at_limit, evaluated_at=stamp)  # authentic quoted IV cohort, unchanged Delta
         for key, value in (("delta_basis", "GUESSED"), ("iv", 0.0), ("delta", None), ("delta", 0.2000000005),

@@ -193,7 +193,7 @@ describe("V21 card", () => {
       "Bid $0.36", "中價 $0.38", "Ask $0.40", "Bid $0.98", "中價 $1.00", "Ask $1.02",
       "Bid $0.59", "中價 $0.61", "Ask $0.63", "Bid $1.05", "中價 $1.07", "Ask $1.09",
       "年化 13.9%（以備妥現金計）", "損益兩平 $93.00", `Delta ${clone("yahoo_monthly_full").strategies.csp.suggestions[0].delta.toFixed(2)}`, "Bid $0.98",
-      "Bid $0.59", "Bid $1.05", "$754.00", "$746.00", "$99.54", "買賣報價 IV 共同模型"]) {
+      "Bid $0.59", "Bid $1.05", "$754.00", "$746.00", "$99.54", "買賣報價 IV 模型"]) {
       expect(detail, expected).toContain(expected);
     }
     expect(JSON.stringify(list[0])).toContain("AAA 每月期權 文字");
@@ -479,6 +479,7 @@ describe("Stage 1C producer bridge and observation boundaries", () => {
 function coherentWideCycle(currency: "USD" | "SEK" = "USD"): CoveredCallCycle {
   const cycle = clone("yahoo_monthly_full") as CoveredCallCycle;
   const oldModel = cycle.delta_model!;
+  if (typeof oldModel === "string" || !("sigma" in oldModel)) throw new Error("Stage1D legacy fixture expected");
   const sigma = oldModel.sigma;
   cycle.currency = currency;
   cycle.historical_volatility = {
@@ -568,7 +569,7 @@ describe("Stage 1D common-cohort historical Delta and strict two-sided LIMIT", (
     const missingModel = structuredClone(raw); delete missingModel.delta_model;
     expect(check(missingModel)).toBeNull();
     const oldBasis = structuredClone(raw);
-    oldBasis.delta_model!.basis = "QUOTE_IMPLIED";
+    if (oldBasis.delta_model && typeof oldBasis.delta_model !== "string" && "basis" in oldBasis.delta_model) oldBasis.delta_model.basis = "QUOTE_IMPLIED";
     expect(check(oldBasis)).toBeNull();
   });
 
@@ -632,7 +633,8 @@ describe("Stage 1D common-cohort historical Delta and strict two-sided LIMIT", (
     badBasis.suggestions[0]!.delta_basis = "QUOTED" as never;
     expect(check(badBasis)).toBeNull();
     const inconsistentSigma = structuredClone(raw);
-    inconsistentSigma.delta_model!.sigma *= 1.1;
+    if (inconsistentSigma.delta_model && typeof inconsistentSigma.delta_model !== "string" && "sigma" in inconsistentSigma.delta_model)
+      inconsistentSigma.delta_model.sigma *= 1.1;
     expect(check(inconsistentSigma)).toBeNull();
   });
 

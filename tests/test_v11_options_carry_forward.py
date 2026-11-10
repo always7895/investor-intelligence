@@ -195,7 +195,7 @@ class CarryThroughTheProducerTests(Harness):
         tamper("already carried basis", lambda c: c.__setitem__("quote_basis", "previous_session_last"))
         tamper("no identity", lambda c: c.pop("provider_id"))
         tamper("missing common model", lambda c: c.pop("delta_model"))
-        tamper("inconsistent common sigma", lambda c: c["delta_model"].__setitem__("sigma", c["delta_model"]["iv_ask"] + 0.1))
+        tamper("forged side model basis", lambda c: c.__setitem__("delta_model", "E1|X,0,-|Q,0,-"))
 
     def test_the_catalog_must_admit_the_capture_and_the_carried_basis_itself(self) -> None:
         # No policy that admits Yahoo (the repository catalog before the operator entry, or after a revert): nothing is captured or carried.

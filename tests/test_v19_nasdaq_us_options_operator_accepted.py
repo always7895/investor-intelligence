@@ -292,7 +292,7 @@ class NasdaqProducerSealerTests(unittest.TestCase):
             self.assertEqual({key: cycle[key] for key in support.NASDAQ_IDENTITY}, support.NASDAQ_IDENTITY)
             self.assertEqual((cycle["quote_basis"], cycle["currency"], cycle["rights_status"]), ("delayed", "USD", "operator_accepted_unlicensed"))
             self.assertTrue(cycle["suggestions"])
-            self.assertEqual(cycle["delta_model"]["basis"], "QUOTE_IMPLIED")
+            self.assertTrue(cycle["delta_model"].startswith("E1|Q,"))
         sibling = self.allowed["options"][cases.US_SIBLING]["monthly"]  # Yahoo cycles unchanged: the Yahoo identity
         self.assertEqual({key: sibling[key] for key in support.IDENTITY}, support.IDENTITY)
 

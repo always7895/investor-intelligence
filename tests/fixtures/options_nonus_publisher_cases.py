@@ -332,8 +332,10 @@ def expect_available(case: str, bodies: dict[str, str], symbol: str, cycle: str,
         assert value["currency"] == currency, f"{case}: {symbol}/{cycle} currency {value.get('currency')}"
     if not observation:
         assert value["suggestions"] and "quote_observation" not in value, (case, symbol, cycle, value)
-        assert value["delta_model"]["basis"] == "QUOTE_IMPLIED", (case, symbol, cycle, value)
-        assert all(item["delta_basis"] == value["delta_model"]["basis"] for item in value["suggestions"]), (case, symbol, cycle)
+        model = value["delta_model"]
+        assert isinstance(model, str) and model.startswith("E1|Q,"), (case, symbol, cycle, value)
+        assert all(item["delta_basis"] in ("QUOTED_IV", "QUOTED", "QUOTE_IMPLIED")
+                   for item in value["suggestions"]), (case, symbol, cycle)
 
 
 def expect_unavailable(case: str, bodies: dict[str, str], symbol: str, cycle: str) -> None:

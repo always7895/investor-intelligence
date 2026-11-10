@@ -63,7 +63,7 @@ class FloorTests(unittest.TestCase):
         bid=math.floor(fair*.97*1_000_000)/1_000_000
         ask=math.ceil(fair*1.03*1_000_000)/1_000_000
         return {"strike":strike,"bid":bid,"ask":ask,"delta":.9,
-                "iv":.9,"oi":10,"volume":1}
+                "iv":sigma,"oi":10,"volume":1}
 
     def test_there_is_no_annualized_yield_floor_any_more(self) -> None:
         self.assertFalse(hasattr(builder,"MIN_ANNUALIZED_YIELD"))
@@ -72,7 +72,7 @@ class FloorTests(unittest.TestCase):
         recommendations=builder.covered_call_suggestions(quotes,100.,30)
         self.assertTrue(recommendations)
         self.assertTrue(any(0<x["annualized_yield"]<.02 for x in recommendations))
-        self.assertTrue(all(x["delta_basis"]=="QUOTE_IMPLIED" for x in recommendations))
+        self.assertTrue(all(x["delta_basis"]=="QUOTED_IV" for x in recommendations))
         self.assertTrue(all(x["delta"]!=.9 for x in recommendations))
 
     def test_dte_zero_and_a_wide_spread_keep_their_rules(self) -> None:
@@ -98,11 +98,11 @@ class PutParsingTests(unittest.TestCase):
         for block in (csp, collar):
             self.assertEqual({key: block[key] for key in label}, label)
         first, second = csp["suggestions"]
-        self.assertEqual((first["role"], first["strike"], first["delta"], first["delta_basis"]), ("CONSERVATIVE", 94.0, 0.206, "QUOTE_IMPLIED"))
+        self.assertEqual((first["role"], first["strike"], first["delta"], first["delta_basis"]), ("CONSERVATIVE", 94.0, 0.205, "QUOTED_IV"))
         self.assertEqual((first["bid"], first["ask"], first["limit_price"]), (0.98, 1.02, 1.0))
         self.assertEqual((first["premium_per_contract"], first["cash_required"], first["breakeven"], first["downside_buffer"]), (100.0, 9400.0, 93.0, 0.06))
         self.assertAlmostEqual(first["annualized_yield"], 1.0 / 94 * 365 / 28, places=5)
-        self.assertEqual((second["role"], second["strike"], second["delta"], second["cash_required"]), ("BALANCED", 96.0, 0.285, 9600.0))
+        self.assertEqual((second["role"], second["strike"], second["delta"], second["cash_required"]), ("BALANCED", 96.0, 0.284, 9600.0))
         put = collar["put"]
         self.assertEqual((put["strike"], put["delta"], put["limit_price"]), (92.0, 0.14, 0.61))  # |delta| nearest 0.15; mid 0.61 rounded up
         conservative, balanced = collar["items"]
@@ -426,10 +426,12 @@ class FailClosedTests(unittest.TestCase):
         validate(cycle)
         self.assertEqual(cycle["suggestions"],[])
         self.assertEqual(cycle["quote_observation"]["kind"],"TWO_SIDED")
-        for block in ("cc","csp","collar"):
-            self.assertIn("unavailable",cycle["strategies"][block])
-            self.assertFalse(cycle["strategies"][block].get("suggestions"))
-            self.assertFalse(cycle["strategies"][block].get("items"))
+        # Per-side Stage1E: calls contain wide quotes without HV and refuse,
+        # but the unrelated all-tight put side retains Stage1C SOURCE_IV CSP.
+        self.assertIn("unavailable",cycle["strategies"]["cc"])
+        self.assertTrue(cycle["strategies"]["csp"]["suggestions"])
+        self.assertEqual(cycle["strategies"]["csp"]["suggestions"][0]["delta_basis"],"QUOTED_IV")
+        self.assertIn("unavailable",cycle["strategies"]["collar"])
 
     def test_no_executable_strategy_preserves_only_source_backed_observations(self) -> None:
         cases = (

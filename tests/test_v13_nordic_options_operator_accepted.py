@@ -274,7 +274,7 @@ class NordicProducerSealerTests(unittest.TestCase):
             self.assertEqual((cycle["quote_basis"], cycle["currency"], cycle["rights_status"]), ("delayed", "SEK", "operator_accepted_unlicensed"))
             self.assertEqual(cycle["source"], builder.NORDIC_SOURCE)
             self.assertTrue(cycle["suggestions"])
-            self.assertEqual(cycle["delta_model"]["basis"], "QUOTE_IMPLIED")
+            self.assertTrue(cycle["delta_model"].startswith("E1|Q,"))
         us_cycle = self.both["options"][cases.US_SIBLING]["monthly"]  # US cycles unchanged: the Yahoo identity
         self.assertEqual({key: us_cycle[key] for key in support.IDENTITY}, support.IDENTITY)
         self.assertEqual(us_cycle["currency"], "USD")
